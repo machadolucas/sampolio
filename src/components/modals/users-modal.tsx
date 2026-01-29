@@ -15,6 +15,12 @@ import { Card } from 'primereact/card';
 import { Message } from 'primereact/message';
 import { ConfirmDialog, confirmDialog } from 'primereact/confirmdialog';
 import { Toast } from 'primereact/toast';
+import {
+    getUsers,
+    createUser,
+    updateUser,
+    deleteUser,
+} from '@/lib/actions/admin';
 import type { PublicUser, UserRole } from '@/types';
 
 interface UsersModalProps {
@@ -50,12 +56,11 @@ export function UsersModal({ visible, onHide }: UsersModalProps) {
     const fetchUsers = async () => {
         try {
             setIsLoading(true);
-            const res = await fetch('/api/admin/users');
-            const data = await res.json();
-            if (data.success) {
-                setUsers(data.data);
+            const result = await getUsers();
+            if (result.success && result.data) {
+                setUsers(result.data);
             } else {
-                setError(data.error || 'Failed to fetch users');
+                setError(result.error || 'Failed to fetch users');
             }
         } catch {
             setError('Failed to fetch users');
@@ -102,19 +107,14 @@ export function UsersModal({ visible, onHide }: UsersModalProps) {
                     updateData.password = formData.password;
                 }
 
-                const res = await fetch(`/api/admin/users/${editingUser.id}`, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(updateData),
-                });
-                const data = await res.json();
+                const result = await updateUser(editingUser.id, updateData as Parameters<typeof updateUser>[1]);
 
-                if (data.success) {
+                if (result.success) {
                     toast.current?.show({ severity: 'success', summary: 'Success', detail: 'User updated successfully' });
                     setDialogVisible(false);
                     fetchUsers();
                 } else {
-                    toast.current?.show({ severity: 'error', summary: 'Error', detail: data.error });
+                    toast.current?.show({ severity: 'error', summary: 'Error', detail: result.error });
                 }
             } else {
                 if (!formData.password) {
@@ -123,19 +123,14 @@ export function UsersModal({ visible, onHide }: UsersModalProps) {
                     return;
                 }
 
-                const res = await fetch('/api/admin/users', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(formData),
-                });
-                const data = await res.json();
+                const result = await createUser(formData);
 
-                if (data.success) {
+                if (result.success) {
                     toast.current?.show({ severity: 'success', summary: 'Success', detail: 'User created successfully' });
                     setDialogVisible(false);
                     fetchUsers();
                 } else {
-                    toast.current?.show({ severity: 'error', summary: 'Error', detail: data.error });
+                    toast.current?.show({ severity: 'error', summary: 'Error', detail: result.error });
                 }
             }
         } catch {
@@ -153,13 +148,12 @@ export function UsersModal({ visible, onHide }: UsersModalProps) {
             acceptClassName: 'p-button-danger',
             accept: async () => {
                 try {
-                    const res = await fetch(`/api/admin/users/${user.id}`, { method: 'DELETE' });
-                    const data = await res.json();
-                    if (data.success) {
+                    const result = await deleteUser(user.id);
+                    if (result.success) {
                         toast.current?.show({ severity: 'success', summary: 'Success', detail: 'User deleted successfully' });
                         fetchUsers();
                     } else {
-                        toast.current?.show({ severity: 'error', summary: 'Error', detail: data.error });
+                        toast.current?.show({ severity: 'error', summary: 'Error', detail: result.error });
                     }
                 } catch {
                     toast.current?.show({ severity: 'error', summary: 'Error', detail: 'Failed to delete user' });
@@ -191,7 +185,7 @@ export function UsersModal({ visible, onHide }: UsersModalProps) {
         { label: 'Admin', value: 'admin' },
     ];
 
-    if (session?.user?.role !== 'admin') return null;
+    const isAdmin = session?.user?.role === 'admin';
 
     return (
         <Dialog
@@ -205,33 +199,40 @@ export function UsersModal({ visible, onHide }: UsersModalProps) {
             <Toast ref={toast} />
             <ConfirmDialog />
 
-            <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                    <p className="text-gray-600 dark:text-gray-400">Manage user accounts and permissions</p>
-                    <Button label="New User" icon="pi pi-plus" onClick={openNewDialog} />
+            {!isAdmin ? (
+                <div className="text-center py-8">
+                    <i className="pi pi-lock text-4xl text-gray-400 mb-4"></i>
+                    <p className="text-gray-600 dark:text-gray-400">Admin access required</p>
                 </div>
+            ) : (
+                <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                        <p className="text-gray-600 dark:text-gray-400">Manage user accounts and permissions</p>
+                        <Button label="New User" icon="pi pi-plus" onClick={openNewDialog} />
+                    </div>
 
-                {error && <Message severity="error" text={error} className="w-full" />}
+                    {error && <Message severity="error" text={error} className="w-full" />}
 
-                <Card>
-                    <DataTable
-                        value={users}
-                        loading={isLoading}
-                        emptyMessage="No users found"
-                        paginator
-                        rows={10}
-                        rowsPerPageOptions={[5, 10, 25]}
-                        stripedRows
-                    >
-                        <Column field="name" header="Name" sortable />
-                        <Column field="email" header="Email" sortable />
-                        <Column field="role" header="Role" body={roleBodyTemplate} sortable />
-                        <Column field="isActive" header="Status" body={statusBodyTemplate} sortable />
-                        <Column field="createdAt" header="Created" sortable body={(user) => new Date(user.createdAt).toLocaleDateString()} />
-                        <Column body={actionsBodyTemplate} header="Actions" style={{ width: '120px' }} />
-                    </DataTable>
-                </Card>
-            </div>
+                    <Card>
+                        <DataTable
+                            value={users}
+                            loading={isLoading}
+                            emptyMessage="No users found"
+                            paginator
+                            rows={10}
+                            rowsPerPageOptions={[5, 10, 25]}
+                            stripedRows
+                        >
+                            <Column field="name" header="Name" sortable />
+                            <Column field="email" header="Email" sortable />
+                            <Column field="role" header="Role" body={roleBodyTemplate} sortable />
+                            <Column field="isActive" header="Status" body={statusBodyTemplate} sortable />
+                            <Column field="createdAt" header="Created" sortable body={(user) => new Date(user.createdAt).toLocaleDateString()} />
+                            <Column body={actionsBodyTemplate} header="Actions" style={{ width: '120px' }} />
+                        </DataTable>
+                    </Card>
+                </div>
+            )}
 
             {/* Edit/Create Dialog */}
             <Dialog

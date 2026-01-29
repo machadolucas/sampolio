@@ -11,6 +11,12 @@ import { InputSwitch, InputSwitchChangeEvent } from 'primereact/inputswitch';
 import { ProgressSpinner } from 'primereact/progressspinner';
 import { formatCurrency } from '@/lib/constants';
 import { getCurrentYearMonth } from '@/lib/projection';
+import {
+    getSalaryConfigs,
+    createSalaryConfig,
+    updateSalaryConfig,
+    deleteSalaryConfig,
+} from '@/lib/actions/salary';
 import type { FinancialAccount, SalaryConfig, Currency } from '@/types';
 
 function calculateNetSalary(
@@ -69,9 +75,8 @@ export function SalaryModal({
         if (!selectedAccountId) return;
         setIsLoading(true);
         try {
-            const res = await fetch(`/api/accounts/${selectedAccountId}/salary`);
-            const data = await res.json();
-            if (data.success) setConfigs(data.data);
+            const result = await getSalaryConfigs(selectedAccountId);
+            if (result.success && result.data) setConfigs(result.data);
         } catch (err) {
             console.error('Failed to fetch:', err);
         } finally {
@@ -132,17 +137,11 @@ export function SalaryModal({
                 isLinkedToRecurring: formData.isLinkedToRecurring,
             };
 
-            const url = editingConfig
-                ? `/api/accounts/${selectedAccountId}/salary/${editingConfig.id}`
-                : `/api/accounts/${selectedAccountId}/salary`;
+            const result = editingConfig
+                ? await updateSalaryConfig(selectedAccountId, editingConfig.id, body)
+                : await createSalaryConfig(selectedAccountId, body);
 
-            const res = await fetch(url, {
-                method: editingConfig ? 'PUT' : 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(body),
-            });
-
-            if (res.ok) {
+            if (result.success) {
                 await fetchConfigs();
                 setIsFormOpen(false);
                 resetForm();
@@ -156,8 +155,8 @@ export function SalaryModal({
     const handleDelete = async (configId: string) => {
         if (!confirm('Delete this salary configuration? This will also remove the linked recurring income item.')) return;
         try {
-            const res = await fetch(`/api/accounts/${selectedAccountId}/salary/${configId}`, { method: 'DELETE' });
-            if (res.ok) {
+            const result = await deleteSalaryConfig(selectedAccountId, configId);
+            if (result.success) {
                 setConfigs(prev => prev.filter(c => c.id !== configId));
                 onDataChange?.();
             }
@@ -168,12 +167,8 @@ export function SalaryModal({
 
     const handleToggleActive = async (config: SalaryConfig) => {
         try {
-            const res = await fetch(`/api/accounts/${selectedAccountId}/salary/${config.id}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ isActive: !config.isActive }),
-            });
-            if (res.ok) {
+            const result = await updateSalaryConfig(selectedAccountId, config.id, { isActive: !config.isActive });
+            if (result.success) {
                 setConfigs(prev => prev.map(c => c.id === config.id ? { ...c, isActive: !c.isActive } : c));
                 onDataChange?.();
             }

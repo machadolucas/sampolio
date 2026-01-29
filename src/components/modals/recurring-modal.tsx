@@ -11,6 +11,12 @@ import { InputSwitch, InputSwitchChangeEvent } from 'primereact/inputswitch';
 import { ProgressSpinner } from 'primereact/progressspinner';
 import { formatCurrency, FREQUENCIES, ITEM_CATEGORIES, formatYearMonth } from '@/lib/constants';
 import { getCurrentYearMonth } from '@/lib/projection';
+import {
+    getRecurringItems,
+    createRecurringItem,
+    updateRecurringItem,
+    deleteRecurringItem,
+} from '@/lib/actions/recurring';
 import type { FinancialAccount, RecurringItem, Currency } from '@/types';
 
 interface RecurringModalProps {
@@ -52,10 +58,9 @@ export function RecurringModal({
         if (!selectedAccountId) return;
         setIsLoading(true);
         try {
-            const res = await fetch(`/api/accounts/${selectedAccountId}/recurring`);
-            const data = await res.json();
-            if (data.success) {
-                setItems(data.data);
+            const result = await getRecurringItems(selectedAccountId);
+            if (result.success && result.data) {
+                setItems(result.data);
             }
         } catch (err) {
             console.error('Failed to fetch items:', err);
@@ -112,25 +117,18 @@ export function RecurringModal({
                 name: formData.name,
                 amount: parseFloat(formData.amount),
                 category: formData.category || undefined,
-                frequency: formData.frequency,
+                frequency: formData.frequency as 'monthly' | 'quarterly' | 'yearly' | 'custom',
                 customIntervalMonths: formData.frequency === 'custom' ? parseInt(formData.customIntervalMonths, 10) : undefined,
                 startDate: formData.startDate,
                 endDate: formData.endDate || undefined,
                 isActive: formData.isActive,
             };
 
-            const url = editingItem
-                ? `/api/accounts/${selectedAccountId}/recurring/${editingItem.id}`
-                : `/api/accounts/${selectedAccountId}/recurring`;
+            const result = editingItem
+                ? await updateRecurringItem(selectedAccountId, editingItem.id, body)
+                : await createRecurringItem(selectedAccountId, body);
 
-            const res = await fetch(url, {
-                method: editingItem ? 'PUT' : 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(body),
-            });
-
-            const data = await res.json();
-            if (data.success) {
+            if (result.success) {
                 await fetchItems();
                 setIsFormOpen(false);
                 resetForm();
@@ -144,8 +142,8 @@ export function RecurringModal({
     const handleDelete = async (itemId: string) => {
         if (!confirm('Delete this item?')) return;
         try {
-            const res = await fetch(`/api/accounts/${selectedAccountId}/recurring/${itemId}`, { method: 'DELETE' });
-            if (res.ok) {
+            const result = await deleteRecurringItem(selectedAccountId, itemId);
+            if (result.success) {
                 setItems(prev => prev.filter(i => i.id !== itemId));
                 onDataChange?.();
             }
@@ -156,12 +154,8 @@ export function RecurringModal({
 
     const handleToggle = async (item: RecurringItem) => {
         try {
-            const res = await fetch(`/api/accounts/${selectedAccountId}/recurring/${item.id}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ isActive: !item.isActive }),
-            });
-            if (res.ok) {
+            const result = await updateRecurringItem(selectedAccountId, item.id, { isActive: !item.isActive });
+            if (result.success) {
                 setItems(prev => prev.map(i => i.id === item.id ? { ...i, isActive: !i.isActive } : i));
                 onDataChange?.();
             }

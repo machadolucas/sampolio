@@ -5,7 +5,6 @@ import { signOut, useSession } from 'next-auth/react';
 import { useRef } from 'react';
 import { Button } from 'primereact/button';
 import { Menubar } from 'primereact/menubar';
-import { Badge } from 'primereact/badge';
 import { Menu } from 'primereact/menu';
 import { useTheme } from '@/components/providers/theme-provider';
 import { MenuItem } from 'primereact/menuitem';
@@ -105,7 +104,7 @@ export function TopBar({
     ];
 
     const start = (
-        <Link href="/dashboard" className="flex items-center gap-2 no-underline mr-4">
+        <Link href="/" className="flex items-center gap-2 no-underline mr-4">
             <span className="text-2xl">💰</span>
             <span className={`text-xl font-bold ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
                 Sampolio
@@ -122,16 +121,7 @@ export function TopBar({
                 text
                 severity="secondary"
                 onClick={(e) => userMenuRef.current?.toggle(e)}
-                className="relative"
-            >
-                {isAdmin && (
-                    <Badge
-                        value=""
-                        severity="info"
-                        className="absolute -top-1 -right-1 w-3 h-3 min-w-0 p-0"
-                    />
-                )}
-            </Button>
+            />
         </div>
     );
 

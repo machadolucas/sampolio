@@ -9,6 +9,7 @@ import { Message } from 'primereact/message';
 import { Toast } from 'primereact/toast';
 import { Divider } from 'primereact/divider';
 import { ProgressSpinner } from 'primereact/progressspinner';
+import { getSettings, updateSettings } from '@/lib/actions/admin';
 import type { AppSettings } from '@/types';
 
 interface SettingsModalProps {
@@ -34,12 +35,11 @@ export function SettingsModal({ visible, onHide }: SettingsModalProps) {
     const fetchSettings = async () => {
         try {
             setIsLoading(true);
-            const res = await fetch('/api/admin/settings');
-            const data = await res.json();
-            if (data.success) {
-                setSettings(data.data);
+            const result = await getSettings();
+            if (result.success && result.data) {
+                setSettings(result.data);
             } else {
-                setError(data.error || 'Failed to fetch settings');
+                setError(result.error || 'Failed to fetch settings');
             }
         } catch {
             setError('Failed to fetch settings');
@@ -51,15 +51,10 @@ export function SettingsModal({ visible, onHide }: SettingsModalProps) {
     const handleToggleSelfSignup = async (value: boolean) => {
         setIsSaving(true);
         try {
-            const res = await fetch('/api/admin/settings', {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ selfSignupEnabled: value }),
-            });
-            const data = await res.json();
+            const result = await updateSettings({ selfSignupEnabled: value });
 
-            if (data.success) {
-                setSettings(data.data);
+            if (result.success && result.data) {
+                setSettings(result.data);
                 toast.current?.show({
                     severity: 'success',
                     summary: 'Success',
@@ -69,7 +64,7 @@ export function SettingsModal({ visible, onHide }: SettingsModalProps) {
                 toast.current?.show({
                     severity: 'error',
                     summary: 'Error',
-                    detail: data.error,
+                    detail: result.error,
                 });
             }
         } catch {
@@ -83,7 +78,7 @@ export function SettingsModal({ visible, onHide }: SettingsModalProps) {
         }
     };
 
-    if (session?.user?.role !== 'admin') return null;
+    const isAdmin = session?.user?.role === 'admin';
 
     return (
         <Dialog
@@ -95,7 +90,12 @@ export function SettingsModal({ visible, onHide }: SettingsModalProps) {
         >
             <Toast ref={toast} />
 
-            {isLoading ? (
+            {!isAdmin ? (
+                <div className="text-center py-8">
+                    <i className="pi pi-lock text-4xl text-gray-400 mb-4"></i>
+                    <p className="text-gray-600 dark:text-gray-400">Admin access required</p>
+                </div>
+            ) : isLoading ? (
                 <div className="flex items-center justify-center h-32">
                     <ProgressSpinner style={{ width: '40px', height: '40px' }} />
                 </div>

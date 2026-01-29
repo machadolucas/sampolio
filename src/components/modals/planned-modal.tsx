@@ -10,6 +10,12 @@ import { InputText } from 'primereact/inputtext';
 import { ProgressSpinner } from 'primereact/progressspinner';
 import { formatCurrency, FREQUENCIES, ITEM_CATEGORIES, formatYearMonth } from '@/lib/constants';
 import { getCurrentYearMonth } from '@/lib/projection';
+import {
+    getPlannedItems,
+    createPlannedItem,
+    updatePlannedItem,
+    deletePlannedItem,
+} from '@/lib/actions/planned';
 import type { FinancialAccount, PlannedItem, Currency } from '@/types';
 
 interface PlannedModalProps {
@@ -52,9 +58,8 @@ export function PlannedModal({
         if (!selectedAccountId) return;
         setIsLoading(true);
         try {
-            const res = await fetch(`/api/accounts/${selectedAccountId}/planned`);
-            const data = await res.json();
-            if (data.success) setItems(data.data);
+            const result = await getPlannedItems(selectedAccountId);
+            if (result.success && result.data) setItems(result.data);
         } catch (err) {
             console.error('Failed to fetch:', err);
         } finally {
@@ -122,17 +127,11 @@ export function PlannedModal({
                 body.endDate = formData.endDate || undefined;
             }
 
-            const url = editingItem
-                ? `/api/accounts/${selectedAccountId}/planned/${editingItem.id}`
-                : `/api/accounts/${selectedAccountId}/planned`;
+            const result = editingItem
+                ? await updatePlannedItem(selectedAccountId, editingItem.id, body as Parameters<typeof updatePlannedItem>[2])
+                : await createPlannedItem(selectedAccountId, body as Parameters<typeof createPlannedItem>[1]);
 
-            const res = await fetch(url, {
-                method: editingItem ? 'PUT' : 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(body),
-            });
-
-            if (res.ok) {
+            if (result.success) {
                 await fetchItems();
                 setIsFormOpen(false);
                 resetForm();
@@ -146,8 +145,8 @@ export function PlannedModal({
     const handleDelete = async (itemId: string) => {
         if (!confirm('Delete this item?')) return;
         try {
-            const res = await fetch(`/api/accounts/${selectedAccountId}/planned/${itemId}`, { method: 'DELETE' });
-            if (res.ok) {
+            const result = await deletePlannedItem(selectedAccountId, itemId);
+            if (result.success) {
                 setItems(prev => prev.filter(i => i.id !== itemId));
                 onDataChange?.();
             }

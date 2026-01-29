@@ -12,6 +12,12 @@ import { ProgressSpinner } from 'primereact/progressspinner';
 import { Message } from 'primereact/message';
 import { formatCurrency, CURRENCIES, PLANNING_HORIZONS } from '@/lib/constants';
 import { getCurrentYearMonth } from '@/lib/projection';
+import {
+    getAccounts,
+    createAccount,
+    updateAccount,
+    deleteAccount as deleteAccountAction,
+} from '@/lib/actions/accounts';
 import type { FinancialAccount } from '@/types';
 
 interface AccountsModalContentProps {
@@ -48,10 +54,9 @@ export function AccountsModalContent({
     const fetchAccounts = useCallback(async () => {
         try {
             setIsLoading(true);
-            const res = await fetch('/api/accounts');
-            const data = await res.json();
-            if (data.success) {
-                setAccounts(data.data);
+            const result = await getAccounts();
+            if (result.success && result.data) {
+                setAccounts(result.data);
             }
         } catch (err) {
             console.error('Failed to fetch accounts:', err);
@@ -101,27 +106,19 @@ export function AccountsModalContent({
         try {
             const payload = {
                 name,
-                currency,
+                currency: currency as 'EUR' | 'USD' | 'BRL' | 'GBP' | 'JPY' | 'CHF' | 'CAD' | 'AUD',
                 startingBalance,
                 startingDate,
                 planningHorizonMonths,
                 customEndDate: planningHorizonMonths === -1 ? customEndDate : undefined,
             };
 
-            const url = editingAccount
-                ? `/api/accounts/${editingAccount.id}`
-                : '/api/accounts';
+            const result = editingAccount
+                ? await updateAccount(editingAccount.id, payload)
+                : await createAccount(payload);
 
-            const res = await fetch(url, {
-                method: editingAccount ? 'PUT' : 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload),
-            });
-
-            const data = await res.json();
-
-            if (!data.success) {
-                setError(data.error || 'Failed to save account');
+            if (!result.success) {
+                setError(result.error || 'Failed to save account');
                 return;
             }
 
@@ -138,13 +135,8 @@ export function AccountsModalContent({
 
     const handleArchive = async (accountId: string, archive: boolean) => {
         try {
-            const res = await fetch(`/api/accounts/${accountId}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ isArchived: archive }),
-            });
-            const data = await res.json();
-            if (data.success) {
+            const result = await updateAccount(accountId, { isArchived: archive });
+            if (result.success) {
                 setAccounts(prev => prev.map(a => a.id === accountId ? { ...a, isArchived: archive } : a));
                 onAccountChange?.();
             }
@@ -159,11 +151,8 @@ export function AccountsModalContent({
         }
 
         try {
-            const res = await fetch(`/api/accounts/${accountId}`, {
-                method: 'DELETE',
-            });
-            const data = await res.json();
-            if (data.success) {
+            const result = await deleteAccountAction(accountId);
+            if (result.success) {
                 setAccounts(prev => prev.filter(a => a.id !== accountId));
                 onAccountChange?.();
             }

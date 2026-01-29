@@ -9,6 +9,7 @@ import { Password } from 'primereact/password';
 import { Button } from 'primereact/button';
 import { Card } from 'primereact/card';
 import { Message } from 'primereact/message';
+import { signUp, checkSignupEnabled } from '@/lib/actions/auth';
 
 export default function SignUpPage() {
     const router = useRouter();
@@ -22,8 +23,7 @@ export default function SignUpPage() {
 
     useEffect(() => {
         // Check if this might be the first user (for messaging purposes)
-        fetch('/api/auth/signup', { method: 'OPTIONS' })
-            .catch(() => { }); // Ignore errors
+        checkSignupEnabled().catch(() => { }); // Ignore errors
     }, []);
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -43,34 +43,28 @@ export default function SignUpPage() {
         setIsLoading(true);
 
         try {
-            const response = await fetch('/api/auth/signup', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name, email, password }),
-            });
+            const result = await signUp({ name, email, password });
 
-            const data = await response.json();
-
-            if (!data.success) {
-                setError(data.error || 'Failed to create account');
+            if (!result.success) {
+                setError(result.error || 'Failed to create account');
                 return;
             }
 
             // Check if user became admin (first user)
-            // const isAdmin = data.data?.role === 'admin';
+            // const isAdmin = result.data?.role === 'admin';
 
             // Sign in after successful signup
-            const result = await signIn('credentials', {
+            const signInResult = await signIn('credentials', {
                 email,
                 password,
                 redirect: false,
             });
 
-            if (result?.error) {
+            if (signInResult?.error) {
                 setError('Account created but failed to sign in. Please sign in manually.');
                 router.push('/auth/signin');
             } else {
-                router.push('/dashboard');
+                router.push('/');
                 router.refresh();
             }
         } catch {

@@ -10,6 +10,8 @@ import { ProgressSpinner } from 'primereact/progressspinner';
 import { formatCurrency, formatYearMonth } from '@/lib/constants';
 import { useDashboardContext } from '@/components/layout/dashboard-layout';
 import { CashflowChart, BalanceProjectionChart } from '@/components/charts';
+import { getAccounts } from '@/lib/actions/accounts';
+import { getProjection } from '@/lib/actions/projection';
 import type { FinancialAccount, MonthlyProjection, YearlyRollup, Currency } from '@/types';
 
 interface ProjectionData {
@@ -36,12 +38,11 @@ export default function DashboardPage() {
 
     // Fetch accounts
     useEffect(() => {
-        async function fetchAccounts() {
+        async function fetchAccountsData() {
             try {
-                const res = await fetch('/api/accounts');
-                const data = await res.json();
-                if (data.success) {
-                    const activeAccounts = data.data.filter((a: FinancialAccount) => !a.isArchived);
+                const result = await getAccounts();
+                if (result.success && result.data) {
+                    const activeAccounts = result.data.filter((a: FinancialAccount) => !a.isArchived);
                     setAccounts(activeAccounts);
                     if (activeAccounts.length > 0 && !selectedAccountId) {
                         setSelectedAccountId(activeAccounts[0].id);
@@ -53,19 +54,18 @@ export default function DashboardPage() {
                 setIsLoading(false);
             }
         }
-        fetchAccounts();
+        fetchAccountsData();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     // Fetch projection when account changes
-    const fetchProjection = useCallback(async () => {
+    const fetchProjectionData = useCallback(async () => {
         if (!selectedAccountId) return;
 
         try {
-            const res = await fetch(`/api/accounts/${selectedAccountId}/projection`);
-            const data = await res.json();
-            if (data.success) {
-                setProjection(data.data);
+            const result = await getProjection(selectedAccountId);
+            if (result.success && result.data) {
+                setProjection(result.data);
             }
         } catch (err) {
             console.error('Failed to fetch projection:', err);
@@ -73,15 +73,15 @@ export default function DashboardPage() {
     }, [selectedAccountId]);
 
     useEffect(() => {
-        fetchProjection();
-    }, [fetchProjection]);
+        fetchProjectionData();
+    }, [fetchProjectionData]);
 
     // Register refresh callback with dashboard context
     useEffect(() => {
         if (dashboardContext) {
-            dashboardContext.setRefreshCallback(fetchProjection);
+            dashboardContext.setRefreshCallback(fetchProjectionData);
         }
-    }, [dashboardContext, fetchProjection]);
+    }, [dashboardContext, fetchProjectionData]);
 
     // Sync selected account with context
     useEffect(() => {
@@ -282,16 +282,44 @@ export default function DashboardPage() {
                             body={(row: MonthlyProjection) => formatCurrency(row.startingBalance, currency)}
                         />
                         <Column
-                            field="totalIncome"
-                            header="Income"
+                            header="Recurring Income"
                             align="right"
-                            body={(row: MonthlyProjection) => <span className="text-green-600">+{formatCurrency(row.totalIncome, currency)}</span>}
+                            body={(row: MonthlyProjection) => {
+                                const recurringIncome = row.incomeBreakdown
+                                    .filter(item => item.source === 'recurring' || item.source === 'salary')
+                                    .reduce((sum, item) => sum + item.amount, 0);
+                                return <span className="text-green-600">+{formatCurrency(recurringIncome, currency)}</span>;
+                            }}
                         />
                         <Column
-                            field="totalExpenses"
-                            header="Expenses"
+                            header="Additional Income"
                             align="right"
-                            body={(row: MonthlyProjection) => <span className="text-red-600">-{formatCurrency(row.totalExpenses, currency)}</span>}
+                            body={(row: MonthlyProjection) => {
+                                const additionalIncome = row.incomeBreakdown
+                                    .filter(item => item.source === 'planned-one-off' || item.source === 'planned-repeating')
+                                    .reduce((sum, item) => sum + item.amount, 0);
+                                return additionalIncome > 0 ? <span className="text-green-500">+{formatCurrency(additionalIncome, currency)}</span> : <span className="text-gray-400">-</span>;
+                            }}
+                        />
+                        <Column
+                            header="Recurring Expenses"
+                            align="right"
+                            body={(row: MonthlyProjection) => {
+                                const recurringExpenses = row.expenseBreakdown
+                                    .filter(item => item.source === 'recurring')
+                                    .reduce((sum, item) => sum + item.amount, 0);
+                                return <span className="text-red-600">-{formatCurrency(recurringExpenses, currency)}</span>;
+                            }}
+                        />
+                        <Column
+                            header="Planned Expenses"
+                            align="right"
+                            body={(row: MonthlyProjection) => {
+                                const plannedExpenses = row.expenseBreakdown
+                                    .filter(item => item.source === 'planned-one-off' || item.source === 'planned-repeating')
+                                    .reduce((sum, item) => sum + item.amount, 0);
+                                return plannedExpenses > 0 ? <span className="text-red-500">-{formatCurrency(plannedExpenses, currency)}</span> : <span className="text-gray-400">-</span>;
+                            }}
                         />
                         <Column
                             field="netChange"

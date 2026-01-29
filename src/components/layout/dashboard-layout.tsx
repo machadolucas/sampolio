@@ -4,6 +4,7 @@ import { SessionProvider } from 'next-auth/react';
 import { useState, useEffect, useCallback, createContext, useContext } from 'react';
 import { TopBar } from './topbar';
 import { AccountsModal, RecurringModal, PlannedModal, SalaryModal, UsersModal, SettingsModal } from '@/components/modals';
+import { getAccounts } from '@/lib/actions/accounts';
 import type { FinancialAccount } from '@/types';
 
 interface DashboardLayoutProps {
@@ -41,11 +42,10 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
     // Fetch accounts
     const fetchAccounts = useCallback(async () => {
         try {
-            const res = await fetch('/api/accounts');
-            const data = await res.json();
-            if (data.success) {
-                const activeAccounts = data.data.filter((a: FinancialAccount) => !a.isArchived);
-                setAccounts(data.data);
+            const result = await getAccounts();
+            if (result.success && result.data) {
+                const activeAccounts = result.data.filter((a: FinancialAccount) => !a.isArchived);
+                setAccounts(result.data);
                 if (activeAccounts.length > 0 && !selectedAccountId) {
                     setSelectedAccountId(activeAccounts[0].id);
                 }
