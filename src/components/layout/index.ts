@@ -1,2 +1,2 @@
-export { Sidebar } from './sidebar';
-export { DashboardLayout } from './dashboard-layout';
+export { TopBar } from './topbar';
+export { DashboardLayout, useDashboardContext } from './dashboard-layout';

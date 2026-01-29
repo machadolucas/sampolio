@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
 import { Card } from 'primereact/card';
 import { Button } from 'primereact/button';
 import { Dropdown, DropdownChangeEvent } from 'primereact/dropdown';
@@ -9,6 +8,8 @@ import { DataTable } from 'primereact/datatable';
 import { Column } from 'primereact/column';
 import { ProgressSpinner } from 'primereact/progressspinner';
 import { formatCurrency, formatYearMonth } from '@/lib/constants';
+import { useDashboardContext } from '@/components/layout/dashboard-layout';
+import { CashflowChart, BalanceProjectionChart } from '@/components/charts';
 import type { FinancialAccount, MonthlyProjection, YearlyRollup, Currency } from '@/types';
 
 interface ProjectionData {
@@ -25,11 +26,12 @@ interface ProjectionData {
 }
 
 export default function DashboardPage() {
-    const router = useRouter();
+    const dashboardContext = useDashboardContext();
     const [accounts, setAccounts] = useState<FinancialAccount[]>([]);
     const [selectedAccountId, setSelectedAccountId] = useState<string>('');
     const [projection, setProjection] = useState<ProjectionData | null>(null);
     const [viewMode, setViewMode] = useState<'monthly' | 'yearly'>('monthly');
+    const [chartView, setChartView] = useState<'cashflow' | 'balance'>('balance');
     const [isLoading, setIsLoading] = useState(true);
 
     // Fetch accounts
@@ -39,9 +41,10 @@ export default function DashboardPage() {
                 const res = await fetch('/api/accounts');
                 const data = await res.json();
                 if (data.success) {
-                    setAccounts(data.data);
-                    if (data.data.length > 0 && !selectedAccountId) {
-                        setSelectedAccountId(data.data[0].id);
+                    const activeAccounts = data.data.filter((a: FinancialAccount) => !a.isArchived);
+                    setAccounts(activeAccounts);
+                    if (activeAccounts.length > 0 && !selectedAccountId) {
+                        setSelectedAccountId(activeAccounts[0].id);
                     }
                 }
             } catch (err) {
@@ -73,6 +76,20 @@ export default function DashboardPage() {
         fetchProjection();
     }, [fetchProjection]);
 
+    // Register refresh callback with dashboard context
+    useEffect(() => {
+        if (dashboardContext) {
+            dashboardContext.setRefreshCallback(fetchProjection);
+        }
+    }, [dashboardContext, fetchProjection]);
+
+    // Sync selected account with context
+    useEffect(() => {
+        if (dashboardContext && selectedAccountId) {
+            dashboardContext.setSelectedAccountId(selectedAccountId);
+        }
+    }, [dashboardContext, selectedAccountId]);
+
     if (isLoading) {
         return (
             <div className="flex items-center justify-center h-64">
@@ -85,17 +102,15 @@ export default function DashboardPage() {
         return (
             <div className="text-center py-16">
                 <i className="pi pi-wallet text-6xl text-gray-400 mb-4"></i>
-                <h2 className="text-2xl font-semibold text-gray-900 mb-2">
+                <h2 className="text-2xl font-semibold text-gray-900 dark:text-gray-100 mb-2">
                     No financial accounts yet
                 </h2>
-                <p className="text-gray-600 mb-6 max-w-md mx-auto">
+                <p className="text-gray-600 dark:text-gray-400 mb-6 max-w-md mx-auto">
                     Create your first financial account to start planning your cashflow and tracking your finances.
                 </p>
-                <Button
-                    label="Create Your First Account"
-                    icon="pi pi-plus"
-                    onClick={() => router.push('/accounts/new')}
-                />
+                <p className="text-sm text-gray-500 dark:text-gray-500">
+                    Click &quot;Accounts&quot; in the top menu to get started.
+                </p>
             </div>
         );
     }
@@ -114,8 +129,8 @@ export default function DashboardPage() {
             {/* Header */}
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                 <div>
-                    <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-                    <p className="text-gray-600">
+                    <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Dashboard</h1>
+                    <p className="text-gray-600 dark:text-gray-400">
                         View your cashflow projection and financial overview
                     </p>
                 </div>
@@ -130,13 +145,6 @@ export default function DashboardPage() {
                         placeholder="Select Account"
                         className="w-48"
                     />
-                    <Button
-                        label="Manage"
-                        icon="pi pi-eye"
-                        severity="secondary"
-                        outlined
-                        onClick={() => router.push(`/accounts/${selectedAccountId}`)}
-                    />
                 </div>
             </div>
 
@@ -145,13 +153,13 @@ export default function DashboardPage() {
                 <Card className="shadow-sm">
                     <div className="flex items-center justify-between p-4">
                         <div>
-                            <p className="text-sm text-gray-500">Starting Balance</p>
-                            <p className="text-2xl font-bold text-gray-900">
+                            <p className="text-sm text-gray-500 dark:text-gray-400">Starting Balance</p>
+                            <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">
                                 {formatCurrency(firstMonth?.startingBalance || 0, currency)}
                             </p>
                         </div>
-                        <div className="h-12 w-12 rounded-full bg-blue-100 flex items-center justify-center">
-                            <i className="pi pi-wallet text-xl text-blue-600"></i>
+                        <div className="h-12 w-12 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center">
+                            <i className="pi pi-wallet text-xl text-blue-600 dark:text-blue-400"></i>
                         </div>
                     </div>
                 </Card>
@@ -159,29 +167,29 @@ export default function DashboardPage() {
                 <Card className="shadow-sm">
                     <div className="flex items-center justify-between p-4">
                         <div>
-                            <p className="text-sm text-gray-500">Projected End Balance</p>
-                            <p className="text-2xl font-bold text-gray-900">
+                            <p className="text-sm text-gray-500 dark:text-gray-400">Projected End Balance</p>
+                            <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">
                                 {formatCurrency(lastMonth?.endingBalance || 0, currency)}
                             </p>
                         </div>
                         <div className={`h-12 w-12 rounded-full flex items-center justify-center ${(lastMonth?.endingBalance || 0) >= (firstMonth?.startingBalance || 0)
-                            ? 'bg-green-100'
-                            : 'bg-red-100'
+                            ? 'bg-green-100 dark:bg-green-900'
+                            : 'bg-red-100 dark:bg-red-900'
                             }`}>
-                            <i className={`pi ${(lastMonth?.endingBalance || 0) >= (firstMonth?.startingBalance || 0) ? 'pi-arrow-up-right text-green-600' : 'pi-arrow-down-right text-red-600'} text-xl`}></i>
+                            <i className={`pi ${(lastMonth?.endingBalance || 0) >= (firstMonth?.startingBalance || 0) ? 'pi-arrow-up-right text-green-600 dark:text-green-400' : 'pi-arrow-down-right text-red-600 dark:text-red-400'} text-xl`}></i>
                         </div>
                     </div>
                 </Card>
                 <Card className="shadow-sm">
                     <div className="flex items-center justify-between p-4">
                         <div>
-                            <p className="text-sm text-gray-500">Total Income ({totalMonths} mo.)</p>
-                            <p className="text-2xl font-bold text-green-600">
+                            <p className="text-sm text-gray-500 dark:text-gray-400">Total Income ({totalMonths} mo.)</p>
+                            <p className="text-2xl font-bold text-green-600 dark:text-green-400">
                                 {formatCurrency(totalIncome, currency)}
                             </p>
                         </div>
-                        <div className="h-12 w-12 rounded-full bg-green-100 flex items-center justify-center">
-                            <i className="pi pi-arrow-up-right text-xl text-green-600"></i>
+                        <div className="h-12 w-12 rounded-full bg-green-100 dark:bg-green-900 flex items-center justify-center">
+                            <i className="pi pi-arrow-up-right text-xl text-green-600 dark:text-green-400"></i>
                         </div>
                     </div>
                 </Card>
@@ -189,17 +197,51 @@ export default function DashboardPage() {
                 <Card className="shadow-sm">
                     <div className="flex items-center justify-between p-4">
                         <div>
-                            <p className="text-sm text-gray-500">Total Expenses ({totalMonths} mo.)</p>
-                            <p className="text-2xl font-bold text-red-600">
+                            <p className="text-sm text-gray-500 dark:text-gray-400">Total Expenses ({totalMonths} mo.)</p>
+                            <p className="text-2xl font-bold text-red-600 dark:text-red-400">
                                 {formatCurrency(totalExpenses, currency)}
                             </p>
                         </div>
-                        <div className="h-12 w-12 rounded-full bg-red-100 flex items-center justify-center">
-                            <i className="pi pi-arrow-down-right text-xl text-red-600"></i>
+                        <div className="h-12 w-12 rounded-full bg-red-100 dark:bg-red-900 flex items-center justify-center">
+                            <i className="pi pi-arrow-down-right text-xl text-red-600 dark:text-red-400"></i>
                         </div>
                     </div>
                 </Card>
             </div>
+
+            {/* Chart Section */}
+            {projection?.monthly && projection.monthly.length > 0 && (
+                <Card className="shadow-sm">
+                    <div className="p-4">
+                        <div className="flex items-center justify-between mb-4">
+                            <h3 className="font-semibold text-gray-900 dark:text-gray-100">Projection Chart</h3>
+                            <div className="flex gap-2">
+                                <Button
+                                    label="Balance"
+                                    icon="pi pi-chart-line"
+                                    size="small"
+                                    severity={chartView === 'balance' ? undefined : 'secondary'}
+                                    outlined={chartView !== 'balance'}
+                                    onClick={() => setChartView('balance')}
+                                />
+                                <Button
+                                    label="Cashflow"
+                                    icon="pi pi-chart-bar"
+                                    size="small"
+                                    severity={chartView === 'cashflow' ? undefined : 'secondary'}
+                                    outlined={chartView !== 'cashflow'}
+                                    onClick={() => setChartView('cashflow')}
+                                />
+                            </div>
+                        </div>
+                        {chartView === 'balance' ? (
+                            <BalanceProjectionChart data={projection.monthly} currency={currency} />
+                        ) : (
+                            <CashflowChart data={projection.monthly} currency={currency} />
+                        )}
+                    </div>
+                </Card>
+            )}
 
             {/* View Toggle */}
             <div className="flex items-center gap-2">
@@ -313,30 +355,6 @@ export default function DashboardPage() {
                     </DataTable>
                 )}
             </Card>
-
-            {/* Quick Actions */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <Card className="cursor-pointer hover:shadow-lg transition-shadow" onClick={() => router.push('/recurring')}>
-                    <div className="p-4">
-                        <h3 className="font-semibold text-gray-900 mb-1">Manage Recurring Items</h3>
-                        <p className="text-sm text-gray-500">Add or edit your recurring income and expenses</p>
-                    </div>
-                </Card>
-
-                <Card className="cursor-pointer hover:shadow-lg transition-shadow" onClick={() => router.push('/planned')}>
-                    <div className="p-4">
-                        <h3 className="font-semibold text-gray-900 mb-1">Manage Planned Items</h3>
-                        <p className="text-sm text-gray-500">Schedule one-off or periodic income and expenses</p>
-                    </div>
-                </Card>
-
-                <Card className="cursor-pointer hover:shadow-lg transition-shadow" onClick={() => router.push('/salary')}>
-                    <div className="p-4">
-                        <h3 className="font-semibold text-gray-900 mb-1">Salary Calculator</h3>
-                        <p className="text-sm text-gray-500">Calculate net salary and add as recurring income</p>
-                    </div>
-                </Card>
-            </div>
         </div>
     );
 }
