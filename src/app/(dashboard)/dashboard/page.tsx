@@ -1,0 +1,342 @@
+'use client';
+
+import { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
+import { Card } from 'primereact/card';
+import { Button } from 'primereact/button';
+import { Dropdown, DropdownChangeEvent } from 'primereact/dropdown';
+import { DataTable } from 'primereact/datatable';
+import { Column } from 'primereact/column';
+import { ProgressSpinner } from 'primereact/progressspinner';
+import { formatCurrency, formatYearMonth } from '@/lib/constants';
+import type { FinancialAccount, MonthlyProjection, YearlyRollup, Currency } from '@/types';
+
+interface ProjectionData {
+    monthly: MonthlyProjection[];
+    yearly: YearlyRollup[];
+    categories: string[];
+    account: {
+        id: string;
+        name: string;
+        currency: string;
+        startingBalance: number;
+        startingDate: string;
+    };
+}
+
+export default function DashboardPage() {
+    const router = useRouter();
+    const [accounts, setAccounts] = useState<FinancialAccount[]>([]);
+    const [selectedAccountId, setSelectedAccountId] = useState<string>('');
+    const [projection, setProjection] = useState<ProjectionData | null>(null);
+    const [viewMode, setViewMode] = useState<'monthly' | 'yearly'>('monthly');
+    const [isLoading, setIsLoading] = useState(true);
+
+    // Fetch accounts
+    useEffect(() => {
+        async function fetchAccounts() {
+            try {
+                const res = await fetch('/api/accounts');
+                const data = await res.json();
+                if (data.success) {
+                    setAccounts(data.data);
+                    if (data.data.length > 0 && !selectedAccountId) {
+                        setSelectedAccountId(data.data[0].id);
+                    }
+                }
+            } catch (err) {
+                console.error('Failed to fetch accounts:', err);
+            } finally {
+                setIsLoading(false);
+            }
+        }
+        fetchAccounts();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    // Fetch projection when account changes
+    const fetchProjection = useCallback(async () => {
+        if (!selectedAccountId) return;
+
+        try {
+            const res = await fetch(`/api/accounts/${selectedAccountId}/projection`);
+            const data = await res.json();
+            if (data.success) {
+                setProjection(data.data);
+            }
+        } catch (err) {
+            console.error('Failed to fetch projection:', err);
+        }
+    }, [selectedAccountId]);
+
+    useEffect(() => {
+        fetchProjection();
+    }, [fetchProjection]);
+
+    if (isLoading) {
+        return (
+            <div className="flex items-center justify-center h-64">
+                <ProgressSpinner style={{ width: '50px', height: '50px' }} />
+            </div>
+        );
+    }
+
+    if (accounts.length === 0) {
+        return (
+            <div className="text-center py-16">
+                <i className="pi pi-wallet text-6xl text-gray-400 mb-4"></i>
+                <h2 className="text-2xl font-semibold text-gray-900 mb-2">
+                    No financial accounts yet
+                </h2>
+                <p className="text-gray-600 mb-6 max-w-md mx-auto">
+                    Create your first financial account to start planning your cashflow and tracking your finances.
+                </p>
+                <Button
+                    label="Create Your First Account"
+                    icon="pi pi-plus"
+                    onClick={() => router.push('/accounts/new')}
+                />
+            </div>
+        );
+    }
+
+    const currency = (projection?.account?.currency || 'EUR') as Currency;
+
+    // Calculate summary stats
+    const totalMonths = projection?.monthly?.length || 0;
+    const firstMonth = projection?.monthly?.[0];
+    const lastMonth = projection?.monthly?.[totalMonths - 1];
+    const totalIncome = projection?.monthly?.reduce((sum, m) => sum + m.totalIncome, 0) || 0;
+    const totalExpenses = projection?.monthly?.reduce((sum, m) => sum + m.totalExpenses, 0) || 0;
+
+    return (
+        <div className="space-y-6">
+            {/* Header */}
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <div>
+                    <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
+                    <p className="text-gray-600">
+                        View your cashflow projection and financial overview
+                    </p>
+                </div>
+
+                <div className="flex items-center gap-3">
+                    <Dropdown
+                        value={selectedAccountId}
+                        onChange={(e: DropdownChangeEvent) => setSelectedAccountId(e.value)}
+                        options={accounts.map(a => ({ value: a.id, label: a.name }))}
+                        optionLabel="label"
+                        optionValue="value"
+                        placeholder="Select Account"
+                        className="w-48"
+                    />
+                    <Button
+                        label="Manage"
+                        icon="pi pi-eye"
+                        severity="secondary"
+                        outlined
+                        onClick={() => router.push(`/accounts/${selectedAccountId}`)}
+                    />
+                </div>
+            </div>
+
+            {/* Summary Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <Card className="shadow-sm">
+                    <div className="flex items-center justify-between p-4">
+                        <div>
+                            <p className="text-sm text-gray-500">Starting Balance</p>
+                            <p className="text-2xl font-bold text-gray-900">
+                                {formatCurrency(firstMonth?.startingBalance || 0, currency)}
+                            </p>
+                        </div>
+                        <div className="h-12 w-12 rounded-full bg-blue-100 flex items-center justify-center">
+                            <i className="pi pi-wallet text-xl text-blue-600"></i>
+                        </div>
+                    </div>
+                </Card>
+
+                <Card className="shadow-sm">
+                    <div className="flex items-center justify-between p-4">
+                        <div>
+                            <p className="text-sm text-gray-500">Projected End Balance</p>
+                            <p className="text-2xl font-bold text-gray-900">
+                                {formatCurrency(lastMonth?.endingBalance || 0, currency)}
+                            </p>
+                        </div>
+                        <div className={`h-12 w-12 rounded-full flex items-center justify-center ${(lastMonth?.endingBalance || 0) >= (firstMonth?.startingBalance || 0)
+                            ? 'bg-green-100'
+                            : 'bg-red-100'
+                            }`}>
+                            <i className={`pi ${(lastMonth?.endingBalance || 0) >= (firstMonth?.startingBalance || 0) ? 'pi-arrow-up-right text-green-600' : 'pi-arrow-down-right text-red-600'} text-xl`}></i>
+                        </div>
+                    </div>
+                </Card>
+                <Card className="shadow-sm">
+                    <div className="flex items-center justify-between p-4">
+                        <div>
+                            <p className="text-sm text-gray-500">Total Income ({totalMonths} mo.)</p>
+                            <p className="text-2xl font-bold text-green-600">
+                                {formatCurrency(totalIncome, currency)}
+                            </p>
+                        </div>
+                        <div className="h-12 w-12 rounded-full bg-green-100 flex items-center justify-center">
+                            <i className="pi pi-arrow-up-right text-xl text-green-600"></i>
+                        </div>
+                    </div>
+                </Card>
+
+                <Card className="shadow-sm">
+                    <div className="flex items-center justify-between p-4">
+                        <div>
+                            <p className="text-sm text-gray-500">Total Expenses ({totalMonths} mo.)</p>
+                            <p className="text-2xl font-bold text-red-600">
+                                {formatCurrency(totalExpenses, currency)}
+                            </p>
+                        </div>
+                        <div className="h-12 w-12 rounded-full bg-red-100 flex items-center justify-center">
+                            <i className="pi pi-arrow-down-right text-xl text-red-600"></i>
+                        </div>
+                    </div>
+                </Card>
+            </div>
+
+            {/* View Toggle */}
+            <div className="flex items-center gap-2">
+                <Button
+                    label="Monthly View"
+                    severity={viewMode === 'monthly' ? undefined : 'secondary'}
+                    outlined={viewMode !== 'monthly'}
+                    size="small"
+                    onClick={() => setViewMode('monthly')}
+                />
+                <Button
+                    label="Yearly View"
+                    severity={viewMode === 'yearly' ? undefined : 'secondary'}
+                    outlined={viewMode !== 'yearly'}
+                    size="small"
+                    onClick={() => setViewMode('yearly')}
+                />
+            </div>
+
+            {/* Projection Table */}
+            <Card title={viewMode === 'monthly' ? 'Monthly Projection' : 'Yearly Summary'}>
+                {viewMode === 'monthly' ? (
+                    <DataTable
+                        value={projection?.monthly || []}
+                        emptyMessage="No projection data. Add some income or expenses to get started."
+                        stripedRows
+                        size="small"
+                    >
+                        <Column
+                            field="yearMonth"
+                            header="Month"
+                            body={(row: MonthlyProjection) => formatYearMonth(row.yearMonth)}
+                        />
+                        <Column
+                            field="startingBalance"
+                            header="Starting"
+                            align="right"
+                            body={(row: MonthlyProjection) => formatCurrency(row.startingBalance, currency)}
+                        />
+                        <Column
+                            field="totalIncome"
+                            header="Income"
+                            align="right"
+                            body={(row: MonthlyProjection) => <span className="text-green-600">+{formatCurrency(row.totalIncome, currency)}</span>}
+                        />
+                        <Column
+                            field="totalExpenses"
+                            header="Expenses"
+                            align="right"
+                            body={(row: MonthlyProjection) => <span className="text-red-600">-{formatCurrency(row.totalExpenses, currency)}</span>}
+                        />
+                        <Column
+                            field="netChange"
+                            header="Net Change"
+                            align="right"
+                            body={(row: MonthlyProjection) => (
+                                <span className={`font-medium ${row.netChange >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                    {row.netChange >= 0 ? '+' : ''}{formatCurrency(row.netChange, currency)}
+                                </span>
+                            )}
+                        />
+                        <Column
+                            field="endingBalance"
+                            header="Ending"
+                            align="right"
+                            body={(row: MonthlyProjection) => <span className="font-medium">{formatCurrency(row.endingBalance, currency)}</span>}
+                        />
+                    </DataTable>
+                ) : (
+                    <DataTable
+                        value={projection?.yearly || []}
+                        emptyMessage="No projection data."
+                        stripedRows
+                        size="small"
+                    >
+                        <Column field="year" header="Year" />
+                        <Column
+                            field="startingBalance"
+                            header="Starting"
+                            align="right"
+                            body={(row: YearlyRollup) => formatCurrency(row.startingBalance, currency)}
+                        />
+                        <Column
+                            field="totalIncome"
+                            header="Total Income"
+                            align="right"
+                            body={(row: YearlyRollup) => <span className="text-green-600">+{formatCurrency(row.totalIncome, currency)}</span>}
+                        />
+                        <Column
+                            field="totalExpenses"
+                            header="Total Expenses"
+                            align="right"
+                            body={(row: YearlyRollup) => <span className="text-red-600">-{formatCurrency(row.totalExpenses, currency)}</span>}
+                        />
+                        <Column
+                            field="netChange"
+                            header="Net Change"
+                            align="right"
+                            body={(row: YearlyRollup) => (
+                                <span className={`font-medium ${row.netChange >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                    {row.netChange >= 0 ? '+' : ''}{formatCurrency(row.netChange, currency)}
+                                </span>
+                            )}
+                        />
+                        <Column
+                            field="endingBalance"
+                            header="Ending"
+                            align="right"
+                            body={(row: YearlyRollup) => <span className="font-medium">{formatCurrency(row.endingBalance, currency)}</span>}
+                        />
+                    </DataTable>
+                )}
+            </Card>
+
+            {/* Quick Actions */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <Card className="cursor-pointer hover:shadow-lg transition-shadow" onClick={() => router.push('/recurring')}>
+                    <div className="p-4">
+                        <h3 className="font-semibold text-gray-900 mb-1">Manage Recurring Items</h3>
+                        <p className="text-sm text-gray-500">Add or edit your recurring income and expenses</p>
+                    </div>
+                </Card>
+
+                <Card className="cursor-pointer hover:shadow-lg transition-shadow" onClick={() => router.push('/planned')}>
+                    <div className="p-4">
+                        <h3 className="font-semibold text-gray-900 mb-1">Manage Planned Items</h3>
+                        <p className="text-sm text-gray-500">Schedule one-off or periodic income and expenses</p>
+                    </div>
+                </Card>
+
+                <Card className="cursor-pointer hover:shadow-lg transition-shadow" onClick={() => router.push('/salary')}>
+                    <div className="p-4">
+                        <h3 className="font-semibold text-gray-900 mb-1">Salary Calculator</h3>
+                        <p className="text-sm text-gray-500">Calculate net salary and add as recurring income</p>
+                    </div>
+                </Card>
+            </div>
+        </div>
+    );
+}

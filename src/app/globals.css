@@ -1,0 +1,40 @@
+@import "tailwindcss";
+@import "primeicons/primeicons.css";
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+/* PrimeReact customizations */
+.p-button {
+  font-family: inherit;
+}
+
+.p-inputtext {
+  font-family: inherit;
+}
+
+.p-card {
+  border-radius: 0.75rem;
+}
