@@ -4,9 +4,11 @@
   "private": true,
   "scripts": {
     "dev": "next dev -p 3999",
-    "build": "next build",
+    "build": "npm run copy-themes && next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "copy-themes": "mkdir -p public/themes && cp node_modules/primereact/resources/themes/mdc-dark-deeppurple/theme.css public/themes/mdc-dark-deeppurple.css && cp node_modules/primereact/resources/themes/mdc-light-deeppurple/theme.css public/themes/mdc-light-deeppurple.css",
+    "postinstall": "npm run copy-themes"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

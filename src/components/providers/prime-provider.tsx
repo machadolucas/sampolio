@@ -1,7 +1,6 @@
 'use client';
 
 import { PrimeReactProvider } from 'primereact/api';
-import 'primereact/resources/themes/lara-light-blue/theme.css';
 
 interface PrimeProviderProps {
     children: React.ReactNode;

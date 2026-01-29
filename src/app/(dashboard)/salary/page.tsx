@@ -62,9 +62,10 @@ export default function SalaryPage() {
                 const res = await fetch('/api/accounts');
                 const data = await res.json();
                 if (data.success) {
-                    setAccounts(data.data.filter((a: FinancialAccount) => !a.isArchived));
-                    if (data.data.length > 0 && !selectedAccountId) {
-                        setSelectedAccountId(data.data[0].id);
+                    const activeAccounts = data.data.filter((a: FinancialAccount) => !a.isArchived);
+                    setAccounts(activeAccounts);
+                    if (activeAccounts.length > 0 && !selectedAccountId) {
+                        setSelectedAccountId(activeAccounts[0].id);
                     }
                 }
             } catch (err) {

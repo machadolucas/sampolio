@@ -44,9 +44,10 @@ export default function PlannedPage() {
                 const res = await fetch('/api/accounts');
                 const data = await res.json();
                 if (data.success) {
-                    setAccounts(data.data.filter((a: FinancialAccount) => !a.isArchived));
-                    if (data.data.length > 0 && !selectedAccountId) {
-                        setSelectedAccountId(data.data[0].id);
+                    const activeAccounts = data.data.filter((a: FinancialAccount) => !a.isArchived);
+                    setAccounts(activeAccounts);
+                    if (activeAccounts.length > 0 && !selectedAccountId) {
+                        setSelectedAccountId(activeAccounts[0].id);
                     }
                 }
             } catch (err) {
@@ -56,6 +57,7 @@ export default function PlannedPage() {
             }
         }
         fetchAccounts();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     // Fetch items when account changes

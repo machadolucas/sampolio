@@ -8,6 +8,7 @@ import { Button } from 'primereact/button';
 import { Sidebar as PrimeSidebar } from 'primereact/sidebar';
 import { Badge } from 'primereact/badge';
 import { Divider } from 'primereact/divider';
+import { useTheme } from '@/components/providers/theme-provider';
 
 const navigation = [
     { name: 'Dashboard', href: '/dashboard', icon: 'pi pi-home' },
@@ -26,6 +27,7 @@ export function Sidebar() {
     const pathname = usePathname();
     const { data: session } = useSession();
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+    const { theme, toggleTheme } = useTheme();
 
     const isActive = (href: string) => {
         if (href === '/dashboard') {
@@ -35,6 +37,7 @@ export function Sidebar() {
     };
 
     const isAdmin = session?.user?.role === 'admin';
+    const isDark = theme === 'dark';
 
     const navLinksContent = (
         <div className="flex flex-col gap-1">
@@ -47,7 +50,9 @@ export function Sidebar() {
                         className={`flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors no-underline
                             ${active
                                 ? 'bg-blue-600 text-white'
-                                : 'text-gray-700 hover:bg-gray-100'
+                                : isDark
+                                    ? 'text-gray-300 hover:bg-gray-700'
+                                    : 'text-gray-700 hover:bg-gray-100'
                             }`}
                         onClick={() => setIsMobileMenuOpen(false)}
                     >
@@ -60,7 +65,7 @@ export function Sidebar() {
             {isAdmin && (
                 <>
                     <Divider className="my-2" />
-                    <span className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                    <span className={`px-4 py-2 text-xs font-semibold uppercase tracking-wider ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
                         Admin
                     </span>
                     {adminNavigation.map((item) => {
@@ -72,7 +77,9 @@ export function Sidebar() {
                                 className={`flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors no-underline
                                     ${active
                                         ? 'bg-purple-600 text-white'
-                                        : 'text-gray-700 hover:bg-gray-100'
+                                        : isDark
+                                            ? 'text-gray-300 hover:bg-gray-700'
+                                            : 'text-gray-700 hover:bg-gray-100'
                                     }`}
                                 onClick={() => setIsMobileMenuOpen(false)}
                             >
@@ -89,12 +96,12 @@ export function Sidebar() {
     const userSection = (
         <div className="py-2">
             <div className="flex items-center gap-2 px-4 py-2">
-                <i className="pi pi-user text-gray-500"></i>
+                <i className={`pi pi-user ${isDark ? 'text-gray-400' : 'text-gray-500'}`}></i>
                 <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium text-gray-900 truncate">
+                    <div className={`text-sm font-medium truncate ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
                         {session?.user?.name}
                     </div>
-                    <div className="text-xs text-gray-500 truncate">
+                    <div className={`text-xs truncate ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
                         {session?.user?.email}
                     </div>
                 </div>
@@ -102,31 +109,49 @@ export function Sidebar() {
                     <Badge value="Admin" severity="info" />
                 )}
             </div>
-            <Button
-                label="Sign Out"
-                icon="pi pi-sign-out"
-                severity="secondary"
-                text
-                className="w-full justify-start mt-2"
-                onClick={() => signOut({ callbackUrl: '/auth/signin' })}
-            />
+            <div className="flex gap-2 mt-2">
+                <Button
+                    icon={isDark ? 'pi pi-sun' : 'pi pi-moon'}
+                    severity="secondary"
+                    text
+                    tooltip={isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+                    tooltipOptions={{ position: 'top' }}
+                    onClick={toggleTheme}
+                />
+                <Button
+                    label="Sign Out"
+                    icon="pi pi-sign-out"
+                    severity="secondary"
+                    text
+                    className="flex-1 justify-start"
+                    onClick={() => signOut({ callbackUrl: '/auth/signin' })}
+                />
+            </div>
         </div>
     );
 
     return (
         <>
             {/* Mobile menu button */}
-            <div className="lg:hidden fixed top-0 left-0 right-0 z-40 bg-white border-b border-gray-200 px-4 py-3">
+            <div className={`lg:hidden fixed top-0 left-0 right-0 z-40 border-b px-4 py-3 ${isDark ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'}`}>
                 <div className="flex items-center justify-between">
-                    <Link href="/dashboard" className="text-xl font-bold text-gray-900 no-underline">
+                    <Link href="/dashboard" className={`text-xl font-bold no-underline ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
                         💰 Sampolio
                     </Link>
-                    <Button
-                        icon="pi pi-bars"
-                        severity="secondary"
-                        text
-                        onClick={() => setIsMobileMenuOpen(true)}
-                    />
+                    <div className="flex gap-2">
+                        <Button
+                            icon={isDark ? 'pi pi-sun' : 'pi pi-moon'}
+                            severity="secondary"
+                            text
+                            onClick={toggleTheme}
+                        />
+                        <Button
+                            icon="pi pi-bars"
+                            severity="secondary"
+                            text
+                            onClick={() => setIsMobileMenuOpen(true)}
+                        />
+                    </div>
                 </div>
             </div>
 
@@ -149,10 +174,10 @@ export function Sidebar() {
             </PrimeSidebar>
 
             {/* Desktop sidebar */}
-            <aside className="hidden lg:flex lg:flex-col lg:fixed lg:inset-y-0 lg:left-0 lg:w-64 bg-white border-r border-gray-200">
+            <aside className={`hidden lg:flex lg:flex-col lg:fixed lg:inset-y-0 lg:left-0 lg:w-64 border-r transition-colors ${isDark ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'}`}>
                 {/* Logo */}
-                <div className="px-6 py-5 border-b border-gray-200">
-                    <Link href="/dashboard" className="text-2xl font-bold text-gray-900 no-underline">
+                <div className={`px-6 py-5 border-b ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
+                    <Link href="/dashboard" className={`text-2xl font-bold no-underline ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
                         💰 Sampolio
                     </Link>
                 </div>
@@ -163,7 +188,7 @@ export function Sidebar() {
                 </nav>
 
                 {/* User section */}
-                <div className="px-4 py-4 border-t border-gray-200">
+                <div className={`px-4 py-4 border-t ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
                     {userSection}
                 </div>
             </aside>
