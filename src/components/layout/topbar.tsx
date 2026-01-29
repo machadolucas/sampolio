@@ -16,6 +16,7 @@ interface TopBarProps {
     onOpenSalary: () => void;
     onOpenUsers?: () => void;
     onOpenSettings?: () => void;
+    hasActiveAccounts: boolean;
 }
 
 export function TopBar({
@@ -25,6 +26,7 @@ export function TopBar({
     onOpenSalary,
     onOpenUsers,
     onOpenSettings,
+    hasActiveAccounts,
 }: TopBarProps) {
     const { data: session } = useSession();
     const { theme, toggleTheme } = useTheme();
@@ -43,16 +45,19 @@ export function TopBar({
             label: 'Recurring',
             icon: 'pi pi-sync',
             command: onOpenRecurring,
+            disabled: !hasActiveAccounts,
         },
         {
             label: 'Planned',
             icon: 'pi pi-calendar',
             command: onOpenPlanned,
+            disabled: !hasActiveAccounts,
         },
         {
             label: 'Salary',
             icon: 'pi pi-calculator',
             command: onOpenSalary,
+            disabled: !hasActiveAccounts,
         },
     ];
 

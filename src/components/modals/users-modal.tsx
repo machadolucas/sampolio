@@ -195,6 +195,7 @@ export function UsersModal({ visible, onHide }: UsersModalProps) {
             style={{ width: '95vw', maxWidth: '1200px' }}
             maximizable
             modal
+            dismissableMask
         >
             <Toast ref={toast} />
             <ConfirmDialog />

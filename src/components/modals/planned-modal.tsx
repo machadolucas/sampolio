@@ -167,6 +167,7 @@ export function PlannedModal({
             style={{ width: '95vw', maxWidth: '1400px' }}
             maximizable
             modal
+            dismissableMask
         >
             <div className="space-y-4">
                 {/* Header */}

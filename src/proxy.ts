@@ -20,12 +20,12 @@ function getClientIp(request: NextRequest): string {
   if (forwardedFor) {
     return forwardedFor.split(',')[0].trim();
   }
-  
+
   const realIp = request.headers.get('x-real-ip');
   if (realIp) {
     return realIp;
   }
-  
+
   // Fallback to a generic identifier
   return 'unknown';
 }
@@ -33,16 +33,16 @@ function getClientIp(request: NextRequest): string {
 function checkRateLimit(key: string, maxRequests: number): { allowed: boolean; remaining: number; resetIn: number } {
   const now = Date.now();
   const record = rateLimitStore.get(key);
-  
+
   if (!record || now > record.resetTime) {
     rateLimitStore.set(key, { count: 1, resetTime: now + RATE_LIMIT_WINDOW });
     return { allowed: true, remaining: maxRequests - 1, resetIn: RATE_LIMIT_WINDOW };
   }
-  
+
   if (record.count >= maxRequests) {
     return { allowed: false, remaining: 0, resetIn: record.resetTime - now };
   }
-  
+
   record.count++;
   return { allowed: true, remaining: maxRequests - record.count, resetIn: record.resetTime - now };
 }
@@ -68,35 +68,35 @@ function hasAuthSession(request: NextRequest): boolean {
     'next-auth.session-token',
     '__Secure-next-auth.session-token',
   ];
-  
+
   for (const cookieName of sessionCookies) {
     const cookie = request.cookies.get(cookieName);
     if (cookie?.value) {
       return true;
     }
   }
-  
+
   return false;
 }
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const clientIp = getClientIp(request);
-  
+
   // Apply strict rate limiting to auth endpoints
   if (pathname.startsWith('/api/auth') || pathname.startsWith('/auth/')) {
     const rateLimitKey = `auth:${clientIp}`;
     const { allowed, remaining, resetIn } = checkRateLimit(rateLimitKey, RATE_LIMIT_MAX_REQUESTS);
-    
+
     if (!allowed) {
       return new NextResponse(
-        JSON.stringify({ 
-          success: false, 
+        JSON.stringify({
+          success: false,
           error: 'Too many requests. Please try again later.',
           retryAfter: Math.ceil(resetIn / 1000),
         }),
-        { 
-          status: 429, 
+        {
+          status: 429,
           headers: {
             'Content-Type': 'application/json',
             'Retry-After': Math.ceil(resetIn / 1000).toString(),
@@ -108,20 +108,20 @@ export function middleware(request: NextRequest) {
       );
     }
   }
-  
+
   // General rate limiting for all other endpoints
   const generalRateLimitKey = `general:${clientIp}`;
   const generalLimit = checkRateLimit(generalRateLimitKey, RATE_LIMIT_MAX_GENERAL);
-  
+
   if (!generalLimit.allowed) {
     return new NextResponse(
-      JSON.stringify({ 
-        success: false, 
+      JSON.stringify({
+        success: false,
         error: 'Too many requests. Please slow down.',
         retryAfter: Math.ceil(generalLimit.resetIn / 1000),
       }),
-      { 
-        status: 429, 
+      {
+        status: 429,
         headers: {
           'Content-Type': 'application/json',
           'Retry-After': Math.ceil(generalLimit.resetIn / 1000).toString(),
@@ -150,10 +150,10 @@ export function middleware(request: NextRequest) {
 
   // Add security headers to the response
   const response = NextResponse.next();
-  
+
   // Add rate limit headers
   response.headers.set('X-RateLimit-Remaining', generalLimit.remaining.toString());
-  
+
   return response;
 }
 

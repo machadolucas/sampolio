@@ -68,6 +68,10 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
         setSelectedAccountId(accountId);
     };
 
+    // Check if there are any non-archived accounts
+    const activeAccounts = accounts.filter(a => !a.isArchived);
+    const hasActiveAccounts = activeAccounts.length > 0;
+
     const contextValue: DashboardContextValue = {
         refreshData: handleDataChange,
         setRefreshCallback: (cb) => setRefreshCallback(() => cb),
@@ -87,6 +91,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                         onOpenSalary={() => setSalaryVisible(true)}
                         onOpenUsers={() => setUsersVisible(true)}
                         onOpenSettings={() => setSettingsVisible(true)}
+                        hasActiveAccounts={hasActiveAccounts}
                     />
                     <main className="pt-16">
                         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">

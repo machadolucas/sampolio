@@ -170,6 +170,7 @@ export function AccountsModalContent({
             maximizable
             closable
             modal
+            dismissableMask
         >
             {isLoading ? (
                 <div className="flex items-center justify-center h-64">

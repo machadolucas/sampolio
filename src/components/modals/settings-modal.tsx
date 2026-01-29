@@ -87,6 +87,7 @@ export function SettingsModal({ visible, onHide }: SettingsModalProps) {
             onHide={onHide}
             style={{ width: '95vw', maxWidth: '700px' }}
             modal
+            dismissableMask
         >
             <Toast ref={toast} />
 

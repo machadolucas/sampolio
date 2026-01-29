@@ -189,6 +189,7 @@ export function SalaryModal({
             style={{ width: '95vw', maxWidth: '1200px' }}
             maximizable
             modal
+            dismissableMask
         >
             <div className="space-y-4">
                 {/* Header */}
