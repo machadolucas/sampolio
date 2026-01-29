@@ -30,20 +30,40 @@ export default function SignUpPage() {
         e.preventDefault();
         setError('');
 
+        // Normalize email
+        const normalizedEmail = email.toLowerCase().trim();
+
         if (password !== confirmPassword) {
             setError('Passwords do not match');
             return;
         }
 
-        if (password.length < 6) {
-            setError('Password must be at least 6 characters');
+        // Client-side password validation (server also validates)
+        if (password.length < 8) {
+            setError('Password must be at least 8 characters');
+            return;
+        }
+        if (!/[a-z]/.test(password)) {
+            setError('Password must contain at least one lowercase letter');
+            return;
+        }
+        if (!/[A-Z]/.test(password)) {
+            setError('Password must contain at least one uppercase letter');
+            return;
+        }
+        if (!/[0-9]/.test(password)) {
+            setError('Password must contain at least one number');
+            return;
+        }
+        if (!/[^a-zA-Z0-9]/.test(password)) {
+            setError('Password must contain at least one special character');
             return;
         }
 
         setIsLoading(true);
 
         try {
-            const result = await signUp({ name, email, password });
+            const result = await signUp({ name: name.trim(), email: normalizedEmail, password });
 
             if (!result.success) {
                 setError(result.error || 'Failed to create account');
@@ -100,6 +120,8 @@ export default function SignUpPage() {
                             onChange={(e) => setName(e.target.value)}
                             placeholder="John Doe"
                             required
+                            autoComplete="name"
+                            maxLength={100}
                             className="w-full"
                         />
                     </div>
@@ -115,6 +137,7 @@ export default function SignUpPage() {
                             onChange={(e) => setEmail(e.target.value)}
                             placeholder="you@example.com"
                             required
+                            autoComplete="email"
                             className="w-full"
                         />
                     </div>
@@ -132,12 +155,22 @@ export default function SignUpPage() {
                             toggleMask
                             className="w-full"
                             inputClassName="w-full"
-                            promptLabel="Choose a password"
-                            weakLabel="Too simple"
-                            mediumLabel="Average complexity"
-                            strongLabel="Complex password"
+                            autoComplete="new-password"
+                            promptLabel="Choose a strong password"
+                            weakLabel="Weak - add more variety"
+                            mediumLabel="Getting better"
+                            strongLabel="Strong password!"
                         />
-                        <small className="text-gray-500">At least 6 characters</small>
+                        <div className="text-xs text-gray-500 space-y-1">
+                            <p className="font-medium">Password requirements:</p>
+                            <ul className="list-disc pl-4 space-y-0.5">
+                                <li className={password.length >= 8 ? 'text-green-600' : ''}>At least 8 characters</li>
+                                <li className={/[a-z]/.test(password) ? 'text-green-600' : ''}>One lowercase letter</li>
+                                <li className={/[A-Z]/.test(password) ? 'text-green-600' : ''}>One uppercase letter</li>
+                                <li className={/[0-9]/.test(password) ? 'text-green-600' : ''}>One number</li>
+                                <li className={/[^a-zA-Z0-9]/.test(password) ? 'text-green-600' : ''}>One special character (!@#$%^&*...)</li>
+                            </ul>
+                        </div>
                     </div>
 
                     <div className="flex flex-col gap-2">
@@ -154,7 +187,11 @@ export default function SignUpPage() {
                             toggleMask
                             className="w-full"
                             inputClassName="w-full"
+                            autoComplete="new-password"
                         />
+                        {confirmPassword && password !== confirmPassword && (
+                            <small className="text-red-500">Passwords do not match</small>
+                        )}
                     </div>
 
                     <Button

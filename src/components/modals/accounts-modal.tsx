@@ -168,6 +168,7 @@ export function AccountsModalContent({
             onHide={onHide}
             style={{ width: '90vw', maxWidth: '1200px' }}
             maximizable
+            closable
             modal
         >
             {isLoading ? (

@@ -1,7 +1,7 @@
 import NextAuth from 'next-auth';
 import Credentials from 'next-auth/providers/credentials';
 import { z } from 'zod';
-import { findUserByEmail, verifyPassword } from '@/lib/db/users';
+import { findUserByEmail, verifyPassword, recordFailedLogin, recordSuccessfulLogin, isAccountLocked } from '@/lib/db/users';
 import type { UserRole } from '@/types';
 
 const signInSchema = z.object({
@@ -16,7 +16,19 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   },
   session: {
     strategy: 'jwt',
-    maxAge: 30 * 24 * 60 * 60, // 30 days
+    maxAge: 24 * 60 * 60 * 30, // 30 days
+    updateAge: 60 * 60, // Update session every hour
+  },
+  cookies: {
+    sessionToken: {
+      name: process.env.NODE_ENV === 'production' ? '__Secure-authjs.session-token' : 'authjs.session-token',
+      options: {
+        httpOnly: true,
+        sameSite: 'lax',
+        path: '/',
+        secure: process.env.NODE_ENV === 'production',
+      },
+    },
   },
   callbacks: {
     async jwt({ token, user }) {
@@ -25,6 +37,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         token.email = user.email;
         token.name = user.name;
         token.role = (user as { role?: UserRole }).role || 'user';
+        token.iat = Math.floor(Date.now() / 1000);
       }
       return token;
     },
@@ -49,20 +62,34 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         try {
           const { email, password } = signInSchema.parse(credentials);
           
+          // Check if account is locked due to too many failed attempts
+          const locked = await isAccountLocked(email);
+          if (locked) {
+            console.warn(`Login attempt for locked account: ${email}`);
+            return null;
+          }
+          
           const user = await findUserByEmail(email);
           if (!user) {
+            // Record failed attempt even for non-existent users to prevent enumeration
+            await recordFailedLogin(email);
             return null;
           }
           
           // Check if user is active
           if (!user.isActive) {
+            console.warn(`Login attempt for inactive user: ${email}`);
             return null;
           }
           
           const isValid = await verifyPassword(user, password);
           if (!isValid) {
+            await recordFailedLogin(email);
             return null;
           }
+          
+          // Record successful login
+          await recordSuccessfulLogin(email);
           
           return {
             id: user.id,

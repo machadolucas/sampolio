@@ -36,21 +36,21 @@ async function saveUsersIndex(index: UsersIndex): Promise<void> {
 export async function findUserByEmail(email: string): Promise<User | null> {
   const index = await getUsersIndex();
   const userEntry = index.users.find(u => u.email.toLowerCase() === email.toLowerCase());
-  
+
   if (!userEntry) {
     return null;
   }
-  
+
   const userDir = getUserDir(userEntry.id);
   const userFile = path.join(userDir, 'user.enc');
   const user = await readEncryptedFile<User>(userFile);
-  
+
   // Migration: add default values for new fields if missing
   if (user && !user.role) {
     user.role = 'user';
     user.isActive = true;
   }
-  
+
   return user;
 }
 
@@ -58,13 +58,13 @@ export async function findUserById(id: string): Promise<User | null> {
   const userDir = getUserDir(id);
   const userFile = path.join(userDir, 'user.enc');
   const user = await readEncryptedFile<User>(userFile);
-  
+
   // Migration: add default values for new fields if missing
   if (user && !user.role) {
     user.role = 'user';
     user.isActive = true;
   }
-  
+
   return user;
 }
 
@@ -81,9 +81,9 @@ export function toPublicUser(user: User): PublicUser {
 }
 
 export async function createUser(
-  email: string, 
-  password: string, 
-  name: string, 
+  email: string,
+  password: string,
+  name: string,
   role: UserRole = 'user'
 ): Promise<User> {
   // Check if user already exists
@@ -91,15 +91,15 @@ export async function createUser(
   if (existingUser) {
     throw new Error('User with this email already exists');
   }
-  
+
   const id = uuidv4();
   const now = new Date().toISOString();
   const passwordHash = await bcrypt.hash(password, 12);
-  
+
   // Check if this is the first user - make them admin
   const index = await getUsersIndex();
   const isFirstUser = index.users.length === 0;
-  
+
   const user: User = {
     id,
     email: email.toLowerCase(),
@@ -110,18 +110,18 @@ export async function createUser(
     createdAt: now,
     updatedAt: now,
   };
-  
+
   // Create user directory and save user data
   const userDir = getUserDir(id);
   await ensureDir(userDir);
-  
+
   const userFile = path.join(userDir, 'user.enc');
   await writeEncryptedFile(userFile, user);
-  
+
   // Update users index
   index.users.push({ id, email: user.email });
   await saveUsersIndex(index);
-  
+
   return user;
 }
 
@@ -130,25 +130,25 @@ export async function verifyPassword(user: User, password: string): Promise<bool
 }
 
 export async function updateUser(
-  userId: string, 
+  userId: string,
   updates: Partial<Pick<User, 'name' | 'email' | 'role' | 'isActive'>>
 ): Promise<User | null> {
   const user = await findUserById(userId);
   if (!user) {
     return null;
   }
-  
+
   const updatedUser: User = {
     ...user,
     ...updates,
     email: updates.email ? updates.email.toLowerCase() : user.email,
     updatedAt: new Date().toISOString(),
   };
-  
+
   const userDir = getUserDir(userId);
   const userFile = path.join(userDir, 'user.enc');
   await writeEncryptedFile(userFile, updatedUser);
-  
+
   // Update index if email changed
   if (updates.email && updates.email.toLowerCase() !== user.email.toLowerCase()) {
     const index = await getUsersIndex();
@@ -158,7 +158,7 @@ export async function updateUser(
       await saveUsersIndex(index);
     }
   }
-  
+
   return updatedUser;
 }
 
@@ -167,32 +167,32 @@ export async function changePassword(userId: string, newPassword: string): Promi
   if (!user) {
     return false;
   }
-  
+
   const passwordHash = await bcrypt.hash(newPassword, 12);
   const updatedUser: User = {
     ...user,
     passwordHash,
     updatedAt: new Date().toISOString(),
   };
-  
+
   const userDir = getUserDir(userId);
   const userFile = path.join(userDir, 'user.enc');
   await writeEncryptedFile(userFile, updatedUser);
-  
+
   return true;
 }
 
 export async function getAllUsers(): Promise<User[]> {
   const index = await getUsersIndex();
   const users: User[] = [];
-  
+
   for (const entry of index.users) {
     const user = await findUserById(entry.id);
     if (user) {
       users.push(user);
     }
   }
-  
+
   return users;
 }
 
@@ -201,12 +201,12 @@ export async function deleteUser(userId: string): Promise<boolean> {
   if (!user) {
     return false;
   }
-  
+
   // Remove from index
   const index = await getUsersIndex();
   index.users = index.users.filter(u => u.id !== userId);
   await saveUsersIndex(index);
-  
+
   // Note: We don't delete the user directory to preserve data
   // Instead we just deactivate them
   const updatedUser: User = {
@@ -214,11 +214,11 @@ export async function deleteUser(userId: string): Promise<boolean> {
     isActive: false,
     updatedAt: new Date().toISOString(),
   };
-  
+
   const userDir = getUserDir(userId);
   const userFile = path.join(userDir, 'user.enc');
   await writeEncryptedFile(userFile, updatedUser);
-  
+
   return true;
 }
 
@@ -226,3 +226,85 @@ export async function getAllUserIds(): Promise<string[]> {
   const index = await getUsersIndex();
   return index.users.map(u => u.id);
 }
+
+// ==================== Account Lockout for Brute Force Protection ====================
+
+// In-memory store for failed login attempts (resets on server restart)
+// For production with multiple instances, use Redis
+const failedLoginAttempts = new Map<string, { count: number; lastAttempt: number; lockedUntil: number | null }>();
+
+const MAX_FAILED_ATTEMPTS = 5;
+const LOCKOUT_DURATION = 15 * 60 * 1000; // 15 minutes
+const ATTEMPT_WINDOW = 15 * 60 * 1000; // 15 minutes - reset count after this
+
+export async function isAccountLocked(email: string): Promise<boolean> {
+  const normalizedEmail = email.toLowerCase();
+  const record = failedLoginAttempts.get(normalizedEmail);
+
+  if (!record) {
+    return false;
+  }
+
+  // Check if lockout has expired
+  if (record.lockedUntil && Date.now() > record.lockedUntil) {
+    failedLoginAttempts.delete(normalizedEmail);
+    return false;
+  }
+
+  return record.lockedUntil !== null;
+}
+
+export async function recordFailedLogin(email: string): Promise<void> {
+  const normalizedEmail = email.toLowerCase();
+  const now = Date.now();
+  const record = failedLoginAttempts.get(normalizedEmail);
+
+  if (!record || now - record.lastAttempt > ATTEMPT_WINDOW) {
+    // Reset count if first attempt or window has passed
+    failedLoginAttempts.set(normalizedEmail, {
+      count: 1,
+      lastAttempt: now,
+      lockedUntil: null,
+    });
+    return;
+  }
+
+  const newCount = record.count + 1;
+
+  if (newCount >= MAX_FAILED_ATTEMPTS) {
+    // Lock the account
+    failedLoginAttempts.set(normalizedEmail, {
+      count: newCount,
+      lastAttempt: now,
+      lockedUntil: now + LOCKOUT_DURATION,
+    });
+    console.warn(`Account locked due to too many failed attempts: ${normalizedEmail}`);
+  } else {
+    failedLoginAttempts.set(normalizedEmail, {
+      count: newCount,
+      lastAttempt: now,
+      lockedUntil: null,
+    });
+  }
+}
+
+export async function recordSuccessfulLogin(email: string): Promise<void> {
+  const normalizedEmail = email.toLowerCase();
+  // Clear failed attempts on successful login
+  failedLoginAttempts.delete(normalizedEmail);
+}
+
+// Clean up old entries periodically
+setInterval(() => {
+  const now = Date.now();
+  for (const [email, record] of failedLoginAttempts.entries()) {
+    // Remove entries that are both unlocked and outside the attempt window
+    if (!record.lockedUntil && now - record.lastAttempt > ATTEMPT_WINDOW) {
+      failedLoginAttempts.delete(email);
+    }
+    // Remove entries where lockout has expired
+    if (record.lockedUntil && now > record.lockedUntil) {
+      failedLoginAttempts.delete(email);
+    }
+  }
+}, 5 * 60 * 1000); // Clean up every 5 minutes
