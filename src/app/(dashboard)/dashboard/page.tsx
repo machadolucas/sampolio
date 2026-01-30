@@ -33,7 +33,7 @@ export default function DashboardPage() {
     const [selectedAccountId, setSelectedAccountId] = useState<string>('');
     const [projection, setProjection] = useState<ProjectionData | null>(null);
     const [viewMode, setViewMode] = useState<'monthly' | 'yearly'>('monthly');
-    const [chartView, setChartView] = useState<'cashflow' | 'balance'>('balance');
+    const [chartView, setChartView] = useState<'cashflow' | 'balance'>('cashflow');
     const [isLoading, setIsLoading] = useState(true);
 
     // Fetch accounts
@@ -217,20 +217,20 @@ export default function DashboardPage() {
                             <h3 className="font-semibold text-gray-900 dark:text-gray-100">Projection Chart</h3>
                             <div className="flex gap-2">
                                 <Button
-                                    label="Balance"
-                                    icon="pi pi-chart-line"
-                                    size="small"
-                                    severity={chartView === 'balance' ? undefined : 'secondary'}
-                                    outlined={chartView !== 'balance'}
-                                    onClick={() => setChartView('balance')}
-                                />
-                                <Button
                                     label="Cashflow"
                                     icon="pi pi-chart-bar"
                                     size="small"
                                     severity={chartView === 'cashflow' ? undefined : 'secondary'}
                                     outlined={chartView !== 'cashflow'}
                                     onClick={() => setChartView('cashflow')}
+                                />
+                                <Button
+                                    label="Balance"
+                                    icon="pi pi-chart-line"
+                                    size="small"
+                                    severity={chartView === 'balance' ? undefined : 'secondary'}
+                                    outlined={chartView !== 'balance'}
+                                    onClick={() => setChartView('balance')}
                                 />
                             </div>
                         </div>

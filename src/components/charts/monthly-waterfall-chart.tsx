@@ -107,7 +107,7 @@ export function MonthlyWaterfallChart({ data, currency, maxMonths = 12 }: Monthl
 
     return (
         <div className="h-100">
-            <Chart type="bar" data={chartData} options={chartOptions} />
+            <Chart type="bar" data={chartData} options={chartOptions} height='400px' />
         </div>
     );
 }

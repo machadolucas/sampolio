@@ -129,7 +129,7 @@ export function CashflowChart({ data, currency }: CashflowChartProps) {
 
     return (
         <div style={{ height: '400px' }}>
-            <Chart ref={chartRef} type="bar" data={chartData} options={chartOptions} />
+            <Chart ref={chartRef} type="bar" data={chartData} options={chartOptions} height='400px' />
         </div>
     );
 }

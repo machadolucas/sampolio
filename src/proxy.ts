@@ -11,8 +11,8 @@ const rateLimitStore = new Map<string, { count: number; resetTime: number }>();
 
 // Rate limit configuration
 const RATE_LIMIT_WINDOW = 60 * 1000; // 1 minute
-const RATE_LIMIT_MAX_REQUESTS = 10; // 10 requests per minute for auth endpoints
-const RATE_LIMIT_MAX_GENERAL = 100; // 100 requests per minute for general endpoints
+const RATE_LIMIT_MAX_REQUESTS = 15; // 15 requests per minute for auth endpoints
+const RATE_LIMIT_MAX_GENERAL = 300; // 300 requests per minute for general endpoints
 
 function getClientIp(request: NextRequest): string {
   // Check various headers that proxies might set

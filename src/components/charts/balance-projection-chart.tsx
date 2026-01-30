@@ -122,7 +122,7 @@ export function BalanceProjectionChart({ data, currency, maxMonths = 24 }: Balan
 
     return (
         <div style={{ height: '400px' }}>
-            <Chart type="line" data={chartData} options={chartOptions} />
+            <Chart type="line" data={chartData} options={chartOptions} height='400px' />
         </div>
     );
 }
