@@ -14,6 +14,9 @@ interface TopBarProps {
     onOpenRecurring: () => void;
     onOpenPlanned: () => void;
     onOpenSalary: () => void;
+    onOpenInvestments: () => void;
+    onOpenDebts: () => void;
+    onOpenReceivables: () => void;
     onOpenUsers?: () => void;
     onOpenSettings?: () => void;
     hasActiveAccounts: boolean;
@@ -24,6 +27,9 @@ export function TopBar({
     onOpenRecurring,
     onOpenPlanned,
     onOpenSalary,
+    onOpenInvestments,
+    onOpenDebts,
+    onOpenReceivables,
     onOpenUsers,
     onOpenSettings,
     hasActiveAccounts,
@@ -58,6 +64,38 @@ export function TopBar({
             icon: 'pi pi-calculator',
             command: onOpenSalary,
             disabled: !hasActiveAccounts,
+        },
+        {
+            separator: true,
+        },
+        {
+            label: 'Wealth',
+            icon: 'pi pi-chart-line',
+            items: [
+                {
+                    label: 'Dashboard',
+                    icon: 'pi pi-th-large',
+                    url: '/wealth',
+                },
+                {
+                    separator: true,
+                },
+                {
+                    label: 'Investments',
+                    icon: 'pi pi-chart-bar',
+                    command: onOpenInvestments,
+                },
+                {
+                    label: 'Debts',
+                    icon: 'pi pi-credit-card',
+                    command: onOpenDebts,
+                },
+                {
+                    label: 'Receivables',
+                    icon: 'pi pi-users',
+                    command: onOpenReceivables,
+                },
+            ],
         },
     ];
 

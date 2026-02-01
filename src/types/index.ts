@@ -166,7 +166,7 @@ export interface CreateRecurringItemRequest {
   isActive?: boolean;
 }
 
-export interface UpdateRecurringItemRequest extends Partial<CreateRecurringItemRequest> {}
+export interface UpdateRecurringItemRequest extends Partial<CreateRecurringItemRequest> { }
 
 export interface CreatePlannedItemRequest {
   accountId: string;
@@ -182,7 +182,7 @@ export interface CreatePlannedItemRequest {
   endDate?: YearMonth;
 }
 
-export interface UpdatePlannedItemRequest extends Partial<CreatePlannedItemRequest> {}
+export interface UpdatePlannedItemRequest extends Partial<CreatePlannedItemRequest> { }
 
 export interface CreateSalaryConfigRequest {
   accountId: string;
@@ -197,7 +197,7 @@ export interface CreateSalaryConfigRequest {
   isLinkedToRecurring?: boolean;
 }
 
-export interface UpdateSalaryConfigRequest extends Partial<CreateSalaryConfigRequest> {}
+export interface UpdateSalaryConfigRequest extends Partial<CreateSalaryConfigRequest> { }
 
 // Auth types
 export interface SignUpRequest {
@@ -247,4 +247,318 @@ export interface ApiResponse<T> {
   success: boolean;
   data?: T;
   error?: string;
+}
+
+// ============================================================
+// WEALTH MANAGEMENT TYPES
+// ============================================================
+
+// Interest model types for debts
+export type InterestModelType = 'none' | 'fixed' | 'variable';
+
+export type DebtType = 'amortized' | 'fixed-installment';
+
+// ============================================================
+// RECEIVABLES (Loans to others, e.g., "Wife owes me")
+// ============================================================
+
+export interface Receivable {
+  id: string;
+  userId: string;
+  name: string;
+  description?: string;
+  currency: Currency;
+  initialPrincipal: number;
+  currentBalance: number; // Calculated: initialPrincipal - sum(repayments)
+  note?: string;
+  // Optional interest model
+  hasInterest: boolean;
+  annualInterestRate?: number; // percentage, e.g., 5 for 5%
+  // Optional soft forecast for projection
+  expectedMonthlyRepayment?: number; // For projection purposes only
+  startDate: YearMonth;
+  isArchived: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ReceivableRepayment {
+  id: string;
+  receivableId: string;
+  date: YearMonth;
+  amount: number;
+  description?: string;
+  note?: string;
+  // Optional: link repayment to a cash account (money comes in)
+  linkedAccountId?: string;
+  createdAt: string;
+}
+
+export interface CreateReceivableRequest {
+  name: string;
+  description?: string;
+  currency: Currency;
+  initialPrincipal: number;
+  note?: string;
+  hasInterest?: boolean;
+  annualInterestRate?: number;
+  expectedMonthlyRepayment?: number;
+  startDate: YearMonth;
+}
+
+export interface UpdateReceivableRequest extends Partial<CreateReceivableRequest> {
+  isArchived?: boolean;
+}
+
+export interface CreateRepaymentRequest {
+  date: YearMonth;
+  amount: number;
+  note?: string;
+  linkedAccountId?: string;
+}
+
+// ============================================================
+// INVESTMENT ACCOUNTS
+// ============================================================
+
+export interface InvestmentAccount {
+  id: string;
+  userId: string;
+  name: string;
+  description?: string;
+  currency: Currency;
+  startingValuation: number;
+  currentValuation?: number; // Current calculated valuation
+  valuationDate: YearMonth; // As-of date for the starting valuation
+  // Growth model
+  annualGrowthRate: number; // percentage, e.g., 7 for 7% annual return
+  // Derived monthly rate = (1 + annualRate/100)^(1/12) - 1
+  isArchived: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface InvestmentContribution {
+  id: string;
+  investmentAccountId: string;
+  type: 'contribution' | 'withdrawal';
+  kind: 'one-off' | 'recurring';
+  amount: number;
+  description?: string;
+  // For one-off
+  scheduledDate?: YearMonth;
+  // For recurring
+  frequency?: Frequency;
+  customIntervalMonths?: number;
+  startDate?: YearMonth;
+  endDate?: YearMonth;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateInvestmentAccountRequest {
+  name: string;
+  description?: string;
+  currency: Currency;
+  startingValuation: number;
+  valuationDate: YearMonth;
+  annualGrowthRate: number;
+}
+
+export interface UpdateInvestmentAccountRequest extends Partial<CreateInvestmentAccountRequest> {
+  isArchived?: boolean;
+}
+
+export interface CreateInvestmentContributionRequest {
+  type: 'contribution' | 'withdrawal';
+  kind: 'one-off' | 'recurring';
+  amount: number;
+  description?: string;
+  scheduledDate?: YearMonth;
+  frequency?: Frequency;
+  customIntervalMonths?: number;
+  startDate?: YearMonth;
+  endDate?: YearMonth;
+  isActive?: boolean;
+}
+
+export interface UpdateInvestmentContributionRequest extends Partial<CreateInvestmentContributionRequest> { }
+
+// ============================================================
+// DEBTS / LIABILITIES
+// ============================================================
+
+export interface Debt {
+  id: string;
+  userId: string;
+  name: string;
+  description?: string;
+  currency: Currency;
+  debtType: DebtType;
+  initialPrincipal: number;
+  currentPrincipal: number; // Calculated from payments
+  startDate: YearMonth;
+
+  // For amortized loans (mortgage-like)
+  interestModelType: InterestModelType;
+  fixedInterestRate?: number; // Annual rate for fixed interest
+  referenceRateMargin?: number; // Margin above reference rate (e.g., 1.5%)
+  rateResetFrequency?: 'monthly' | 'quarterly' | 'yearly'; // How often rate resets
+  monthlyPayment?: number; // Fixed monthly payment amount
+
+  // For fixed-installment (no interest, like renovations financing)
+  installmentAmount?: number;
+  totalInstallments?: number;
+  remainingInstallments?: number;
+
+  // Link to cash account that pays this debt
+  linkedAccountId?: string;
+
+  isArchived: boolean;
+  endDate?: YearMonth; // When debt will be fully paid
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DebtReferenceRate {
+  id: string;
+  debtId: string;
+  yearMonth: YearMonth;
+  rate: number; // The reference rate for this period (e.g., Euribor)
+  createdAt: string;
+}
+
+export interface DebtExtraPayment {
+  id: string;
+  debtId: string;
+  date: YearMonth;
+  amount: number;
+  description?: string;
+  note?: string;
+  createdAt: string;
+}
+
+export interface CreateDebtRequest {
+  name: string;
+  description?: string;
+  currency: Currency;
+  debtType: DebtType;
+  initialPrincipal: number;
+  startDate: YearMonth;
+  // For amortized
+  interestModelType?: InterestModelType;
+  fixedInterestRate?: number;
+  referenceRateMargin?: number;
+  rateResetFrequency?: 'monthly' | 'quarterly' | 'yearly';
+  monthlyPayment?: number;
+  // For fixed-installment
+  installmentAmount?: number;
+  totalInstallments?: number;
+  // Link to cash account
+  linkedAccountId?: string;
+}
+
+export interface UpdateDebtRequest extends Partial<CreateDebtRequest> {
+  isArchived?: boolean;
+}
+
+// ============================================================
+// TAXED INCOME (Bonuses, Holiday Pay, etc.)
+// ============================================================
+
+export interface TaxedIncome {
+  id: string;
+  accountId: string; // Links to a cash account
+  name: string;
+  grossAmount: number;
+  // Tax handling
+  useSalaryTaxSettings: boolean; // If true, use the linked account's salary tax rate
+  customTaxRate?: number; // percentage, used if useSalaryTaxSettings is false
+  customContributionsRate?: number;
+  customOtherDeductions?: number;
+  // Calculated
+  netAmount: number;
+  taxAmount: number;
+  contributionsAmount: number;
+  // Schedule
+  kind: 'one-off' | 'recurring';
+  scheduledDate?: YearMonth; // For one-off
+  frequency?: Frequency; // For recurring
+  customIntervalMonths?: number;
+  startDate?: YearMonth;
+  endDate?: YearMonth;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateTaxedIncomeRequest {
+  accountId: string;
+  name: string;
+  grossAmount: number;
+  useSalaryTaxSettings?: boolean;
+  customTaxRate?: number;
+  customContributionsRate?: number;
+  customOtherDeductions?: number;
+  kind: 'one-off' | 'recurring';
+  scheduledDate?: YearMonth;
+  frequency?: Frequency;
+  customIntervalMonths?: number;
+  startDate?: YearMonth;
+  endDate?: YearMonth;
+  isActive?: boolean;
+}
+
+export interface UpdateTaxedIncomeRequest extends Partial<CreateTaxedIncomeRequest> { }
+
+// ============================================================
+// WEALTH PROJECTION TYPES
+// ============================================================
+
+export interface WealthProjectionMonth {
+  yearMonth: YearMonth;
+  year: number;
+  month: number;
+  // Cash accounts (from existing projection)
+  cashAccountsTotal: number;
+  cashAccountsBreakdown: { accountId: string; name: string; balance: number }[];
+  // Investments
+  investmentsTotal: number;
+  investmentsBreakdown: { accountId: string; name: string; valuation: number }[];
+  // Receivables
+  receivablesTotal: number;
+  receivablesBreakdown: { receivableId: string; name: string; balance: number }[];
+  // Debts (negative values)
+  debtsTotal: number;
+  debtsBreakdown: { debtId: string; name: string; principal: number; interestPaid?: number }[];
+  // Net worth
+  netWorth: number;
+}
+
+export interface DebtAmortizationRow {
+  yearMonth: YearMonth;
+  startingPrincipal: number;
+  interestPaid: number;
+  principalPaid: number;
+  totalPayment: number;
+  endingPrincipal: number;
+  interestRate: number; // The rate used for this period
+}
+
+export interface InvestmentProjectionRow {
+  yearMonth: YearMonth;
+  startingValuation: number;
+  growth: number;
+  contributions: number;
+  withdrawals: number;
+  endingValuation: number;
+}
+
+export interface ReceivableProjectionRow {
+  yearMonth: YearMonth;
+  startingBalance: number;
+  repayments: number;
+  interestAccrued: number;
+  endingBalance: number;
 }

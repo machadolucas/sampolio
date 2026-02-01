@@ -3,7 +3,7 @@
 import { SessionProvider } from 'next-auth/react';
 import { useState, useEffect, useCallback, createContext, useContext } from 'react';
 import { TopBar } from './topbar';
-import { AccountsModal, RecurringModal, PlannedModal, SalaryModal, UsersModal, SettingsModal } from '@/components/modals';
+import { AccountsModal, RecurringModal, PlannedModal, SalaryModal, UsersModal, SettingsModal, InvestmentsModal, DebtsModal, ReceivablesModal } from '@/components/modals';
 import { getAccounts } from '@/lib/actions/accounts';
 import type { FinancialAccount } from '@/types';
 
@@ -38,6 +38,9 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
     const [salaryVisible, setSalaryVisible] = useState(false);
     const [usersVisible, setUsersVisible] = useState(false);
     const [settingsVisible, setSettingsVisible] = useState(false);
+    const [investmentsVisible, setInvestmentsVisible] = useState(false);
+    const [debtsVisible, setDebtsVisible] = useState(false);
+    const [receivablesVisible, setReceivablesVisible] = useState(false);
 
     // Fetch accounts
     const fetchAccounts = useCallback(async () => {
@@ -89,6 +92,9 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                         onOpenRecurring={() => setRecurringVisible(true)}
                         onOpenPlanned={() => setPlannedVisible(true)}
                         onOpenSalary={() => setSalaryVisible(true)}
+                        onOpenInvestments={() => setInvestmentsVisible(true)}
+                        onOpenDebts={() => setDebtsVisible(true)}
+                        onOpenReceivables={() => setReceivablesVisible(true)}
                         onOpenUsers={() => setUsersVisible(true)}
                         onOpenSettings={() => setSettingsVisible(true)}
                         hasActiveAccounts={hasActiveAccounts}
@@ -136,6 +142,21 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                     <SettingsModal
                         visible={settingsVisible}
                         onHide={() => setSettingsVisible(false)}
+                    />
+                    <InvestmentsModal
+                        visible={investmentsVisible}
+                        onHide={() => setInvestmentsVisible(false)}
+                        onDataChange={handleDataChange}
+                    />
+                    <DebtsModal
+                        visible={debtsVisible}
+                        onHide={() => setDebtsVisible(false)}
+                        onDataChange={handleDataChange}
+                    />
+                    <ReceivablesModal
+                        visible={receivablesVisible}
+                        onHide={() => setReceivablesVisible(false)}
+                        onDataChange={handleDataChange}
                     />
                 </div>
             </DashboardContext.Provider>
