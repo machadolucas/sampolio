@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import { auth } from '@/lib/auth';
-import { DashboardLayout } from '@/components/layout';
-import DashboardContent from './(dashboard)/dashboard/page';
+import { AppLayout } from '@/components/layout';
+import OverviewPage from './(dashboard)/overview/page';
 
 export default async function Home() {
   const session = await auth();
@@ -11,8 +11,8 @@ export default async function Home() {
   }
 
   return (
-    <DashboardLayout>
-      <DashboardContent />
-    </DashboardLayout>
+    <AppLayout>
+      <OverviewPage />
+    </AppLayout>
   );
 }

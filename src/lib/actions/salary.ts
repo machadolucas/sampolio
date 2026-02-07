@@ -12,9 +12,17 @@ import {
 } from '@/lib/db/salary-configs';
 import type { ApiResponse, SalaryConfig } from '@/types';
 
+const salaryBenefitSchema = z.object({
+  id: z.string(),
+  name: z.string().min(1, 'Benefit name is required'),
+  amount: z.number().min(0, 'Amount must be non-negative'),
+  isTaxable: z.boolean(),
+});
+
 const createSalaryConfigSchema = z.object({
   name: z.string().min(1, 'Name is required'),
   grossSalary: z.number().positive('Gross salary must be positive'),
+  benefits: z.array(salaryBenefitSchema).optional(),
   taxRate: z.number().min(0).max(100, 'Tax rate must be between 0 and 100'),
   contributionsRate: z.number().min(0).max(100, 'Contributions rate must be between 0 and 100'),
   otherDeductions: z.number().min(0).optional(),
@@ -27,6 +35,7 @@ const createSalaryConfigSchema = z.object({
 const updateSalaryConfigSchema = z.object({
   name: z.string().min(1).optional(),
   grossSalary: z.number().positive().optional(),
+  benefits: z.array(salaryBenefitSchema).optional(),
   taxRate: z.number().min(0).max(100).optional(),
   contributionsRate: z.number().min(0).max(100).optional(),
   otherDeductions: z.number().min(0).optional(),

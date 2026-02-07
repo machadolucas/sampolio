@@ -26,6 +26,7 @@ interface RecurringModalProps {
     accounts: FinancialAccount[];
     onAccountChange: (accountId: string) => void;
     onDataChange?: () => void;
+    editItemId?: string;
 }
 
 export function RecurringModal({
@@ -35,6 +36,7 @@ export function RecurringModal({
     accounts,
     onAccountChange,
     onDataChange,
+    editItemId,
 }: RecurringModalProps) {
     const [items, setItems] = useState<RecurringItem[]>([]);
     const [isLoading, setIsLoading] = useState(false);
@@ -109,6 +111,16 @@ export function RecurringModal({
         }
         setIsFormOpen(true);
     };
+
+    // Auto-open edit form when editItemId is provided and items are loaded
+    useEffect(() => {
+        if (editItemId && items.length > 0 && !isFormOpen) {
+            const item = items.find(i => i.id === editItemId);
+            if (item) {
+                openForm(item);
+            }
+        }
+    }, [editItemId, items]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const handleSubmit = async () => {
         try {

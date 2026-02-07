@@ -13,12 +13,6 @@
             }
         },
         {
-            "name": "Next.js: debug client-side",
-            "type": "chrome",
-            "request": "launch",
-            "url": "http://localhost:3999"
-        },
-        {
             "name": "Next.js: debug full stack",
             "type": "node-terminal",
             "request": "launch",

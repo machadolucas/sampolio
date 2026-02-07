@@ -11,7 +11,7 @@ const rateLimitStore = new Map<string, { count: number; resetTime: number }>();
 
 // Rate limit configuration
 const RATE_LIMIT_WINDOW = 60 * 1000; // 1 minute
-const RATE_LIMIT_MAX_REQUESTS = 15; // 15 requests per minute for auth endpoints
+const RATE_LIMIT_MAX_AUTH_UNAUTHENTICATED = 20; // 20 requests per minute for unauthenticated auth endpoints (login/signup)
 const RATE_LIMIT_MAX_GENERAL = 300; // 300 requests per minute for general endpoints
 
 function getClientIp(request: NextRequest): string {
@@ -83,30 +83,37 @@ export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const clientIp = getClientIp(request);
 
-  // Apply strict rate limiting to auth endpoints
+  // Apply strict rate limiting to auth endpoints only for unauthenticated users
+  // Authenticated users making session polling requests (e.g., /api/auth/session)
+  // should not be rate-limited under the strict auth limit — use general limit instead
   if (pathname.startsWith('/api/auth') || pathname.startsWith('/auth/')) {
-    const rateLimitKey = `auth:${clientIp}`;
-    const { allowed, remaining, resetIn } = checkRateLimit(rateLimitKey, RATE_LIMIT_MAX_REQUESTS);
+    const isAuthenticated = hasAuthSession(request);
 
-    if (!allowed) {
-      return new NextResponse(
-        JSON.stringify({
-          success: false,
-          error: 'Too many requests. Please try again later.',
-          retryAfter: Math.ceil(resetIn / 1000),
-        }),
-        {
-          status: 429,
-          headers: {
-            'Content-Type': 'application/json',
-            'Retry-After': Math.ceil(resetIn / 1000).toString(),
-            'X-RateLimit-Limit': RATE_LIMIT_MAX_REQUESTS.toString(),
-            'X-RateLimit-Remaining': remaining.toString(),
-            'X-RateLimit-Reset': Math.ceil(resetIn / 1000).toString(),
-          },
-        }
-      );
+    if (!isAuthenticated) {
+      const rateLimitKey = `auth:${clientIp}`;
+      const { allowed, remaining, resetIn } = checkRateLimit(rateLimitKey, RATE_LIMIT_MAX_AUTH_UNAUTHENTICATED);
+
+      if (!allowed) {
+        return new NextResponse(
+          JSON.stringify({
+            success: false,
+            error: 'Too many requests. Please try again later.',
+            retryAfter: Math.ceil(resetIn / 1000),
+          }),
+          {
+            status: 429,
+            headers: {
+              'Content-Type': 'application/json',
+              'Retry-After': Math.ceil(resetIn / 1000).toString(),
+              'X-RateLimit-Limit': RATE_LIMIT_MAX_AUTH_UNAUTHENTICATED.toString(),
+              'X-RateLimit-Remaining': remaining.toString(),
+              'X-RateLimit-Reset': Math.ceil(resetIn / 1000).toString(),
+            },
+          }
+        );
+      }
     }
+    // Authenticated users' auth requests fall through to general rate limiting below
   }
 
   // General rate limiting for all other endpoints

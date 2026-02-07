@@ -2,6 +2,7 @@ import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import type { 
   SalaryConfig, 
+  SalaryBenefit,
   CreateSalaryConfigRequest, 
   UpdateSalaryConfigRequest 
 } from '@/types';
@@ -27,11 +28,17 @@ export function calculateNetSalary(
   grossSalary: number,
   taxRate: number,
   contributionsRate: number,
-  otherDeductions: number = 0
+  otherDeductions: number = 0,
+  benefits: SalaryBenefit[] = []
 ): number {
-  const taxAmount = grossSalary * (taxRate / 100);
-  const contributionsAmount = grossSalary * (contributionsRate / 100);
-  return grossSalary - taxAmount - contributionsAmount - otherDeductions;
+  // Benefits are added to gross to determine the taxable base
+  const taxableBenefitsTotal = benefits.filter(b => b.isTaxable).reduce((sum, b) => sum + b.amount, 0);
+  const allBenefitsTotal = benefits.reduce((sum, b) => sum + b.amount, 0);
+  const taxableBase = grossSalary + taxableBenefitsTotal;
+  const taxAmount = taxableBase * (taxRate / 100);
+  const contributionsAmount = taxableBase * (contributionsRate / 100);
+  // Deductions are subtracted from gross only, then all benefits are added back
+  return grossSalary - taxAmount - contributionsAmount - otherDeductions + allBenefitsTotal;
 }
 
 export async function getSalaryConfigs(userId: string, accountId: string): Promise<SalaryConfig[]> {
@@ -78,7 +85,8 @@ export async function createSalaryConfig(
     data.grossSalary,
     data.taxRate,
     data.contributionsRate,
-    data.otherDeductions || 0
+    data.otherDeductions || 0,
+    data.benefits || []
   );
   
   let linkedRecurringItemId: string | undefined;
@@ -104,6 +112,7 @@ export async function createSalaryConfig(
     accountId: data.accountId,
     name: data.name,
     grossSalary: data.grossSalary,
+    benefits: data.benefits || [],
     taxRate: data.taxRate,
     contributionsRate: data.contributionsRate,
     otherDeductions: data.otherDeductions || 0,
@@ -142,8 +151,9 @@ export async function updateSalaryConfig(
   const taxRate = updates.taxRate ?? config.taxRate;
   const contributionsRate = updates.contributionsRate ?? config.contributionsRate;
   const otherDeductions = updates.otherDeductions ?? config.otherDeductions;
+  const benefits = updates.benefits ?? config.benefits ?? [];
   
-  const netSalary = calculateNetSalary(grossSalary, taxRate, contributionsRate, otherDeductions);
+  const netSalary = calculateNetSalary(grossSalary, taxRate, contributionsRate, otherDeductions, benefits);
   
   const updatedConfig: SalaryConfig = {
     ...config,

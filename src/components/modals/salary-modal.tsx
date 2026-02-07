@@ -17,17 +17,24 @@ import {
     updateSalaryConfig,
     deleteSalaryConfig,
 } from '@/lib/actions/salary';
-import type { FinancialAccount, SalaryConfig, Currency } from '@/types';
+import { getUserPreferences } from '@/lib/actions/user-preferences';
+import type { FinancialAccount, SalaryConfig, SalaryBenefit, Currency, TaxDefaults } from '@/types';
 
 function calculateNetSalary(
     grossSalary: number,
     taxRate: number,
     contributionsRate: number,
-    otherDeductions: number
+    otherDeductions: number,
+    benefits: SalaryBenefit[] = []
 ): number {
-    const taxAmount = grossSalary * (taxRate / 100);
-    const contributionsAmount = grossSalary * (contributionsRate / 100);
-    return grossSalary - taxAmount - contributionsAmount - otherDeductions;
+    // Benefits are added to gross to determine the taxable base
+    const taxableBenefitsTotal = benefits.filter(b => b.isTaxable).reduce((sum, b) => sum + b.amount, 0);
+    const allBenefitsTotal = benefits.reduce((sum, b) => sum + b.amount, 0);
+    const taxableBase = grossSalary + taxableBenefitsTotal;
+    const taxAmount = taxableBase * (taxRate / 100);
+    const contributionsAmount = taxableBase * (contributionsRate / 100);
+    // Deductions are subtracted from gross only, then all benefits are added back
+    return grossSalary - taxAmount - contributionsAmount - otherDeductions + allBenefitsTotal;
 }
 
 interface SalaryModalProps {
@@ -37,6 +44,7 @@ interface SalaryModalProps {
     accounts: FinancialAccount[];
     onAccountChange: (accountId: string) => void;
     onDataChange?: () => void;
+    editItemId?: string;
 }
 
 export function SalaryModal({
@@ -46,11 +54,13 @@ export function SalaryModal({
     accounts,
     onAccountChange,
     onDataChange,
+    editItemId,
 }: SalaryModalProps) {
     const [configs, setConfigs] = useState<SalaryConfig[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [editingConfig, setEditingConfig] = useState<SalaryConfig | null>(null);
+    const [taxDefaults, setTaxDefaults] = useState<TaxDefaults | null>(null);
 
     const [formData, setFormData] = useState({
         name: '',
@@ -58,6 +68,7 @@ export function SalaryModal({
         taxRate: '',
         contributionsRate: '',
         otherDeductions: '0',
+        benefits: [] as SalaryBenefit[],
         startDate: getCurrentYearMonth(),
         endDate: '',
         isActive: true,
@@ -68,8 +79,18 @@ export function SalaryModal({
         parseFloat(formData.grossSalary) || 0,
         parseFloat(formData.taxRate) || 0,
         parseFloat(formData.contributionsRate) || 0,
-        parseFloat(formData.otherDeductions) || 0
+        parseFloat(formData.otherDeductions) || 0,
+        formData.benefits
     );
+
+    // Load tax defaults once
+    useEffect(() => {
+        getUserPreferences().then(result => {
+            if (result.success && result.data?.taxDefaults) {
+                setTaxDefaults(result.data.taxDefaults);
+            }
+        });
+    }, []);
 
     const fetchConfigs = useCallback(async () => {
         if (!selectedAccountId) return;
@@ -92,9 +113,10 @@ export function SalaryModal({
         setFormData({
             name: '',
             grossSalary: '',
-            taxRate: '',
-            contributionsRate: '',
-            otherDeductions: '0',
+            taxRate: taxDefaults?.taxRate?.toString() ?? '',
+            contributionsRate: taxDefaults?.contributionsRate?.toString() ?? '',
+            otherDeductions: taxDefaults?.otherDeductions?.toString() ?? '0',
+            benefits: [],
             startDate: getCurrentYearMonth(),
             endDate: '',
             isActive: true,
@@ -112,6 +134,7 @@ export function SalaryModal({
                 taxRate: config.taxRate.toString(),
                 contributionsRate: config.contributionsRate.toString(),
                 otherDeductions: config.otherDeductions.toString(),
+                benefits: config.benefits || [],
                 startDate: config.startDate,
                 endDate: config.endDate || '',
                 isActive: config.isActive,
@@ -123,11 +146,22 @@ export function SalaryModal({
         setIsFormOpen(true);
     };
 
+    // Auto-open edit form when editItemId is provided and configs are loaded
+    useEffect(() => {
+        if (editItemId && configs.length > 0 && !isFormOpen) {
+            const config = configs.find(c => c.id === editItemId);
+            if (config) {
+                openForm(config);
+            }
+        }
+    }, [editItemId, configs]); // eslint-disable-line react-hooks/exhaustive-deps
+
     const handleSubmit = async () => {
         try {
             const body = {
                 name: formData.name,
                 grossSalary: parseFloat(formData.grossSalary),
+                benefits: formData.benefits,
                 taxRate: parseFloat(formData.taxRate),
                 contributionsRate: parseFloat(formData.contributionsRate),
                 otherDeductions: parseFloat(formData.otherDeductions) || 0,
@@ -257,9 +291,19 @@ export function SalaryModal({
                                             <span className="text-gray-500">Gross Salary</span>
                                             <span className="font-medium">{formatCurrency(config.grossSalary, currency)}</span>
                                         </div>
+                                        {(config.benefits || []).length > 0 && (
+                                            <>
+                                                {config.benefits.map((benefit) => (
+                                                    <div key={benefit.id} className="flex justify-between pl-4">
+                                                        <span className="text-gray-500">{benefit.name} {benefit.isTaxable ? '(taxable)' : '(non-taxable)'}</span>
+                                                        <span className="text-blue-500">+{formatCurrency(benefit.amount, currency)}</span>
+                                                    </div>
+                                                ))}
+                                            </>
+                                        )}
                                         <div className="flex justify-between">
                                             <span className="text-gray-500">Tax Rate</span>
-                                            <span className="text-red-600">-{config.taxRate}% ({formatCurrency(config.grossSalary * config.taxRate / 100, currency)})</span>
+                                            <span className="text-red-600">-{config.taxRate}% ({formatCurrency((config.grossSalary + (config.benefits || []).filter(b => b.isTaxable).reduce((s, b) => s + b.amount, 0)) * config.taxRate / 100, currency)})</span>
                                         </div>
                                         <div className="flex justify-between">
                                             <span className="text-gray-500">Contributions</span>
@@ -311,8 +355,91 @@ export function SalaryModal({
                         <InputText type="number" placeholder="0.00" value={formData.otherDeductions}
                             onChange={e => setFormData(p => ({ ...p, otherDeductions: e.target.value }))} className="w-full" /></div>
 
+                    {/* Benefits */}
+                    <div>
+                        <div className="flex items-center justify-between mb-2">
+                            <label className="text-sm font-medium">Benefits</label>
+                            <Button
+                                label="Add Benefit"
+                                icon="pi pi-plus"
+                                size="small"
+                                text
+                                onClick={() => setFormData(p => ({
+                                    ...p,
+                                    benefits: [...p.benefits, {
+                                        id: crypto.randomUUID(),
+                                        name: '',
+                                        amount: 0,
+                                        isTaxable: true,
+                                    }],
+                                }))}
+                            />
+                        </div>
+                        {formData.benefits.length > 0 && (
+                            <div className="space-y-2">
+                                {formData.benefits.map((benefit, index) => (
+                                    <div key={benefit.id} className="flex items-center gap-2 p-2 bg-gray-50 dark:bg-gray-800 rounded">
+                                        <InputText
+                                            placeholder="e.g., puhelinetu"
+                                            value={benefit.name}
+                                            onChange={e => {
+                                                const benefits = [...formData.benefits];
+                                                benefits[index] = { ...benefits[index], name: e.target.value };
+                                                setFormData(p => ({ ...p, benefits }));
+                                            }}
+                                            className="flex-1"
+                                            size={1}
+                                        />
+                                        <InputText
+                                            type="number"
+                                            placeholder="0"
+                                            value={benefit.amount.toString()}
+                                            onChange={e => {
+                                                const benefits = [...formData.benefits];
+                                                benefits[index] = { ...benefits[index], amount: parseFloat(e.target.value) || 0 };
+                                                setFormData(p => ({ ...p, benefits }));
+                                            }}
+                                            className="w-24"
+                                        />
+                                        <div className="flex items-center gap-1">
+                                            <InputSwitch
+                                                checked={benefit.isTaxable}
+                                                onChange={(e: InputSwitchChangeEvent) => {
+                                                    const benefits = [...formData.benefits];
+                                                    benefits[index] = { ...benefits[index], isTaxable: e.value ?? true };
+                                                    setFormData(p => ({ ...p, benefits }));
+                                                }}
+                                            />
+                                            <span className="text-xs whitespace-nowrap">{benefit.isTaxable ? 'Taxable' : 'Non-tax'}</span>
+                                        </div>
+                                        <Button
+                                            icon="pi pi-times"
+                                            rounded
+                                            text
+                                            severity="danger"
+                                            size="small"
+                                            onClick={() => setFormData(p => ({
+                                                ...p,
+                                                benefits: p.benefits.filter((_, i) => i !== index),
+                                            }))}
+                                        />
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+
                     {/* Preview */}
-                    <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                    <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg space-y-1">
+                        {formData.benefits.length > 0 && (
+                            <div className="flex justify-between text-xs text-gray-500">
+                                <span>Taxable Gross</span>
+                                <span>{formatCurrency(
+                                    (parseFloat(formData.grossSalary) || 0) + formData.benefits.filter(b => b.isTaxable).reduce((s, b) => s + b.amount, 0),
+                                    currency
+                                )}</span>
+                            </div>
+                        )}
                         <div className="flex justify-between items-center">
                             <span className="text-sm text-gray-500">Calculated Net Salary</span>
                             <span className="text-xl font-bold text-green-600">{formatCurrency(previewNetSalary, currency)}</span>

@@ -32,6 +32,21 @@ export interface AppSettings {
   updatedBy: string; // userId of admin who last updated
 }
 
+// User preferences (stored per user in preferences.enc)
+export interface TaxDefaults {
+  taxRate: number; // percentage, e.g. 25 for 25%
+  contributionsRate: number; // percentage, e.g. 8.19
+  otherDeductions: number; // fixed amount
+}
+
+export interface UserPreferences {
+  hasCompletedOnboarding: boolean;
+  customCategories?: string[]; // user-defined categories (merged with built-in ones)
+  removedDefaultCategories?: string[]; // built-in categories the user has removed
+  taxDefaults?: TaxDefaults;
+  updatedAt: string;
+}
+
 export interface FinancialAccount {
   id: string;
   userId: string;
@@ -81,11 +96,19 @@ export interface PlannedItem {
   updatedAt: string;
 }
 
+export interface SalaryBenefit {
+  id: string;
+  name: string;
+  amount: number; // monthly amount
+  isTaxable: boolean; // whether it's added to gross before tax calculation
+}
+
 export interface SalaryConfig {
   id: string;
   accountId: string;
   name: string;
   grossSalary: number;
+  benefits: SalaryBenefit[];
   taxRate: number; // percentage, e.g., 25 for 25%
   contributionsRate: number; // percentage for retirement, insurance, etc.
   otherDeductions: number; // fixed amount
@@ -188,6 +211,7 @@ export interface CreateSalaryConfigRequest {
   accountId: string;
   name: string;
   grossSalary: number;
+  benefits?: SalaryBenefit[];
   taxRate: number;
   contributionsRate: number;
   otherDeductions?: number;
@@ -561,4 +585,142 @@ export interface ReceivableProjectionRow {
   repayments: number;
   interestAccrued: number;
   endingBalance: number;
+}
+
+// ============================================================
+// RECONCILIATION & BALANCE SNAPSHOTS
+// ============================================================
+
+export type EntityType = 'cash-account' | 'investment' | 'receivable' | 'debt';
+
+export type AdjustmentCategory =
+  | 'untracked-income'
+  | 'untracked-expense'
+  | 'valuation-change'
+  | 'interest-adjustment'
+  | 'data-correction'
+  | 'other';
+
+export interface BalanceSnapshot {
+  id: string;
+  userId: string;
+  entityType: EntityType;
+  entityId: string;
+  yearMonth: YearMonth;
+  expectedBalance: number; // What the system projected
+  actualBalance: number; // What user reported
+  variance: number; // actualBalance - expectedBalance
+  createdAt: string;
+}
+
+export interface ReconciliationAdjustment {
+  id: string;
+  snapshotId: string;
+  category: AdjustmentCategory;
+  amount: number;
+  description?: string;
+  createdAt: string;
+}
+
+export interface ReconciliationSession {
+  id: string;
+  userId: string;
+  yearMonth: YearMonth;
+  status: 'in-progress' | 'completed';
+  startedAt: string;
+  completedAt?: string;
+  snapshots: BalanceSnapshot[];
+  adjustments: ReconciliationAdjustment[];
+}
+
+export interface CreateBalanceSnapshotRequest {
+  entityType: EntityType;
+  entityId: string;
+  yearMonth: YearMonth;
+  actualBalance: number;
+}
+
+export interface CreateAdjustmentRequest {
+  snapshotId: string;
+  category: AdjustmentCategory;
+  amount: number;
+  description?: string;
+}
+
+export interface ReconciliationSummary {
+  yearMonth: YearMonth;
+  totalVariance: number;
+  adjustmentsByCategory: Record<AdjustmentCategory, number>;
+  entitiesReconciled: number;
+  lastReconciledAt?: string;
+}
+
+// ============================================================
+// CASHFLOW VISUALIZATION TYPES
+// ============================================================
+
+export interface CashflowItem {
+  id: string;
+  name: string;
+  amount: number;
+  category?: string;
+  type: 'income' | 'expense' | 'transfer' | 'adjustment';
+  source: 'recurring' | 'planned' | 'salary' | 'taxed-income' | 'adjustment' | 'debt-payment';
+  isRecurring: boolean;
+  linkedEntityId?: string; // For drill-down
+  linkedEntityType?: string;
+}
+
+export interface MonthFlowData {
+  yearMonth: YearMonth;
+  accountId: string;
+  startingBalance: number;
+  endingBalance: number;
+  inflows: CashflowItem[];
+  outflows: CashflowItem[];
+  totalInflows: number;
+  totalOutflows: number;
+  netChange: number;
+  isReconciled: boolean;
+  reconciledBalance?: number;
+}
+
+// ============================================================
+// NAVIGATION & UI STATE TYPES
+// ============================================================
+
+export type NavigationPage = 'overview' | 'cashflow' | 'balance-sheet' | 'settings';
+
+export type TimeHorizon = '6m' | '1y' | '3y' | '5y' | 'custom';
+
+export interface ChartInteraction {
+  type: 'month-click' | 'entity-click' | 'segment-click';
+  yearMonth?: YearMonth;
+  entityId?: string;
+  entityType?: EntityType;
+}
+
+export interface DrawerState {
+  isOpen: boolean;
+  mode: 'view' | 'edit' | 'create';
+  entityType?: string;
+  entityId?: string;
+  yearMonth?: YearMonth;
+}
+
+// ============================================================
+// COMMAND PALETTE TYPES
+// ============================================================
+
+export type CommandType = 'navigate' | 'add' | 'reconcile' | 'search' | 'action';
+
+export interface Command {
+  id: string;
+  label: string;
+  description?: string;
+  type: CommandType;
+  icon?: string;
+  shortcut?: string;
+  action: () => void;
+  keywords?: string[];
 }

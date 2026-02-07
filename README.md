@@ -19,7 +19,7 @@ A personal finance planning tool that replaces your budgeting spreadsheet with a
 
 ### Prerequisites
 
-- Node.js 18+ 
+- Node.js 20+ 
 - pnpm (recommended) or npm
 
 ### Installation

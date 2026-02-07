@@ -25,6 +25,7 @@ interface PlannedModalProps {
     accounts: FinancialAccount[];
     onAccountChange: (accountId: string) => void;
     onDataChange?: () => void;
+    editItemId?: string;
 }
 
 export function PlannedModal({
@@ -34,6 +35,7 @@ export function PlannedModal({
     accounts,
     onAccountChange,
     onDataChange,
+    editItemId,
 }: PlannedModalProps) {
     const [items, setItems] = useState<PlannedItem[]>([]);
     const [isLoading, setIsLoading] = useState(false);
@@ -107,6 +109,16 @@ export function PlannedModal({
         }
         setIsFormOpen(true);
     };
+
+    // Auto-open edit form when editItemId is provided and items are loaded
+    useEffect(() => {
+        if (editItemId && items.length > 0 && !isFormOpen) {
+            const item = items.find(i => i.id === editItemId);
+            if (item) {
+                openForm(item);
+            }
+        }
+    }, [editItemId, items]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const handleSubmit = async () => {
         try {
