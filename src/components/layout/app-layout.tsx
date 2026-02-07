@@ -1,7 +1,7 @@
 'use client';
 
 import { SessionProvider } from 'next-auth/react';
-import { useState, useEffect, useCallback, createContext, useContext } from 'react';
+import { useState, useEffect, useCallback, createContext, useContext, startTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { SidebarNav } from './sidebar-nav';
 import { CommandPalette, useCommandPalette } from '@/components/ui/command-palette';
@@ -50,7 +50,12 @@ const initialDrawerState: DrawerState = {
 
 export function AppLayout({ children }: AppLayoutProps) {
     const router = useRouter();
-    const commandPalette = useCommandPalette();
+
+    // Reconcile wizard state
+    const [reconcileVisible, setReconcileVisible] = useState(false);
+    const handleOpenReconcile = useCallback(() => {
+        setReconcileVisible(true);
+    }, []);
 
     const [accounts, setAccounts] = useState<FinancialAccount[]>([]);
     const [selectedAccountId, setSelectedAccountId] = useState<string>('');
@@ -67,6 +72,27 @@ export function AppLayout({ children }: AppLayoutProps) {
         return false;
     });
 
+    const openDrawer = useCallback((options: Partial<DrawerState>) => {
+        setDrawerState({
+            isOpen: true,
+            mode: options.mode || 'view',
+            entityType: options.entityType,
+            entityId: options.entityId,
+            yearMonth: options.yearMonth,
+        });
+    }, []);
+
+    const closeDrawer = useCallback(() => {
+        setDrawerState(initialDrawerState);
+    }, []);
+
+    // Keyboard shortcuts — declared after openDrawer/selectedYearMonth
+    const commandPalette = useCommandPalette({
+        onReconcile: handleOpenReconcile,
+        onAddIncome: useCallback(() => openDrawer({ mode: 'create', entityType: 'income', yearMonth: selectedYearMonth }), [openDrawer, selectedYearMonth]),
+        onAddExpense: useCallback(() => openDrawer({ mode: 'create', entityType: 'expense', yearMonth: selectedYearMonth }), [openDrawer, selectedYearMonth]),
+    });
+
     const handleToggleSidebar = useCallback(() => {
         setSidebarCollapsed(prev => {
             const next = !prev;
@@ -74,9 +100,6 @@ export function AppLayout({ children }: AppLayoutProps) {
             return next;
         });
     }, []);
-
-    // Reconcile wizard state
-    const [reconcileVisible, setReconcileVisible] = useState(false);
 
     // Onboarding wizard state
     const [showOnboarding, setShowOnboarding] = useState(false);
@@ -95,10 +118,12 @@ export function AppLayout({ children }: AppLayoutProps) {
             const result = await getAccounts();
             if (result.success && result.data) {
                 const activeAccounts = result.data.filter((a: FinancialAccount) => !a.isArchived);
-                setAccounts(result.data);
-                if (activeAccounts.length > 0 && !selectedAccountId) {
-                    setSelectedAccountId(activeAccounts[0].id);
-                }
+                startTransition(() => {
+                    setAccounts(result.data!);
+                    if (activeAccounts.length > 0 && !selectedAccountId) {
+                        setSelectedAccountId(activeAccounts[0].id);
+                    }
+                });
             }
         } catch (err) {
             console.error('Failed to fetch accounts:', err);
@@ -120,20 +145,6 @@ export function AppLayout({ children }: AppLayoutProps) {
         refreshCallback?.();
     }, [fetchAccounts, refreshCallback]);
 
-    const openDrawer = useCallback((options: Partial<DrawerState>) => {
-        setDrawerState({
-            isOpen: true,
-            mode: options.mode || 'view',
-            entityType: options.entityType,
-            entityId: options.entityId,
-            yearMonth: options.yearMonth,
-        });
-    }, []);
-
-    const closeDrawer = useCallback(() => {
-        setDrawerState(initialDrawerState);
-    }, []);
-
     const handleAddItem = (type: 'income' | 'expense', yearMonth?: string) => {
         openDrawer({
             mode: 'create',
@@ -141,10 +152,6 @@ export function AppLayout({ children }: AppLayoutProps) {
             yearMonth: yearMonth || selectedYearMonth,
         });
     };
-
-    const handleOpenReconcile = useCallback(() => {
-        setReconcileVisible(true);
-    }, []);
 
     const contextValue: AppContextValue = {
         refreshData: handleDataChange,

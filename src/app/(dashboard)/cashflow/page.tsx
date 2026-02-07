@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, startTransition } from 'react';
 import { Card } from 'primereact/card';
 import { Button } from 'primereact/button';
 import { Dropdown } from 'primereact/dropdown';
@@ -142,28 +142,6 @@ function MonthDetailsPanel({ projection, currency, onEditItem }: MonthDetailsPan
 
     return (
         <div className="space-y-4">
-            {/* Summary */}
-            <div className={`grid grid-cols-3 gap-4 p-4 rounded-lg ${isDark ? 'bg-gray-800' : 'bg-gray-50'}`}>
-                <div>
-                    <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Income</div>
-                    <div className="text-lg font-semibold text-green-500">
-                        +{formatCurrency(projection.totalIncome, currency)}
-                    </div>
-                </div>
-                <div>
-                    <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Expenses</div>
-                    <div className="text-lg font-semibold text-red-500">
-                        -{formatCurrency(projection.totalExpenses, currency)}
-                    </div>
-                </div>
-                <div>
-                    <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Net Change</div>
-                    <div className={`text-lg font-semibold ${projection.netChange >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                        {projection.netChange >= 0 ? '+' : ''}{formatCurrency(projection.netChange, currency)}
-                    </div>
-                </div>
-            </div>
-
             {/* Balance */}
             <div className="flex justify-between items-center py-2">
                 <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>Starting Balance</span>
@@ -247,6 +225,7 @@ export default function CashflowPage() {
     const isDark = theme === 'dark';
 
     const [isLoading, setIsLoading] = useState(true);
+    const hasLoadedOnce = useRef(false);
     const [accounts, setAccounts] = useState<FinancialAccount[]>([]);
     const [selectedAccountId, setSelectedAccountId] = useState<string>('');
     const [projection, setProjection] = useState<MonthlyProjection[]>([]);
@@ -261,12 +240,25 @@ export default function CashflowPage() {
             const result = await getAccounts();
             if (result.success && result.data) {
                 const active = result.data.filter((a: FinancialAccount) => !a.isArchived);
-                setAccounts(active);
-                if (active.length > 0 && !selectedAccountId) {
-                    setSelectedAccountId(active[0].id);
+                if (hasLoadedOnce.current) {
+                    // Smooth update without flash for refreshes
+                    startTransition(() => {
+                        setAccounts(active);
+                        if (active.length > 0 && !selectedAccountId) {
+                            setSelectedAccountId(active[0].id);
+                        }
+                    });
+                } else {
+                    setAccounts(active);
+                    if (active.length > 0 && !selectedAccountId) {
+                        setSelectedAccountId(active[0].id);
+                    }
                 }
             }
-            setIsLoading(false);
+            if (!hasLoadedOnce.current) {
+                hasLoadedOnce.current = true;
+                setIsLoading(false);
+            }
         }
         fetchAccounts();
     }, [selectedAccountId]);
@@ -278,7 +270,11 @@ export default function CashflowPage() {
         try {
             const result = await getProjection(selectedAccountId);
             if (result.success && result.data) {
-                setProjection(result.data.monthly);
+                // Use startTransition to avoid UI flash during refresh
+                const monthly = result.data.monthly;
+                startTransition(() => {
+                    setProjection(monthly);
+                });
             }
         } catch (err) {
             console.error('Failed to fetch projection:', err);
@@ -382,6 +378,14 @@ export default function CashflowPage() {
         });
     };
 
+    const handleManageItems = () => {
+        appContext?.openDrawer({
+            mode: 'view',
+            entityType: 'cashflow-item',
+            yearMonth: selectedMonth,
+        });
+    };
+
     if (isLoading) {
         return (
             <div className="flex items-center justify-center h-[60vh]">
@@ -444,6 +448,14 @@ export default function CashflowPage() {
                             severity="danger"
                             size="small"
                             onClick={() => handleAddItem('expense')}
+                        />
+                        <Button
+                            label="Manage Items"
+                            icon="pi pi-list"
+                            severity="secondary"
+                            size="small"
+                            outlined
+                            onClick={handleManageItems}
                         />
                     </div>
                 </div>

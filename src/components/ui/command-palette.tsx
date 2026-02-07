@@ -324,21 +324,51 @@ export function CommandPalette({
     );
 }
 
-// Hook for keyboard shortcut
-export function useCommandPalette() {
+// Hook for keyboard shortcuts
+export function useCommandPalette(shortcuts?: {
+    onReconcile?: () => void;
+    onAddIncome?: () => void;
+    onAddExpense?: () => void;
+}) {
     const [isOpen, setIsOpen] = useState(false);
 
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
+            // Don't handle shortcuts when typing in inputs
+            const target = e.target as HTMLElement;
+            const isInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
+
             if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
                 e.preventDefault();
                 setIsOpen(prev => !prev);
+                return;
+            }
+
+            // Only handle other shortcuts when not in an input
+            if (isInput) return;
+
+            if ((e.metaKey || e.ctrlKey) && e.key === 'r') {
+                e.preventDefault();
+                shortcuts?.onReconcile?.();
+                return;
+            }
+
+            if ((e.metaKey || e.ctrlKey) && e.key === 'i') {
+                e.preventDefault();
+                shortcuts?.onAddIncome?.();
+                return;
+            }
+
+            if ((e.metaKey || e.ctrlKey) && e.key === 'e') {
+                e.preventDefault();
+                shortcuts?.onAddExpense?.();
+                return;
             }
         };
 
         document.addEventListener('keydown', handleKeyDown);
         return () => document.removeEventListener('keydown', handleKeyDown);
-    }, []);
+    }, [shortcuts]);
 
     return {
         isOpen,

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card } from 'primereact/card';
 import { Button } from 'primereact/button';
@@ -156,8 +156,12 @@ export default function OverviewPage() {
     const [projection, setProjection] = useState<WealthProjectionMonth[]>([]);
     const [lastReconciled, setLastReconciled] = useState<string | null>(null);
 
+    const hasLoadedOnce = useRef(false);
+
     const fetchData = useCallback(async () => {
-        setIsLoading(true);
+        if (!hasLoadedOnce.current) {
+            setIsLoading(true);
+        }
         try {
             const [accountsRes, investmentsRes, receivablesRes, debtsRes, sessionRes] = await Promise.all([
                 getAccounts(),
@@ -225,7 +229,10 @@ export default function OverviewPage() {
         } catch (err) {
             console.error('Failed to fetch data:', err);
         } finally {
-            setIsLoading(false);
+            if (!hasLoadedOnce.current) {
+                hasLoadedOnce.current = true;
+                setIsLoading(false);
+            }
         }
     }, []);
 
@@ -533,6 +540,7 @@ export default function OverviewPage() {
                 visible={entityDrawer.visible}
                 category={entityDrawer.category}
                 onClose={() => setEntityDrawer(prev => ({ ...prev, visible: false }))}
+                onRefresh={fetchData}
             />
         </div>
     );

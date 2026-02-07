@@ -7,7 +7,7 @@ import { Column } from 'primereact/column';
 import { ProgressSpinner } from 'primereact/progressspinner';
 import { TabView, TabPanel } from 'primereact/tabview';
 import { formatCurrency, formatYearMonth } from '@/lib/constants';
-import { useDashboardContext } from '@/components/layout/dashboard-layout';
+import { useAppContext } from '@/components/layout/app-layout';
 import { WealthChart, NetWorthChart } from '@/components/charts';
 import { getAccounts } from '@/lib/actions/accounts';
 import { getProjection } from '@/lib/actions/projection';
@@ -35,7 +35,7 @@ import type {
 } from '@/types';
 
 export default function WealthPage() {
-    const dashboardContext = useDashboardContext();
+    const appContext = useAppContext();
     const [accounts, setAccounts] = useState<FinancialAccount[]>([]);
     const [cashProjections, setCashProjections] = useState<Map<string, MonthlyProjection[]>>(new Map());
     const [investments, setInvestments] = useState<InvestmentAccount[]>([]);
@@ -140,10 +140,10 @@ export default function WealthPage() {
 
     // Register refresh callback
     useEffect(() => {
-        if (dashboardContext) {
-            dashboardContext.setRefreshCallback(fetchData);
+        if (appContext) {
+            appContext.setRefreshCallback(fetchData);
         }
-    }, [dashboardContext, fetchData]);
+    }, [appContext, fetchData]);
 
     // Calculate wealth projection when data changes
     useEffect(() => {

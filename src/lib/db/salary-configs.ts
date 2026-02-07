@@ -31,14 +31,13 @@ export function calculateNetSalary(
   otherDeductions: number = 0,
   benefits: SalaryBenefit[] = []
 ): number {
-  // Benefits are added to gross to determine the taxable base
+  // Taxable benefits increase the tax/contributions base but are NOT received as cash
   const taxableBenefitsTotal = benefits.filter(b => b.isTaxable).reduce((sum, b) => sum + b.amount, 0);
-  const allBenefitsTotal = benefits.reduce((sum, b) => sum + b.amount, 0);
   const taxableBase = grossSalary + taxableBenefitsTotal;
   const taxAmount = taxableBase * (taxRate / 100);
   const contributionsAmount = taxableBase * (contributionsRate / 100);
-  // Deductions are subtracted from gross only, then all benefits are added back
-  return grossSalary - taxAmount - contributionsAmount - otherDeductions + allBenefitsTotal;
+  // Net = gross minus all deductions (benefits are NOT added back since they are not received as cash)
+  return grossSalary - taxAmount - contributionsAmount - otherDeductions;
 }
 
 export async function getSalaryConfigs(userId: string, accountId: string): Promise<SalaryConfig[]> {

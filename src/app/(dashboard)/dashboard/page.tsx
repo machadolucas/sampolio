@@ -8,7 +8,7 @@ import { DataTable } from 'primereact/datatable';
 import { Column } from 'primereact/column';
 import { ProgressSpinner } from 'primereact/progressspinner';
 import { formatCurrency, formatYearMonth } from '@/lib/constants';
-import { useDashboardContext } from '@/components/layout/dashboard-layout';
+import { useAppContext } from '@/components/layout/app-layout';
 import { CashflowChart, BalanceProjectionChart } from '@/components/charts';
 import { getAccounts } from '@/lib/actions/accounts';
 import { getProjection } from '@/lib/actions/projection';
@@ -28,7 +28,7 @@ interface ProjectionData {
 }
 
 export default function DashboardPage() {
-    const dashboardContext = useDashboardContext();
+    const appContext = useAppContext();
     const [accounts, setAccounts] = useState<FinancialAccount[]>([]);
     const [selectedAccountId, setSelectedAccountId] = useState<string>('');
     const [projection, setProjection] = useState<ProjectionData | null>(null);
@@ -76,19 +76,19 @@ export default function DashboardPage() {
         fetchProjectionData();
     }, [fetchProjectionData]);
 
-    // Register refresh callback with dashboard context
+    // Register refresh callback with app context
     useEffect(() => {
-        if (dashboardContext) {
-            dashboardContext.setRefreshCallback(fetchProjectionData);
+        if (appContext) {
+            appContext.setRefreshCallback(fetchProjectionData);
         }
-    }, [dashboardContext, fetchProjectionData]);
+    }, [appContext, fetchProjectionData]);
 
     // Sync selected account with context
     useEffect(() => {
-        if (dashboardContext && selectedAccountId) {
-            dashboardContext.setSelectedAccountId(selectedAccountId);
+        if (appContext && selectedAccountId) {
+            appContext.setSelectedAccountId(selectedAccountId);
         }
-    }, [dashboardContext, selectedAccountId]);
+    }, [appContext, selectedAccountId]);
 
     if (isLoading) {
         return (

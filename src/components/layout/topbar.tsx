@@ -10,16 +10,16 @@ import { useTheme } from '@/components/providers/theme-provider';
 import { MenuItem } from 'primereact/menuitem';
 
 interface TopBarProps {
-    onOpenAccounts: () => void;
-    onOpenRecurring: () => void;
-    onOpenPlanned: () => void;
-    onOpenSalary: () => void;
-    onOpenInvestments: () => void;
-    onOpenDebts: () => void;
-    onOpenReceivables: () => void;
+    onOpenAccounts?: () => void;
+    onOpenRecurring?: () => void;
+    onOpenPlanned?: () => void;
+    onOpenSalary?: () => void;
+    onOpenInvestments?: () => void;
+    onOpenDebts?: () => void;
+    onOpenReceivables?: () => void;
     onOpenUsers?: () => void;
     onOpenSettings?: () => void;
-    hasActiveAccounts: boolean;
+    hasActiveAccounts?: boolean;
 }
 
 export function TopBar({
