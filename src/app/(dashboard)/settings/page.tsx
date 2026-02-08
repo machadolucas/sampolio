@@ -14,6 +14,7 @@ import { useTheme } from '@/components/providers/theme-provider';
 import { useAppContext } from '@/components/layout/app-layout';
 import { getSettings, updateSettings } from '@/lib/actions/admin';
 import { getUserPreferences, updateCategories, updateTaxDefaults } from '@/lib/actions/user-preferences';
+import { getAppVersion } from '@/lib/actions/app-info';
 import { ITEM_CATEGORIES } from '@/lib/constants';
 import type { TaxDefaults } from '@/types';
 
@@ -40,6 +41,9 @@ export default function SettingsPage() {
     const [taxMessage, setTaxMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
     const [isSavingTax, setIsSavingTax] = useState(false);
 
+    // App version
+    const [appVersion, setAppVersion] = useState<string>('');
+
     // Active categories = built-in minus removed + custom
     const activeCategories = [
         ...ITEM_CATEGORIES.filter(c => !removedDefaults.includes(c)),
@@ -65,8 +69,15 @@ export default function SettingsPage() {
                 }
             }
         }
+        async function loadAppInfo() {
+            const result = await getAppVersion();
+            if (result.success) {
+                setAppVersion(result.version);
+            }
+        }
         loadSettings();
         loadPreferences();
+        loadAppInfo();
     }, [isAdmin]);
 
     const handleSaveAdminSettings = async () => {
@@ -475,9 +486,24 @@ export default function SettingsPage() {
                     <p className={isDark ? 'text-gray-300' : 'text-gray-600'}>
                         <strong>Sampolio</strong> - Personal Finance Planning Tool
                     </p>
-                    <p className={`text-sm ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                        Version 1.0.0
-                    </p>
+
+                    {appVersion && (
+                        <p className={`text-sm ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                            Version {appVersion}
+                        </p>
+                    )}
+
+                    <div className="pt-2">
+                        <a
+                            href="https://github.com/machadolucas/sampolio"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className={`inline-flex items-center gap-2 text-sm hover:underline ${isDark ? 'text-blue-400 hover:text-blue-300' : 'text-blue-600 hover:text-blue-700'}`}
+                        >
+                            <i className="pi pi-github" />
+                            View on GitHub
+                        </a>
+                    </div>
                 </div>
             </Card>
         </div>

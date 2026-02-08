@@ -45,14 +45,37 @@ if [ -f "$PLIST_FILE" ]; then
     launchctl unload "$PLIST_FILE" 2>/dev/null || true
 fi
 
+# Load .env file if it exists
+if [ -f "$SCRIPT_DIR/.env" ]; then
+    echo -e "${GREEN}Loading environment variables from .env file...${NC}"
+    # Source variables from .env file
+    set -a
+    source "$SCRIPT_DIR/.env"
+    set +a
+fi
+
 # Read or generate AUTH_SECRET
-CONFIG_FILE="$DATA_DIR/.auth_secret"
-if [ -f "$CONFIG_FILE" ]; then
-    AUTH_SECRET=$(cat "$CONFIG_FILE")
-else
-    AUTH_SECRET=$(openssl rand -base64 32)
-    echo "$AUTH_SECRET" > "$CONFIG_FILE"
-    chmod 600 "$CONFIG_FILE"
+if [ -z "$AUTH_SECRET" ]; then
+    CONFIG_FILE="$DATA_DIR/.auth_secret"
+    if [ -f "$CONFIG_FILE" ]; then
+        AUTH_SECRET=$(cat "$CONFIG_FILE")
+    else
+        AUTH_SECRET=$(openssl rand -base64 32)
+        echo "$AUTH_SECRET" > "$CONFIG_FILE"
+        chmod 600 "$CONFIG_FILE"
+    fi
+fi
+
+# Read or generate ENCRYPTION_KEY
+if [ -z "$ENCRYPTION_KEY" ]; then
+    ENCRYPTION_CONFIG_FILE="$DATA_DIR/.encryption_key"
+    if [ -f "$ENCRYPTION_CONFIG_FILE" ]; then
+        ENCRYPTION_KEY=$(cat "$ENCRYPTION_CONFIG_FILE")
+    else
+        ENCRYPTION_KEY=$(openssl rand -hex 32)
+        echo "$ENCRYPTION_KEY" > "$ENCRYPTION_CONFIG_FILE"
+        chmod 600 "$ENCRYPTION_CONFIG_FILE"
+    fi
 fi
 
 # Create the LaunchAgents directory if it doesn't exist
@@ -88,6 +111,8 @@ cat > "$PLIST_FILE" << EOF
         <string>${DATA_DIR}</string>
         <key>AUTH_SECRET</key>
         <string>${AUTH_SECRET}</string>
+        <key>ENCRYPTION_KEY</key>
+        <string>${ENCRYPTION_KEY}</string>
     </dict>
     
     <key>RunAtLoad</key>

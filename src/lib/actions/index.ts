@@ -11,3 +11,4 @@ export * from './debts';
 export * from './receivables';
 export * from './taxed-income';
 export * from './reconciliation';
+export * from './app-info';

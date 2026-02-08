@@ -23,14 +23,14 @@ DATA_DIR="${SAMPOLIO_DATA_DIR:-$HOME/.sampolio/data}"
 # Check if Node.js is installed
 if ! command -v node &> /dev/null; then
     echo -e "${RED}Error: Node.js is not installed.${NC}"
-    echo "Please install Node.js 18 or later from https://nodejs.org"
+    echo "Please install Node.js 20 or later from https://nodejs.org"
     exit 1
 fi
 
-# Check Node.js version (minimum 18)
+# Check Node.js version (minimum 20)
 NODE_VERSION=$(node -v | cut -d'v' -f2 | cut -d'.' -f1)
-if [ "$NODE_VERSION" -lt 18 ]; then
-    echo -e "${RED}Error: Node.js 18 or later is required.${NC}"
+if [ "$NODE_VERSION" -lt 20 ]; then
+    echo -e "${RED}Error: Node.js 20 or later is required.${NC}"
     echo "Current version: $(node -v)"
     exit 1
 fi
@@ -42,6 +42,15 @@ mkdir -p "$DATA_DIR"
 if [ ! -f "$SCRIPT_DIR/server.js" ]; then
     echo -e "${RED}Error: server.js not found. Make sure you're running from the correct directory.${NC}"
     exit 1
+fi
+
+# Load .env file if it exists
+if [ -f "$SCRIPT_DIR/.env" ]; then
+    echo -e "${GREEN}Loading environment variables from .env file...${NC}"
+    # Export variables from .env file
+    set -a
+    source "$SCRIPT_DIR/.env"
+    set +a
 fi
 
 # Generate a random AUTH_SECRET if not set
@@ -56,6 +65,21 @@ if [ -z "$AUTH_SECRET" ]; then
         echo "$AUTH_SECRET" > "$CONFIG_FILE"
         chmod 600 "$CONFIG_FILE"
         echo -e "${YELLOW}Generated new AUTH_SECRET (saved for future runs)${NC}"
+    fi
+fi
+
+# Generate a random ENCRYPTION_KEY if not set
+if [ -z "$ENCRYPTION_KEY" ]; then
+    # Try to read from saved config
+    ENCRYPTION_CONFIG_FILE="$DATA_DIR/.encryption_key"
+    if [ -f "$ENCRYPTION_CONFIG_FILE" ]; then
+        export ENCRYPTION_KEY=$(cat "$ENCRYPTION_CONFIG_FILE")
+    else
+        # Generate a new key and save it
+        export ENCRYPTION_KEY=$(openssl rand -hex 32)
+        echo "$ENCRYPTION_KEY" > "$ENCRYPTION_CONFIG_FILE"
+        chmod 600 "$ENCRYPTION_CONFIG_FILE"
+        echo -e "${YELLOW}Generated new ENCRYPTION_KEY (saved for future runs)${NC}"
     fi
 fi
 

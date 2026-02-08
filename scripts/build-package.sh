@@ -84,28 +84,74 @@ cp "$SCRIPT_DIR/install-launchd.sh" "$PACKAGE_DIR/"
 cp "$SCRIPT_DIR/uninstall-launchd.sh" "$PACKAGE_DIR/"
 chmod +x "$PACKAGE_DIR/"*.sh
 
+# Create .env.example file
+cat > "$PACKAGE_DIR/.env.example" << 'EOF'
+# Sampolio Configuration
+# Copy this file to .env and fill in your values
+
+# Authentication secret (required) - generate with: openssl rand -base64 32
+AUTH_SECRET=your-auth-secret-here
+
+# Encryption key (required) - generate with: openssl rand -hex 32
+# WARNING: Changing this will make existing data unreadable!
+ENCRYPTION_KEY=your-encryption-key-here
+
+# Optional: Custom port (default: 3999)
+#SAMPOLIO_PORT=3999
+
+# Optional: Custom host (default: 0.0.0.0)
+#SAMPOLIO_HOST=0.0.0.0
+
+# Optional: Custom data directory (default: ~/.sampolio/data)
+#SAMPOLIO_DATA_DIR=/path/to/data
+EOF
+
 # Create a simple README for the distribution
 cat > "$PACKAGE_DIR/README.txt" << 'EOF'
 === Sampolio - Personal Finance Manager ===
 
 QUICK START:
-1. Run the app: ./run-sampolio.sh
-2. Open browser: http://localhost:3999
+
+Method 1: Auto-generated secrets (simplest)
+  1. Run: ./run-sampolio.sh
+  2. Open: http://localhost:3999
+  Secrets will be auto-generated and saved in ~/.sampolio/data/
+
+Method 2: Fixed secrets (recommended for production)
+  1. Copy .env.example to .env
+  2. Generate secrets:
+       openssl rand -base64 32    # Use for AUTH_SECRET
+       openssl rand -hex 32       # Use for ENCRYPTION_KEY
+  3. Edit .env and paste the generated secrets
+  4. Run: ./run-sampolio.sh
+  5. Open: http://localhost:3999
 
 AUTO-START ON LOGIN:
-1. Run: ./install-launchd.sh
-2. The app will start automatically when you log in
+  ./install-launchd.sh
+  The app will start automatically when you log in.
 
 TO STOP AUTO-START:
-1. Run: ./uninstall-launchd.sh
+  ./uninstall-launchd.sh
+
+IMPORTANT NOTES:
+- Keep your .env file secure and backed up!
+- Changing ENCRYPTION_KEY will make existing data unreadable
+- Changing AUTH_SECRET will invalidate all user sessions
+- Never commit .env file to version control
+
+MIGRATING DATA:
+If you have existing data on another server:
+  1. Copy .env file from original server
+  2. Copy ~/.sampolio/data/ directory
+  3. Use the same .env file on new server
 
 CONFIGURATION:
 - Default port: 3999
-- Data is stored in: ~/.sampolio/data/
-- Set AUTH_SECRET environment variable for production security
+- Data directory: ~/.sampolio/data/
+- Logs (when using launchd): ~/.sampolio/logs/
 
 REQUIREMENTS:
-- Node.js 18 or later
+- Node.js 20 or later
 
 For more information, visit the project repository.
 EOF
