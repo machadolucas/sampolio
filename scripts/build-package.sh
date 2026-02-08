@@ -63,19 +63,19 @@ ZIP_NAME="sampolio-v${VERSION}-macos.zip"
 rm -rf "$DIST_DIR"
 mkdir -p "$PACKAGE_DIR"
 
-# Copy standalone build
-cp -r "$PROJECT_ROOT/.next/standalone/"* "$PACKAGE_DIR/"
+# Copy standalone build (use rsync to handle symlinks from pnpm)
+rsync -a "$PROJECT_ROOT/.next/standalone/" "$PACKAGE_DIR/"
 
 # Copy static files
 if [ -d "$PROJECT_ROOT/.next/static" ]; then
     mkdir -p "$PACKAGE_DIR/.next/static"
-    cp -r "$PROJECT_ROOT/.next/static/"* "$PACKAGE_DIR/.next/static/"
+    rsync -a "$PROJECT_ROOT/.next/static/" "$PACKAGE_DIR/.next/static/"
 fi
 
 # Copy public folder
 if [ -d "$PROJECT_ROOT/public" ]; then
     mkdir -p "$PACKAGE_DIR/public"
-    cp -r "$PROJECT_ROOT/public/"* "$PACKAGE_DIR/public/"
+    rsync -a "$PROJECT_ROOT/public/" "$PACKAGE_DIR/public/"
 fi
 
 # Copy the run/install scripts
