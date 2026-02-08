@@ -98,6 +98,13 @@ export PORT="$PORT"
 export HOSTNAME="$HOST"
 export DATA_DIR="$DATA_DIR"
 export NODE_ENV="production"
+export AUTH_TRUST_HOST="true"
+
+# Set AUTH_URL if provided (needed for correct redirects behind a reverse proxy)
+if [ -n "$AUTH_URL" ]; then
+    export AUTH_URL
+    echo "  URL:  $AUTH_URL"
+fi
 
 # Run the Next.js standalone server
 exec node "$SCRIPT_DIR/server.js"

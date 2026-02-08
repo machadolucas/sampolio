@@ -113,6 +113,10 @@ cat > "$PLIST_FILE" << EOF
         <string>${AUTH_SECRET}</string>
         <key>ENCRYPTION_KEY</key>
         <string>${ENCRYPTION_KEY}</string>
+        <key>AUTH_TRUST_HOST</key>
+        <string>true</string>${AUTH_URL:+
+        <key>AUTH_URL</key>
+        <string>${AUTH_URL}</string>}
     </dict>
     
     <key>RunAtLoad</key>

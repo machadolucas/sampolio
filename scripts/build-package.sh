@@ -63,8 +63,16 @@ ZIP_NAME="sampolio-v${VERSION}-macos.zip"
 rm -rf "$DIST_DIR"
 mkdir -p "$PACKAGE_DIR"
 
-# Copy standalone build (use rsync to handle symlinks from pnpm)
-rsync -a "$PROJECT_ROOT/.next/standalone/" "$PACKAGE_DIR/"
+# Copy standalone build (dereference symlinks so the package is fully self-contained;
+# exit code 23 = some dangling symlinks were skipped, which is harmless)
+rsync -aL "$PROJECT_ROOT/.next/standalone/" "$PACKAGE_DIR/" || {
+    rc=$?
+    if [ $rc -eq 23 ]; then
+        echo -e "${YELLOW}Warning: Some dangling symlinks were skipped (harmless).${NC}"
+    else
+        exit $rc
+    fi
+}
 
 # Copy static files
 if [ -d "$PROJECT_ROOT/.next/static" ]; then
@@ -104,6 +112,10 @@ ENCRYPTION_KEY=your-encryption-key-here
 
 # Optional: Custom data directory (default: ~/.sampolio/data)
 #SAMPOLIO_DATA_DIR=/path/to/data
+
+# Optional: Public URL (required if behind a reverse proxy)
+# This tells NextAuth the correct URL for redirects
+#AUTH_URL=https://sampolio.example.com
 EOF
 
 # Create a simple README for the distribution
