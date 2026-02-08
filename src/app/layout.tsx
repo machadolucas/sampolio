@@ -1,12 +1,13 @@
-import type { Metadata } from "next";
-import { Bodoni_Moda, Quicksand } from "next/font/google";
 import { PrimeProvider } from "@/components/providers/prime-provider";
 import { ThemeProvider } from "@/components/providers/theme-provider";
+import type { Metadata } from "next";
+import { Old_Standard_TT, Quicksand } from "next/font/google";
 import "./globals.css";
 
-const bodoniModa = Bodoni_Moda({
+const oldStandardTT = Old_Standard_TT({
   variable: "--font-heading",
   subsets: ["latin"],
+  weight: ["400", "700"],
   display: "swap",
 });
 
@@ -29,7 +30,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body
-        className={`${bodoniModa.variable} ${quicksand.variable} antialiased`}
+        className={`${oldStandardTT.variable} ${quicksand.variable} antialiased`}
       >
         <ThemeProvider>
           <PrimeProvider>

@@ -121,7 +121,7 @@ function SignInForm() {
     const header = (
         <div className="text-center pt-4">
             <div className="text-4xl mb-2">💰</div>
-            <h2 className="text-2xl font-semibold text-gray-900">Sign in to Sampolio</h2>
+            <h2 className="text-2xl font-bold  text-gray-900">Sign in to Sampolio</h2>
         </div>
     );
 

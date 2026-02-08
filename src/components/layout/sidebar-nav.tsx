@@ -90,9 +90,9 @@ export function SidebarNav({
                 <Link href="/" className="flex items-center gap-3 no-underline">
                     <span className="text-2xl">💰</span>
                     {expanded && (
-                        <span className={`text-xl font-bold whitespace-nowrap ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
+                        <h1 className={`text-2xl font-extrabold whitespace-nowrap ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
                             Sampolio
-                        </span>
+                        </h1>
                     )}
                 </Link>
             </div>

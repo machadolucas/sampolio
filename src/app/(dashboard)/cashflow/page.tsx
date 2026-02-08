@@ -154,8 +154,8 @@ function MonthDetailsPanel({ projection, currency, onEditItem }: MonthDetailsPan
                 <div className="flex items-center gap-1 flex-shrink-0">
                     <div className={`h-px w-4 ${isDark ? 'bg-gray-600' : 'bg-gray-300'}`} />
                     <div className={`text-center px-2 py-1 rounded-full ${projection.netChange >= 0
-                            ? 'bg-green-500/15 text-green-500'
-                            : 'bg-red-500/15 text-red-500'
+                        ? 'bg-green-500/15 text-green-500'
+                        : 'bg-red-500/15 text-red-500'
                         }`}>
                         <div className="text-xs font-medium">
                             {projection.netChange >= 0 ? '+' : ''}{formatCurrency(projection.netChange, currency)}
@@ -518,94 +518,95 @@ export default function CashflowPage() {
                 </Card>
             )}
 
-            {/* Monthly Flow + Cashflow Projection side by side */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <Card>
-                    <Tooltip target=".info-monthly-flow" position="top" />
-                    <h3 className={`flex items-center font-semibold mb-3 ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
-                        <MdAccountTree className="mr-2" />Monthly Flow
-                        <MdInfoOutline
-                            className="info-monthly-flow ml-auto opacity-40 cursor-help"
-                            size={16}
-                            data-pr-tooltip="Sankey diagram showing how your income flows into expenses. Left side shows individual income sources, center aggregates into your budget, right side breaks down expenses by category and individual items."
-                        />
-                    </h3>
-                    {flowData ? (
-                        <MonthlyFlowChart
-                            data={flowData}
-                            height="350px"
-                            onClickItem={(item) => {
-                                if (item.id === 'new') {
-                                    handleAddItem(item.type as 'income' | 'expense');
-                                } else {
-                                    handleEditItem(item.id, item.source, item.type);
-                                }
-                            }}
-                        />
-                    ) : (
-                        <div className={`text-center py-12 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                            No data for selected month
-                        </div>
-                    )}
-                </Card>
-
-                <Card>
-                    <Tooltip target=".info-waterfall" position="top" />
-                    <h3 className={`flex items-center font-semibold mb-3 ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
-                        <MdBarChart className="mr-2" />Cashflow Projection
-                        <MdInfoOutline
-                            className="info-waterfall ml-auto opacity-40 cursor-help"
-                            size={16}
-                            data-pr-tooltip="Waterfall chart showing your projected balance over time. Green bars represent income, red bars represent expenses, and the line tracks your running balance across months."
-                        />
-                    </h3>
-                    <CashflowWaterfallChart
-                        data={projection}
-                        currency={currency as Currency}
-                        height="350px"
-                    />
-                </Card>
-            </div>
-
-            {/* Month Details + Expense Treemap */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <Card>
-                    <Tooltip target=".info-month-details" position="top" />
-                    <h3 className={`flex items-center font-semibold mb-2 ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
-                        Month Details
-                        <MdInfoOutline
-                            className="info-month-details ml-auto opacity-40 cursor-help"
-                            size={16}
-                            data-pr-tooltip="Detailed breakdown of all income and expense items for the selected month. Shows starting and ending balance with the net change. Click any item to edit it."
-                        />
-                    </h3>
-                    <MonthDetailsPanel
-                        projection={selectedProjection}
-                        currency={currency as Currency}
-                        onEditItem={handleEditItem}
-                    />
-                </Card>
-
-                {selectedProjection && selectedProjection.expenseBreakdown.length > 0 ? (
+            {/* Charts: Left 2/3 (Flow + Projection stacked) | Right 1/3 (Details + Treemap stacked) */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                {/* Left column: 2/3 width */}
+                <div className="lg:col-span-2 space-y-6">
                     <Card>
-                        <Tooltip target=".info-treemap" position="top" />
+                        <Tooltip target=".info-monthly-flow" position="top" />
                         <h3 className={`flex items-center font-semibold mb-3 ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
-                            <MdBarChart className="mr-2" />Expenses Breakdown
+                            <MdAccountTree className="mr-2" />Monthly Flow
                             <MdInfoOutline
-                                className="info-treemap ml-auto opacity-40 cursor-help"
+                                className="info-monthly-flow ml-auto opacity-40 cursor-help"
                                 size={16}
-                                data-pr-tooltip="Treemap showing the proportional size of each expense category and item for the selected month. Larger blocks represent bigger expenses, making it easy to spot where most money goes."
+                                data-pr-tooltip="Sankey diagram showing how your income flows into expenses. Left side shows individual income sources, center aggregates into your budget, right side breaks down expenses by category and individual items."
                             />
                         </h3>
-                        <ExpenseTreemapChart
-                            expenses={selectedProjection.expenseBreakdown}
+                        {flowData ? (
+                            <MonthlyFlowChart
+                                data={flowData}
+                                height="350px"
+                                onClickItem={(item) => {
+                                    if (item.id === 'new') {
+                                        handleAddItem(item.type as 'income' | 'expense');
+                                    } else {
+                                        handleEditItem(item.id, item.source, item.type);
+                                    }
+                                }}
+                            />
+                        ) : (
+                            <div className={`text-center py-12 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                                No data for selected month
+                            </div>
+                        )}
+                    </Card>
+
+                    <Card>
+                        <Tooltip target=".info-waterfall" position="top" />
+                        <h3 className={`flex items-center font-semibold mb-3 ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
+                            <MdBarChart className="mr-2" />Cashflow Projection
+                            <MdInfoOutline
+                                className="info-waterfall ml-auto opacity-40 cursor-help"
+                                size={16}
+                                data-pr-tooltip="Waterfall chart showing your projected balance over time. Green bars represent income, red bars represent expenses, and the line tracks your running balance across months."
+                            />
+                        </h3>
+                        <CashflowWaterfallChart
+                            data={projection}
                             currency={currency as Currency}
                             height="350px"
                         />
                     </Card>
-                ) : (
-                    <div />
-                )}
+                </div>
+
+                {/* Right column: 1/3 width */}
+                <div className="space-y-6">
+                    <Card>
+                        <Tooltip target=".info-month-details" position="top" />
+                        <h3 className={`flex items-center font-semibold mb-2 ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
+                            Month Details
+                            <MdInfoOutline
+                                className="info-month-details ml-auto opacity-40 cursor-help"
+                                size={16}
+                                data-pr-tooltip="Detailed breakdown of all income and expense items for the selected month. Shows starting and ending balance with the net change. Click any item to edit it."
+                            />
+                        </h3>
+                        <MonthDetailsPanel
+                            projection={selectedProjection}
+                            currency={currency as Currency}
+                            onEditItem={handleEditItem}
+                        />
+                    </Card>
+
+                    {selectedProjection && selectedProjection.expenseBreakdown.length > 0 && (
+                        <Card>
+                            <Tooltip target=".info-treemap" position="top" />
+                            <h3 className={`flex items-center font-semibold mb-3 ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
+                                <MdBarChart className="mr-2" />Expenses Breakdown
+                                <MdInfoOutline
+                                    className="info-treemap ml-auto opacity-40 cursor-help"
+                                    size={16}
+                                    data-pr-tooltip="Treemap showing the proportional size of each expense category and item for the selected month. Larger blocks represent bigger expenses, making it easy to spot where most money goes."
+                                />
+                            </h3>
+                            <ExpenseTreemapChart
+                                expenses={selectedProjection.expenseBreakdown}
+                                currency={currency as Currency}
+                                height="350px"
+                            />
+                        </Card>
+                    )}
+                </div>
             </div>
 
             {/* Data Table */}

@@ -32,12 +32,12 @@ body {
 
 /* Heading font */
 h1, h2, h3, h4, h5, h6 {
-  font-family: var(--font-heading), 'Bodoni Moda', serif !important;
+  font-family: var(--font-heading), 'Old Standard TT', serif !important;
 }
 
-/* Override PrimeReact theme font-family (exclude PrimeIcons) */
+/* Override PrimeReact theme font-family (exclude PrimeIcons and headings) */
 .p-component,
-.p-component *:not(.pi),
+.p-component *:not(.pi):not(h1):not(h2):not(h3):not(h4):not(h5):not(h6),
 .p-inputtext,
 .p-button,
 .p-dropdown,
@@ -67,7 +67,7 @@ h1, h2, h3, h4, h5, h6 {
 .p-card h4, .p-card h5, .p-card h6,
 .p-sidebar h1, .p-sidebar h2, .p-sidebar h3,
 .p-sidebar h4, .p-sidebar h5, .p-sidebar h6 {
-  font-family: var(--font-heading), 'Bodoni Moda', serif !important;
+  font-family: var(--font-heading), 'Old Standard TT', serif !important;
 }
 
 .p-card {
