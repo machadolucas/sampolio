@@ -18,7 +18,6 @@ interface MonthlyFlowChartProps {
     onClickItem?: (item: CashflowItem) => void;
     onClickStart?: () => void;
     onClickEnd?: () => void;
-    groupByCategory?: boolean;
 }
 
 interface NodeMeta {
@@ -30,7 +29,6 @@ export function MonthlyFlowChart({
     data,
     height = '400px',
     onClickItem,
-    groupByCategory = true,
 }: MonthlyFlowChartProps) {
     const { theme } = useTheme();
     const isDark = theme === 'dark';
@@ -51,33 +49,6 @@ export function MonthlyFlowChart({
         const hasSavings = netChange > 0;
         const hasDeficit = netChange < 0;
 
-        // Group items
-        const groupItems = (items: CashflowItem[]): { label: string; amount: number; items: CashflowItem[] }[] => {
-            if (!groupByCategory) {
-                return items.map(item => ({
-                    label: item.name,
-                    amount: item.amount,
-                    items: [item],
-                }));
-            }
-            const groups = new Map<string, CashflowItem[]>();
-            items.forEach(item => {
-                const key = item.category || item.name;
-                if (!groups.has(key)) groups.set(key, []);
-                groups.get(key)!.push(item);
-            });
-            return Array.from(groups.entries())
-                .map(([cat, catItems]) => ({
-                    label: cat,
-                    amount: catItems.reduce((s, i) => s + i.amount, 0),
-                    items: catItems,
-                }))
-                .sort((a, b) => b.amount - a.amount);
-        };
-
-        const incomeGroups = groupItems(data.inflows);
-        const expenseGroups = groupItems(data.outflows);
-
         // Center node: "Budget"
         const centerNodeName = 'Budget';
         nodes.push({
@@ -87,55 +58,109 @@ export function MonthlyFlowChart({
         });
         meta.set(centerNodeName, { items: [], side: 'center' });
 
-        // Income nodes (depth 0)
-        incomeGroups.forEach(group => {
-            const nodeName = `Income: ${group.label}`;
+        // Income nodes (depth 0) — individual items, no grouping
+        data.inflows.forEach(item => {
+            const nodeName = `Income: ${item.name}`;
+            // Handle duplicate names by appending id if needed
+            const existingNode = nodes.find(n => n.name === nodeName);
+            const uniqueName = existingNode ? `Income: ${item.name} (${item.id.slice(-4)})` : nodeName;
             nodes.push({
-                name: nodeName,
+                name: uniqueName,
                 itemStyle: { color: GREEN, borderColor: GREEN },
                 depth: 0,
             });
             links.push({
-                source: nodeName,
+                source: uniqueName,
                 target: centerNodeName,
-                value: group.amount,
+                value: item.amount,
                 lineStyle: { color: GREEN, opacity: 0.3 },
             });
-            meta.set(nodeName, { items: group.items, side: 'left' });
+            meta.set(uniqueName, { items: [item], side: 'left' });
         });
 
-        // Expense nodes (depth 2)
-        expenseGroups.forEach(group => {
-            const nodeName = `Expense: ${group.label}`;
+        // Expense categories (depth 2) + individual items (depth 3)
+        const expensesByCategory = new Map<string, CashflowItem[]>();
+        data.outflows.forEach(item => {
+            const key = item.category || 'Other';
+            if (!expensesByCategory.has(key)) expensesByCategory.set(key, []);
+            expensesByCategory.get(key)!.push(item);
+        });
+
+        const sortedCategories = Array.from(expensesByCategory.entries())
+            .map(([cat, items]) => ({
+                category: cat,
+                items,
+                total: items.reduce((s, i) => s + i.amount, 0),
+            }))
+            .sort((a, b) => b.total - a.total);
+
+        sortedCategories.forEach(({ category, items, total }) => {
+            const catNodeName = `Category: ${category}`;
             nodes.push({
-                name: nodeName,
+                name: catNodeName,
                 itemStyle: { color: RED, borderColor: RED },
                 depth: 2,
             });
             links.push({
                 source: centerNodeName,
-                target: nodeName,
-                value: group.amount,
+                target: catNodeName,
+                value: total,
                 lineStyle: { color: RED, opacity: 0.3 },
             });
-            meta.set(nodeName, { items: group.items, side: 'right' });
+            meta.set(catNodeName, { items, side: 'right' });
+
+            // Individual expense items (depth 3) — always expand
+            items
+                .sort((a, b) => b.amount - a.amount)
+                .forEach(item => {
+                    const itemNodeName = `Expense: ${item.name}`;
+                    const existingNode = nodes.find(n => n.name === itemNodeName);
+                    const uniqueName = existingNode ? `Expense: ${item.name} (${item.id.slice(-4)})` : itemNodeName;
+                    nodes.push({
+                        name: uniqueName,
+                        itemStyle: { color: '#f87171', borderColor: '#f87171' },
+                        depth: 3,
+                    });
+                    links.push({
+                        source: catNodeName,
+                        target: uniqueName,
+                        value: item.amount,
+                        lineStyle: { color: '#f87171', opacity: 0.2 },
+                    });
+                    meta.set(uniqueName, { items: [item], side: 'right' });
+                });
         });
 
         // Savings or Deficit node
         if (hasSavings) {
-            const savingsName = 'Savings';
+            const savingsCatName = 'Savings';
             nodes.push({
-                name: savingsName,
+                name: savingsCatName,
                 itemStyle: { color: GREEN, borderColor: GREEN },
                 depth: 2,
             });
             links.push({
                 source: centerNodeName,
-                target: savingsName,
+                target: savingsCatName,
                 value: netChange,
                 lineStyle: { color: GREEN, opacity: 0.3 },
             });
-            meta.set(savingsName, { items: [], side: 'right' });
+            meta.set(savingsCatName, { items: [], side: 'right' });
+
+            // Extend to depth 3
+            const savingsItemName = 'Net Savings';
+            nodes.push({
+                name: savingsItemName,
+                itemStyle: { color: GREEN, borderColor: GREEN },
+                depth: 3,
+            });
+            links.push({
+                source: savingsCatName,
+                target: savingsItemName,
+                value: netChange,
+                lineStyle: { color: GREEN, opacity: 0.3 },
+            });
+            meta.set(savingsItemName, { items: [], side: 'right' });
         } else if (hasDeficit) {
             const deficitName = 'From Previous Balance';
             nodes.push({
@@ -153,7 +178,7 @@ export function MonthlyFlowChart({
         }
 
         return { nodes, links, metaMap: meta };
-    }, [data, groupByCategory, GREEN, RED, BLUE, AMBER]);
+    }, [data, GREEN, RED, BLUE, AMBER]);
 
     // Sync metaMap to ref-stable map for event handlers
     useEffect(() => {
@@ -161,69 +186,74 @@ export function MonthlyFlowChart({
         metaMap.forEach((v, k) => nodeMetaMap.set(k, v));
     }, [metaMap, nodeMetaMap]);
 
-    const option = useMemo(() => ({
-        tooltip: {
-            trigger: 'item' as const,
-            formatter: (params: Record<string, unknown>) => {
-                if (params.dataType === 'node') {
-                    const name = params.name as string;
-                    const value = params.value as number;
-                    const m = metaMap.get(name);
-                    let html = `<strong>${name.replace(/^(Income|Expense): /, '')}</strong><br/>${formatCurrency(value, 'EUR')}`;
-                    if (m && m.items.length > 1) {
-                        html += '<br/><br/>';
-                        m.items.slice(0, 8).forEach(item => {
-                            html += `${item.name}: ${formatCurrency(item.amount, 'EUR')}<br/>`;
-                        });
-                        if (m.items.length > 8) {
-                            html += `+${m.items.length - 8} more`;
+    const option = useMemo(() => {
+        const cleanNodeName = (name: string) => name.replace(/^(Income|Expense|Category): /, '').replace(/ \([a-f0-9]{4}\)$/, '');
+
+        return {
+            tooltip: {
+                trigger: 'item' as const,
+                formatter: (params: Record<string, unknown>) => {
+                    if (params.dataType === 'node') {
+                        const name = params.name as string;
+                        const value = params.value as number;
+                        const m = metaMap.get(name);
+                        let html = `<strong>${cleanNodeName(name)}</strong><br/>${formatCurrency(value, 'EUR')}`;
+                        if (m && m.items.length > 1) {
+                            html += '<br/><br/>';
+                            m.items.slice(0, 8).forEach(item => {
+                                html += `${item.name}: ${formatCurrency(item.amount, 'EUR')}<br/>`;
+                            });
+                            if (m.items.length > 8) {
+                                html += `+${m.items.length - 8} more`;
+                            }
                         }
+                        return html;
                     }
-                    return html;
-                }
-                if (params.dataType === 'edge') {
-                    const d = params.data as { source: string; target: string; value: number };
-                    return `${d.source.replace(/^(Income|Expense): /, '')} → ${d.target.replace(/^(Income|Expense): /, '')}<br/>${formatCurrency(d.value, 'EUR')}`;
-                }
-                return '';
-            },
-        },
-        series: [
-            {
-                type: 'sankey',
-                layoutIterations: 0,
-                nodeGap: 12,
-                nodeWidth: 20,
-                left: 160,
-                right: 160,
-                top: 30,
-                bottom: 20,
-                data: nodes,
-                links,
-                orient: 'horizontal',
-                draggable: false,
-                label: {
-                    show: true,
-                    position: 'outside',
-                    formatter: (params: { name: string; value: number }) => {
-                        const cleanName = params.name.replace(/^(Income|Expense): /, '');
-                        return `${cleanName}\n${formatCurrency(params.value, 'EUR')}`;
-                    },
-                    fontSize: 11,
-                    color: isDark ? '#d1d5db' : '#374151',
+                    if (params.dataType === 'edge') {
+                        const d = params.data as { source: string; target: string; value: number };
+                        return `${cleanNodeName(d.source)} → ${cleanNodeName(d.target)}<br/>${formatCurrency(d.value, 'EUR')}`;
+                    }
+                    return '';
                 },
-                emphasis: {
-                    focus: 'adjacency',
+            },
+            series: [
+                {
+                    type: 'sankey',
+                    layoutIterations: 0,
+                    nodeGap: 10,
+                    nodeWidth: 16,
+                    left: 40,
+                    right: 40,
+                    top: 40,
+                    bottom: 20,
+                    data: nodes,
+                    links,
+                    orient: 'horizontal',
+                    draggable: false,
+                    label: {
+                        show: true,
+                        position: 'outside',
+                        formatter: (params: { name: string; value: number }) => {
+                            const clean = cleanNodeName(params.name);
+                            const truncated = clean.length > 18 ? clean.slice(0, 16) + '…' : clean;
+                            return `${truncated}\n${formatCurrency(params.value, 'EUR')}`;
+                        },
+                        fontSize: 10,
+                        color: isDark ? '#d1d5db' : '#374151',
+                    },
+                    emphasis: {
+                        focus: 'adjacency',
+                        lineStyle: {
+                            opacity: 0.6,
+                        },
+                    },
                     lineStyle: {
-                        opacity: 0.6,
+                        curveness: 0.5,
                     },
                 },
-                lineStyle: {
-                    curveness: 0.5,
-                },
-            },
-        ],
-    }), [nodes, links, isDark, metaMap]);
+            ],
+        };
+    }, [nodes, links, isDark, metaMap]);
 
     const onEvents = useMemo(() => ({
         click: (params: Record<string, unknown>) => {
@@ -233,10 +263,8 @@ export function MonthlyFlowChart({
             const m = nodeMetaMap.get(name);
             if (m && m.items.length === 1) {
                 onClickItem(m.items[0]);
-            } else if (m && m.items.length > 1) {
-                // Click on a group — open the first item for editing
-                onClickItem(m.items[0]);
             }
+            // Category nodes with multiple items — no action (they expand to individual items)
         },
     }), [onClickItem, nodeMetaMap]);
 

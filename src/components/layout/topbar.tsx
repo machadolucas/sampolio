@@ -8,6 +8,7 @@ import { Menubar } from 'primereact/menubar';
 import { Menu } from 'primereact/menu';
 import { useTheme } from '@/components/providers/theme-provider';
 import { MenuItem } from 'primereact/menuitem';
+import { MdAccountBalanceWallet, MdSync, MdCalendarToday, MdCalculate, MdShowChart, MdDashboard, MdBarChart, MdCreditCard, MdGroup, MdSecurity, MdSettings, MdLightMode, MdDarkMode, MdLogout, MdPerson } from 'react-icons/md';
 
 interface TopBarProps {
     onOpenAccounts?: () => void;
@@ -44,24 +45,24 @@ export function TopBar({
     const menuItems: MenuItem[] = [
         {
             label: 'Accounts',
-            icon: 'pi pi-wallet',
+            icon: <MdAccountBalanceWallet />,
             command: onOpenAccounts,
         },
         {
             label: 'Recurring',
-            icon: 'pi pi-sync',
+            icon: <MdSync />,
             command: onOpenRecurring,
             disabled: !hasActiveAccounts,
         },
         {
             label: 'Planned',
-            icon: 'pi pi-calendar',
+            icon: <MdCalendarToday />,
             command: onOpenPlanned,
             disabled: !hasActiveAccounts,
         },
         {
             label: 'Salary',
-            icon: 'pi pi-calculator',
+            icon: <MdCalculate />,
             command: onOpenSalary,
             disabled: !hasActiveAccounts,
         },
@@ -70,11 +71,11 @@ export function TopBar({
         },
         {
             label: 'Wealth',
-            icon: 'pi pi-chart-line',
+            icon: <MdShowChart />,
             items: [
                 {
                     label: 'Dashboard',
-                    icon: 'pi pi-th-large',
+                    icon: <MdDashboard />,
                     url: '/wealth',
                 },
                 {
@@ -82,17 +83,17 @@ export function TopBar({
                 },
                 {
                     label: 'Investments',
-                    icon: 'pi pi-chart-bar',
+                    icon: <MdBarChart />,
                     command: onOpenInvestments,
                 },
                 {
                     label: 'Debts',
-                    icon: 'pi pi-credit-card',
+                    icon: <MdCreditCard />,
                     command: onOpenDebts,
                 },
                 {
                     label: 'Receivables',
-                    icon: 'pi pi-users',
+                    icon: <MdGroup />,
                     command: onOpenReceivables,
                 },
             ],
@@ -105,16 +106,16 @@ export function TopBar({
         });
         menuItems.push({
             label: 'Admin',
-            icon: 'pi pi-shield',
+            icon: <MdSecurity />,
             items: [
                 {
                     label: 'Users',
-                    icon: 'pi pi-users',
+                    icon: <MdGroup />,
                     command: onOpenUsers,
                 },
                 {
                     label: 'Settings',
-                    icon: 'pi pi-cog',
+                    icon: <MdSettings />,
                     command: onOpenSettings,
                 },
             ],
@@ -135,13 +136,13 @@ export function TopBar({
         { separator: true },
         {
             label: isDark ? 'Light Mode' : 'Dark Mode',
-            icon: isDark ? 'pi pi-sun' : 'pi pi-moon',
+            icon: isDark ? <MdLightMode /> : <MdDarkMode />,
             command: toggleTheme,
         },
         { separator: true },
         {
             label: 'Sign Out',
-            icon: 'pi pi-sign-out',
+            icon: <MdLogout />,
             command: () => signOut({ callbackUrl: '/auth/signin' }),
         },
     ];
@@ -159,7 +160,7 @@ export function TopBar({
         <div className="flex items-center gap-2">
             <Menu model={userMenuItems} popup ref={userMenuRef} />
             <Button
-                icon="pi pi-user"
+                icon={<MdPerson />}
                 rounded
                 text
                 severity="secondary"

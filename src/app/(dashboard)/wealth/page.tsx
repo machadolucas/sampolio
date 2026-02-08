@@ -33,6 +33,7 @@ import type {
     MonthlyProjection,
     Currency,
 } from '@/types';
+import { MdShowChart, MdAttachMoney, MdCreditCard, MdAccountBalanceWallet, MdGroup } from 'react-icons/md';
 
 export default function WealthPage() {
     const appContext = useAppContext();
@@ -191,7 +192,7 @@ export default function WealthPage() {
     if (!hasAnyData) {
         return (
             <div className="text-center py-16">
-                <i className="pi pi-chart-line text-6xl text-gray-400 mb-4"></i>
+                <MdShowChart size={60} className="text-gray-400 mb-4" />
                 <h2 className="text-2xl font-semibold text-gray-900 dark:text-gray-100 mb-2">
                     No wealth data yet
                 </h2>
@@ -241,7 +242,7 @@ export default function WealthPage() {
                             </p>
                         </div>
                         <div className={`h-12 w-12 rounded-full flex items-center justify-center ${currentNetWorth >= 0 ? 'bg-green-100 dark:bg-green-900' : 'bg-red-100 dark:bg-red-900'}`}>
-                            <i className={`pi pi-dollar text-xl ${currentNetWorth >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}></i>
+                            <MdAttachMoney size={20} className={currentNetWorth >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'} />
                         </div>
                     </div>
                 </Card>
@@ -272,7 +273,7 @@ export default function WealthPage() {
                             </p>
                         </div>
                         <div className="h-12 w-12 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center">
-                            <i className="pi pi-chart-line text-xl text-blue-600 dark:text-blue-400"></i>
+                            <MdShowChart size={20} className="text-blue-600 dark:text-blue-400" />
                         </div>
                     </div>
                 </Card>
@@ -286,7 +287,7 @@ export default function WealthPage() {
                             </p>
                         </div>
                         <div className="h-12 w-12 rounded-full bg-red-100 dark:bg-red-900 flex items-center justify-center">
-                            <i className="pi pi-credit-card text-xl text-red-600 dark:text-red-400"></i>
+                            <MdCreditCard size={20} className="text-red-600 dark:text-red-400" />
                         </div>
                     </div>
                 </Card>
@@ -298,7 +299,7 @@ export default function WealthPage() {
                     <div className="p-4">
                         <div className="flex items-center gap-2 mb-2">
                             <div className="h-8 w-8 rounded-full bg-blue-100 flex items-center justify-center">
-                                <i className="pi pi-wallet text-blue-600 text-sm"></i>
+                                <MdAccountBalanceWallet size={14} className="text-blue-600" />
                             </div>
                             <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Cash Accounts</p>
                         </div>
@@ -313,7 +314,7 @@ export default function WealthPage() {
                     <div className="p-4">
                         <div className="flex items-center gap-2 mb-2">
                             <div className="h-8 w-8 rounded-full bg-green-100 flex items-center justify-center">
-                                <i className="pi pi-chart-line text-green-600 text-sm"></i>
+                                <MdShowChart size={14} className="text-green-600" />
                             </div>
                             <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Investments</p>
                         </div>
@@ -328,7 +329,7 @@ export default function WealthPage() {
                     <div className="p-4">
                         <div className="flex items-center gap-2 mb-2">
                             <div className="h-8 w-8 rounded-full bg-purple-100 flex items-center justify-center">
-                                <i className="pi pi-users text-purple-600 text-sm"></i>
+                                <MdGroup size={14} className="text-purple-600" />
                             </div>
                             <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Receivables</p>
                         </div>
@@ -343,7 +344,7 @@ export default function WealthPage() {
                     <div className="p-4">
                         <div className="flex items-center gap-2 mb-2">
                             <div className="h-8 w-8 rounded-full bg-red-100 flex items-center justify-center">
-                                <i className="pi pi-credit-card text-red-600 text-sm"></i>
+                                <MdCreditCard size={14} className="text-red-600" />
                             </div>
                             <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Debts</p>
                         </div>

@@ -4,7 +4,6 @@ import { useState, useEffect, useCallback, useMemo, useRef, startTransition } fr
 import { Card } from 'primereact/card';
 import { Button } from 'primereact/button';
 import { Dropdown } from 'primereact/dropdown';
-import { TabView, TabPanel } from 'primereact/tabview';
 import { DataTable } from 'primereact/datatable';
 import { Column } from 'primereact/column';
 import { ProgressSpinner } from 'primereact/progressspinner';
@@ -13,10 +12,12 @@ import { useTheme } from '@/components/providers/theme-provider';
 import { useAppContext } from '@/components/layout/app-layout';
 import { formatCurrency, formatYearMonth, MONTHS_SHORT } from '@/lib/constants';
 import { MonthlyFlowChart } from '@/components/charts/monthly-flow-chart';
-import { BalanceProjectionChart } from '@/components/charts';
+import { CashflowWaterfallChart, ExpenseTreemapChart } from '@/components/charts';
 import { getAccounts } from '@/lib/actions/accounts';
 import { getProjection } from '@/lib/actions/projection';
 import type { FinancialAccount, MonthlyProjection, MonthFlowData, CashflowItem, Currency } from '@/types';
+import { MdCheckCircle, MdCalendarToday, MdArrowForward, MdAccountBalanceWallet, MdAdd, MdRemove, MdList, MdAccountTree, MdBarChart, MdTableChart, MdInfoOutline } from 'react-icons/md';
+import { Tooltip } from 'primereact/tooltip';
 
 interface MonthStripProps {
     months: string[];
@@ -64,23 +65,23 @@ function MonthStrip({ months, selectedMonth, onSelectMonth, reconciledMonths = n
                         data-month={month}
                         onClick={() => onSelectMonth(month)}
                         className={`shrink-0 px-4 py-2 rounded-lg transition-all ${isSelected
+                            ? isDark
+                                ? 'bg-blue-600 text-white'
+                                : 'bg-blue-500 text-white'
+                            : isCurrent
                                 ? isDark
-                                    ? 'bg-blue-600 text-white'
-                                    : 'bg-blue-500 text-white'
-                                : isCurrent
-                                    ? isDark
-                                        ? 'bg-gray-700 text-blue-400 border border-blue-500'
-                                        : 'bg-blue-50 text-blue-600 border border-blue-300'
-                                    : isDark
-                                        ? 'bg-gray-800 text-gray-300 hover:bg-gray-700'
-                                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                    ? 'bg-gray-700 text-blue-400 border border-blue-500'
+                                    : 'bg-blue-50 text-blue-600 border border-blue-300'
+                                : isDark
+                                    ? 'bg-gray-800 text-gray-300 hover:bg-gray-700'
+                                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                             }`}
                     >
                         <div className="text-xs opacity-70">{year}</div>
                         <div className="font-medium">{MONTHS_SHORT[parseInt(m) - 1]}</div>
                         {isReconciled && (
                             <div className="flex justify-center mt-1">
-                                <i className="pi pi-check-circle text-green-500 text-xs" />
+                                <MdCheckCircle className="text-green-500" size={12} />
                             </div>
                         )}
                     </button>
@@ -105,7 +106,7 @@ function MonthDetailsPanel({ projection, currency, onEditItem }: MonthDetailsPan
     if (!projection) {
         return (
             <div className={`text-center py-8 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                <i className="pi pi-calendar text-4xl mb-4" />
+                <MdCalendarToday size={36} className="mb-4" />
                 <p>Select a month to view details</p>
             </div>
         );
@@ -141,45 +142,60 @@ function MonthDetailsPanel({ projection, currency, onEditItem }: MonthDetailsPan
     );
 
     return (
-        <div className="space-y-4">
-            {/* Balance */}
-            <div className="flex justify-between items-center py-2">
-                <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>Starting Balance</span>
-                <span className={`font-medium ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
-                    {formatCurrency(projection.startingBalance, currency)}
-                </span>
-            </div>
-            <div className="flex justify-between items-center py-2 border-t border-gray-700">
-                <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>Ending Balance</span>
-                <span className={`font-bold text-lg ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
-                    {formatCurrency(projection.endingBalance, currency)}
-                </span>
+        <div className="space-y-2">
+            {/* Balance Flow: Starting → Net → Ending */}
+            <div className="flex items-center justify-between gap-2 py-2">
+                <div className="text-center">
+                    <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Starting</div>
+                    <div className={`text-lg font-semibold ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
+                        {formatCurrency(projection.startingBalance, currency)}
+                    </div>
+                </div>
+                <div className="flex items-center gap-1 flex-shrink-0">
+                    <div className={`h-px w-4 ${isDark ? 'bg-gray-600' : 'bg-gray-300'}`} />
+                    <div className={`text-center px-2 py-1 rounded-full ${projection.netChange >= 0
+                            ? 'bg-green-500/15 text-green-500'
+                            : 'bg-red-500/15 text-red-500'
+                        }`}>
+                        <div className="text-xs font-medium">
+                            {projection.netChange >= 0 ? '+' : ''}{formatCurrency(projection.netChange, currency)}
+                        </div>
+                    </div>
+                    <div className={`h-px w-4 ${isDark ? 'bg-gray-600' : 'bg-gray-300'}`} />
+                    <MdArrowForward size={12} className={isDark ? 'text-gray-500' : 'text-gray-400'} />
+                </div>
+                <div className="text-center">
+                    <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Ending</div>
+                    <div className={`text-lg font-bold ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
+                        {formatCurrency(projection.endingBalance, currency)}
+                    </div>
+                </div>
             </div>
 
             {/* Income Breakdown */}
             {projection.incomeBreakdown.length > 0 && (
                 <div>
-                    <div className="flex items-center justify-between mb-2">
-                        <h4 className={`text-sm font-semibold ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                    <div className="flex items-center justify-between mb-1">
+                        <h4 className={`text-xs font-semibold ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
                             Income
                         </h4>
                         <SortToggle value={incomeSortBy} onChange={setIncomeSortBy} />
                     </div>
-                    <div className="space-y-2">
+                    <div className="space-y-0">
                         {sortItems(projection.incomeBreakdown, incomeSortBy).map((item) => (
                             <div
                                 key={item.itemId}
-                                className={`flex justify-between items-center p-2 rounded cursor-pointer transition-colors ${isDark ? 'hover:bg-gray-800' : 'hover:bg-gray-100'
+                                className={`flex justify-between items-center px-2 py-1 rounded cursor-pointer transition-colors text-sm ${isDark ? 'hover:bg-gray-800' : 'hover:bg-gray-100'
                                     }`}
                                 onClick={() => onEditItem?.(item.itemId, item.source, 'income')}
                             >
-                                <div>
-                                    <span className={isDark ? 'text-gray-200' : 'text-gray-700'}>{item.name}</span>
+                                <div className="flex items-center gap-1 min-w-0">
+                                    <span className={`truncate ${isDark ? 'text-gray-200' : 'text-gray-700'}`}>{item.name}</span>
                                     {item.category && (
-                                        <Tag value={item.category} className="ml-2 text-xs" severity="info" />
+                                        <Tag value={item.category} className="text-xs !py-0 !px-1" severity="info" />
                                     )}
                                 </div>
-                                <span className="text-green-500">+{formatCurrency(item.amount, currency)}</span>
+                                <span className="text-green-500 whitespace-nowrap ml-2">+{formatCurrency(item.amount, currency)}</span>
                             </div>
                         ))}
                     </div>
@@ -189,27 +205,27 @@ function MonthDetailsPanel({ projection, currency, onEditItem }: MonthDetailsPan
             {/* Expense Breakdown */}
             {projection.expenseBreakdown.length > 0 && (
                 <div>
-                    <div className="flex items-center justify-between mb-2">
-                        <h4 className={`text-sm font-semibold ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                    <div className="flex items-center justify-between mb-1">
+                        <h4 className={`text-xs font-semibold ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
                             Expenses
                         </h4>
                         <SortToggle value={expenseSortBy} onChange={setExpenseSortBy} />
                     </div>
-                    <div className="space-y-2">
+                    <div className="space-y-0">
                         {sortItems(projection.expenseBreakdown, expenseSortBy).map((item) => (
                             <div
                                 key={item.itemId}
-                                className={`flex justify-between items-center p-2 rounded cursor-pointer transition-colors ${isDark ? 'hover:bg-gray-800' : 'hover:bg-gray-100'
+                                className={`flex justify-between items-center px-2 py-1 rounded cursor-pointer transition-colors text-sm ${isDark ? 'hover:bg-gray-800' : 'hover:bg-gray-100'
                                     }`}
                                 onClick={() => onEditItem?.(item.itemId, item.source, 'expense')}
                             >
-                                <div>
-                                    <span className={isDark ? 'text-gray-200' : 'text-gray-700'}>{item.name}</span>
+                                <div className="flex items-center gap-1 min-w-0">
+                                    <span className={`truncate ${isDark ? 'text-gray-200' : 'text-gray-700'}`}>{item.name}</span>
                                     {item.category && (
-                                        <Tag value={item.category} className="ml-2 text-xs" severity="warning" />
+                                        <Tag value={item.category} className="text-xs !py-0 !px-1" severity="warning" />
                                     )}
                                 </div>
-                                <span className="text-red-500">-{formatCurrency(item.amount, currency)}</span>
+                                <span className="text-red-500 whitespace-nowrap ml-2">-{formatCurrency(item.amount, currency)}</span>
                             </div>
                         ))}
                     </div>
@@ -357,7 +373,9 @@ export default function CashflowPage() {
         let entityType = source;
         if (source === 'recurring') {
             entityType = itemType === 'income' ? 'income' : 'expense';
-        } else if (source === 'taxed-income') {
+        } else if (source === 'planned-one-off' || source === 'planned-repeating' || source === 'planned') {
+            entityType = 'planned';
+        } else if (source === 'taxed-income' || source === 'salary') {
             entityType = 'salary';
         } else if (source === 'debt-payment') {
             entityType = 'debt';
@@ -398,14 +416,14 @@ export default function CashflowPage() {
         return (
             <Card>
                 <div className={`text-center py-12 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                    <i className="pi pi-wallet text-5xl mb-4" />
+                    <MdAccountBalanceWallet size={48} className="mb-4" />
                     <h2 className={`text-xl font-semibold mb-2 ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
                         No Cash Accounts
                     </h2>
                     <p className="mb-4">Create a cash account to start tracking your cashflow.</p>
                     <Button
                         label="Create Account"
-                        icon="pi pi-plus"
+                        icon={<MdAdd />}
                         onClick={() => appContext?.openDrawer({ mode: 'create', entityType: 'account' })}
                     />
                 </div>
@@ -437,21 +455,21 @@ export default function CashflowPage() {
                         />
                         <Button
                             label="Add Income"
-                            icon="pi pi-plus"
+                            icon={<MdAdd />}
                             severity="success"
                             size="small"
                             onClick={() => handleAddItem('income')}
                         />
                         <Button
                             label="Add Expense"
-                            icon="pi pi-minus"
+                            icon={<MdRemove />}
                             severity="danger"
                             size="small"
                             onClick={() => handleAddItem('expense')}
                         />
                         <Button
                             label="Manage Items"
-                            icon="pi pi-list"
+                            icon={<MdList />}
                             severity="secondary"
                             size="small"
                             outlined
@@ -470,105 +488,189 @@ export default function CashflowPage() {
                 </Card>
             </div>
 
-            {/* Main Content */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                {/* Flow/Chart Area */}
-                <div className="lg:col-span-2">
-                    <Card>
-                        <TabView>
-                            <TabPanel header="Monthly Flow" leftIcon="pi pi-sitemap mr-2">
-                                {flowData ? (
-                                    <MonthlyFlowChart
-                                        data={flowData}
-                                        height="400px"
-                                        onClickItem={(item) => {
-                                            if (item.id === 'new') {
-                                                handleAddItem(item.type as 'income' | 'expense');
-                                            } else {
-                                                handleEditItem(item.id, item.source, item.type);
-                                            }
-                                        }}
-                                    />
-                                ) : (
-                                    <div className={`text-center py-12 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                                        No data for selected month
-                                    </div>
-                                )}
-                            </TabPanel>
-                            <TabPanel header="Balance Chart" leftIcon="pi pi-chart-line mr-2">
-                                <BalanceProjectionChart
-                                    data={projection}
-                                    currency={currency as Currency}
-                                />
-                            </TabPanel>
-                            <TabPanel header="Data Table" leftIcon="pi pi-table mr-2">
-                                <DataTable
-                                    value={projection}
-                                    scrollable
-                                    scrollHeight="350px"
-                                    size="small"
-                                    stripedRows
-                                    selectionMode="single"
-                                    selection={selectedProjection}
-                                    onSelectionChange={(e) => e.value && setSelectedMonth(e.value.yearMonth)}
-                                >
-                                    <Column
-                                        field="yearMonth"
-                                        header="Month"
-                                        body={(row) => formatYearMonth(row.yearMonth)}
-                                    />
-                                    <Column
-                                        field="totalIncome"
-                                        header="Income"
-                                        body={(row) => (
-                                            <span className="text-green-500">
-                                                +{formatCurrency(row.totalIncome, currency as Currency)}
-                                            </span>
-                                        )}
-                                    />
-                                    <Column
-                                        field="totalExpenses"
-                                        header="Expenses"
-                                        body={(row) => (
-                                            <span className="text-red-500">
-                                                -{formatCurrency(row.totalExpenses, currency as Currency)}
-                                            </span>
-                                        )}
-                                    />
-                                    <Column
-                                        field="netChange"
-                                        header="Net"
-                                        body={(row) => (
-                                            <span className={row.netChange >= 0 ? 'text-green-500' : 'text-red-500'}>
-                                                {row.netChange >= 0 ? '+' : ''}{formatCurrency(row.netChange, currency as Currency)}
-                                            </span>
-                                        )}
-                                    />
-                                    <Column
-                                        field="endingBalance"
-                                        header="Balance"
-                                        body={(row) => formatCurrency(row.endingBalance, currency as Currency)}
-                                    />
-                                </DataTable>
-                            </TabPanel>
-                        </TabView>
-                    </Card>
-                </div>
+            {/* Selected Month Banner */}
+            {selectedProjection && (
+                <Card className="!bg-gradient-to-r from-blue-600/10 to-purple-600/10 border border-blue-500/20">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <p className={`text-xs uppercase tracking-wider mb-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Selected Month</p>
+                            <h2 className={`text-2xl font-bold ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
+                                {formatYearMonth(selectedMonth)}
+                            </h2>
+                        </div>
+                        <div className="flex items-center gap-6 text-sm">
+                            <div className="text-center">
+                                <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Income</div>
+                                <div className="text-green-500 font-semibold">+{formatCurrency(selectedProjection.totalIncome, currency as Currency)}</div>
+                            </div>
+                            <div className="text-center">
+                                <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Expenses</div>
+                                <div className="text-red-500 font-semibold">-{formatCurrency(selectedProjection.totalExpenses, currency as Currency)}</div>
+                            </div>
+                            <div className="text-center">
+                                <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Net</div>
+                                <div className={`font-semibold ${selectedProjection.netChange >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                                    {selectedProjection.netChange >= 0 ? '+' : ''}{formatCurrency(selectedProjection.netChange, currency as Currency)}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </Card>
+            )}
 
-                {/* Month Details Panel */}
-                <div>
+            {/* Monthly Flow + Cashflow Projection side by side */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <Card>
+                    <Tooltip target=".info-monthly-flow" position="top" />
+                    <h3 className={`flex items-center font-semibold mb-3 ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
+                        <MdAccountTree className="mr-2" />Monthly Flow
+                        <MdInfoOutline
+                            className="info-monthly-flow ml-auto opacity-40 cursor-help"
+                            size={16}
+                            data-pr-tooltip="Sankey diagram showing how your income flows into expenses. Left side shows individual income sources, center aggregates into your budget, right side breaks down expenses by category and individual items."
+                        />
+                    </h3>
+                    {flowData ? (
+                        <MonthlyFlowChart
+                            data={flowData}
+                            height="350px"
+                            onClickItem={(item) => {
+                                if (item.id === 'new') {
+                                    handleAddItem(item.type as 'income' | 'expense');
+                                } else {
+                                    handleEditItem(item.id, item.source, item.type);
+                                }
+                            }}
+                        />
+                    ) : (
+                        <div className={`text-center py-12 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                            No data for selected month
+                        </div>
+                    )}
+                </Card>
+
+                <Card>
+                    <Tooltip target=".info-waterfall" position="top" />
+                    <h3 className={`flex items-center font-semibold mb-3 ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
+                        <MdBarChart className="mr-2" />Cashflow Projection
+                        <MdInfoOutline
+                            className="info-waterfall ml-auto opacity-40 cursor-help"
+                            size={16}
+                            data-pr-tooltip="Waterfall chart showing your projected balance over time. Green bars represent income, red bars represent expenses, and the line tracks your running balance across months."
+                        />
+                    </h3>
+                    <CashflowWaterfallChart
+                        data={projection}
+                        currency={currency as Currency}
+                        height="350px"
+                    />
+                </Card>
+            </div>
+
+            {/* Month Details + Expense Treemap */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <Card>
+                    <Tooltip target=".info-month-details" position="top" />
+                    <h3 className={`flex items-center font-semibold mb-2 ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
+                        Month Details
+                        <MdInfoOutline
+                            className="info-month-details ml-auto opacity-40 cursor-help"
+                            size={16}
+                            data-pr-tooltip="Detailed breakdown of all income and expense items for the selected month. Shows starting and ending balance with the net change. Click any item to edit it."
+                        />
+                    </h3>
+                    <MonthDetailsPanel
+                        projection={selectedProjection}
+                        currency={currency as Currency}
+                        onEditItem={handleEditItem}
+                    />
+                </Card>
+
+                {selectedProjection && selectedProjection.expenseBreakdown.length > 0 ? (
                     <Card>
-                        <h2 className={`text-lg font-semibold mb-4 ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
-                            {selectedProjection ? formatYearMonth(selectedMonth) : 'Month Details'}
-                        </h2>
-                        <MonthDetailsPanel
-                            projection={selectedProjection}
+                        <Tooltip target=".info-treemap" position="top" />
+                        <h3 className={`flex items-center font-semibold mb-3 ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
+                            <MdBarChart className="mr-2" />Expenses Breakdown
+                            <MdInfoOutline
+                                className="info-treemap ml-auto opacity-40 cursor-help"
+                                size={16}
+                                data-pr-tooltip="Treemap showing the proportional size of each expense category and item for the selected month. Larger blocks represent bigger expenses, making it easy to spot where most money goes."
+                            />
+                        </h3>
+                        <ExpenseTreemapChart
+                            expenses={selectedProjection.expenseBreakdown}
                             currency={currency as Currency}
-                            onEditItem={handleEditItem}
+                            height="350px"
                         />
                     </Card>
-                </div>
+                ) : (
+                    <div />
+                )}
             </div>
+
+            {/* Data Table */}
+            <div className={`mt-4 pt-6 border-t-2 ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
+                <p className={`text-xs uppercase tracking-wider mb-3 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>All Months Overview</p>
+            </div>
+            <Card>
+                <Tooltip target=".info-projection" position="top" />
+                <h3 className={`flex items-center font-semibold mb-3 ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
+                    <MdTableChart className="mr-2" />Projection Data
+                    <MdInfoOutline
+                        className="info-projection ml-auto opacity-40 cursor-help"
+                        size={16}
+                        data-pr-tooltip="Table showing the full projection across all months — not just the selected one. Displays income, expenses, net change, and running balance. Click any row to jump to that month."
+                    />
+                </h3>
+                <DataTable
+                    value={projection}
+                    scrollable
+                    scrollHeight="400px"
+                    size="small"
+                    stripedRows
+                    selectionMode="single"
+                    selection={selectedProjection}
+                    onSelectionChange={(e) => e.value && setSelectedMonth(e.value.yearMonth)}
+                >
+                    <Column
+                        field="yearMonth"
+                        header="Month"
+                        body={(row) => formatYearMonth(row.yearMonth)}
+                    />
+                    <Column
+                        field="totalIncome"
+                        header="Income"
+                        body={(row) => (
+                            <span className="text-green-500">
+                                +{formatCurrency(row.totalIncome, currency as Currency)}
+                            </span>
+                        )}
+                    />
+                    <Column
+                        field="totalExpenses"
+                        header="Expenses"
+                        body={(row) => (
+                            <span className="text-red-500">
+                                -{formatCurrency(row.totalExpenses, currency as Currency)}
+                            </span>
+                        )}
+                    />
+                    <Column
+                        field="netChange"
+                        header="Net"
+                        body={(row) => (
+                            <span className={row.netChange >= 0 ? 'text-green-500' : 'text-red-500'}>
+                                {row.netChange >= 0 ? '+' : ''}{formatCurrency(row.netChange, currency as Currency)}
+                            </span>
+                        )}
+                    />
+                    <Column
+                        field="endingBalance"
+                        header="Balance"
+                        body={(row) => formatCurrency(row.endingBalance, currency as Currency)}
+                    />
+                </DataTable>
+            </Card>
         </div>
     );
 }

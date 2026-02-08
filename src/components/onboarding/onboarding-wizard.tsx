@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useCallback } from 'react';
+import { MdAccountBalanceWallet, MdArrowDownward, MdArrowUpward, MdAdd, MdClose, MdArrowBack, MdArrowForward, MdHome } from 'react-icons/md';
 import { Dialog } from 'primereact/dialog';
 import { Button } from 'primereact/button';
 import { Steps } from 'primereact/steps';
@@ -260,15 +261,15 @@ export function OnboardingWizard({ visible, onComplete }: OnboardingWizardProps)
                         </p>
                         <div className={`flex flex-col gap-3 max-w-sm mx-auto text-left text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
                             <div className="flex items-center gap-2">
-                                <i className="pi pi-wallet text-green-500" />
+                                <MdAccountBalanceWallet className="text-green-500" />
                                 <span>Set up your main cash account</span>
                             </div>
                             <div className="flex items-center gap-2">
-                                <i className="pi pi-arrow-down text-blue-500" />
+                                <MdArrowDownward className="text-blue-500" />
                                 <span>Add your primary income</span>
                             </div>
                             <div className="flex items-center gap-2">
-                                <i className="pi pi-arrow-up text-orange-500" />
+                                <MdArrowUpward className="text-orange-500" />
                                 <span>Add your regular expenses</span>
                             </div>
                         </div>
@@ -452,7 +453,7 @@ export function OnboardingWizard({ visible, onComplete }: OnboardingWizardProps)
                                             </label>
                                             <Button
                                                 label="Add"
-                                                icon="pi pi-plus"
+                                                icon={<MdAdd />}
                                                 size="small"
                                                 text
                                                 onClick={() => setSalaryBenefits(prev => [...prev, {
@@ -503,7 +504,7 @@ export function OnboardingWizard({ visible, onComplete }: OnboardingWizardProps)
                                                     </span>
                                                 </div>
                                                 <Button
-                                                    icon="pi pi-times"
+                                                    icon={<MdClose />}
                                                     rounded
                                                     text
                                                     severity="danger"
@@ -602,7 +603,7 @@ export function OnboardingWizard({ visible, onComplete }: OnboardingWizardProps)
                                         />
                                     </div>
                                     <Button
-                                        icon="pi pi-times"
+                                        icon={<MdClose />}
                                         severity="danger"
                                         text
                                         rounded
@@ -614,7 +615,7 @@ export function OnboardingWizard({ visible, onComplete }: OnboardingWizardProps)
 
                             <Button
                                 label="Add Another"
-                                icon="pi pi-plus"
+                                icon={<MdAdd />}
                                 text
                                 size="small"
                                 onClick={addExpense}
@@ -701,7 +702,7 @@ export function OnboardingWizard({ visible, onComplete }: OnboardingWizardProps)
                 {activeStep > 0 && activeStep < 4 && (
                     <Button
                         label="Back"
-                        icon="pi pi-arrow-left"
+                        icon={<MdArrowBack />}
                         text
                         severity="secondary"
                         onClick={handleBack}
@@ -713,7 +714,7 @@ export function OnboardingWizard({ visible, onComplete }: OnboardingWizardProps)
                 {activeStep < 4 && (
                     <Button
                         label={activeStep === 0 ? 'Get Started' : 'Next'}
-                        icon="pi pi-arrow-right"
+                        icon={<MdArrowForward />}
                         iconPos="right"
                         onClick={handleNext}
                         disabled={!canProceed() || isSaving}
@@ -723,7 +724,7 @@ export function OnboardingWizard({ visible, onComplete }: OnboardingWizardProps)
                 {activeStep === 4 && (
                     <Button
                         label="Go to Overview"
-                        icon="pi pi-home"
+                        icon={<MdHome />}
                         iconPos="right"
                         onClick={handleFinish}
                         disabled={isSaving}

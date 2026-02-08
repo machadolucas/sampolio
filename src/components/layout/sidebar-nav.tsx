@@ -1,5 +1,6 @@
 'use client';
 
+import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { signOut, useSession } from 'next-auth/react';
@@ -10,6 +11,7 @@ import { Tooltip } from 'primereact/tooltip';
 import { useTheme } from '@/components/providers/theme-provider';
 import { MenuItem } from 'primereact/menuitem';
 import type { NavigationPage } from '@/types';
+import { MdHome, MdAttachMoney, MdSettings, MdLightMode, MdDarkMode, MdLogout, MdSync, MdSearch, MdPerson, MdChevronRight, MdChevronLeft } from 'react-icons/md';
 
 interface SidebarNavProps {
     onOpenReconcile: () => void;
@@ -21,14 +23,14 @@ interface SidebarNavProps {
 interface NavItem {
     id: NavigationPage;
     label: string;
-    icon: string;
+    icon: ReactNode;
     href: string;
 }
 
 const navItems: NavItem[] = [
-    { id: 'overview', label: 'Overview', icon: 'pi pi-home', href: '/' },
-    { id: 'cashflow', label: 'Cashflow', icon: 'pi pi-money-bill', href: '/cashflow' },
-    { id: 'settings', label: 'Settings', icon: 'pi pi-cog', href: '/settings' },
+    { id: 'overview', label: 'Overview', icon: <MdHome size={20} />, href: '/' },
+    { id: 'cashflow', label: 'Cashflow', icon: <MdAttachMoney size={20} />, href: '/cashflow' },
+    { id: 'settings', label: 'Settings', icon: <MdSettings size={20} />, href: '/settings' },
 ];
 
 export function SidebarNav({
@@ -65,13 +67,13 @@ export function SidebarNav({
         { separator: true },
         {
             label: isDark ? 'Light Mode' : 'Dark Mode',
-            icon: isDark ? 'pi pi-sun' : 'pi pi-moon',
+            icon: isDark ? <MdLightMode /> : <MdDarkMode />,
             command: toggleTheme,
         },
         { separator: true },
         {
             label: 'Sign Out',
-            icon: 'pi pi-sign-out',
+            icon: <MdLogout />,
             command: () => signOut({ callbackUrl: '/auth/signin' }),
         },
     ];
@@ -98,7 +100,7 @@ export function SidebarNav({
             {/* Quick Actions */}
             <div className={`flex ${expanded ? 'flex-row gap-2 px-4' : 'flex-col gap-2 px-2'} py-4`}>
                 <Button
-                    icon="pi pi-sync"
+                    icon={<MdSync />}
                     label={expanded ? 'Reconcile' : undefined}
                     severity="success"
                     size="small"
@@ -108,7 +110,7 @@ export function SidebarNav({
                     tooltipOptions={{ position: 'right' }}
                 />
                 <Button
-                    icon="pi pi-search"
+                    icon={<MdSearch />}
                     severity="secondary"
                     size="small"
                     text
@@ -129,17 +131,17 @@ export function SidebarNav({
                                 <Link
                                     href={item.href}
                                     className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors no-underline ${active
-                                            ? isDark
-                                                ? 'bg-blue-900/50 text-blue-400'
-                                                : 'bg-blue-50 text-blue-700'
-                                            : isDark
-                                                ? 'text-gray-400 hover:bg-gray-800 hover:text-gray-200'
-                                                : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                                        ? isDark
+                                            ? 'bg-blue-900/50 text-blue-400'
+                                            : 'bg-blue-50 text-blue-700'
+                                        : isDark
+                                            ? 'text-gray-400 hover:bg-gray-800 hover:text-gray-200'
+                                            : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
                                         }`}
                                     data-pr-tooltip={!expanded ? item.label : undefined}
                                     data-pr-position="right"
                                 >
-                                    <i className={`${item.icon} text-lg`} />
+                                    {item.icon}
                                     {expanded && (
                                         <span className="font-medium whitespace-nowrap">{item.label}</span>
                                     )}
@@ -159,7 +161,7 @@ export function SidebarNav({
                     severity="secondary"
                     onClick={(e) => userMenuRef.current?.toggle(e)}
                 >
-                    <i className="pi pi-user text-lg" />
+                    <MdPerson size={18} />
                     {expanded && (
                         <span className="ml-3 truncate">{session?.user?.name || 'User'}</span>
                     )}
@@ -170,7 +172,7 @@ export function SidebarNav({
             {onToggleCollapse && (
                 <div className="absolute top-1/2 -right-3 transform -translate-y-1/2">
                     <Button
-                        icon={collapsed ? 'pi pi-chevron-right' : 'pi pi-chevron-left'}
+                        icon={collapsed ? <MdChevronRight /> : <MdChevronLeft />}
                         rounded
                         size="small"
                         severity="secondary"

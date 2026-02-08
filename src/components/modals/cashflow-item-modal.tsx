@@ -37,6 +37,7 @@ import {
     deleteSalaryConfig,
 } from '@/lib/actions/salary';
 import { getUserPreferences } from '@/lib/actions/user-preferences';
+import { MdArrowUpward, MdArrowDownward, MdAdd, MdCheckCircle, MdRadioButtonUnchecked, MdEdit, MdDelete, MdClose, MdCheck } from 'react-icons/md';
 import type {
     FinancialAccount,
     RecurringItem,
@@ -119,8 +120,8 @@ interface FormData {
 }
 
 const TYPE_OPTIONS = [
-    { label: 'Income', value: 'income', icon: 'pi pi-arrow-up' },
-    { label: 'Expense', value: 'expense', icon: 'pi pi-arrow-down' },
+    { label: 'Income', value: 'income', icon: <MdArrowUpward /> },
+    { label: 'Expense', value: 'expense', icon: <MdArrowDownward /> },
 ];
 
 const RECURRENCE_OPTIONS = [
@@ -550,480 +551,480 @@ export function CashflowItemModal({
 
     return (
         <>
-        <Toast ref={toastRef} />
-        <Dialog
-            header="Cashflow Items"
-            visible={visible}
-            onHide={onHide}
-            style={{ width: '95vw', maxWidth: '1400px' }}
-            maximizable
-            modal
-            dismissableMask
-        >
-            <div className="space-y-4">
-                {/* Header */}
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div className="flex items-center gap-3">
-                        <Dropdown
-                            value={selectedAccountId}
-                            onChange={(e: DropdownChangeEvent) => onAccountChange(e.value)}
-                            options={accounts.filter(a => !a.isArchived).map(a => ({ value: a.id, label: a.name }))}
-                            optionLabel="label"
-                            optionValue="value"
-                            placeholder="Select Account"
-                            className="w-48"
-                        />
-                        <div className="flex gap-1">
-                            {(['all', 'income', 'expense'] as const).map(t => (
-                                <Button
-                                    key={t}
-                                    label={t.charAt(0).toUpperCase() + t.slice(1)}
-                                    size="small"
-                                    severity={filterType === t ? undefined : 'secondary'}
-                                    outlined={filterType !== t}
-                                    onClick={() => setFilterType(t)}
-                                />
-                            ))}
-                        </div>
-                        <div className="flex gap-1">
-                            {(['all', 'recurring', 'one-off', 'salary'] as const).map(r => (
-                                <Button
-                                    key={r}
-                                    label={r === 'one-off' ? 'One-off' : r.charAt(0).toUpperCase() + r.slice(1)}
-                                    size="small"
-                                    severity={filterRecurrence === r ? undefined : 'secondary'}
-                                    outlined={filterRecurrence !== r}
-                                    onClick={() => setFilterRecurrence(r)}
-                                />
-                            ))}
-                        </div>
-                    </div>
-                    <Button label="Add Item" icon="pi pi-plus" onClick={() => openNewForm()} />
-                </div>
-
-                {/* Summary */}
-                <div className="grid grid-cols-3 gap-4">
-                    <Card className="p-3!">
-                        <div className="text-center">
-                            <p className="text-sm text-gray-500">Monthly Income</p>
-                            <p className="text-xl font-bold text-green-600">{formatCurrency(totalIncome, currency)}</p>
-                        </div>
-                    </Card>
-                    <Card className="p-3!">
-                        <div className="text-center">
-                            <p className="text-sm text-gray-500">Monthly Expenses</p>
-                            <p className="text-xl font-bold text-red-600">{formatCurrency(totalExpenses, currency)}</p>
-                        </div>
-                    </Card>
-                    <Card className="p-3!">
-                        <div className="text-center">
-                            <p className="text-sm text-gray-500">Net Monthly</p>
-                            <p className={`text-xl font-bold ${totalIncome - totalExpenses >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                {formatCurrency(totalIncome - totalExpenses, currency)}
-                            </p>
-                        </div>
-                    </Card>
-                </div>
-
-                {/* Items List */}
-                {isLoading ? (
-                    <div className="flex justify-center py-8">
-                        <ProgressSpinner style={{ width: '40px', height: '40px' }} />
-                    </div>
-                ) : filteredItems.length === 0 ? (
-                    <div className="text-center py-8 opacity-50">
-                        No items yet. Click &quot;Add Item&quot; to create one.
-                    </div>
-                ) : (
-                    <DataTable
-                        value={filteredItems}
-                        dataKey="id"
-                        size="small"
-                        stripedRows
-                        rowHover
-                        emptyMessage="No items match the current filters."
-                    >
-                        <Column header="Name" body={(item: UnifiedItem) => (
-                            <div>
-                                <span className="font-medium">{item.name}</span>
-                                {item.category && <span className="block text-xs opacity-60">{item.category}</span>}
-                            </div>
-                        )} />
-                        <Column header="Type" body={(item: UnifiedItem) => (
-                            <Tag value={item.type} severity={item.type === 'income' ? 'success' : 'danger'} />
-                        )} />
-                        <Column header="Recurrence" body={(item: UnifiedItem) => (
-                            <Tag
-                                value={item.recurrence === 'salary' ? 'Salary' : item.recurrence === 'one-off' ? 'One-off' : 'Recurring'}
-                                severity={item.recurrence === 'salary' ? 'info' : item.recurrence === 'one-off' ? 'warning' : 'secondary'}
-                            />
-                        )} />
-                        <Column header="Amount" align="right" body={(item: UnifiedItem) => (
-                            <span className={`font-medium ${item.type === 'income' ? 'text-green-600' : 'text-red-600'}`}>
-                                {item.type === 'income' ? '+' : '-'}{formatCurrency(item.displayAmount, currency)}
-                            </span>
-                        )} sortable sortField="displayAmount" />
-                        <Column header="Schedule" body={(item: UnifiedItem) => (
-                            <span className="text-xs opacity-60">{item.schedule}</span>
-                        )} />
-                        <Column header="Status" align="center" body={(item: UnifiedItem) => (
-                            <Tag value={item.isActive ? 'Active' : 'Inactive'} severity={item.isActive ? 'success' : 'secondary'} />
-                        )} />
-                        <Column header="Actions" align="right" body={(item: UnifiedItem) => (
-                            <div className="flex justify-end gap-1">
-                                {(item.sourceType === 'recurring' || item.sourceType === 'salary') && (
-                                    <Button
-                                        icon={item.isActive ? 'pi pi-check-circle' : 'pi pi-circle'}
-                                        text size="small"
-                                        tooltip={item.isActive ? 'Deactivate' : 'Activate'}
-                                        tooltipOptions={{ position: 'top' }}
-                                        onClick={() => handleToggleActive(item)}
-                                    />
-                                )}
-                                <Button icon="pi pi-pencil" text size="small" tooltip="Edit" tooltipOptions={{ position: 'top' }} onClick={() => openEditForm(item)} />
-                                <Button icon="pi pi-trash" text size="small" severity="danger" tooltip="Delete" tooltipOptions={{ position: 'top' }} onClick={() => handleDelete(item)} />
-                            </div>
-                        )} />
-                    </DataTable>
-                )}
-            </div>
-
-            {/* Form Dialog */}
+            <Toast ref={toastRef} />
             <Dialog
-                header={formTitle}
-                visible={isFormOpen}
-                onHide={() => { setIsFormOpen(false); resetForm(); }}
-                style={{ width: '550px' }}
+                header="Cashflow Items"
+                visible={visible}
+                onHide={onHide}
+                style={{ width: '95vw', maxWidth: '1400px' }}
+                maximizable
                 modal
+                dismissableMask
             >
                 <div className="space-y-4">
-                    {/* Type: Income / Expense */}
-                    <div>
-                        <label className="text-sm font-medium mb-1 block">Type</label>
-                        <SelectButton
-                            value={formData.type}
-                            onChange={(e: SelectButtonChangeEvent) => {
-                                const newType = e.value as 'income' | 'expense';
-                                setFormData(p => ({
-                                    ...p,
-                                    type: newType,
-                                    recurrence: newType === 'expense' && p.recurrence === 'salary' ? 'recurring' : p.recurrence,
-                                }));
-                            }}
-                            options={TYPE_OPTIONS}
-                            optionLabel="label"
-                            optionValue="value"
-                            className="w-full"
-                            disabled={editingItem?.sourceType === 'salary'}
-                        />
-                        <HelpTip text="Income = money coming in. Expense = money going out." />
-                    </div>
-
-                    {/* Recurrence: Recurring / One-off / Salary */}
-                    <div>
-                        <label className="text-sm font-medium mb-1 block">Recurrence</label>
-                        <SelectButton
-                            value={formData.recurrence}
-                            onChange={(e: SelectButtonChangeEvent) => setFormData(p => ({ ...p, recurrence: e.value as FormRecurrence }))}
-                            options={recurrenceOptions}
-                            optionLabel="label"
-                            optionValue="value"
-                            className="w-full"
-                            disabled={!!editingItem}
-                        />
-                        <HelpTip text="Recurring = repeats on a schedule. One-off = happens once. Salary = income with tax/deduction calculations." />
-                    </div>
-
-                    {/* Name */}
-                    <div>
-                        <label className="text-sm font-medium">Name</label>
-                        <InputText
-                            value={formData.name}
-                            onChange={e => setFormData(p => ({ ...p, name: e.target.value }))}
-                            placeholder={formData.recurrence === 'salary' ? 'e.g., Main Job' : formData.type === 'income' ? 'e.g., Freelance Work, Dividends' : 'e.g., Rent, Groceries, Netflix'}
-                            className="w-full"
-                        />
-                        <HelpTip text="A descriptive name to identify this item." />
-                    </div>
-
-                    {/* Amount (not for salary - salary uses grossSalary) */}
-                    {formData.recurrence !== 'salary' && (
-                        <div>
-                            <label className="text-sm font-medium">Amount ({currency})</label>
-                            <InputNumber
-                                value={formData.amount ? parseFloat(formData.amount) : null}
-                                onValueChange={e => setFormData(p => ({ ...p, amount: e.value?.toString() || '' }))}
-                                mode="currency"
-                                currency={currency}
-                                locale="en-US"
-                                placeholder="0.00"
-                                className="w-full"
-                            />
-                            <HelpTip text={formData.recurrence === 'recurring' ? 'The amount per occurrence (e.g., monthly rent amount).' : 'The one-time amount for this item.'} />
-                        </div>
-                    )}
-
-                    {/* Category (not for salary) */}
-                    {formData.recurrence !== 'salary' && (
-                        <div>
-                            <label className="text-sm font-medium">Category</label>
+                    {/* Header */}
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div className="flex items-center gap-3">
                             <Dropdown
-                                value={formData.category}
-                                onChange={e => setFormData(p => ({ ...p, category: e.value }))}
-                                options={[{ value: '', label: 'None' }, ...ITEM_CATEGORIES.map(c => ({ value: c, label: c }))]}
+                                value={selectedAccountId}
+                                onChange={(e: DropdownChangeEvent) => onAccountChange(e.value)}
+                                options={accounts.filter(a => !a.isArchived).map(a => ({ value: a.id, label: a.name }))}
                                 optionLabel="label"
                                 optionValue="value"
-                                placeholder="Select a category"
+                                placeholder="Select Account"
+                                className="w-48"
+                            />
+                            <div className="flex gap-1">
+                                {(['all', 'income', 'expense'] as const).map(t => (
+                                    <Button
+                                        key={t}
+                                        label={t.charAt(0).toUpperCase() + t.slice(1)}
+                                        size="small"
+                                        severity={filterType === t ? undefined : 'secondary'}
+                                        outlined={filterType !== t}
+                                        onClick={() => setFilterType(t)}
+                                    />
+                                ))}
+                            </div>
+                            <div className="flex gap-1">
+                                {(['all', 'recurring', 'one-off', 'salary'] as const).map(r => (
+                                    <Button
+                                        key={r}
+                                        label={r === 'one-off' ? 'One-off' : r.charAt(0).toUpperCase() + r.slice(1)}
+                                        size="small"
+                                        severity={filterRecurrence === r ? undefined : 'secondary'}
+                                        outlined={filterRecurrence !== r}
+                                        onClick={() => setFilterRecurrence(r)}
+                                    />
+                                ))}
+                            </div>
+                        </div>
+                        <Button label="Add Item" icon={<MdAdd />} onClick={() => openNewForm()} />
+                    </div>
+
+                    {/* Summary */}
+                    <div className="grid grid-cols-3 gap-4">
+                        <Card className="p-3!">
+                            <div className="text-center">
+                                <p className="text-sm text-gray-500">Monthly Income</p>
+                                <p className="text-xl font-bold text-green-600">{formatCurrency(totalIncome, currency)}</p>
+                            </div>
+                        </Card>
+                        <Card className="p-3!">
+                            <div className="text-center">
+                                <p className="text-sm text-gray-500">Monthly Expenses</p>
+                                <p className="text-xl font-bold text-red-600">{formatCurrency(totalExpenses, currency)}</p>
+                            </div>
+                        </Card>
+                        <Card className="p-3!">
+                            <div className="text-center">
+                                <p className="text-sm text-gray-500">Net Monthly</p>
+                                <p className={`text-xl font-bold ${totalIncome - totalExpenses >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                    {formatCurrency(totalIncome - totalExpenses, currency)}
+                                </p>
+                            </div>
+                        </Card>
+                    </div>
+
+                    {/* Items List */}
+                    {isLoading ? (
+                        <div className="flex justify-center py-8">
+                            <ProgressSpinner style={{ width: '40px', height: '40px' }} />
+                        </div>
+                    ) : filteredItems.length === 0 ? (
+                        <div className="text-center py-8 opacity-50">
+                            No items yet. Click &quot;Add Item&quot; to create one.
+                        </div>
+                    ) : (
+                        <DataTable
+                            value={filteredItems}
+                            dataKey="id"
+                            size="small"
+                            stripedRows
+                            rowHover
+                            emptyMessage="No items match the current filters."
+                        >
+                            <Column header="Name" body={(item: UnifiedItem) => (
+                                <div>
+                                    <span className="font-medium">{item.name}</span>
+                                    {item.category && <span className="block text-xs opacity-60">{item.category}</span>}
+                                </div>
+                            )} />
+                            <Column header="Type" body={(item: UnifiedItem) => (
+                                <Tag value={item.type} severity={item.type === 'income' ? 'success' : 'danger'} />
+                            )} />
+                            <Column header="Recurrence" body={(item: UnifiedItem) => (
+                                <Tag
+                                    value={item.recurrence === 'salary' ? 'Salary' : item.recurrence === 'one-off' ? 'One-off' : 'Recurring'}
+                                    severity={item.recurrence === 'salary' ? 'info' : item.recurrence === 'one-off' ? 'warning' : 'secondary'}
+                                />
+                            )} />
+                            <Column header="Amount" align="right" body={(item: UnifiedItem) => (
+                                <span className={`font-medium ${item.type === 'income' ? 'text-green-600' : 'text-red-600'}`}>
+                                    {item.type === 'income' ? '+' : '-'}{formatCurrency(item.displayAmount, currency)}
+                                </span>
+                            )} sortable sortField="displayAmount" />
+                            <Column header="Schedule" body={(item: UnifiedItem) => (
+                                <span className="text-xs opacity-60">{item.schedule}</span>
+                            )} />
+                            <Column header="Status" align="center" body={(item: UnifiedItem) => (
+                                <Tag value={item.isActive ? 'Active' : 'Inactive'} severity={item.isActive ? 'success' : 'secondary'} />
+                            )} />
+                            <Column header="Actions" align="right" body={(item: UnifiedItem) => (
+                                <div className="flex justify-end gap-1">
+                                    {(item.sourceType === 'recurring' || item.sourceType === 'salary') && (
+                                        <Button
+                                            icon={item.isActive ? <MdCheckCircle /> : <MdRadioButtonUnchecked />}
+                                            text size="small"
+                                            tooltip={item.isActive ? 'Deactivate' : 'Activate'}
+                                            tooltipOptions={{ position: 'top' }}
+                                            onClick={() => handleToggleActive(item)}
+                                        />
+                                    )}
+                                    <Button icon={<MdEdit />} text size="small" tooltip="Edit" tooltipOptions={{ position: 'top' }} onClick={() => openEditForm(item)} />
+                                    <Button icon={<MdDelete />} text size="small" severity="danger" tooltip="Delete" tooltipOptions={{ position: 'top' }} onClick={() => handleDelete(item)} />
+                                </div>
+                            )} />
+                        </DataTable>
+                    )}
+                </div>
+
+                {/* Form Dialog */}
+                <Dialog
+                    header={formTitle}
+                    visible={isFormOpen}
+                    onHide={() => { setIsFormOpen(false); resetForm(); }}
+                    style={{ width: '550px' }}
+                    modal
+                >
+                    <div className="space-y-4">
+                        {/* Type: Income / Expense */}
+                        <div>
+                            <label className="text-sm font-medium mb-1 block">Type</label>
+                            <SelectButton
+                                value={formData.type}
+                                onChange={(e: SelectButtonChangeEvent) => {
+                                    const newType = e.value as 'income' | 'expense';
+                                    setFormData(p => ({
+                                        ...p,
+                                        type: newType,
+                                        recurrence: newType === 'expense' && p.recurrence === 'salary' ? 'recurring' : p.recurrence,
+                                    }));
+                                }}
+                                options={TYPE_OPTIONS}
+                                optionLabel="label"
+                                optionValue="value"
+                                className="w-full"
+                                disabled={editingItem?.sourceType === 'salary'}
+                            />
+                            <HelpTip text="Income = money coming in. Expense = money going out." />
+                        </div>
+
+                        {/* Recurrence: Recurring / One-off / Salary */}
+                        <div>
+                            <label className="text-sm font-medium mb-1 block">Recurrence</label>
+                            <SelectButton
+                                value={formData.recurrence}
+                                onChange={(e: SelectButtonChangeEvent) => setFormData(p => ({ ...p, recurrence: e.value as FormRecurrence }))}
+                                options={recurrenceOptions}
+                                optionLabel="label"
+                                optionValue="value"
+                                className="w-full"
+                                disabled={!!editingItem}
+                            />
+                            <HelpTip text="Recurring = repeats on a schedule. One-off = happens once. Salary = income with tax/deduction calculations." />
+                        </div>
+
+                        {/* Name */}
+                        <div>
+                            <label className="text-sm font-medium">Name</label>
+                            <InputText
+                                value={formData.name}
+                                onChange={e => setFormData(p => ({ ...p, name: e.target.value }))}
+                                placeholder={formData.recurrence === 'salary' ? 'e.g., Main Job' : formData.type === 'income' ? 'e.g., Freelance Work, Dividends' : 'e.g., Rent, Groceries, Netflix'}
                                 className="w-full"
                             />
-                            <HelpTip text="Optional grouping for reporting and charts." />
+                            <HelpTip text="A descriptive name to identify this item." />
                         </div>
-                    )}
 
-                    {/* === SALARY SPECIFIC FIELDS === */}
-                    {formData.recurrence === 'salary' && (
-                        <>
+                        {/* Amount (not for salary - salary uses grossSalary) */}
+                        {formData.recurrence !== 'salary' && (
                             <div>
-                                <label className="text-sm font-medium">Gross Salary (Monthly)</label>
+                                <label className="text-sm font-medium">Amount ({currency})</label>
                                 <InputNumber
-                                    value={formData.grossSalary ? parseFloat(formData.grossSalary) : null}
-                                    onValueChange={e => setFormData(p => ({ ...p, grossSalary: e.value?.toString() || '' }))}
-                                    mode="currency"
-                                    currency={currency}
-                                    locale="en-US"
-                                    placeholder="Your monthly gross salary"
-                                    className="w-full"
-                                />
-                                <HelpTip text="Your salary before taxes and deductions. The net amount will be calculated automatically." />
-                            </div>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="text-sm font-medium">Tax Rate (%)</label>
-                                    <InputNumber
-                                        value={formData.taxRate ? parseFloat(formData.taxRate) : null}
-                                        onValueChange={e => setFormData(p => ({ ...p, taxRate: e.value?.toString() || '' }))}
-                                        suffix=" %"
-                                        minFractionDigits={0}
-                                        maxFractionDigits={2}
-                                        placeholder="e.g., 25.50"
-                                        className="w-full"
-                                    />
-                                    <HelpTip text="Your income tax rate." />
-                                </div>
-                                <div>
-                                    <label className="text-sm font-medium">Contributions (%)</label>
-                                    <InputNumber
-                                        value={formData.contributionsRate ? parseFloat(formData.contributionsRate) : null}
-                                        onValueChange={e => setFormData(p => ({ ...p, contributionsRate: e.value?.toString() || '' }))}
-                                        suffix=" %"
-                                        minFractionDigits={0}
-                                        maxFractionDigits={2}
-                                        placeholder="e.g., 7.15"
-                                        className="w-full"
-                                    />
-                                    <HelpTip text="Social security or pension contributions." />
-                                </div>
-                            </div>
-                            <div>
-                                <label className="text-sm font-medium">Other Deductions (Fixed Amount)</label>
-                                <InputNumber
-                                    value={formData.otherDeductions ? parseFloat(formData.otherDeductions) : null}
-                                    onValueChange={e => setFormData(p => ({ ...p, otherDeductions: e.value?.toString() || '0' }))}
+                                    value={formData.amount ? parseFloat(formData.amount) : null}
+                                    onValueChange={e => setFormData(p => ({ ...p, amount: e.value?.toString() || '' }))}
                                     mode="currency"
                                     currency={currency}
                                     locale="en-US"
                                     placeholder="0.00"
                                     className="w-full"
                                 />
-                                <HelpTip text="Any fixed monthly deductions (e.g., union fees, insurance)." />
+                                <HelpTip text={formData.recurrence === 'recurring' ? 'The amount per occurrence (e.g., monthly rent amount).' : 'The one-time amount for this item.'} />
                             </div>
+                        )}
 
-                            {/* Benefits */}
+                        {/* Category (not for salary) */}
+                        {formData.recurrence !== 'salary' && (
                             <div>
-                                <div className="flex items-center justify-between mb-2">
-                                    <label className="text-sm font-medium">Benefits</label>
-                                    <Button
-                                        label="Add Benefit"
-                                        icon="pi pi-plus"
-                                        size="small"
-                                        text
-                                        onClick={() => setFormData(p => ({
-                                            ...p,
-                                            benefits: [...p.benefits, { id: crypto.randomUUID(), name: '', amount: 0, isTaxable: true }],
-                                        }))}
-                                    />
-                                </div>
-                                <HelpTip text="Additional benefits like meal vouchers, health insurance, etc. Mark whether each benefit is taxable." />
-                                {formData.benefits.length > 0 && (
-                                    <div className="space-y-2 mt-2">
-                                        {formData.benefits.map((benefit, index) => (
-                                            <div key={benefit.id} className="flex items-center gap-2 p-2 surface-ground border-round">
-                                                <InputText
-                                                    placeholder="e.g., Meal Voucher"
-                                                    value={benefit.name}
-                                                    onChange={e => {
-                                                        const benefits = [...formData.benefits];
-                                                        benefits[index] = { ...benefits[index], name: e.target.value };
-                                                        setFormData(p => ({ ...p, benefits }));
-                                                    }}
-                                                    className="flex-1"
-                                                    size={1}
-                                                />
-                                                <InputNumber
-                                                    placeholder="0"
-                                                    value={benefit.amount}
-                                                    onValueChange={e => {
-                                                        const benefits = [...formData.benefits];
-                                                        benefits[index] = { ...benefits[index], amount: e.value ?? 0 };
-                                                        setFormData(p => ({ ...p, benefits }));
-                                                    }}
-                                                    mode="currency"
-                                                    currency={currency}
-                                                    locale="en-US"
-                                                    className="w-28"
-                                                />
-                                                <div className="flex items-center gap-1">
-                                                    <InputSwitch
-                                                        checked={benefit.isTaxable}
-                                                        onChange={(e: InputSwitchChangeEvent) => {
-                                                            const benefits = [...formData.benefits];
-                                                            benefits[index] = { ...benefits[index], isTaxable: e.value ?? true };
-                                                            setFormData(p => ({ ...p, benefits }));
-                                                        }}
-                                                    />
-                                                    <span className="text-xs whitespace-nowrap">{benefit.isTaxable ? 'Taxable' : 'Non-tax'}</span>
-                                                </div>
-                                                <Button
-                                                    icon="pi pi-times"
-                                                    rounded
-                                                    text
-                                                    severity="danger"
-                                                    size="small"
-                                                    onClick={() => setFormData(p => ({ ...p, benefits: p.benefits.filter((_, i) => i !== index) }))}
-                                                />
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* Net salary preview */}
-                            <div className="p-4 surface-ground border-round-lg space-y-1">
-                                {formData.benefits.length > 0 && (
-                                    <div className="flex justify-between text-xs opacity-60">
-                                        <span>Taxable Gross</span>
-                                        <span>{formatCurrency(
-                                            (parseFloat(formData.grossSalary) || 0) + formData.benefits.filter(b => b.isTaxable).reduce((s, b) => s + b.amount, 0),
-                                            currency
-                                        )}</span>
-                                    </div>
-                                )}
-                                <div className="flex justify-between items-center">
-                                    <span className="text-sm opacity-60">Calculated Net Salary</span>
-                                    <span className="text-xl font-bold text-green-600">{formatCurrency(previewNetSalary, currency)}</span>
-                                </div>
-                            </div>
-
-                            <div className="flex items-center gap-2">
-                                <InputSwitch
-                                    checked={formData.isLinkedToRecurring}
-                                    onChange={(e: InputSwitchChangeEvent) => setFormData(p => ({ ...p, isLinkedToRecurring: e.value ?? false }))}
-                                />
-                                <label className="text-sm">Add as recurring income item</label>
-                            </div>
-                            <HelpTip text="When enabled, a recurring income entry is automatically created based on the net salary." />
-                        </>
-                    )}
-
-                    {/* === RECURRING SPECIFIC FIELDS === */}
-                    {formData.recurrence === 'recurring' && (
-                        <>
-                            <div>
-                                <label className="text-sm font-medium">Frequency</label>
+                                <label className="text-sm font-medium">Category</label>
                                 <Dropdown
-                                    value={formData.frequency}
-                                    onChange={e => setFormData(p => ({ ...p, frequency: e.value }))}
-                                    options={FREQUENCIES}
+                                    value={formData.category}
+                                    onChange={e => setFormData(p => ({ ...p, category: e.value }))}
+                                    options={[{ value: '', label: 'None' }, ...ITEM_CATEGORIES.map(c => ({ value: c, label: c }))]}
                                     optionLabel="label"
                                     optionValue="value"
+                                    placeholder="Select a category"
                                     className="w-full"
                                 />
-                                <HelpTip text="How often this item repeats. Use 'Custom' for non-standard intervals." />
+                                <HelpTip text="Optional grouping for reporting and charts." />
                             </div>
-                            {formData.frequency === 'custom' && (
+                        )}
+
+                        {/* === SALARY SPECIFIC FIELDS === */}
+                        {formData.recurrence === 'salary' && (
+                            <>
                                 <div>
-                                    <label className="text-sm font-medium">Interval (months)</label>
+                                    <label className="text-sm font-medium">Gross Salary (Monthly)</label>
                                     <InputNumber
-                                        value={formData.customIntervalMonths ? parseInt(formData.customIntervalMonths) : null}
-                                        onValueChange={e => setFormData(p => ({ ...p, customIntervalMonths: e.value?.toString() || '' }))}
-                                        placeholder="e.g., 3 for quarterly"
+                                        value={formData.grossSalary ? parseFloat(formData.grossSalary) : null}
+                                        onValueChange={e => setFormData(p => ({ ...p, grossSalary: e.value?.toString() || '' }))}
+                                        mode="currency"
+                                        currency={currency}
+                                        locale="en-US"
+                                        placeholder="Your monthly gross salary"
                                         className="w-full"
-                                        min={1}
-                                        showButtons
                                     />
-                                    <HelpTip text="Number of months between each occurrence." />
+                                    <HelpTip text="Your salary before taxes and deductions. The net amount will be calculated automatically." />
                                 </div>
-                            )}
-                        </>
-                    )}
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="text-sm font-medium">Tax Rate (%)</label>
+                                        <InputNumber
+                                            value={formData.taxRate ? parseFloat(formData.taxRate) : null}
+                                            onValueChange={e => setFormData(p => ({ ...p, taxRate: e.value?.toString() || '' }))}
+                                            suffix=" %"
+                                            minFractionDigits={0}
+                                            maxFractionDigits={2}
+                                            placeholder="e.g., 25.50"
+                                            className="w-full"
+                                        />
+                                        <HelpTip text="Your income tax rate." />
+                                    </div>
+                                    <div>
+                                        <label className="text-sm font-medium">Contributions (%)</label>
+                                        <InputNumber
+                                            value={formData.contributionsRate ? parseFloat(formData.contributionsRate) : null}
+                                            onValueChange={e => setFormData(p => ({ ...p, contributionsRate: e.value?.toString() || '' }))}
+                                            suffix=" %"
+                                            minFractionDigits={0}
+                                            maxFractionDigits={2}
+                                            placeholder="e.g., 7.15"
+                                            className="w-full"
+                                        />
+                                        <HelpTip text="Social security or pension contributions." />
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="text-sm font-medium">Other Deductions (Fixed Amount)</label>
+                                    <InputNumber
+                                        value={formData.otherDeductions ? parseFloat(formData.otherDeductions) : null}
+                                        onValueChange={e => setFormData(p => ({ ...p, otherDeductions: e.value?.toString() || '0' }))}
+                                        mode="currency"
+                                        currency={currency}
+                                        locale="en-US"
+                                        placeholder="0.00"
+                                        className="w-full"
+                                    />
+                                    <HelpTip text="Any fixed monthly deductions (e.g., union fees, insurance)." />
+                                </div>
 
-                    {/* === ONE-OFF SPECIFIC FIELDS === */}
-                    {formData.recurrence === 'one-off' && (
-                        <div>
-                            <label className="text-sm font-medium">Scheduled Month</label>
-                            <MonthPicker
-                                value={formData.scheduledDate}
-                                onChange={v => setFormData(p => ({ ...p, scheduledDate: v }))}
-                                placeholder="When will this happen?"
-                            />
-                            <HelpTip text="The month this one-time item is expected to occur." />
-                        </div>
-                    )}
+                                {/* Benefits */}
+                                <div>
+                                    <div className="flex items-center justify-between mb-2">
+                                        <label className="text-sm font-medium">Benefits</label>
+                                        <Button
+                                            label="Add Benefit"
+                                            icon={<MdAdd />}
+                                            size="small"
+                                            text
+                                            onClick={() => setFormData(p => ({
+                                                ...p,
+                                                benefits: [...p.benefits, { id: crypto.randomUUID(), name: '', amount: 0, isTaxable: true }],
+                                            }))}
+                                        />
+                                    </div>
+                                    <HelpTip text="Additional benefits like meal vouchers, health insurance, etc. Mark whether each benefit is taxable." />
+                                    {formData.benefits.length > 0 && (
+                                        <div className="space-y-2 mt-2">
+                                            {formData.benefits.map((benefit, index) => (
+                                                <div key={benefit.id} className="flex items-center gap-2 p-2 surface-ground border-round">
+                                                    <InputText
+                                                        placeholder="e.g., Meal Voucher"
+                                                        value={benefit.name}
+                                                        onChange={e => {
+                                                            const benefits = [...formData.benefits];
+                                                            benefits[index] = { ...benefits[index], name: e.target.value };
+                                                            setFormData(p => ({ ...p, benefits }));
+                                                        }}
+                                                        className="flex-1"
+                                                        size={1}
+                                                    />
+                                                    <InputNumber
+                                                        placeholder="0"
+                                                        value={benefit.amount}
+                                                        onValueChange={e => {
+                                                            const benefits = [...formData.benefits];
+                                                            benefits[index] = { ...benefits[index], amount: e.value ?? 0 };
+                                                            setFormData(p => ({ ...p, benefits }));
+                                                        }}
+                                                        mode="currency"
+                                                        currency={currency}
+                                                        locale="en-US"
+                                                        className="w-28"
+                                                    />
+                                                    <div className="flex items-center gap-1">
+                                                        <InputSwitch
+                                                            checked={benefit.isTaxable}
+                                                            onChange={(e: InputSwitchChangeEvent) => {
+                                                                const benefits = [...formData.benefits];
+                                                                benefits[index] = { ...benefits[index], isTaxable: e.value ?? true };
+                                                                setFormData(p => ({ ...p, benefits }));
+                                                            }}
+                                                        />
+                                                        <span className="text-xs whitespace-nowrap">{benefit.isTaxable ? 'Taxable' : 'Non-tax'}</span>
+                                                    </div>
+                                                    <Button
+                                                        icon={<MdClose />}
+                                                        rounded
+                                                        text
+                                                        severity="danger"
+                                                        size="small"
+                                                        onClick={() => setFormData(p => ({ ...p, benefits: p.benefits.filter((_, i) => i !== index) }))}
+                                                    />
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
 
-                    {/* Date range (recurring + salary) */}
-                    {formData.recurrence !== 'one-off' && (
-                        <div className="grid grid-cols-2 gap-3">
+                                {/* Net salary preview */}
+                                <div className="p-4 surface-ground border-round-lg space-y-1">
+                                    {formData.benefits.length > 0 && (
+                                        <div className="flex justify-between text-xs opacity-60">
+                                            <span>Taxable Gross</span>
+                                            <span>{formatCurrency(
+                                                (parseFloat(formData.grossSalary) || 0) + formData.benefits.filter(b => b.isTaxable).reduce((s, b) => s + b.amount, 0),
+                                                currency
+                                            )}</span>
+                                        </div>
+                                    )}
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-sm opacity-60">Calculated Net Salary</span>
+                                        <span className="text-xl font-bold text-green-600">{formatCurrency(previewNetSalary, currency)}</span>
+                                    </div>
+                                </div>
+
+                                <div className="flex items-center gap-2">
+                                    <InputSwitch
+                                        checked={formData.isLinkedToRecurring}
+                                        onChange={(e: InputSwitchChangeEvent) => setFormData(p => ({ ...p, isLinkedToRecurring: e.value ?? false }))}
+                                    />
+                                    <label className="text-sm">Add as recurring income item</label>
+                                </div>
+                                <HelpTip text="When enabled, a recurring income entry is automatically created based on the net salary." />
+                            </>
+                        )}
+
+                        {/* === RECURRING SPECIFIC FIELDS === */}
+                        {formData.recurrence === 'recurring' && (
+                            <>
+                                <div>
+                                    <label className="text-sm font-medium">Frequency</label>
+                                    <Dropdown
+                                        value={formData.frequency}
+                                        onChange={e => setFormData(p => ({ ...p, frequency: e.value }))}
+                                        options={FREQUENCIES}
+                                        optionLabel="label"
+                                        optionValue="value"
+                                        className="w-full"
+                                    />
+                                    <HelpTip text="How often this item repeats. Use 'Custom' for non-standard intervals." />
+                                </div>
+                                {formData.frequency === 'custom' && (
+                                    <div>
+                                        <label className="text-sm font-medium">Interval (months)</label>
+                                        <InputNumber
+                                            value={formData.customIntervalMonths ? parseInt(formData.customIntervalMonths) : null}
+                                            onValueChange={e => setFormData(p => ({ ...p, customIntervalMonths: e.value?.toString() || '' }))}
+                                            placeholder="e.g., 3 for quarterly"
+                                            className="w-full"
+                                            min={1}
+                                            showButtons
+                                        />
+                                        <HelpTip text="Number of months between each occurrence." />
+                                    </div>
+                                )}
+                            </>
+                        )}
+
+                        {/* === ONE-OFF SPECIFIC FIELDS === */}
+                        {formData.recurrence === 'one-off' && (
                             <div>
-                                <label className="text-sm font-medium">Start Month</label>
+                                <label className="text-sm font-medium">Scheduled Month</label>
                                 <MonthPicker
-                                    value={formData.startDate}
-                                    onChange={v => setFormData(p => ({ ...p, startDate: v }))}
-                                    placeholder="First month"
+                                    value={formData.scheduledDate}
+                                    onChange={v => setFormData(p => ({ ...p, scheduledDate: v }))}
+                                    placeholder="When will this happen?"
                                 />
-                                <HelpTip text="First month this item takes effect." />
+                                <HelpTip text="The month this one-time item is expected to occur." />
                             </div>
-                            <div>
-                                <label className="text-sm font-medium">End Month (opt)</label>
-                                <MonthPicker
-                                    value={formData.endDate}
-                                    onChange={v => setFormData(p => ({ ...p, endDate: v }))}
-                                    placeholder="Leave empty = ongoing"
+                        )}
+
+                        {/* Date range (recurring + salary) */}
+                        {formData.recurrence !== 'one-off' && (
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label className="text-sm font-medium">Start Month</label>
+                                    <MonthPicker
+                                        value={formData.startDate}
+                                        onChange={v => setFormData(p => ({ ...p, startDate: v }))}
+                                        placeholder="First month"
+                                    />
+                                    <HelpTip text="First month this item takes effect." />
+                                </div>
+                                <div>
+                                    <label className="text-sm font-medium">End Month (opt)</label>
+                                    <MonthPicker
+                                        value={formData.endDate}
+                                        onChange={v => setFormData(p => ({ ...p, endDate: v }))}
+                                        placeholder="Leave empty = ongoing"
+                                    />
+                                    <HelpTip text="Leave empty to continue indefinitely." />
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Active toggle (recurring + salary) */}
+                        {formData.recurrence !== 'one-off' && (
+                            <div className="flex items-center gap-2">
+                                <InputSwitch
+                                    checked={formData.isActive}
+                                    onChange={(e: InputSwitchChangeEvent) => setFormData(p => ({ ...p, isActive: e.value ?? false }))}
                                 />
-                                <HelpTip text="Leave empty to continue indefinitely." />
+                                <label className="text-sm">Active</label>
+                                <HelpTip text="Inactive items are paused and won't appear in projections." />
                             </div>
-                        </div>
-                    )}
+                        )}
 
-                    {/* Active toggle (recurring + salary) */}
-                    {formData.recurrence !== 'one-off' && (
-                        <div className="flex items-center gap-2">
-                            <InputSwitch
-                                checked={formData.isActive}
-                                onChange={(e: InputSwitchChangeEvent) => setFormData(p => ({ ...p, isActive: e.value ?? false }))}
-                            />
-                            <label className="text-sm">Active</label>
-                            <HelpTip text="Inactive items are paused and won't appear in projections." />
+                        {/* Buttons */}
+                        <div className="flex justify-end gap-2 pt-2">
+                            <Button label="Cancel" severity="secondary" outlined onClick={() => { setIsFormOpen(false); resetForm(); }} />
+                            <Button label="Save" icon={<MdCheck />} onClick={handleSubmit} />
                         </div>
-                    )}
-
-                    {/* Buttons */}
-                    <div className="flex justify-end gap-2 pt-2">
-                        <Button label="Cancel" severity="secondary" outlined onClick={() => { setIsFormOpen(false); resetForm(); }} />
-                        <Button label="Save" icon="pi pi-check" onClick={handleSubmit} />
                     </div>
-                </div>
+                </Dialog>
             </Dialog>
-        </Dialog>
         </>
     );
 }

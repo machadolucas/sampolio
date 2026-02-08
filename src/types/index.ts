@@ -1,5 +1,7 @@
 // Core type definitions for Sampolio - Personal Finance Planning Tool
 
+import type React from 'react';
+
 export type Currency = 'EUR' | 'USD' | 'BRL' | 'GBP' | 'JPY' | 'CHF' | 'CAD' | 'AUD';
 
 export type Frequency = 'monthly' | 'quarterly' | 'yearly' | 'custom';
@@ -719,7 +721,7 @@ export interface Command {
   label: string;
   description?: string;
   type: CommandType;
-  icon?: string;
+  icon?: React.ReactNode;
   shortcut?: string;
   action: () => void;
   keywords?: string[];

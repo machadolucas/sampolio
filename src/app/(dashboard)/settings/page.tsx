@@ -17,6 +17,8 @@ import { getUserPreferences, updateCategories, updateTaxDefaults } from '@/lib/a
 import { getAppVersion } from '@/lib/actions/app-info';
 import { ITEM_CATEGORIES } from '@/lib/constants';
 import type { TaxDefaults } from '@/types';
+import { MdDownload, MdUpload, MdAccountBalanceWallet, MdAdd, MdCheck, MdGroup } from 'react-icons/md';
+import { FaGithub } from 'react-icons/fa';
 
 export default function SettingsPage() {
     const { data: session } = useSession();
@@ -191,7 +193,7 @@ export default function SettingsPage() {
                         </div>
                         <Button
                             label="Export"
-                            icon="pi pi-download"
+                            icon={<MdDownload />}
                             outlined
                             size="small"
                         />
@@ -206,7 +208,7 @@ export default function SettingsPage() {
                         </div>
                         <Button
                             label="Import"
-                            icon="pi pi-upload"
+                            icon={<MdUpload />}
                             outlined
                             size="small"
                         />
@@ -226,7 +228,7 @@ export default function SettingsPage() {
 
                 <Button
                     label="Manage Accounts"
-                    icon="pi pi-wallet"
+                    icon={<MdAccountBalanceWallet />}
                     outlined
                     onClick={() => appContext?.openDrawer({ mode: 'view', entityType: 'account' })}
                 />
@@ -297,7 +299,7 @@ export default function SettingsPage() {
                         }}
                     />
                     <Button
-                        icon="pi pi-plus"
+                        icon={<MdAdd />}
                         outlined
                         disabled={!newCategoryName.trim() || activeCategories.includes(newCategoryName.trim())}
                         onClick={() => {
@@ -312,7 +314,7 @@ export default function SettingsPage() {
 
                 <Button
                     label="Save Categories"
-                    icon="pi pi-check"
+                    icon={<MdCheck />}
                     size="small"
                     onClick={async () => {
                         setIsSavingCategories(true);
@@ -396,7 +398,7 @@ export default function SettingsPage() {
                 <div className="mt-4">
                     <Button
                         label="Save Tax Defaults"
-                        icon="pi pi-check"
+                        icon={<MdCheck />}
                         size="small"
                         onClick={async () => {
                             setIsSavingTax(true);
@@ -457,7 +459,7 @@ export default function SettingsPage() {
                             </div>
                             <Button
                                 label="Users"
-                                icon="pi pi-users"
+                                icon={<MdGroup />}
                                 outlined
                                 size="small"
                                 onClick={() => appContext?.openDrawer({ mode: 'view', entityType: 'users' })}
@@ -467,7 +469,7 @@ export default function SettingsPage() {
                         <div className="flex justify-end">
                             <Button
                                 label="Save Admin Settings"
-                                icon="pi pi-check"
+                                icon={<MdCheck />}
                                 onClick={handleSaveAdminSettings}
                                 loading={isSaving}
                             />
@@ -500,7 +502,7 @@ export default function SettingsPage() {
                             rel="noopener noreferrer"
                             className={`inline-flex items-center gap-2 text-sm hover:underline ${isDark ? 'text-blue-400 hover:text-blue-300' : 'text-blue-600 hover:text-blue-700'}`}
                         >
-                            <i className="pi pi-github" />
+                            <FaGithub />
                             View on GitHub
                         </a>
                     </div>

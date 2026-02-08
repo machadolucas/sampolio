@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 import { Button } from 'primereact/button';
+import { MdClose } from 'react-icons/md';
 import { useTheme } from '@/components/providers/theme-provider';
 import type { DrawerState } from '@/types';
 
@@ -108,7 +109,7 @@ export function DrawerEditor({
                         )}
                     </div>
                     <Button
-                        icon="pi pi-times"
+                        icon={<MdClose />}
                         rounded
                         text
                         severity="secondary"
@@ -181,8 +182,8 @@ export function InlineEdit({
             onBlur={handleBlur}
             onKeyDown={handleKeyDown}
             className={`px-2 py-1 rounded border transition-colors ${isDark
-                    ? 'bg-gray-800 border-gray-700 text-gray-100 focus:border-blue-500'
-                    : 'bg-white border-gray-300 text-gray-900 focus:border-blue-500'
+                ? 'bg-gray-800 border-gray-700 text-gray-100 focus:border-blue-500'
+                : 'bg-white border-gray-300 text-gray-900 focus:border-blue-500'
                 } focus:outline-none focus:ring-2 focus:ring-blue-500/20 ${className}`}
         />
     );

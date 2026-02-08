@@ -9,18 +9,19 @@ import { Sidebar as PrimeSidebar } from 'primereact/sidebar';
 import { Badge } from 'primereact/badge';
 import { Divider } from 'primereact/divider';
 import { useTheme } from '@/components/providers/theme-provider';
+import { MdHome, MdAccountBalanceWallet, MdSync, MdCalendarToday, MdCalculate, MdGroup, MdSettings, MdPerson, MdLightMode, MdDarkMode, MdLogout, MdMenu } from 'react-icons/md';
 
 const navigation = [
-    { name: 'Dashboard', href: '/dashboard', icon: 'pi pi-home' },
-    { name: 'Accounts', href: '/accounts', icon: 'pi pi-wallet' },
-    { name: 'Recurring', href: '/recurring', icon: 'pi pi-sync' },
-    { name: 'Planned', href: '/planned', icon: 'pi pi-calendar' },
-    { name: 'Salary Calculator', href: '/salary', icon: 'pi pi-calculator' },
+    { name: 'Dashboard', href: '/dashboard', icon: <MdHome size={18} /> },
+    { name: 'Accounts', href: '/accounts', icon: <MdAccountBalanceWallet size={18} /> },
+    { name: 'Recurring', href: '/recurring', icon: <MdSync size={18} /> },
+    { name: 'Planned', href: '/planned', icon: <MdCalendarToday size={18} /> },
+    { name: 'Salary Calculator', href: '/salary', icon: <MdCalculate size={18} /> },
 ];
 
 const adminNavigation = [
-    { name: 'Users', href: '/admin/users', icon: 'pi pi-users' },
-    { name: 'Settings', href: '/admin/settings', icon: 'pi pi-cog' },
+    { name: 'Users', href: '/admin/users', icon: <MdGroup size={18} /> },
+    { name: 'Settings', href: '/admin/settings', icon: <MdSettings size={18} /> },
 ];
 
 export function Sidebar() {
@@ -56,7 +57,7 @@ export function Sidebar() {
                             }`}
                         onClick={() => setIsMobileMenuOpen(false)}
                     >
-                        <i className={`${item.icon} text-lg`}></i>
+                        {item.icon}
                         {item.name}
                     </Link>
                 );
@@ -83,7 +84,7 @@ export function Sidebar() {
                                     }`}
                                 onClick={() => setIsMobileMenuOpen(false)}
                             >
-                                <i className={`${item.icon} text-lg`}></i>
+                                {item.icon}
                                 {item.name}
                             </Link>
                         );
@@ -96,7 +97,7 @@ export function Sidebar() {
     const userSection = (
         <div className="py-2">
             <div className="flex items-center gap-2 px-4 py-2">
-                <i className={`pi pi-user ${isDark ? 'text-gray-400' : 'text-gray-500'}`}></i>
+                <MdPerson className={isDark ? 'text-gray-400' : 'text-gray-500'} />
                 <div className="flex-1 min-w-0">
                     <div className={`text-sm font-medium truncate ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
                         {session?.user?.name}
@@ -111,7 +112,7 @@ export function Sidebar() {
             </div>
             <div className="flex gap-2 mt-2">
                 <Button
-                    icon={isDark ? 'pi pi-sun' : 'pi pi-moon'}
+                    icon={isDark ? <MdLightMode /> : <MdDarkMode />}
                     severity="secondary"
                     text
                     tooltip={isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
@@ -120,7 +121,7 @@ export function Sidebar() {
                 />
                 <Button
                     label="Sign Out"
-                    icon="pi pi-sign-out"
+                    icon={<MdLogout />}
                     severity="secondary"
                     text
                     className="flex-1 justify-start"
@@ -140,13 +141,13 @@ export function Sidebar() {
                     </Link>
                     <div className="flex gap-2">
                         <Button
-                            icon={isDark ? 'pi pi-sun' : 'pi pi-moon'}
+                            icon={isDark ? <MdLightMode /> : <MdDarkMode />}
                             severity="secondary"
                             text
                             onClick={toggleTheme}
                         />
                         <Button
-                            icon="pi pi-bars"
+                            icon={<MdMenu />}
                             severity="secondary"
                             text
                             onClick={() => setIsMobileMenuOpen(true)}

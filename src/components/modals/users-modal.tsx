@@ -15,6 +15,7 @@ import { Card } from 'primereact/card';
 import { Message } from 'primereact/message';
 import { ConfirmDialog, confirmDialog } from 'primereact/confirmdialog';
 import { Toast } from 'primereact/toast';
+import { MdWarning, MdEdit, MdDelete, MdLock, MdAdd, MdCheck } from 'react-icons/md';
 import {
     getUsers,
     createUser,
@@ -144,7 +145,7 @@ export function UsersModal({ visible, onHide }: UsersModalProps) {
         confirmDialog({
             message: `Are you sure you want to delete ${user.name}?`,
             header: 'Confirm Delete',
-            icon: 'pi pi-exclamation-triangle',
+            icon: <MdWarning />,
             acceptClassName: 'p-button-danger',
             accept: async () => {
                 try {
@@ -174,8 +175,8 @@ export function UsersModal({ visible, onHide }: UsersModalProps) {
         const isCurrentUser = user.id === session?.user?.id;
         return (
             <div className="flex gap-2">
-                <Button icon="pi pi-pencil" severity="secondary" text onClick={() => openEditDialog(user)} />
-                <Button icon="pi pi-trash" severity="danger" text disabled={isCurrentUser} onClick={() => handleDelete(user)} />
+                <Button icon={<MdEdit />} severity="secondary" text onClick={() => openEditDialog(user)} />
+                <Button icon={<MdDelete />} severity="danger" text disabled={isCurrentUser} onClick={() => handleDelete(user)} />
             </div>
         );
     };
@@ -202,14 +203,14 @@ export function UsersModal({ visible, onHide }: UsersModalProps) {
 
             {!isAdmin ? (
                 <div className="text-center py-8">
-                    <i className="pi pi-lock text-4xl text-gray-400 mb-4"></i>
+                    <MdLock size={36} className="text-gray-400 mb-4" />
                     <p className="text-gray-600 dark:text-gray-400">Admin access required</p>
                 </div>
             ) : (
                 <div className="space-y-4">
                     <div className="flex items-center justify-between">
                         <p className="text-gray-600 dark:text-gray-400">Manage user accounts and permissions</p>
-                        <Button label="New User" icon="pi pi-plus" onClick={openNewDialog} />
+                        <Button label="New User" icon={<MdAdd />} onClick={openNewDialog} />
                     </div>
 
                     {error && <Message severity="error" text={error} className="w-full" />}
@@ -268,7 +269,7 @@ export function UsersModal({ visible, onHide }: UsersModalProps) {
                     )}
                     <div className="flex justify-end gap-2 mt-4">
                         <Button label="Cancel" severity="secondary" onClick={() => setDialogVisible(false)} />
-                        <Button label={editingUser ? 'Update' : 'Create'} icon={isSaving ? 'pi pi-spin pi-spinner' : 'pi pi-check'} loading={isSaving} onClick={handleSave} />
+                        <Button label={editingUser ? 'Update' : 'Create'} icon={<MdCheck />} loading={isSaving} onClick={handleSave} />
                     </div>
                 </div>
             </Dialog>

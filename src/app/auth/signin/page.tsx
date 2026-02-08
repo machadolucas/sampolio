@@ -9,6 +9,7 @@ import { Password } from 'primereact/password';
 import { Button } from 'primereact/button';
 import { Card } from 'primereact/card';
 import { Message } from 'primereact/message';
+import { MdLogin, MdSync } from 'react-icons/md';
 
 // Constants for rate limiting feedback
 const MAX_ATTEMPTS_BEFORE_WARNING = 3;
@@ -179,7 +180,7 @@ function SignInForm() {
                     <Button
                         type="submit"
                         label={isLocked ? `Locked (${formatTime(lockoutTimeRemaining)})` : 'Sign In'}
-                        icon={isLoading ? 'pi pi-spin pi-spinner' : 'pi pi-sign-in'}
+                        icon={<MdLogin />}
                         loading={isLoading}
                         disabled={isLocked}
                         className="w-full mt-2"
@@ -202,7 +203,7 @@ export default function SignInPage() {
         <Suspense
             fallback={
                 <div className="min-h-screen flex items-center justify-center bg-gray-50">
-                    <i className="pi pi-spin pi-spinner text-4xl text-blue-600"></i>
+                    <MdSync size={36} className="text-blue-600 animate-spin" />
                 </div>
             }
         >

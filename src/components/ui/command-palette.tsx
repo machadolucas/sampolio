@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { InputText } from 'primereact/inputtext';
+import { MdHome, MdAttachMoney, MdBarChart, MdSettings, MdSync, MdAddCircle, MdRemoveCircle, MdSearch } from 'react-icons/md';
 import { useTheme } from '@/components/providers/theme-provider';
 import type { Command, CommandType } from '@/types';
 
@@ -21,7 +22,7 @@ const NAVIGATION_COMMANDS: Command[] = [
         label: 'Go to Overview',
         description: 'Wealth dashboard with net worth and projections',
         type: 'navigate',
-        icon: 'pi pi-home',
+        icon: <MdHome />,
         keywords: ['home', 'dashboard', 'wealth', 'net worth'],
         action: () => { },
     },
@@ -30,7 +31,7 @@ const NAVIGATION_COMMANDS: Command[] = [
         label: 'Go to Cashflow',
         description: 'Cash accounts and monthly projections',
         type: 'navigate',
-        icon: 'pi pi-money-bill',
+        icon: <MdAttachMoney />,
         keywords: ['cash', 'flow', 'monthly', 'income', 'expense'],
         action: () => { },
     },
@@ -39,7 +40,7 @@ const NAVIGATION_COMMANDS: Command[] = [
         label: 'Go to Balance Sheet',
         description: 'Assets, investments, and debts',
         type: 'navigate',
-        icon: 'pi pi-chart-bar',
+        icon: <MdBarChart />,
         keywords: ['assets', 'debts', 'investments', 'balance', 'liabilities'],
         action: () => { },
     },
@@ -48,7 +49,7 @@ const NAVIGATION_COMMANDS: Command[] = [
         label: 'Go to Settings',
         description: 'Configure tax profiles, categories, and preferences',
         type: 'navigate',
-        icon: 'pi pi-cog',
+        icon: <MdSettings />,
         keywords: ['settings', 'config', 'preferences', 'tax'],
         action: () => { },
     },
@@ -60,7 +61,7 @@ const ACTION_COMMANDS: Command[] = [
         label: 'Start Reconciliation',
         description: 'Update actual balances for this month',
         type: 'reconcile',
-        icon: 'pi pi-sync',
+        icon: <MdSync />,
         shortcut: '⌘R',
         keywords: ['reconcile', 'update', 'actual', 'balance'],
         action: () => { },
@@ -70,7 +71,7 @@ const ACTION_COMMANDS: Command[] = [
         label: 'Add Income',
         description: 'Add a new income item',
         type: 'add',
-        icon: 'pi pi-plus-circle',
+        icon: <MdAddCircle />,
         keywords: ['add', 'new', 'income', 'money'],
         action: () => { },
     },
@@ -79,7 +80,7 @@ const ACTION_COMMANDS: Command[] = [
         label: 'Add Expense',
         description: 'Add a new expense item',
         type: 'add',
-        icon: 'pi pi-minus-circle',
+        icon: <MdRemoveCircle />,
         keywords: ['add', 'new', 'expense', 'spend'],
         action: () => { },
     },
@@ -137,10 +138,11 @@ export function CommandPalette({
                 label: `Add ${parsed.type}: ${parsed.name}`,
                 description: parsed.amount ? `€${parsed.amount}${parsed.month ? ` in ${parsed.month}` : ''}` : undefined,
                 type: 'add' as CommandType,
-                icon: parsed.type === 'income' ? 'pi pi-plus-circle' : 'pi pi-minus-circle',
-                keywords: [],
+                icon: parsed.type === 'income' ? <MdAddCircle /> : <MdRemoveCircle />,
+                shortcut: undefined,
+                keywords: [] as string[],
                 action: () => onAddItem?.(parsed.type, parsed.month, parsed.amount, parsed.name),
-            }];
+            } satisfies Command];
         }
 
         return allCommands.filter(cmd => {
@@ -257,7 +259,7 @@ export function CommandPalette({
             >
                 {/* Search Input */}
                 <div className={`flex items-center gap-3 px-4 py-3 border-b ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
-                    <i className={`pi pi-search ${isDark ? 'text-gray-400' : 'text-gray-500'}`} />
+                    <MdSearch className={isDark ? 'text-gray-400' : 'text-gray-500'} />
                     <InputText
                         ref={inputRef}
                         value={query}
@@ -276,7 +278,7 @@ export function CommandPalette({
                 <div className="max-h-80 overflow-y-auto py-2">
                     {filteredCommands.length === 0 ? (
                         <div className={`px-4 py-8 text-center ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                            <i className="pi pi-search text-2xl mb-2" />
+                            <MdSearch size={24} className="mb-2" />
                             <p>No results found</p>
                         </div>
                     ) : (
@@ -285,11 +287,11 @@ export function CommandPalette({
                                 key={command.id}
                                 onClick={() => executeCommand(command)}
                                 className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors ${index === selectedIndex
-                                        ? isDark ? 'bg-gray-800' : 'bg-gray-100'
-                                        : isDark ? 'hover:bg-gray-800/50' : 'hover:bg-gray-50'
+                                    ? isDark ? 'bg-gray-800' : 'bg-gray-100'
+                                    : isDark ? 'hover:bg-gray-800/50' : 'hover:bg-gray-50'
                                     }`}
                             >
-                                <i className={`${command.icon} ${getTypeColor(command.type)}`} />
+                                <span className={getTypeColor(command.type)}>{command.icon}</span>
                                 <div className="flex-1 min-w-0">
                                     <div className={isDark ? 'text-gray-100' : 'text-gray-900'}>
                                         {command.label}

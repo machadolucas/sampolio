@@ -9,6 +9,7 @@ import { Message } from 'primereact/message';
 import { Toast } from 'primereact/toast';
 import { Divider } from 'primereact/divider';
 import { ProgressSpinner } from 'primereact/progressspinner';
+import { MdLock } from 'react-icons/md';
 import { getSettings, updateSettings } from '@/lib/actions/admin';
 import type { AppSettings } from '@/types';
 
@@ -93,7 +94,7 @@ export function SettingsModal({ visible, onHide }: SettingsModalProps) {
 
             {!isAdmin ? (
                 <div className="text-center py-8">
-                    <i className="pi pi-lock text-4xl text-gray-400 mb-4"></i>
+                    <MdLock size={36} className="text-gray-400 mb-4" />
                     <p className="text-gray-600 dark:text-gray-400">Admin access required</p>
                 </div>
             ) : isLoading ? (

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { MdCheckCircle, MdWarning, MdArrowBack, MdArrowForward, MdCheck, MdError } from 'react-icons/md';
 import { Dialog } from 'primereact/dialog';
 import { Button } from 'primereact/button';
 import { Steps } from 'primereact/steps';
@@ -412,7 +413,7 @@ export function ReconcileWizard({
                     <div className="space-y-4">
                         {entitiesWithVariance.length === 0 ? (
                             <div className={`text-center py-8 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                                <i className="pi pi-check-circle text-4xl text-green-500 mb-4" />
+                                <MdCheckCircle size={36} className="text-green-500 mb-4" />
                                 <p className="text-lg font-medium">No variance to explain!</p>
                                 <p className="text-sm">All your actual balances match expectations.</p>
                             </div>
@@ -526,8 +527,8 @@ export function ReconcileWizard({
                         </div>
 
                         {entitiesEntered.length === 0 && (
-                            <div className={`text-center py-4 ${isDark ? 'text-yellow-400' : 'text-yellow-600'}`}>
-                                <i className="pi pi-exclamation-triangle mr-2" />
+                            <div className={`flex items-center justify-center py-4 ${isDark ? 'text-yellow-400' : 'text-yellow-600'}`}>
+                                <MdWarning className="mr-2" />
                                 No balances were entered. Please go back and enter at least one balance.
                             </div>
                         )}
@@ -554,7 +555,7 @@ export function ReconcileWizard({
             <div className="flex justify-between pt-4">
                 <Button
                     label="Back"
-                    icon="pi pi-arrow-left"
+                    icon={<MdArrowBack />}
                     text
                     onClick={() => setActiveStep(s => s - 1)}
                     disabled={activeStep === 0}
@@ -562,7 +563,7 @@ export function ReconcileWizard({
                 {activeStep < 3 ? (
                     <Button
                         label="Continue"
-                        icon="pi pi-arrow-right"
+                        icon={<MdArrowForward />}
                         iconPos="right"
                         onClick={() => {
                             if (activeStep === 0) {
@@ -576,7 +577,7 @@ export function ReconcileWizard({
                 ) : (
                     <Button
                         label="Complete Reconciliation"
-                        icon="pi pi-check"
+                        icon={<MdCheck />}
                         severity="success"
                         onClick={handleComplete}
                         loading={isSaving}
@@ -601,8 +602,8 @@ export function ReconcileWizard({
                 <Steps model={WIZARD_STEPS} activeIndex={activeStep} readOnly />
 
                 {error && (
-                    <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-500">
-                        <i className="pi pi-exclamation-circle mr-2" />
+                    <div className="flex items-center p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-500">
+                        <MdError className="mr-2" />
                         {error}
                     </div>
                 )}

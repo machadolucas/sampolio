@@ -20,6 +20,7 @@ import { calculateWealthProjection, getLatestEndDate } from '@/lib/wealth-projec
 import type { FinancialAccount, InvestmentAccount, Receivable, Debt, TimeHorizon, WealthProjectionMonth, Currency, InvestmentContribution, ReceivableRepayment, DebtReferenceRate, DebtExtraPayment, MonthlyProjection } from '@/types';
 import { NetWorthChart, WealthChart } from '@/components/charts';
 import { EntityListDrawer } from '@/components/ui/entity-list-drawer';
+import { MdInfo, MdSync, MdShowChart, MdAttachMoney, MdAccountBalanceWallet, MdBarChart, MdGroup, MdCreditCard, MdArrowForward, MdAddCircle, MdRemoveCircle } from 'react-icons/md';
 
 type EntityCategory = 'cash' | 'investments' | 'receivables' | 'debts';
 
@@ -36,7 +37,7 @@ interface KPICardProps {
     currency?: Currency;
     change?: number;
     changeLabel?: string;
-    icon: string;
+    icon: React.ReactNode;
     onClick?: () => void;
     severity?: 'info' | 'success' | 'warning' | 'danger';
 }
@@ -79,8 +80,8 @@ function KPICard({ title, value, currency = 'EUR', change, changeLabel, icon, on
                         </div>
                     )}
                 </div>
-                <div className={`p-3 rounded-full ${isDark ? 'bg-gray-800' : 'bg-gray-100'}`}>
-                    <i className={`${icon} text-xl ${severityColors[severity]}`} />
+                <div className={`p-3 rounded-full ${isDark ? 'bg-gray-800' : 'bg-gray-100'} text-xl ${severityColors[severity]}`}>
+                    {icon}
                 </div>
             </div>
         </Card>
@@ -104,7 +105,7 @@ function ImpactPanel({ items, currency = 'EUR' as Currency }: { items: ImpactIte
     if (sortedItems.length === 0) {
         return (
             <div className={`text-center py-6 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                <i className="pi pi-info-circle text-2xl mb-2" />
+                <MdInfo size={24} className="mb-2" />
                 <p>No significant changes this month</p>
             </div>
         );
@@ -120,8 +121,8 @@ function ImpactPanel({ items, currency = 'EUR' as Currency }: { items: ImpactIte
                 >
                     <div className="flex items-center gap-3">
                         <i className={`pi ${item.type === 'income' ? 'pi-arrow-up text-green-500' :
-                                item.type === 'expense' ? 'pi-arrow-down text-red-500' :
-                                    'pi-chart-line text-blue-500'
+                            item.type === 'expense' ? 'pi-arrow-down text-red-500' :
+                                'pi-chart-line text-blue-500'
                             }`} />
                         <span className={isDark ? 'text-gray-200' : 'text-gray-700'}>
                             {item.name}
@@ -297,12 +298,15 @@ export default function OverviewPage() {
         const prevNetWorth = prevMonth?.netWorth || netWorth;
         const projectedNetWorth = endMonth?.netWorth || netWorth;
 
+        const liquidAssets = cashTotal + investmentsTotal;
+
         return {
             netWorth,
             netWorthChange: netWorth - prevNetWorth,
             projectedNetWorth,
             cashTotal,
             investmentsTotal,
+            liquidAssets,
             receivablesTotal,
             debtsTotal,
         };
@@ -352,47 +356,53 @@ export default function OverviewPage() {
                 </div>
                 <Button
                     label="Reconcile"
-                    icon="pi pi-sync"
+                    icon={<MdSync />}
                     severity="success"
                     onClick={() => appContext?.openReconcile()}
                 />
             </div>
 
             {/* KPI Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 <KPICard
                     title="Net Worth"
                     value={kpiValues.netWorth}
                     change={kpiValues.netWorthChange}
                     changeLabel="vs last month"
-                    icon="pi pi-chart-line"
+                    icon={<MdShowChart />}
+                    severity="info"
+                />
+                <KPICard
+                    title="Liquid Assets"
+                    value={kpiValues.liquidAssets}
+                    icon={<MdAttachMoney />}
                     severity="info"
                 />
                 <KPICard
                     title="Cash"
                     value={kpiValues.cashTotal}
-                    icon="pi pi-wallet"
+                    icon={<MdAccountBalanceWallet />}
                     severity="success"
                     onClick={() => setEntityDrawer({ visible: true, category: 'cash' })}
                 />
                 <KPICard
                     title="Investments"
                     value={kpiValues.investmentsTotal}
-                    icon="pi pi-chart-bar"
+                    icon={<MdBarChart />}
                     severity="success"
                     onClick={() => setEntityDrawer({ visible: true, category: 'investments' })}
                 />
                 <KPICard
                     title="Receivables"
                     value={kpiValues.receivablesTotal}
-                    icon="pi pi-users"
+                    icon={<MdGroup />}
                     severity="warning"
                     onClick={() => setEntityDrawer({ visible: true, category: 'receivables' })}
                 />
                 <KPICard
                     title="Debts"
                     value={-kpiValues.debtsTotal}
-                    icon="pi pi-credit-card"
+                    icon={<MdCreditCard />}
                     severity="danger"
                     onClick={() => setEntityDrawer({ visible: true, category: 'debts' })}
                 />
@@ -415,7 +425,7 @@ export default function OverviewPage() {
                                     className="text-sm"
                                 />
                                 <Button
-                                    icon={showBreakdown ? 'pi pi-chart-line' : 'pi pi-chart-bar'}
+                                    icon={showBreakdown ? <MdShowChart /> : <MdBarChart />}
                                     text
                                     severity="secondary"
                                     tooltip={showBreakdown ? 'Show net worth only' : 'Show breakdown'}
@@ -466,7 +476,7 @@ export default function OverviewPage() {
                         <div className="mt-4 pt-4 border-t border-gray-700">
                             <Button
                                 label="View Month Details"
-                                icon="pi pi-arrow-right"
+                                icon={<MdArrowForward />}
                                 iconPos="right"
                                 text
                                 className="w-full"
@@ -504,7 +514,7 @@ export default function OverviewPage() {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <Button
                     label="Add Income"
-                    icon="pi pi-plus-circle"
+                    icon={<MdAddCircle />}
                     severity="success"
                     outlined
                     className="justify-center"
@@ -512,7 +522,7 @@ export default function OverviewPage() {
                 />
                 <Button
                     label="Add Expense"
-                    icon="pi pi-minus-circle"
+                    icon={<MdRemoveCircle />}
                     severity="danger"
                     outlined
                     className="justify-center"
@@ -520,7 +530,7 @@ export default function OverviewPage() {
                 />
                 <Button
                     label="Add Receivable"
-                    icon="pi pi-users"
+                    icon={<MdGroup />}
                     severity="warning"
                     outlined
                     className="justify-center"
@@ -528,7 +538,7 @@ export default function OverviewPage() {
                 />
                 <Button
                     label="Add Debt"
-                    icon="pi pi-credit-card"
+                    icon={<MdCreditCard />}
                     severity="danger"
                     outlined
                     className="justify-center"

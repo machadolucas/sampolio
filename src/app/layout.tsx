@@ -1,17 +1,19 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Bodoni_Moda, Quicksand } from "next/font/google";
 import { PrimeProvider } from "@/components/providers/prime-provider";
 import { ThemeProvider } from "@/components/providers/theme-provider";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const bodoniModa = Bodoni_Moda({
+  variable: "--font-heading",
   subsets: ["latin"],
+  display: "swap",
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const quicksand = Quicksand({
+  variable: "--font-body",
   subsets: ["latin"],
+  display: "swap",
 });
 
 export const metadata: Metadata = {
@@ -27,7 +29,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${bodoniModa.variable} ${quicksand.variable} antialiased`}
       >
         <ThemeProvider>
           <PrimeProvider>

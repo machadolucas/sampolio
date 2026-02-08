@@ -15,6 +15,7 @@ import { Message } from 'primereact/message';
 import { Tag } from 'primereact/tag';
 import { Toast } from 'primereact/toast';
 import { Tooltip } from 'primereact/tooltip';
+import { MdAccountBalanceWallet, MdBarChart, MdGroup, MdCreditCard, MdEdit, MdDelete, MdReplay, MdArchive, MdExpandLess, MdExpandMore, MdAdd, MdCheck, MdInfo, MdVisibility, MdVisibilityOff } from 'react-icons/md';
 import { formatCurrency, CURRENCIES, FREQUENCIES, PLANNING_HORIZONS } from '@/lib/constants';
 import { getCurrentYearMonth } from '@/lib/projection';
 import {
@@ -94,10 +95,10 @@ interface EntityListDrawerProps {
 }
 
 const categoryConfig = {
-    cash: { title: 'Cash Accounts', icon: 'pi pi-wallet', color: 'text-green-500', description: 'Manage your bank and cash accounts. These are the foundation for tracking income, expenses, and projections.' },
-    investments: { title: 'Investments', icon: 'pi pi-chart-bar', color: 'text-blue-500', description: 'Track investment portfolios, stocks, and funds. Set an expected growth rate and manage contributions.' },
-    receivables: { title: 'Receivables', icon: 'pi pi-users', color: 'text-yellow-500', description: 'Money owed to you — personal loans, deposits, or any amount you expect to receive back.' },
-    debts: { title: 'Debts', icon: 'pi pi-credit-card', color: 'text-red-500', description: 'Track loans, mortgages, and other debts. Monitor how they diminish over time with payments.' },
+    cash: { title: 'Cash Accounts', icon: <MdAccountBalanceWallet />, color: 'text-green-500', description: 'Manage your bank and cash accounts. These are the foundation for tracking income, expenses, and projections.' },
+    investments: { title: 'Investments', icon: <MdBarChart />, color: 'text-blue-500', description: 'Track investment portfolios, stocks, and funds. Set an expected growth rate and manage contributions.' },
+    receivables: { title: 'Receivables', icon: <MdGroup />, color: 'text-yellow-500', description: 'Money owed to you — personal loans, deposits, or any amount you expect to receive back.' },
+    debts: { title: 'Debts', icon: <MdCreditCard />, color: 'text-red-500', description: 'Track loans, mortgages, and other debts. Monitor how they diminish over time with payments.' },
 };
 
 // ──── Tooltip helper ────
@@ -148,12 +149,12 @@ function ItemCard({ name, subtitle, tags, onEdit, onArchive, isArchived, onDelet
                 </div>
             </div>
             <div className="flex items-center gap-1 mt-2 pt-2 border-t surface-border">
-                <Button icon="pi pi-pencil" severity="secondary" text size="small" tooltip="Edit" tooltipOptions={{ position: 'top' }} onClick={onEdit} />
-                <Button icon={isArchived ? 'pi pi-replay' : 'pi pi-inbox'} severity="secondary" text size="small" tooltip={isArchived ? 'Restore' : 'Archive'} tooltipOptions={{ position: 'top' }} onClick={onArchive} />
-                <Button icon="pi pi-trash" severity="danger" text size="small" tooltip="Delete" tooltipOptions={{ position: 'top' }} onClick={onDelete} />
+                <Button icon={<MdEdit />} severity="secondary" text size="small" tooltip="Edit" tooltipOptions={{ position: 'top' }} onClick={onEdit} />
+                <Button icon={isArchived ? <MdReplay /> : <MdArchive />} severity="secondary" text size="small" tooltip={isArchived ? 'Restore' : 'Archive'} tooltipOptions={{ position: 'top' }} onClick={onArchive} />
+                <Button icon={<MdDelete />} severity="danger" text size="small" tooltip="Delete" tooltipOptions={{ position: 'top' }} onClick={onDelete} />
                 {onExpand && (
                     <Button
-                        icon={isExpanded ? 'pi pi-chevron-up' : 'pi pi-chevron-down'}
+                        icon={isExpanded ? <MdExpandLess /> : <MdExpandMore />}
                         severity="secondary" text size="small"
                         tooltip={isExpanded ? `Hide ${expandLabel}` : `Show ${expandLabel}`}
                         tooltipOptions={{ position: 'top' }}
@@ -179,7 +180,7 @@ function SubEntityList({ title, items, onAdd, onEditItem, onDeleteItem, addLabel
         <div className="ml-4 mb-3 border-l surface-border pl-3">
             <div className="flex items-center justify-between mb-1">
                 <span className="text-xs font-semibold opacity-60">{title || addLabel.replace('Add ', '')}</span>
-                <Button icon="pi pi-plus" size="small" text onClick={onAdd} tooltip={addLabel} tooltipOptions={{ position: 'top' }} />
+                <Button icon={<MdAdd />} size="small" text onClick={onAdd} tooltip={addLabel} tooltipOptions={{ position: 'top' }} />
             </div>
             {items.length === 0 ? (
                 <p className="text-xs opacity-40">None yet</p>
@@ -193,8 +194,8 @@ function SubEntityList({ title, items, onAdd, onEditItem, onDeleteItem, addLabel
                                 {item.inactive && <Tag value="Inactive" severity="secondary" className="ml-1 text-xs" />}
                             </div>
                             <div className="flex gap-0.5">
-                                {onEditItem && <Button icon="pi pi-pencil" size="small" text severity="secondary" onClick={() => onEditItem(item.id)} />}
-                                <Button icon="pi pi-trash" size="small" text severity="danger" onClick={() => onDeleteItem(item.id)} />
+                                {onEditItem && <Button icon={<MdEdit />} size="small" text severity="secondary" onClick={() => onEditItem(item.id)} />}
+                                <Button icon={<MdDelete />} size="small" text severity="danger" onClick={() => onDeleteItem(item.id)} />
                             </div>
                         </div>
                     ))}
@@ -277,7 +278,7 @@ function AccountForm({ account, onSave, onCancel, showToast }: {
 
             <div className="flex justify-end gap-2 pt-4">
                 <Button label="Cancel" severity="secondary" outlined onClick={onCancel} />
-                <Button label={account ? 'Save Changes' : 'Create Account'} icon={account ? 'pi pi-check' : 'pi pi-plus'} loading={isSaving} onClick={handleSubmit} />
+                <Button label={account ? 'Save Changes' : 'Create Account'} icon={account ? <MdCheck /> : <MdAdd />} loading={isSaving} onClick={handleSubmit} />
             </div>
         </div>
     );
@@ -346,7 +347,7 @@ function InvestmentForm({ investment, onSave, onCancel, showToast }: { investmen
 
             <div className="flex justify-end gap-2 pt-4">
                 <Button label="Cancel" severity="secondary" outlined onClick={onCancel} />
-                <Button label={investment ? 'Save Changes' : 'Create Investment'} icon={investment ? 'pi pi-check' : 'pi pi-plus'} loading={isSaving} onClick={handleSubmit} />
+                <Button label={investment ? 'Save Changes' : 'Create Investment'} icon={investment ? <MdCheck /> : <MdAdd />} loading={isSaving} onClick={handleSubmit} />
             </div>
         </div>
     );
@@ -441,12 +442,12 @@ function ContributionForm({ investmentId, contribution, currency, onSave, onCanc
                 <Checkbox inputId="contribActive" checked={isActive} onChange={(e) => setIsActive(e.checked ?? true)} />
                 <label htmlFor="contribActive" className="text-sm">Active</label>
                 <Tooltip target=".contribActiveHelp" />
-                <i className="pi pi-info-circle contribActiveHelp text-xs opacity-50 cursor-help" data-pr-tooltip="Inactive contributions are paused and won't affect projections" data-pr-position="top" />
+                <MdInfo className="contribActiveHelp text-xs opacity-50 cursor-help" data-pr-tooltip="Inactive contributions are paused and won't affect projections" data-pr-position="top" />
             </div>
 
             <div className="flex justify-end gap-2 pt-4">
                 <Button label="Cancel" severity="secondary" outlined onClick={onCancel} />
-                <Button label={contribution ? 'Save' : 'Create'} icon={contribution ? 'pi pi-check' : 'pi pi-plus'} loading={isSaving} onClick={handleSubmit} />
+                <Button label={contribution ? 'Save' : 'Create'} icon={contribution ? <MdCheck /> : <MdAdd />} loading={isSaving} onClick={handleSubmit} />
             </div>
         </div>
     );
@@ -514,7 +515,7 @@ function ReceivableForm({ receivable, onSave, onCancel, showToast }: { receivabl
                 <Checkbox inputId="hasInterest" checked={hasInterest} onChange={(e) => setHasInterest(e.checked ?? false)} />
                 <label htmlFor="hasInterest" className="text-sm">Earns Interest</label>
                 <Tooltip target=".interestHelp" />
-                <i className="pi pi-info-circle interestHelp text-xs opacity-50 cursor-help" data-pr-tooltip="Check if the person is paying interest on the amount owed" data-pr-position="top" />
+                <MdInfo className="interestHelp text-xs opacity-50 cursor-help" data-pr-tooltip="Check if the person is paying interest on the amount owed" data-pr-position="top" />
             </div>
 
             {hasInterest && (
@@ -538,7 +539,7 @@ function ReceivableForm({ receivable, onSave, onCancel, showToast }: { receivabl
 
             <div className="flex justify-end gap-2 pt-4">
                 <Button label="Cancel" severity="secondary" outlined onClick={onCancel} />
-                <Button label={receivable ? 'Save Changes' : 'Create Receivable'} icon={receivable ? 'pi pi-check' : 'pi pi-plus'} loading={isSaving} onClick={handleSubmit} />
+                <Button label={receivable ? 'Save Changes' : 'Create Receivable'} icon={receivable ? <MdCheck /> : <MdAdd />} loading={isSaving} onClick={handleSubmit} />
             </div>
         </div>
     );
@@ -584,7 +585,7 @@ function RepaymentForm({ receivableId, currency, onSave, onCancel, showToast }: 
 
             <div className="flex justify-end gap-2 pt-4">
                 <Button label="Cancel" severity="secondary" outlined onClick={onCancel} />
-                <Button label="Add Repayment" icon="pi pi-plus" loading={isSaving} onClick={handleSubmit} />
+                <Button label="Add Repayment" icon={<MdAdd />} loading={isSaving} onClick={handleSubmit} />
             </div>
         </div>
     );
@@ -723,7 +724,7 @@ function DebtForm({ debt, onSave, onCancel, showToast }: { debt: Debt | null; on
 
             <div className="flex justify-end gap-2 pt-4">
                 <Button label="Cancel" severity="secondary" outlined onClick={onCancel} />
-                <Button label={debt ? 'Save Changes' : 'Create Debt'} icon={debt ? 'pi pi-check' : 'pi pi-plus'} loading={isSaving} onClick={handleSubmit} />
+                <Button label={debt ? 'Save Changes' : 'Create Debt'} icon={debt ? <MdCheck /> : <MdAdd />} loading={isSaving} onClick={handleSubmit} />
             </div>
         </div>
     );
@@ -764,7 +765,7 @@ function ReferenceRateForm({ debtId, onSave, onCancel, showToast }: { debtId: st
 
             <div className="flex justify-end gap-2 pt-4">
                 <Button label="Cancel" severity="secondary" outlined onClick={onCancel} />
-                <Button label="Add Rate" icon="pi pi-plus" loading={isSaving} onClick={handleSubmit} />
+                <Button label="Add Rate" icon={<MdAdd />} loading={isSaving} onClick={handleSubmit} />
             </div>
         </div>
     );
@@ -810,7 +811,7 @@ function ExtraPaymentForm({ debtId, currency, onSave, onCancel, showToast }: { d
 
             <div className="flex justify-end gap-2 pt-4">
                 <Button label="Cancel" severity="secondary" outlined onClick={onCancel} />
-                <Button label="Add Payment" icon="pi pi-plus" loading={isSaving} onClick={handleSubmit} />
+                <Button label="Add Payment" icon={<MdAdd />} loading={isSaving} onClick={handleSubmit} />
             </div>
         </div>
     );
@@ -1003,7 +1004,7 @@ export function EntityListDrawer({ visible, category, onClose, onRefresh, editEn
 
     const renderEmpty = () => (
         <div className="text-center py-12 opacity-50">
-            <i className={`${config.icon} text-4xl mb-4`} style={{ display: 'block' }} />
+            <span className={`text-4xl mb-4 block ${config.color}`}>{config.icon}</span>
             <p className="mb-4">{showArchived ? `No archived ${config.title.toLowerCase()}` : `No ${config.title.toLowerCase()} yet`}</p>
         </div>
     );
@@ -1147,7 +1148,7 @@ export function EntityListDrawer({ visible, category, onClose, onRefresh, editEn
 
     const sidebarHeader = (
         <div className="flex items-center gap-3">
-            <i className={`${config.icon} text-xl ${config.color}`} />
+            <span className={`text-xl ${config.color} flex items-center`}>{config.icon}</span>
             <span className="text-lg font-semibold">{config.title}</span>
         </div>
     );
@@ -1170,8 +1171,8 @@ export function EntityListDrawer({ visible, category, onClose, onRefresh, editEn
 
                 {/* Toolbar */}
                 <div className="flex items-center justify-between mb-4">
-                    <Button label={showArchived ? 'Active' : 'Archived'} icon={showArchived ? 'pi pi-eye' : 'pi pi-eye-slash'} severity="secondary" text size="small" onClick={() => setShowArchived(!showArchived)} />
-                    <Button label="Add" icon="pi pi-plus" size="small" onClick={openCreateForm} />
+                    <Button label={showArchived ? 'Active' : 'Archived'} icon={showArchived ? <MdVisibility /> : <MdVisibilityOff />} severity="secondary" text size="small" onClick={() => setShowArchived(!showArchived)} />
+                    <Button label="Add" icon={<MdAdd />} size="small" onClick={openCreateForm} />
                 </div>
 
                 {/* Content */}

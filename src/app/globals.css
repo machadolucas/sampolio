@@ -13,8 +13,8 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-body);
+  --font-heading: var(--font-heading);
 }
 
 /* Dark mode variables - set via theme-provider.tsx */
@@ -26,17 +26,48 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-body), 'Quicksand', sans-serif !important;
   transition: background-color 0.3s, color 0.3s;
 }
 
-/* PrimeReact customizations */
-.p-button {
-  font-family: inherit;
+/* Heading font */
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-heading), 'Bodoni Moda', serif !important;
 }
 
-.p-inputtext {
-  font-family: inherit;
+/* Override PrimeReact theme font-family (exclude PrimeIcons) */
+.p-component,
+.p-component *:not(.pi),
+.p-inputtext,
+.p-button,
+.p-dropdown,
+.p-datatable,
+.p-dialog,
+.p-sidebar,
+.p-menubar,
+.p-tabview,
+.p-card,
+.p-tag,
+.p-toast,
+.p-message {
+  font-family: var(--font-body), 'Quicksand', sans-serif !important;
+}
+
+/* Ensure PrimeIcons keep their font */
+.pi {
+  font-family: 'primeicons' !important;
+}
+
+/* Ensure headings inside PrimeReact still use heading font */
+.p-component h1, .p-component h2, .p-component h3,
+.p-component h4, .p-component h5, .p-component h6,
+.p-dialog h1, .p-dialog h2, .p-dialog h3,
+.p-dialog h4, .p-dialog h5, .p-dialog h6,
+.p-card h1, .p-card h2, .p-card h3,
+.p-card h4, .p-card h5, .p-card h6,
+.p-sidebar h1, .p-sidebar h2, .p-sidebar h3,
+.p-sidebar h4, .p-sidebar h5, .p-sidebar h6 {
+  font-family: var(--font-heading), 'Bodoni Moda', serif !important;
 }
 
 .p-card {

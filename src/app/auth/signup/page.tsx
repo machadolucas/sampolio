@@ -9,6 +9,7 @@ import { Password } from 'primereact/password';
 import { Button } from 'primereact/button';
 import { Card } from 'primereact/card';
 import { Message } from 'primereact/message';
+import { MdPersonAdd } from 'react-icons/md';
 import { signUp, checkSignupEnabled } from '@/lib/actions/auth';
 
 export default function SignUpPage() {
@@ -197,7 +198,7 @@ export default function SignUpPage() {
                     <Button
                         type="submit"
                         label="Create Account"
-                        icon={isLoading ? 'pi pi-spin pi-spinner' : 'pi pi-user-plus'}
+                        icon={<MdPersonAdd />}
                         loading={isLoading}
                         className="w-full mt-2"
                     />
