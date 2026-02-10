@@ -49,16 +49,11 @@ export async function getDebts(userId: string): Promise<Debt[]> {
   await ensureDir(debtsDir);
 
   const files = await listFiles(debtsDir);
-  const debts: Debt[] = [];
-
-  for (const file of files) {
-    if (file.endsWith('.enc')) {
-      const debt = await readEncryptedFile<Debt>(path.join(debtsDir, file));
-      if (debt) {
-        debts.push(debt);
-      }
-    }
-  }
+  const encFiles = files.filter(file => file.endsWith('.enc'));
+  const results = await Promise.all(
+    encFiles.map(file => readEncryptedFile<Debt>(path.join(debtsDir, file)))
+  );
+  const debts = results.filter((d): d is Debt => d !== null);
 
   return debts.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 }
@@ -171,16 +166,11 @@ export async function getReferenceRates(userId: string, debtId: string): Promise
   }
 
   const files = await listFiles(ratesDir);
-  const rates: DebtReferenceRate[] = [];
-
-  for (const file of files) {
-    if (file.endsWith('.enc')) {
-      const rate = await readEncryptedFile<DebtReferenceRate>(path.join(ratesDir, file));
-      if (rate) {
-        rates.push(rate);
-      }
-    }
-  }
+  const encFiles = files.filter(file => file.endsWith('.enc'));
+  const results = await Promise.all(
+    encFiles.map(file => readEncryptedFile<DebtReferenceRate>(path.join(ratesDir, file)))
+  );
+  const rates = results.filter((r): r is DebtReferenceRate => r !== null);
 
   return rates.sort((a, b) => a.yearMonth.localeCompare(b.yearMonth));
 }
@@ -247,16 +237,11 @@ export async function getExtraPayments(userId: string, debtId: string): Promise<
   }
 
   const files = await listFiles(paymentsDir);
-  const payments: DebtExtraPayment[] = [];
-
-  for (const file of files) {
-    if (file.endsWith('.enc')) {
-      const payment = await readEncryptedFile<DebtExtraPayment>(path.join(paymentsDir, file));
-      if (payment) {
-        payments.push(payment);
-      }
-    }
-  }
+  const encFiles = files.filter(file => file.endsWith('.enc'));
+  const results = await Promise.all(
+    encFiles.map(file => readEncryptedFile<DebtExtraPayment>(path.join(paymentsDir, file)))
+  );
+  const payments = results.filter((p): p is DebtExtraPayment => p !== null);
 
   return payments.sort((a, b) => a.date.localeCompare(b.date));
 }

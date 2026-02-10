@@ -2,14 +2,14 @@
 
 import { z } from 'zod';
 import { auth } from '@/lib/auth';
-import { getAccountById } from '@/lib/db/accounts';
+import { cachedGetAccountById } from '@/lib/db/cached';
 import {
-  getRecurringItems as dbGetRecurringItems,
-  getRecurringItemById as dbGetRecurringItemById,
   createRecurringItem as dbCreateRecurringItem,
   updateRecurringItem as dbUpdateRecurringItem,
   deleteRecurringItem as dbDeleteRecurringItem,
 } from '@/lib/db/recurring-items';
+import { cachedGetRecurringItems, cachedGetRecurringItemById } from '@/lib/db/cached';
+import { updateTag } from 'next/cache';
 import type { ApiResponse, RecurringItem } from '@/types';
 
 const createRecurringItemSchema = z.object({
@@ -43,12 +43,12 @@ export async function getRecurringItems(accountId: string): Promise<ApiResponse<
       return { success: false, error: 'Unauthorized' };
     }
 
-    const account = await getAccountById(session.user.id, accountId);
+    const account = await cachedGetAccountById(session.user.id, accountId);
     if (!account) {
       return { success: false, error: 'Account not found' };
     }
 
-    const items = await dbGetRecurringItems(session.user.id, accountId);
+    const items = await cachedGetRecurringItems(session.user.id, accountId);
     return { success: true, data: items };
   } catch (error) {
     console.error('Get recurring items error:', error);
@@ -66,12 +66,12 @@ export async function getRecurringItemById(
       return { success: false, error: 'Unauthorized' };
     }
 
-    const account = await getAccountById(session.user.id, accountId);
+    const account = await cachedGetAccountById(session.user.id, accountId);
     if (!account) {
       return { success: false, error: 'Account not found' };
     }
 
-    const item = await dbGetRecurringItemById(session.user.id, accountId, itemId);
+    const item = await cachedGetRecurringItemById(session.user.id, accountId, itemId);
     if (!item) {
       return { success: false, error: 'Item not found' };
     }
@@ -93,7 +93,7 @@ export async function createRecurringItem(
       return { success: false, error: 'Unauthorized' };
     }
 
-    const account = await getAccountById(session.user.id, accountId);
+    const account = await cachedGetAccountById(session.user.id, accountId);
     if (!account) {
       return { success: false, error: 'Account not found' };
     }
@@ -104,6 +104,7 @@ export async function createRecurringItem(
       accountId,
     });
 
+    updateTag(`user:${session.user.id}:account:${accountId}:recurring`);
     return { success: true, data: item };
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -137,6 +138,7 @@ export async function updateRecurringItem(
       return { success: false, error: 'Item not found' };
     }
 
+    updateTag(`user:${session.user.id}:account:${accountId}:recurring`);
     return { success: true, data: item };
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -158,6 +160,7 @@ export async function deleteRecurringItem(
     }
 
     await dbDeleteRecurringItem(session.user.id, accountId, itemId);
+    updateTag(`user:${session.user.id}:account:${accountId}:recurring`);
     return { success: true };
   } catch (error) {
     console.error('Delete recurring item error:', error);

@@ -1,9 +1,9 @@
 import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
-import type { 
-  RecurringItem, 
-  CreateRecurringItemRequest, 
-  UpdateRecurringItemRequest 
+import type {
+  RecurringItem,
+  CreateRecurringItemRequest,
+  UpdateRecurringItemRequest
 } from '@/types';
 import {
   getUserDir,
@@ -25,19 +25,14 @@ function getRecurringItemFile(userId: string, accountId: string, itemId: string)
 export async function getRecurringItems(userId: string, accountId: string): Promise<RecurringItem[]> {
   const itemsDir = getRecurringItemsDir(userId, accountId);
   await ensureDir(itemsDir);
-  
+
   const files = await listFiles(itemsDir);
-  const items: RecurringItem[] = [];
-  
-  for (const file of files) {
-    if (file.endsWith('.enc')) {
-      const item = await readEncryptedFile<RecurringItem>(path.join(itemsDir, file));
-      if (item) {
-        items.push(item);
-      }
-    }
-  }
-  
+  const encFiles = files.filter(file => file.endsWith('.enc'));
+  const results = await Promise.all(
+    encFiles.map(file => readEncryptedFile<RecurringItem>(path.join(itemsDir, file)))
+  );
+  const items = results.filter((item): item is RecurringItem => item !== null);
+
   // Sort by name
   return items.sort((a, b) => a.name.localeCompare(b.name));
 }
@@ -48,8 +43,8 @@ export async function getActiveRecurringItems(userId: string, accountId: string)
 }
 
 export async function getRecurringItemsByType(
-  userId: string, 
-  accountId: string, 
+  userId: string,
+  accountId: string,
   type: 'income' | 'expense'
 ): Promise<RecurringItem[]> {
   const items = await getRecurringItems(userId, accountId);
@@ -57,8 +52,8 @@ export async function getRecurringItemsByType(
 }
 
 export async function getRecurringItemById(
-  userId: string, 
-  accountId: string, 
+  userId: string,
+  accountId: string,
   itemId: string
 ): Promise<RecurringItem | null> {
   const itemFile = getRecurringItemFile(userId, accountId, itemId);
@@ -66,12 +61,12 @@ export async function getRecurringItemById(
 }
 
 export async function createRecurringItem(
-  userId: string, 
+  userId: string,
   data: CreateRecurringItemRequest
 ): Promise<RecurringItem> {
   const id = uuidv4();
   const now = new Date().toISOString();
-  
+
   const item: RecurringItem = {
     id,
     accountId: data.accountId,
@@ -87,13 +82,13 @@ export async function createRecurringItem(
     createdAt: now,
     updatedAt: now,
   };
-  
+
   const itemsDir = getRecurringItemsDir(userId, data.accountId);
   await ensureDir(itemsDir);
-  
+
   const itemFile = getRecurringItemFile(userId, data.accountId, id);
   await writeEncryptedFile(itemFile, item);
-  
+
   return item;
 }
 
@@ -107,16 +102,16 @@ export async function updateRecurringItem(
   if (!item) {
     return null;
   }
-  
+
   const updatedItem: RecurringItem = {
     ...item,
     ...updates,
     updatedAt: new Date().toISOString(),
   };
-  
+
   const itemFile = getRecurringItemFile(userId, accountId, itemId);
   await writeEncryptedFile(itemFile, updatedItem);
-  
+
   return updatedItem;
 }
 
@@ -129,7 +124,7 @@ export async function toggleRecurringItemActive(
   if (!item) {
     return null;
   }
-  
+
   return updateRecurringItem(userId, accountId, itemId, { isActive: !item.isActive });
 }
 

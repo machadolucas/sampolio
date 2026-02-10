@@ -3,6 +3,16 @@
 import { z } from 'zod';
 import { auth } from '@/lib/auth';
 import * as reconciliationDb from '@/lib/db/reconciliation';
+import {
+  cachedGetBalanceSnapshots,
+  cachedGetSnapshotsForEntity,
+  cachedGetSnapshotsForMonth,
+  cachedGetLatestSnapshot,
+  cachedGetReconciliationSessions,
+  cachedGetSessionForMonth,
+  cachedGetLatestCompletedSession,
+} from '@/lib/db/cached';
+import { updateTag } from 'next/cache';
 import type { EntityType, AdjustmentCategory, BalanceSnapshot, ReconciliationAdjustment, ReconciliationSession } from '@/types';
 
 // ============================================================
@@ -59,7 +69,7 @@ export async function getBalanceSnapshots(): Promise<{
 }> {
   try {
     const userId = await getCurrentUser();
-    const snapshots = await reconciliationDb.getBalanceSnapshots(userId);
+    const snapshots = await cachedGetBalanceSnapshots(userId);
     return { success: true, data: snapshots };
   } catch (error) {
     return { success: false, error: (error as Error).message };
@@ -77,7 +87,7 @@ export async function getSnapshotsForEntity(
   try {
     const userId = await getCurrentUser();
     const validated = EntityTypeSchema.parse(entityType);
-    const snapshots = await reconciliationDb.getSnapshotsForEntity(userId, validated, entityId);
+    const snapshots = await cachedGetSnapshotsForEntity(userId, validated, entityId);
     return { success: true, data: snapshots };
   } catch (error) {
     return { success: false, error: (error as Error).message };
@@ -94,7 +104,7 @@ export async function getSnapshotsForMonth(
   try {
     const userId = await getCurrentUser();
     YearMonthSchema.parse(yearMonth);
-    const snapshots = await reconciliationDb.getSnapshotsForMonth(userId, yearMonth);
+    const snapshots = await cachedGetSnapshotsForMonth(userId, yearMonth);
     return { success: true, data: snapshots };
   } catch (error) {
     return { success: false, error: (error as Error).message };
@@ -112,7 +122,7 @@ export async function getLatestSnapshot(
   try {
     const userId = await getCurrentUser();
     const validated = EntityTypeSchema.parse(entityType);
-    const snapshot = await reconciliationDb.getLatestSnapshot(userId, validated, entityId);
+    const snapshot = await cachedGetLatestSnapshot(userId, validated, entityId);
     return { success: true, data: snapshot };
   } catch (error) {
     return { success: false, error: (error as Error).message };
@@ -137,6 +147,7 @@ export async function createBalanceSnapshot(
       validated.expectedBalance,
       validated.actualBalance
     );
+    updateTag(`user:${userId}:reconciliation`);
     return { success: true, data: snapshot };
   } catch (error) {
     return { success: false, error: (error as Error).message };
@@ -155,6 +166,7 @@ export async function deleteBalanceSnapshot(
     if (!deleted) {
       return { success: false, error: 'Snapshot not found' };
     }
+    updateTag(`user:${userId}:reconciliation`);
     return { success: true };
   } catch (error) {
     return { success: false, error: (error as Error).message };
@@ -198,6 +210,7 @@ export async function createAdjustment(
       validated.amount,
       validated.description
     );
+    updateTag(`user:${userId}:reconciliation`);
     return { success: true, data: adjustment };
   } catch (error) {
     return { success: false, error: (error as Error).message };
@@ -216,6 +229,7 @@ export async function deleteAdjustment(
     if (!deleted) {
       return { success: false, error: 'Adjustment not found' };
     }
+    updateTag(`user:${userId}:reconciliation`);
     return { success: true };
   } catch (error) {
     return { success: false, error: (error as Error).message };
@@ -233,7 +247,7 @@ export async function getReconciliationSessions(): Promise<{
 }> {
   try {
     const userId = await getCurrentUser();
-    const sessions = await reconciliationDb.getReconciliationSessions(userId);
+    const sessions = await cachedGetReconciliationSessions(userId);
     return { success: true, data: sessions };
   } catch (error) {
     return { success: false, error: (error as Error).message };
@@ -250,7 +264,7 @@ export async function getSessionForMonth(
   try {
     const userId = await getCurrentUser();
     YearMonthSchema.parse(yearMonth);
-    const session = await reconciliationDb.getSessionForMonth(userId, yearMonth);
+    const session = await cachedGetSessionForMonth(userId, yearMonth);
     return { success: true, data: session };
   } catch (error) {
     return { success: false, error: (error as Error).message };
@@ -264,7 +278,7 @@ export async function getLatestCompletedSession(): Promise<{
 }> {
   try {
     const userId = await getCurrentUser();
-    const session = await reconciliationDb.getLatestCompletedSession(userId);
+    const session = await cachedGetLatestCompletedSession(userId);
     return { success: true, data: session };
   } catch (error) {
     return { success: false, error: (error as Error).message };
@@ -282,6 +296,7 @@ export async function startReconciliationSession(
     const userId = await getCurrentUser();
     YearMonthSchema.parse(yearMonth);
     const session = await reconciliationDb.createReconciliationSession(userId, yearMonth);
+    updateTag(`user:${userId}:reconciliation`);
     return { success: true, data: session };
   } catch (error) {
     return { success: false, error: (error as Error).message };
@@ -298,6 +313,7 @@ export async function completeReconciliationSession(
   try {
     const userId = await getCurrentUser();
     const session = await reconciliationDb.completeReconciliationSession(userId, sessionId);
+    updateTag(`user:${userId}:reconciliation`);
     return { success: true, data: session };
   } catch (error) {
     return { success: false, error: (error as Error).message };
@@ -315,6 +331,7 @@ export async function updateSessionSnapshots(
   try {
     const userId = await getCurrentUser();
     const session = await reconciliationDb.updateSessionSnapshots(userId, sessionId, snapshots);
+    updateTag(`user:${userId}:reconciliation`);
     return { success: true, data: session };
   } catch (error) {
     return { success: false, error: (error as Error).message };

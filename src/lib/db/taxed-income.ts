@@ -44,7 +44,7 @@ async function getDefaultTaxSettings(
 ): Promise<{ taxRate: number; contributionsRate: number; otherDeductions: number } | null> {
   const salaryConfigs = await getSalaryConfigs(userId, accountId);
   const activeConfig = salaryConfigs.find((c: SalaryConfig) => c.isActive);
-  
+
   if (activeConfig) {
     return {
       taxRate: activeConfig.taxRate,
@@ -68,16 +68,11 @@ export async function getTaxedIncomes(userId: string, accountId: string): Promis
   }
 
   const files = await listFiles(incomeDir);
-  const incomes: TaxedIncome[] = [];
-
-  for (const file of files) {
-    if (file.endsWith('.enc')) {
-      const income = await readEncryptedFile<TaxedIncome>(path.join(incomeDir, file));
-      if (income) {
-        incomes.push(income);
-      }
-    }
-  }
+  const encFiles = files.filter(file => file.endsWith('.enc'));
+  const results = await Promise.all(
+    encFiles.map(file => readEncryptedFile<TaxedIncome>(path.join(incomeDir, file)))
+  );
+  const incomes = results.filter((i): i is TaxedIncome => i !== null);
 
   return incomes.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 }

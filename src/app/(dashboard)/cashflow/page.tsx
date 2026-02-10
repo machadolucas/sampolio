@@ -8,6 +8,7 @@ import { DataTable } from 'primereact/datatable';
 import { Column } from 'primereact/column';
 import { ProgressSpinner } from 'primereact/progressspinner';
 import { Tag } from 'primereact/tag';
+import { ConfirmDialog, confirmDialog } from 'primereact/confirmdialog';
 import { useTheme } from '@/components/providers/theme-provider';
 import { useAppContext } from '@/components/layout/app-layout';
 import { formatCurrency, formatYearMonth, MONTHS_SHORT } from '@/lib/constants';
@@ -15,6 +16,7 @@ import { MonthlyFlowChart } from '@/components/charts/monthly-flow-chart';
 import { CashflowWaterfallChart, ExpenseTreemapChart } from '@/components/charts';
 import { getAccounts } from '@/lib/actions/accounts';
 import { getProjection } from '@/lib/actions/projection';
+import { OccurrenceOverrideDialog } from '@/components/modals/occurrence-override-dialog';
 import type { FinancialAccount, MonthlyProjection, MonthFlowData, CashflowItem, Currency } from '@/types';
 import { MdCheckCircle, MdCalendarToday, MdArrowForward, MdAccountBalanceWallet, MdAdd, MdRemove, MdList, MdAccountTree, MdBarChart, MdTableChart, MdInfoOutline } from 'react-icons/md';
 import { Tooltip } from 'primereact/tooltip';
@@ -191,6 +193,9 @@ function MonthDetailsPanel({ projection, currency, onEditItem }: MonthDetailsPan
                             >
                                 <div className="flex items-center gap-1 min-w-0">
                                     <span className={`truncate ${isDark ? 'text-gray-200' : 'text-gray-700'}`}>{item.name}</span>
+                                    {item.isOverridden && (
+                                        <Tag value="edited" className="text-xs !py-0 !px-1" severity="contrast" />
+                                    )}
                                     {item.category && (
                                         <Tag value={item.category} className="text-xs !py-0 !px-1" severity="info" />
                                     )}
@@ -221,6 +226,9 @@ function MonthDetailsPanel({ projection, currency, onEditItem }: MonthDetailsPan
                             >
                                 <div className="flex items-center gap-1 min-w-0">
                                     <span className={`truncate ${isDark ? 'text-gray-200' : 'text-gray-700'}`}>{item.name}</span>
+                                    {item.isOverridden && (
+                                        <Tag value="edited" className="text-xs !py-0 !px-1" severity="contrast" />
+                                    )}
                                     {item.category && (
                                         <Tag value={item.category} className="text-xs !py-0 !px-1" severity="warning" />
                                     )}
@@ -249,6 +257,10 @@ export default function CashflowPage() {
         const now = new Date();
         return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     });
+
+    // Occurrence override dialog state
+    const [overrideDialogVisible, setOverrideDialogVisible] = useState(false);
+    const [overrideRecurringItemId, setOverrideRecurringItemId] = useState('');
 
     // Fetch accounts
     useEffect(() => {
@@ -369,11 +381,36 @@ export default function CashflowPage() {
     }, [selectedProjection, selectedMonth, selectedAccountId]);
 
     const handleEditItem = (itemId: string, source: string, itemType?: string) => {
+        // For recurring items, ask whether to edit this occurrence or the entire series
+        if (source === 'recurring') {
+            confirmDialog({
+                message: 'Do you want to edit just this month\'s occurrence, or the entire recurring series?',
+                header: 'Edit Recurring Item',
+                acceptLabel: 'This Occurrence',
+                rejectLabel: 'Entire Series',
+                acceptClassName: 'p-button-outlined',
+                accept: () => {
+                    // Edit this occurrence only — open override dialog
+                    setOverrideRecurringItemId(itemId);
+                    setOverrideDialogVisible(true);
+                },
+                reject: () => {
+                    // Edit entire series — open normal edit drawer
+                    const entityType = itemType === 'income' ? 'income' : 'expense';
+                    appContext?.openDrawer({
+                        mode: 'edit',
+                        entityType,
+                        entityId: itemId,
+                        yearMonth: selectedMonth,
+                    });
+                },
+            });
+            return;
+        }
+
         // Map CashflowItem source to EntityModalRouter entityType
         let entityType = source;
-        if (source === 'recurring') {
-            entityType = itemType === 'income' ? 'income' : 'expense';
-        } else if (source === 'planned-one-off' || source === 'planned-repeating' || source === 'planned') {
+        if (source === 'planned-one-off' || source === 'planned-repeating' || source === 'planned') {
             entityType = 'planned';
         } else if (source === 'taxed-income' || source === 'salary') {
             entityType = 'salary';
@@ -433,6 +470,15 @@ export default function CashflowPage() {
 
     return (
         <div className="space-y-6">
+            <ConfirmDialog />
+            <OccurrenceOverrideDialog
+                visible={overrideDialogVisible}
+                onHide={() => setOverrideDialogVisible(false)}
+                recurringItemId={overrideRecurringItemId}
+                accountId={selectedAccountId}
+                yearMonth={selectedMonth}
+                onDataChange={fetchProjection}
+            />
             {/* Sticky Header + Month Strip */}
             <div className={`sticky top-0 z-10 -mx-6 px-6 pt-2 pb-4 ${isDark ? 'bg-gray-900' : 'bg-gray-50'}`}>
                 {/* Header */}

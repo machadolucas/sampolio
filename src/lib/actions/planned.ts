@@ -2,15 +2,15 @@
 
 import { z } from 'zod';
 import { auth } from '@/lib/auth';
-import { getAccountById } from '@/lib/db/accounts';
+import { cachedGetAccountById, cachedGetPlannedItems, cachedGetPlannedItemById } from '@/lib/db/cached';
 import {
   getPlannedItems as dbGetPlannedItems,
-  getPlannedItemById as dbGetPlannedItemById,
   createPlannedItem as dbCreatePlannedItem,
   updatePlannedItem as dbUpdatePlannedItem,
   deletePlannedItem as dbDeletePlannedItem,
 } from '@/lib/db/planned-items';
-import type { ApiResponse, PlannedItem } from '@/types';
+import { updateTag } from 'next/cache';
+import type { ApiResponse, PlannedItem, YearMonth } from '@/types';
 
 const createPlannedItemSchema = z.object({
   type: z.enum(['income', 'expense']),
@@ -55,12 +55,12 @@ export async function getPlannedItems(accountId: string): Promise<ApiResponse<Pl
       return { success: false, error: 'Unauthorized' };
     }
 
-    const account = await getAccountById(session.user.id, accountId);
+    const account = await cachedGetAccountById(session.user.id, accountId);
     if (!account) {
       return { success: false, error: 'Account not found' };
     }
 
-    const items = await dbGetPlannedItems(session.user.id, accountId);
+    const items = await cachedGetPlannedItems(session.user.id, accountId);
     return { success: true, data: items };
   } catch (error) {
     console.error('Get planned items error:', error);
@@ -78,12 +78,12 @@ export async function getPlannedItemById(
       return { success: false, error: 'Unauthorized' };
     }
 
-    const account = await getAccountById(session.user.id, accountId);
+    const account = await cachedGetAccountById(session.user.id, accountId);
     if (!account) {
       return { success: false, error: 'Account not found' };
     }
 
-    const item = await dbGetPlannedItemById(session.user.id, accountId, itemId);
+    const item = await cachedGetPlannedItemById(session.user.id, accountId, itemId);
     if (!item) {
       return { success: false, error: 'Item not found' };
     }
@@ -105,7 +105,7 @@ export async function createPlannedItem(
       return { success: false, error: 'Unauthorized' };
     }
 
-    const account = await getAccountById(session.user.id, accountId);
+    const account = await cachedGetAccountById(session.user.id, accountId);
     if (!account) {
       return { success: false, error: 'Account not found' };
     }
@@ -116,6 +116,7 @@ export async function createPlannedItem(
       accountId,
     });
 
+    updateTag(`user:${session.user.id}:account:${accountId}:planned`);
     return { success: true, data: item };
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -149,6 +150,7 @@ export async function updatePlannedItem(
       return { success: false, error: 'Item not found' };
     }
 
+    updateTag(`user:${session.user.id}:account:${accountId}:planned`);
     return { success: true, data: item };
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -170,9 +172,146 @@ export async function deletePlannedItem(
     }
 
     await dbDeletePlannedItem(session.user.id, accountId, itemId);
+    updateTag(`user:${session.user.id}:account:${accountId}:planned`);
     return { success: true };
   } catch (error) {
     console.error('Delete planned item error:', error);
     return { success: false, error: 'Failed to delete planned item' };
+  }
+}
+
+// ============================================================
+// RECURRING ITEM OCCURRENCE OVERRIDES
+// ============================================================
+
+const overrideOccurrenceSchema = z.object({
+  name: z.string().min(1).optional(),
+  amount: z.number().positive().optional(),
+  category: z.string().optional().nullable(),
+  skipOccurrence: z.boolean().optional(),
+});
+
+/**
+ * Create or update an occurrence override for a recurring item in a specific month.
+ * This stores a PlannedItem with isRecurringOverride=true and linkedRecurringItemId set.
+ */
+export async function upsertRecurringItemOccurrenceOverride(
+  accountId: string,
+  recurringItemId: string,
+  yearMonth: YearMonth,
+  data: z.infer<typeof overrideOccurrenceSchema>
+): Promise<ApiResponse<PlannedItem>> {
+  try {
+    const session = await auth();
+    if (!session?.user?.id) {
+      return { success: false, error: 'Unauthorized' };
+    }
+
+    const validated = overrideOccurrenceSchema.parse(data);
+
+    // Find existing override for this recurring item + month
+    const allPlanned = await dbGetPlannedItems(session.user.id, accountId);
+    const existingOverride = allPlanned.find(
+      p =>
+        p.isRecurringOverride &&
+        p.linkedRecurringItemId === recurringItemId &&
+        p.scheduledDate === yearMonth
+    );
+
+    let result: PlannedItem;
+
+    if (existingOverride) {
+      // Update existing override
+      const updated = await dbUpdatePlannedItem(
+        session.user.id,
+        accountId,
+        existingOverride.id,
+        {
+          ...(validated.name !== undefined && { name: validated.name }),
+          ...(validated.amount !== undefined && { amount: validated.amount }),
+          ...(validated.category !== undefined && {
+            category: validated.category ?? undefined,
+          }),
+          ...(validated.skipOccurrence !== undefined && {
+            skipOccurrence: validated.skipOccurrence,
+          }),
+        }
+      );
+      if (!updated) {
+        return { success: false, error: 'Failed to update override' };
+      }
+      result = updated;
+    } else {
+      // Import the original recurring item to get its base values
+      const { cachedGetRecurringItemById } = await import('@/lib/db/cached');
+      const recurringItem = await cachedGetRecurringItemById(
+        session.user.id,
+        accountId,
+        recurringItemId
+      );
+      if (!recurringItem) {
+        return { success: false, error: 'Recurring item not found' };
+      }
+
+      // Create new override as a one-off PlannedItem
+      result = await dbCreatePlannedItem(session.user.id, {
+        accountId,
+        type: recurringItem.type,
+        kind: 'one-off',
+        name: validated.name ?? recurringItem.name,
+        amount: validated.amount ?? recurringItem.amount,
+        category: validated.category !== undefined
+          ? (validated.category ?? undefined)
+          : recurringItem.category,
+        scheduledDate: yearMonth,
+        linkedRecurringItemId: recurringItemId,
+        isRecurringOverride: true,
+        skipOccurrence: validated.skipOccurrence ?? false,
+      });
+    }
+
+    updateTag(`user:${session.user.id}:account:${accountId}:planned`);
+    return { success: true, data: result };
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return { success: false, error: error.issues[0]?.message ?? 'Validation error' };
+    }
+    console.error('Upsert occurrence override error:', error);
+    return { success: false, error: 'Failed to save occurrence override' };
+  }
+}
+
+/**
+ * Delete an occurrence override, restoring the original recurring item behavior for that month.
+ */
+export async function deleteRecurringItemOccurrenceOverride(
+  accountId: string,
+  recurringItemId: string,
+  yearMonth: YearMonth
+): Promise<ApiResponse<null>> {
+  try {
+    const session = await auth();
+    if (!session?.user?.id) {
+      return { success: false, error: 'Unauthorized' };
+    }
+
+    const allPlanned = await dbGetPlannedItems(session.user.id, accountId);
+    const override = allPlanned.find(
+      p =>
+        p.isRecurringOverride &&
+        p.linkedRecurringItemId === recurringItemId &&
+        p.scheduledDate === yearMonth
+    );
+
+    if (!override) {
+      return { success: false, error: 'Override not found' };
+    }
+
+    await dbDeletePlannedItem(session.user.id, accountId, override.id);
+    updateTag(`user:${session.user.id}:account:${accountId}:planned`);
+    return { success: true };
+  } catch (error) {
+    console.error('Delete occurrence override error:', error);
+    return { success: false, error: 'Failed to delete occurrence override' };
   }
 }

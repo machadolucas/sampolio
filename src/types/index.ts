@@ -94,6 +94,10 @@ export interface PlannedItem {
   customIntervalMonths?: number;
   firstOccurrence?: YearMonth;
   endDate?: YearMonth;
+  // For recurring item occurrence overrides
+  linkedRecurringItemId?: string; // the recurring item this overrides
+  isRecurringOverride?: boolean;  // true if this is an occurrence override
+  skipOccurrence?: boolean;       // true to skip the occurrence (no income/expense)
   createdAt: string;
   updatedAt: string;
 }
@@ -144,6 +148,7 @@ export interface ProjectionLineItem {
   amount: number;
   category?: string;
   source: 'recurring' | 'planned-one-off' | 'planned-repeating' | 'salary';
+  isOverridden?: boolean; // true when a recurring item has an occurrence override for this month
 }
 
 export interface YearlyRollup {
@@ -205,6 +210,10 @@ export interface CreatePlannedItemRequest {
   customIntervalMonths?: number;
   firstOccurrence?: YearMonth;
   endDate?: YearMonth;
+  // For recurring item occurrence overrides
+  linkedRecurringItemId?: string;
+  isRecurringOverride?: boolean;
+  skipOccurrence?: boolean;
 }
 
 export interface UpdatePlannedItemRequest extends Partial<CreatePlannedItemRequest> { }

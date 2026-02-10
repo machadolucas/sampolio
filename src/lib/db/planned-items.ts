@@ -1,9 +1,9 @@
 import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
-import type { 
-  PlannedItem, 
-  CreatePlannedItemRequest, 
-  UpdatePlannedItemRequest 
+import type {
+  PlannedItem,
+  CreatePlannedItemRequest,
+  UpdatePlannedItemRequest
 } from '@/types';
 import {
   getUserDir,
@@ -25,19 +25,14 @@ function getPlannedItemFile(userId: string, accountId: string, itemId: string): 
 export async function getPlannedItems(userId: string, accountId: string): Promise<PlannedItem[]> {
   const itemsDir = getPlannedItemsDir(userId, accountId);
   await ensureDir(itemsDir);
-  
+
   const files = await listFiles(itemsDir);
-  const items: PlannedItem[] = [];
-  
-  for (const file of files) {
-    if (file.endsWith('.enc')) {
-      const item = await readEncryptedFile<PlannedItem>(path.join(itemsDir, file));
-      if (item) {
-        items.push(item);
-      }
-    }
-  }
-  
+  const encFiles = files.filter(file => file.endsWith('.enc'));
+  const results = await Promise.all(
+    encFiles.map(file => readEncryptedFile<PlannedItem>(path.join(itemsDir, file)))
+  );
+  const items = results.filter((item): item is PlannedItem => item !== null);
+
   // Sort by scheduled date or first occurrence
   return items.sort((a, b) => {
     const dateA = a.scheduledDate || a.firstOccurrence || '';
@@ -47,8 +42,8 @@ export async function getPlannedItems(userId: string, accountId: string): Promis
 }
 
 export async function getPlannedItemsByKind(
-  userId: string, 
-  accountId: string, 
+  userId: string,
+  accountId: string,
   kind: 'one-off' | 'repeating'
 ): Promise<PlannedItem[]> {
   const items = await getPlannedItems(userId, accountId);
@@ -56,8 +51,8 @@ export async function getPlannedItemsByKind(
 }
 
 export async function getPlannedItemsByType(
-  userId: string, 
-  accountId: string, 
+  userId: string,
+  accountId: string,
   type: 'income' | 'expense'
 ): Promise<PlannedItem[]> {
   const items = await getPlannedItems(userId, accountId);
@@ -65,8 +60,8 @@ export async function getPlannedItemsByType(
 }
 
 export async function getPlannedItemById(
-  userId: string, 
-  accountId: string, 
+  userId: string,
+  accountId: string,
   itemId: string
 ): Promise<PlannedItem | null> {
   const itemFile = getPlannedItemFile(userId, accountId, itemId);
@@ -74,12 +69,12 @@ export async function getPlannedItemById(
 }
 
 export async function createPlannedItem(
-  userId: string, 
+  userId: string,
   data: CreatePlannedItemRequest
 ): Promise<PlannedItem> {
   const id = uuidv4();
   const now = new Date().toISOString();
-  
+
   const item: PlannedItem = {
     id,
     accountId: data.accountId,
@@ -96,13 +91,13 @@ export async function createPlannedItem(
     createdAt: now,
     updatedAt: now,
   };
-  
+
   const itemsDir = getPlannedItemsDir(userId, data.accountId);
   await ensureDir(itemsDir);
-  
+
   const itemFile = getPlannedItemFile(userId, data.accountId, id);
   await writeEncryptedFile(itemFile, item);
-  
+
   return item;
 }
 
@@ -116,16 +111,16 @@ export async function updatePlannedItem(
   if (!item) {
     return null;
   }
-  
+
   const updatedItem: PlannedItem = {
     ...item,
     ...updates,
     updatedAt: new Date().toISOString(),
   };
-  
+
   const itemFile = getPlannedItemFile(userId, accountId, itemId);
   await writeEncryptedFile(itemFile, updatedItem);
-  
+
   return updatedItem;
 }
 

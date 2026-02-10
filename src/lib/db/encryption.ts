@@ -21,8 +21,24 @@ function getEncryptionKey(): string {
   return key;
 }
 
+// LRU cache for derived keys — avoids re-running PBKDF2 for the same salt
+const DERIVED_KEY_CACHE_MAX = 500;
+const derivedKeyCache = new Map<string, Buffer>();
+
 function deriveKey(password: string, salt: Buffer): Buffer {
-  return crypto.pbkdf2Sync(password, salt, ITERATIONS, KEY_LENGTH, 'sha512');
+  const cacheKey = salt.toString('hex');
+  const cached = derivedKeyCache.get(cacheKey);
+  if (cached) {
+    return cached;
+  }
+  const key = crypto.pbkdf2Sync(password, salt, ITERATIONS, KEY_LENGTH, 'sha512');
+  // Simple LRU: evict oldest entry when cache is full
+  if (derivedKeyCache.size >= DERIVED_KEY_CACHE_MAX) {
+    const oldestKey = derivedKeyCache.keys().next().value;
+    if (oldestKey) derivedKeyCache.delete(oldestKey);
+  }
+  derivedKeyCache.set(cacheKey, key);
+  return key;
 }
 
 export function encrypt(data: string): string {
@@ -30,11 +46,11 @@ export function encrypt(data: string): string {
   const salt = crypto.randomBytes(SALT_LENGTH);
   const iv = crypto.randomBytes(IV_LENGTH);
   const key = deriveKey(password, salt);
-  
+
   const cipher = crypto.createCipheriv(ALGORITHM, key, iv);
   const encrypted = Buffer.concat([cipher.update(data, 'utf8'), cipher.final()]);
   const tag = cipher.getAuthTag();
-  
+
   // Combine salt + iv + tag + encrypted data
   const combined = Buffer.concat([salt, iv, tag, encrypted]);
   return combined.toString('base64');
@@ -43,18 +59,18 @@ export function encrypt(data: string): string {
 export function decrypt(encryptedData: string): string {
   const password = getEncryptionKey();
   const combined = Buffer.from(encryptedData, 'base64');
-  
+
   // Extract components
   const salt = combined.subarray(0, SALT_LENGTH);
   const iv = combined.subarray(SALT_LENGTH, SALT_LENGTH + IV_LENGTH);
   const tag = combined.subarray(SALT_LENGTH + IV_LENGTH, SALT_LENGTH + IV_LENGTH + TAG_LENGTH);
   const encrypted = combined.subarray(SALT_LENGTH + IV_LENGTH + TAG_LENGTH);
-  
+
   const key = deriveKey(password, salt);
-  
+
   const decipher = crypto.createDecipheriv(ALGORITHM, key, iv);
   decipher.setAuthTag(tag);
-  
+
   const decrypted = Buffer.concat([decipher.update(encrypted), decipher.final()]);
   return decrypted.toString('utf8');
 }
@@ -97,7 +113,7 @@ export async function readEncryptedFile<T>(filePath: string): Promise<T | null> 
 export async function writeEncryptedFile<T>(filePath: string, data: T): Promise<void> {
   const dirPath = path.dirname(filePath);
   await ensureDir(dirPath);
-  
+
   const jsonData = JSON.stringify(data, null, 2);
   const encrypted = encrypt(jsonData);
   await fs.writeFile(filePath, encrypted, 'utf8');

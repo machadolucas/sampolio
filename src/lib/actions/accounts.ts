@@ -3,12 +3,12 @@
 import { z } from 'zod';
 import { auth } from '@/lib/auth';
 import {
-  getAccounts as dbGetAccounts,
-  getAccountById as dbGetAccountById,
   createAccount as dbCreateAccount,
   updateAccount as dbUpdateAccount,
   deleteAccount as dbDeleteAccount,
 } from '@/lib/db/accounts';
+import { cachedGetAccounts, cachedGetAccountById } from '@/lib/db/cached';
+import { updateTag } from 'next/cache';
 import type { ApiResponse, FinancialAccount } from '@/types';
 
 const createAccountSchema = z.object({
@@ -37,7 +37,7 @@ export async function getAccounts(): Promise<ApiResponse<FinancialAccount[]>> {
       return { success: false, error: 'Unauthorized' };
     }
 
-    const accounts = await dbGetAccounts(session.user.id);
+    const accounts = await cachedGetAccounts(session.user.id);
     return { success: true, data: accounts };
   } catch (error) {
     console.error('Get accounts error:', error);
@@ -52,7 +52,7 @@ export async function getAccountById(accountId: string): Promise<ApiResponse<Fin
       return { success: false, error: 'Unauthorized' };
     }
 
-    const account = await dbGetAccountById(session.user.id, accountId);
+    const account = await cachedGetAccountById(session.user.id, accountId);
     if (!account) {
       return { success: false, error: 'Account not found' };
     }
@@ -75,6 +75,7 @@ export async function createAccount(
 
     const parsed = createAccountSchema.parse(data);
     const account = await dbCreateAccount(session.user.id, parsed);
+    updateTag(`user:${session.user.id}:accounts`);
     return { success: true, data: account };
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -106,6 +107,7 @@ export async function updateAccount(
       return { success: false, error: 'Account not found' };
     }
 
+    updateTag(`user:${session.user.id}:accounts`);
     return { success: true, data: account };
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -124,6 +126,7 @@ export async function deleteAccount(accountId: string): Promise<ApiResponse<null
     }
 
     await dbDeleteAccount(session.user.id, accountId);
+    updateTag(`user:${session.user.id}:accounts`);
     return { success: true };
   } catch (error) {
     console.error('Delete account error:', error);

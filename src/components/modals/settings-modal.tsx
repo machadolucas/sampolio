@@ -9,8 +9,9 @@ import { Message } from 'primereact/message';
 import { Toast } from 'primereact/toast';
 import { Divider } from 'primereact/divider';
 import { ProgressSpinner } from 'primereact/progressspinner';
-import { MdLock } from 'react-icons/md';
-import { getSettings, updateSettings } from '@/lib/actions/admin';
+import { Button } from 'primereact/button';
+import { MdLock, MdCached } from 'react-icons/md';
+import { getSettings, updateSettings, revalidateAllCaches } from '@/lib/actions/admin';
 import type { AppSettings } from '@/types';
 
 interface SettingsModalProps {
@@ -25,6 +26,7 @@ export function SettingsModal({ visible, onHide }: SettingsModalProps) {
     const [settings, setSettings] = useState<AppSettings | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
+    const [isRevalidating, setIsRevalidating] = useState(false);
     const [error, setError] = useState('');
 
     useEffect(() => {
@@ -79,6 +81,34 @@ export function SettingsModal({ visible, onHide }: SettingsModalProps) {
         }
     };
 
+    const handleRevalidateAllCaches = async () => {
+        setIsRevalidating(true);
+        try {
+            const result = await revalidateAllCaches();
+            if (result.success) {
+                toast.current?.show({
+                    severity: 'success',
+                    summary: 'Success',
+                    detail: 'All application caches have been cleared',
+                });
+            } else {
+                toast.current?.show({
+                    severity: 'error',
+                    summary: 'Error',
+                    detail: result.error || 'Failed to revalidate caches',
+                });
+            }
+        } catch {
+            toast.current?.show({
+                severity: 'error',
+                summary: 'Error',
+                detail: 'Failed to revalidate caches',
+            });
+        } finally {
+            setIsRevalidating(false);
+        }
+    };
+
     const isAdmin = session?.user?.role === 'admin';
 
     return (
@@ -127,6 +157,29 @@ export function SettingsModal({ visible, onHide }: SettingsModalProps) {
                                     className="w-full"
                                 />
                             )}
+                        </div>
+                    </Card>
+
+                    <Divider />
+
+                    <Card title="Cache Management">
+                        <div className="flex flex-col gap-4">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <h3 className="font-medium text-gray-900 dark:text-gray-100">Force Revalidate</h3>
+                                    <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                                        Clear all cached data. The next page load will read fresh data from disk.
+                                    </p>
+                                </div>
+                                <Button
+                                    icon={<MdCached size={18} />}
+                                    label="Revalidate"
+                                    severity="secondary"
+                                    outlined
+                                    loading={isRevalidating}
+                                    onClick={handleRevalidateAllCaches}
+                                />
+                            </div>
                         </div>
                     </Card>
 

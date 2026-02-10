@@ -3,18 +3,21 @@
 import { z } from 'zod';
 import { auth } from '@/lib/auth';
 import {
-  getDebts as dbGetDebts,
-  getDebtById as dbGetDebtById,
   createDebt as dbCreateDebt,
   updateDebt as dbUpdateDebt,
   deleteDebt as dbDeleteDebt,
-  getReferenceRates as dbGetReferenceRates,
   setReferenceRate as dbSetReferenceRate,
   deleteReferenceRate as dbDeleteReferenceRate,
-  getExtraPayments as dbGetExtraPayments,
   createExtraPayment as dbCreateExtraPayment,
   deleteExtraPayment as dbDeleteExtraPayment,
 } from '@/lib/db/debts';
+import {
+  cachedGetDebts,
+  cachedGetDebtById,
+  cachedGetReferenceRates,
+  cachedGetExtraPayments,
+} from '@/lib/db/cached';
+import { updateTag } from 'next/cache';
 import type { ApiResponse, Debt, DebtReferenceRate, DebtExtraPayment } from '@/types';
 
 const createDebtSchema = z.object({
@@ -52,7 +55,7 @@ export async function getDebts(): Promise<ApiResponse<Debt[]>> {
       return { success: false, error: 'Unauthorized' };
     }
 
-    const debts = await dbGetDebts(session.user.id);
+    const debts = await cachedGetDebts(session.user.id);
     return { success: true, data: debts };
   } catch (error) {
     console.error('Get debts error:', error);
@@ -67,7 +70,7 @@ export async function getDebtById(debtId: string): Promise<ApiResponse<Debt>> {
       return { success: false, error: 'Unauthorized' };
     }
 
-    const debt = await dbGetDebtById(session.user.id, debtId);
+    const debt = await cachedGetDebtById(session.user.id, debtId);
     if (!debt) {
       return { success: false, error: 'Debt not found' };
     }
@@ -91,6 +94,7 @@ export async function createDebt(
     const validated = createDebtSchema.parse(data);
     const debt = await dbCreateDebt(session.user.id, validated);
 
+    updateTag(`user:${session.user.id}:debts`);
     return { success: true, data: debt };
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -118,6 +122,7 @@ export async function updateDebt(
       return { success: false, error: 'Debt not found' };
     }
 
+    updateTag(`user:${session.user.id}:debts`);
     return { success: true, data: debt };
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -136,6 +141,7 @@ export async function deleteDebt(debtId: string): Promise<ApiResponse<void>> {
     }
 
     await dbDeleteDebt(session.user.id, debtId);
+    updateTag(`user:${session.user.id}:debts`);
     return { success: true };
   } catch (error) {
     console.error('Delete debt error:', error);
@@ -154,7 +160,7 @@ export async function getReferenceRates(debtId: string): Promise<ApiResponse<Deb
       return { success: false, error: 'Unauthorized' };
     }
 
-    const rates = await dbGetReferenceRates(session.user.id, debtId);
+    const rates = await cachedGetReferenceRates(session.user.id, debtId);
     return { success: true, data: rates };
   } catch (error) {
     console.error('Get reference rates error:', error);
@@ -174,6 +180,7 @@ export async function setReferenceRate(
     }
 
     const referenceRate = await dbSetReferenceRate(session.user.id, debtId, yearMonth, rate);
+    updateTag(`user:${session.user.id}:debt:${debtId}:rates`);
     return { success: true, data: referenceRate };
   } catch (error) {
     console.error('Set reference rate error:', error);
@@ -192,6 +199,7 @@ export async function deleteReferenceRate(
     }
 
     await dbDeleteReferenceRate(session.user.id, debtId, rateId);
+    updateTag(`user:${session.user.id}:debt:${debtId}:rates`);
     return { success: true };
   } catch (error) {
     console.error('Delete reference rate error:', error);
@@ -210,7 +218,7 @@ export async function getExtraPayments(debtId: string): Promise<ApiResponse<Debt
       return { success: false, error: 'Unauthorized' };
     }
 
-    const payments = await dbGetExtraPayments(session.user.id, debtId);
+    const payments = await cachedGetExtraPayments(session.user.id, debtId);
     return { success: true, data: payments };
   } catch (error) {
     console.error('Get extra payments error:', error);
@@ -229,6 +237,7 @@ export async function createExtraPayment(
     }
 
     const payment = await dbCreateExtraPayment(session.user.id, debtId, data.date, data.amount, data.description || data.note);
+    updateTag(`user:${session.user.id}:debt:${debtId}:payments`);
     return { success: true, data: payment };
   } catch (error) {
     console.error('Create extra payment error:', error);
@@ -247,6 +256,7 @@ export async function deleteExtraPayment(
     }
 
     await dbDeleteExtraPayment(session.user.id, debtId, paymentId);
+    updateTag(`user:${session.user.id}:debt:${debtId}:payments`);
     return { success: true };
   } catch (error) {
     console.error('Delete extra payment error:', error);

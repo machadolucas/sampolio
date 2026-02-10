@@ -3,7 +3,6 @@
 import { z } from 'zod';
 import { auth } from '@/lib/auth';
 import {
-  getAllUsers,
   findUserById,
   createUser as dbCreateUser,
   updateUser as dbUpdateUser,
@@ -11,7 +10,9 @@ import {
   deleteUser as dbDeleteUser,
   toPublicUser,
 } from '@/lib/db/users';
-import { getAppSettings, updateAppSettings as dbUpdateAppSettings } from '@/lib/db/app-settings';
+import { updateAppSettings as dbUpdateAppSettings } from '@/lib/db/app-settings';
+import { cachedGetAllUsers, cachedGetAppSettings } from '@/lib/db/cached';
+import { updateTag } from 'next/cache';
 import type { ApiResponse, PublicUser, AppSettings } from '@/types';
 
 const createUserSchema = z.object({
@@ -47,7 +48,7 @@ export async function getUsers(): Promise<ApiResponse<PublicUser[]>> {
       return { success: false, error: 'Admin access required' };
     }
 
-    const users = await getAllUsers();
+    const users = await cachedGetAllUsers();
     const publicUsers = users.map(toPublicUser);
     return { success: true, data: publicUsers };
   } catch (error) {
@@ -97,6 +98,7 @@ export async function createUser(
     const { email, password, name, role } = createUserSchema.parse(data);
     const user = await dbCreateUser(email, password, name, role);
 
+    updateTag('users');
     return { success: true, data: toPublicUser(user) };
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -151,6 +153,7 @@ export async function updateUser(
       return { success: false, error: 'User not found' };
     }
 
+    updateTag('users');
     return { success: true, data: toPublicUser(user) };
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -183,6 +186,7 @@ export async function deleteUser(userId: string): Promise<ApiResponse<null>> {
       return { success: false, error: 'User not found' };
     }
 
+    updateTag('users');
     return { success: true };
   } catch (error) {
     console.error('Delete user error:', error);
@@ -204,7 +208,7 @@ export async function getSettings(): Promise<ApiResponse<AppSettings>> {
       return { success: false, error: 'Admin access required' };
     }
 
-    const settings = await getAppSettings();
+    const settings = await cachedGetAppSettings();
     return { success: true, data: settings };
   } catch (error) {
     console.error('Get settings error:', error);
@@ -229,6 +233,7 @@ export async function updateSettings(
     const parsedData = updateSettingsSchema.parse(data);
     const settings = await dbUpdateAppSettings(parsedData, session.user.id);
 
+    updateTag('app-settings');
     return { success: true, data: settings };
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -236,5 +241,27 @@ export async function updateSettings(
     }
     console.error('Update settings error:', error);
     return { success: false, error: 'Failed to update settings' };
+  }
+}
+
+// ==================== CACHE MANAGEMENT ====================
+
+export async function revalidateAllCaches(): Promise<ApiResponse<null>> {
+  try {
+    const session = await auth();
+    if (!session?.user?.id) {
+      return { success: false, error: 'Unauthorized' };
+    }
+
+    const currentUser = await findUserById(session.user.id);
+    if (!currentUser || currentUser.role !== 'admin') {
+      return { success: false, error: 'Admin access required' };
+    }
+
+    updateTag('all-data');
+    return { success: true };
+  } catch (error) {
+    console.error('Revalidate all caches error:', error);
+    return { success: false, error: 'Failed to revalidate caches' };
   }
 }

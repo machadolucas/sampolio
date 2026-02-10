@@ -3,16 +3,19 @@
 import { z } from 'zod';
 import { auth } from '@/lib/auth';
 import {
-  getInvestmentAccounts as dbGetInvestmentAccounts,
-  getInvestmentAccountById as dbGetInvestmentAccountById,
   createInvestmentAccount as dbCreateInvestmentAccount,
   updateInvestmentAccount as dbUpdateInvestmentAccount,
   deleteInvestmentAccount as dbDeleteInvestmentAccount,
-  getContributions as dbGetContributions,
   createContribution as dbCreateContribution,
   updateContribution as dbUpdateContribution,
   deleteContribution as dbDeleteContribution,
 } from '@/lib/db/investments';
+import {
+  cachedGetInvestmentAccounts,
+  cachedGetInvestmentAccountById,
+  cachedGetContributions,
+} from '@/lib/db/cached';
+import { updateTag } from 'next/cache';
 import type { ApiResponse, InvestmentAccount, InvestmentContribution } from '@/types';
 
 const createInvestmentSchema = z.object({
@@ -54,7 +57,7 @@ export async function getInvestmentAccounts(): Promise<ApiResponse<InvestmentAcc
       return { success: false, error: 'Unauthorized' };
     }
 
-    const investments = await dbGetInvestmentAccounts(session.user.id);
+    const investments = await cachedGetInvestmentAccounts(session.user.id);
     return { success: true, data: investments };
   } catch (error) {
     console.error('Get investment accounts error:', error);
@@ -71,7 +74,7 @@ export async function getInvestmentAccountById(
       return { success: false, error: 'Unauthorized' };
     }
 
-    const investment = await dbGetInvestmentAccountById(session.user.id, investmentId);
+    const investment = await cachedGetInvestmentAccountById(session.user.id, investmentId);
     if (!investment) {
       return { success: false, error: 'Investment account not found' };
     }
@@ -95,6 +98,7 @@ export async function createInvestmentAccount(
     const validated = createInvestmentSchema.parse(data);
     const investment = await dbCreateInvestmentAccount(session.user.id, validated);
 
+    updateTag(`user:${session.user.id}:investments`);
     return { success: true, data: investment };
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -122,6 +126,7 @@ export async function updateInvestmentAccount(
       return { success: false, error: 'Investment account not found' };
     }
 
+    updateTag(`user:${session.user.id}:investments`);
     return { success: true, data: investment };
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -140,6 +145,7 @@ export async function deleteInvestmentAccount(investmentId: string): Promise<Api
     }
 
     await dbDeleteInvestmentAccount(session.user.id, investmentId);
+    updateTag(`user:${session.user.id}:investments`);
     return { success: true };
   } catch (error) {
     console.error('Delete investment account error:', error);
@@ -160,7 +166,7 @@ export async function getContributions(
       return { success: false, error: 'Unauthorized' };
     }
 
-    const contributions = await dbGetContributions(session.user.id, investmentId);
+    const contributions = await cachedGetContributions(session.user.id, investmentId);
     return { success: true, data: contributions };
   } catch (error) {
     console.error('Get contributions error:', error);
@@ -181,6 +187,7 @@ export async function createContribution(
     const validated = createContributionSchema.parse(data);
     const contribution = await dbCreateContribution(session.user.id, investmentId, validated);
 
+    updateTag(`user:${session.user.id}:investment:${investmentId}:contributions`);
     return { success: true, data: contribution };
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -214,6 +221,7 @@ export async function updateContribution(
       return { success: false, error: 'Contribution not found' };
     }
 
+    updateTag(`user:${session.user.id}:investment:${investmentId}:contributions`);
     return { success: true, data: contribution };
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -235,6 +243,7 @@ export async function deleteContribution(
     }
 
     await dbDeleteContribution(session.user.id, investmentId, contributionId);
+    updateTag(`user:${session.user.id}:investment:${investmentId}:contributions`);
     return { success: true };
   } catch (error) {
     console.error('Delete contribution error:', error);

@@ -57,12 +57,25 @@ const securityHeaders = [
 const nextConfig: NextConfig = {
   // Enable standalone output for single-file deployment
   output: 'standalone',
-  
+
+  // Enable Next.js 16 Cache Components ("use cache" directive)
+  cacheComponents: true,
+
+  // Custom cache lifetime profiles
+  cacheLife: {
+    // Data never expires by time — only invalidated via updateTag or admin button
+    indefinite: {
+      stale: 31536000,    // 1 year
+      revalidate: 31536000,
+      expire: 31536000,   // 1 year (effectively indefinite)
+    },
+  },
+
   // Disable image optimization for self-hosted deployment
   images: {
     unoptimized: true,
   },
-  
+
   // Server external packages for file system operations
   serverExternalPackages: ['bcryptjs'],
 

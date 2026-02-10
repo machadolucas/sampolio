@@ -42,16 +42,11 @@ export async function getInvestmentAccounts(userId: string): Promise<InvestmentA
   await ensureDir(investmentsDir);
 
   const files = await listFiles(investmentsDir);
-  const investments: InvestmentAccount[] = [];
-
-  for (const file of files) {
-    if (file.endsWith('.enc')) {
-      const investment = await readEncryptedFile<InvestmentAccount>(path.join(investmentsDir, file));
-      if (investment) {
-        investments.push(investment);
-      }
-    }
-  }
+  const encFiles = files.filter(file => file.endsWith('.enc'));
+  const results = await Promise.all(
+    encFiles.map(file => readEncryptedFile<InvestmentAccount>(path.join(investmentsDir, file)))
+  );
+  const investments = results.filter((i): i is InvestmentAccount => i !== null);
 
   return investments.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 }
@@ -149,18 +144,11 @@ export async function getContributions(
   }
 
   const files = await listFiles(contributionsDir);
-  const contributions: InvestmentContribution[] = [];
-
-  for (const file of files) {
-    if (file.endsWith('.enc')) {
-      const contribution = await readEncryptedFile<InvestmentContribution>(
-        path.join(contributionsDir, file)
-      );
-      if (contribution) {
-        contributions.push(contribution);
-      }
-    }
-  }
+  const encFiles = files.filter(file => file.endsWith('.enc'));
+  const results = await Promise.all(
+    encFiles.map(file => readEncryptedFile<InvestmentContribution>(path.join(contributionsDir, file)))
+  );
+  const contributions = results.filter((c): c is InvestmentContribution => c !== null);
 
   return contributions.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 }

@@ -1,9 +1,7 @@
 'use server';
 
 import { auth } from '@/lib/auth';
-import { getAccountById } from '@/lib/db/accounts';
-import { getRecurringItems } from '@/lib/db/recurring-items';
-import { getPlannedItems } from '@/lib/db/planned-items';
+import { cachedGetAccountById, cachedGetRecurringItems, cachedGetPlannedItems } from '@/lib/db/cached';
 import { calculateProjection, calculateYearlyRollups, getUniqueCategories } from '@/lib/projection';
 import type { ApiResponse, MonthlyProjection, YearlyRollup, ProjectionFilters } from '@/types';
 
@@ -30,14 +28,14 @@ export async function getProjection(
       return { success: false, error: 'Unauthorized' };
     }
 
-    const account = await getAccountById(session.user.id, accountId);
+    const account = await cachedGetAccountById(session.user.id, accountId);
     if (!account) {
       return { success: false, error: 'Account not found' };
     }
 
     const [recurringItems, plannedItems] = await Promise.all([
-      getRecurringItems(session.user.id, accountId),
-      getPlannedItems(session.user.id, accountId),
+      cachedGetRecurringItems(session.user.id, accountId),
+      cachedGetPlannedItems(session.user.id, accountId),
     ]);
 
     const monthly = calculateProjection(account, recurringItems, plannedItems, filters);

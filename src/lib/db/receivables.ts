@@ -41,20 +41,21 @@ export async function getReceivables(userId: string): Promise<Receivable[]> {
   await ensureDir(receivablesDir);
 
   const files = await listFiles(receivablesDir);
-  const receivables: Receivable[] = [];
+  const encFiles = files.filter(file => file.endsWith('.enc'));
+  const rawResults = await Promise.all(
+    encFiles.map(file => readEncryptedFile<Receivable>(path.join(receivablesDir, file)))
+  );
+  const validReceivables = rawResults.filter((r): r is Receivable => r !== null);
 
-  for (const file of files) {
-    if (file.endsWith('.enc')) {
-      const receivable = await readEncryptedFile<Receivable>(path.join(receivablesDir, file));
-      if (receivable) {
-        // Recalculate current balance based on repayments
-        const repayments = await getRepayments(userId, receivable.id);
-        const totalRepaid = repayments.reduce((sum, r) => sum + r.amount, 0);
-        receivable.currentBalance = receivable.initialPrincipal - totalRepaid;
-        receivables.push(receivable);
-      }
-    }
-  }
+  // Recalculate balances in parallel
+  const receivables = await Promise.all(
+    validReceivables.map(async (receivable) => {
+      const repayments = await getRepayments(userId, receivable.id);
+      const totalRepaid = repayments.reduce((sum, r) => sum + r.amount, 0);
+      receivable.currentBalance = receivable.initialPrincipal - totalRepaid;
+      return receivable;
+    })
+  );
 
   return receivables.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 }
@@ -62,13 +63,13 @@ export async function getReceivables(userId: string): Promise<Receivable[]> {
 export async function getReceivableById(userId: string, receivableId: string): Promise<Receivable | null> {
   const receivableFile = getReceivableFile(userId, receivableId);
   const receivable = await readEncryptedFile<Receivable>(receivableFile);
-  
+
   if (receivable) {
     const repayments = await getRepayments(userId, receivableId);
     const totalRepaid = repayments.reduce((sum, r) => sum + r.amount, 0);
     receivable.currentBalance = receivable.initialPrincipal - totalRepaid;
   }
-  
+
   return receivable;
 }
 
@@ -162,16 +163,11 @@ export async function getRepayments(userId: string, receivableId: string): Promi
   }
 
   const files = await listFiles(repaymentsDir);
-  const repayments: ReceivableRepayment[] = [];
-
-  for (const file of files) {
-    if (file.endsWith('.enc')) {
-      const repayment = await readEncryptedFile<ReceivableRepayment>(path.join(repaymentsDir, file));
-      if (repayment) {
-        repayments.push(repayment);
-      }
-    }
-  }
+  const encFiles = files.filter(file => file.endsWith('.enc'));
+  const results = await Promise.all(
+    encFiles.map(file => readEncryptedFile<ReceivableRepayment>(path.join(repaymentsDir, file)))
+  );
+  const repayments = results.filter((r): r is ReceivableRepayment => r !== null);
 
   return repayments.sort((a, b) => a.date.localeCompare(b.date));
 }

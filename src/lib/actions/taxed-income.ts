@@ -2,14 +2,13 @@
 
 import { z } from 'zod';
 import { auth } from '@/lib/auth';
-import { getAccountById } from '@/lib/db/accounts';
+import { cachedGetAccountById, cachedGetTaxedIncomes, cachedGetTaxedIncomeById } from '@/lib/db/cached';
 import {
-  getTaxedIncomes as dbGetTaxedIncomes,
-  getTaxedIncomeById as dbGetTaxedIncomeById,
   createTaxedIncome as dbCreateTaxedIncome,
   updateTaxedIncome as dbUpdateTaxedIncome,
   deleteTaxedIncome as dbDeleteTaxedIncome,
 } from '@/lib/db/taxed-income';
+import { updateTag } from 'next/cache';
 import type { ApiResponse, TaxedIncome } from '@/types';
 
 const createTaxedIncomeSchema = z.object({
@@ -41,12 +40,12 @@ export async function getTaxedIncomes(accountId: string): Promise<ApiResponse<Ta
       return { success: false, error: 'Unauthorized' };
     }
 
-    const account = await getAccountById(session.user.id, accountId);
+    const account = await cachedGetAccountById(session.user.id, accountId);
     if (!account) {
       return { success: false, error: 'Account not found' };
     }
 
-    const incomes = await dbGetTaxedIncomes(session.user.id, accountId);
+    const incomes = await cachedGetTaxedIncomes(session.user.id, accountId);
     return { success: true, data: incomes };
   } catch (error) {
     console.error('Get taxed incomes error:', error);
@@ -64,12 +63,12 @@ export async function getTaxedIncomeById(
       return { success: false, error: 'Unauthorized' };
     }
 
-    const account = await getAccountById(session.user.id, accountId);
+    const account = await cachedGetAccountById(session.user.id, accountId);
     if (!account) {
       return { success: false, error: 'Account not found' };
     }
 
-    const income = await dbGetTaxedIncomeById(session.user.id, accountId, incomeId);
+    const income = await cachedGetTaxedIncomeById(session.user.id, accountId, incomeId);
     if (!income) {
       return { success: false, error: 'Taxed income not found' };
     }
@@ -91,7 +90,7 @@ export async function createTaxedIncome(
       return { success: false, error: 'Unauthorized' };
     }
 
-    const account = await getAccountById(session.user.id, accountId);
+    const account = await cachedGetAccountById(session.user.id, accountId);
     if (!account) {
       return { success: false, error: 'Account not found' };
     }
@@ -102,6 +101,7 @@ export async function createTaxedIncome(
       accountId,
     });
 
+    updateTag(`user:${session.user.id}:account:${accountId}:taxed-income`);
     return { success: true, data: income };
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -123,7 +123,7 @@ export async function updateTaxedIncome(
       return { success: false, error: 'Unauthorized' };
     }
 
-    const account = await getAccountById(session.user.id, accountId);
+    const account = await cachedGetAccountById(session.user.id, accountId);
     if (!account) {
       return { success: false, error: 'Account not found' };
     }
@@ -135,6 +135,7 @@ export async function updateTaxedIncome(
       return { success: false, error: 'Taxed income not found' };
     }
 
+    updateTag(`user:${session.user.id}:account:${accountId}:taxed-income`);
     return { success: true, data: income };
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -155,12 +156,13 @@ export async function deleteTaxedIncome(
       return { success: false, error: 'Unauthorized' };
     }
 
-    const account = await getAccountById(session.user.id, accountId);
+    const account = await cachedGetAccountById(session.user.id, accountId);
     if (!account) {
       return { success: false, error: 'Account not found' };
     }
 
     await dbDeleteTaxedIncome(session.user.id, accountId, incomeId);
+    updateTag(`user:${session.user.id}:account:${accountId}:taxed-income`);
     return { success: true };
   } catch (error) {
     console.error('Delete taxed income error:', error);

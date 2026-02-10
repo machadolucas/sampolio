@@ -184,16 +184,12 @@ export async function changePassword(userId: string, newPassword: string): Promi
 
 export async function getAllUsers(): Promise<User[]> {
   const index = await getUsersIndex();
-  const users: User[] = [];
 
-  for (const entry of index.users) {
-    const user = await findUserById(entry.id);
-    if (user) {
-      users.push(user);
-    }
-  }
+  const results = await Promise.all(
+    index.users.map(entry => findUserById(entry.id))
+  );
 
-  return users;
+  return results.filter((u): u is User => u !== null);
 }
 
 export async function deleteUser(userId: string): Promise<boolean> {

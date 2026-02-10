@@ -3,15 +3,18 @@
 import { z } from 'zod';
 import { auth } from '@/lib/auth';
 import {
-  getReceivables as dbGetReceivables,
-  getReceivableById as dbGetReceivableById,
   createReceivable as dbCreateReceivable,
   updateReceivable as dbUpdateReceivable,
   deleteReceivable as dbDeleteReceivable,
-  getRepayments as dbGetRepayments,
   createRepayment as dbCreateRepayment,
   deleteRepayment as dbDeleteRepayment,
 } from '@/lib/db/receivables';
+import {
+  cachedGetReceivables,
+  cachedGetReceivableById,
+  cachedGetRepayments,
+} from '@/lib/db/cached';
+import { updateTag } from 'next/cache';
 import type { ApiResponse, Receivable, ReceivableRepayment } from '@/types';
 
 const createReceivableSchema = z.object({
@@ -49,7 +52,7 @@ export async function getReceivables(): Promise<ApiResponse<Receivable[]>> {
       return { success: false, error: 'Unauthorized' };
     }
 
-    const receivables = await dbGetReceivables(session.user.id);
+    const receivables = await cachedGetReceivables(session.user.id);
     return { success: true, data: receivables };
   } catch (error) {
     console.error('Get receivables error:', error);
@@ -64,7 +67,7 @@ export async function getReceivableById(receivableId: string): Promise<ApiRespon
       return { success: false, error: 'Unauthorized' };
     }
 
-    const receivable = await dbGetReceivableById(session.user.id, receivableId);
+    const receivable = await cachedGetReceivableById(session.user.id, receivableId);
     if (!receivable) {
       return { success: false, error: 'Receivable not found' };
     }
@@ -88,6 +91,7 @@ export async function createReceivable(
     const validated = createReceivableSchema.parse(data);
     const receivable = await dbCreateReceivable(session.user.id, validated);
 
+    updateTag(`user:${session.user.id}:receivables`);
     return { success: true, data: receivable };
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -115,6 +119,7 @@ export async function updateReceivable(
       return { success: false, error: 'Receivable not found' };
     }
 
+    updateTag(`user:${session.user.id}:receivables`);
     return { success: true, data: receivable };
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -133,6 +138,7 @@ export async function deleteReceivable(receivableId: string): Promise<ApiRespons
     }
 
     await dbDeleteReceivable(session.user.id, receivableId);
+    updateTag(`user:${session.user.id}:receivables`);
     return { success: true };
   } catch (error) {
     console.error('Delete receivable error:', error);
@@ -153,7 +159,7 @@ export async function getRepayments(
       return { success: false, error: 'Unauthorized' };
     }
 
-    const repayments = await dbGetRepayments(session.user.id, receivableId);
+    const repayments = await cachedGetRepayments(session.user.id, receivableId);
     return { success: true, data: repayments };
   } catch (error) {
     console.error('Get repayments error:', error);
@@ -174,6 +180,8 @@ export async function createRepayment(
     const validated = createRepaymentSchema.parse(data);
     const repayment = await dbCreateRepayment(session.user.id, receivableId, validated);
 
+    updateTag(`user:${session.user.id}:receivable:${receivableId}:repayments`);
+    updateTag(`user:${session.user.id}:receivables`);
     return { success: true, data: repayment };
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -195,6 +203,8 @@ export async function deleteRepayment(
     }
 
     await dbDeleteRepayment(session.user.id, receivableId, repaymentId);
+    updateTag(`user:${session.user.id}:receivable:${receivableId}:repayments`);
+    updateTag(`user:${session.user.id}:receivables`);
     return { success: true };
   } catch (error) {
     console.error('Delete repayment error:', error);

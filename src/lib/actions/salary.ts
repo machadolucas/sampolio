@@ -2,14 +2,13 @@
 
 import { z } from 'zod';
 import { auth } from '@/lib/auth';
-import { getAccountById } from '@/lib/db/accounts';
+import { cachedGetAccountById, cachedGetSalaryConfigs, cachedGetSalaryConfigById } from '@/lib/db/cached';
 import {
-  getSalaryConfigs as dbGetSalaryConfigs,
-  getSalaryConfigById as dbGetSalaryConfigById,
   createSalaryConfig as dbCreateSalaryConfig,
   updateSalaryConfig as dbUpdateSalaryConfig,
   deleteSalaryConfig as dbDeleteSalaryConfig,
 } from '@/lib/db/salary-configs';
+import { updateTag } from 'next/cache';
 import type { ApiResponse, SalaryConfig } from '@/types';
 
 const salaryBenefitSchema = z.object({
@@ -52,12 +51,12 @@ export async function getSalaryConfigs(accountId: string): Promise<ApiResponse<S
       return { success: false, error: 'Unauthorized' };
     }
 
-    const account = await getAccountById(session.user.id, accountId);
+    const account = await cachedGetAccountById(session.user.id, accountId);
     if (!account) {
       return { success: false, error: 'Account not found' };
     }
 
-    const configs = await dbGetSalaryConfigs(session.user.id, accountId);
+    const configs = await cachedGetSalaryConfigs(session.user.id, accountId);
     return { success: true, data: configs };
   } catch (error) {
     console.error('Get salary configs error:', error);
@@ -75,12 +74,12 @@ export async function getSalaryConfigById(
       return { success: false, error: 'Unauthorized' };
     }
 
-    const account = await getAccountById(session.user.id, accountId);
+    const account = await cachedGetAccountById(session.user.id, accountId);
     if (!account) {
       return { success: false, error: 'Account not found' };
     }
 
-    const config = await dbGetSalaryConfigById(session.user.id, accountId, configId);
+    const config = await cachedGetSalaryConfigById(session.user.id, accountId, configId);
     if (!config) {
       return { success: false, error: 'Salary config not found' };
     }
@@ -102,7 +101,7 @@ export async function createSalaryConfig(
       return { success: false, error: 'Unauthorized' };
     }
 
-    const account = await getAccountById(session.user.id, accountId);
+    const account = await cachedGetAccountById(session.user.id, accountId);
     if (!account) {
       return { success: false, error: 'Account not found' };
     }
@@ -113,6 +112,7 @@ export async function createSalaryConfig(
       accountId,
     });
 
+    updateTag(`user:${session.user.id}:account:${accountId}:salary`);
     return { success: true, data: config };
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -145,6 +145,7 @@ export async function updateSalaryConfig(
       return { success: false, error: 'Salary config not found' };
     }
 
+    updateTag(`user:${session.user.id}:account:${accountId}:salary`);
     return { success: true, data: config };
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -166,6 +167,7 @@ export async function deleteSalaryConfig(
     }
 
     await dbDeleteSalaryConfig(session.user.id, accountId, configId);
+    updateTag(`user:${session.user.id}:account:${accountId}:salary`);
     return { success: true };
   } catch (error) {
     console.error('Delete salary config error:', error);
