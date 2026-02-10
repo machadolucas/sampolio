@@ -61,16 +61,18 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       async authorize(credentials) {
         try {
           const { email, password } = signInSchema.parse(credentials);
+          console.log(`[auth] Login attempt for: ${email}`);
           
           // Check if account is locked due to too many failed attempts
           const locked = await isAccountLocked(email);
           if (locked) {
-            console.warn(`Login attempt for locked account: ${email}`);
+            console.warn(`[auth] Account locked: ${email}`);
             return null;
           }
           
           const user = await findUserByEmail(email);
           if (!user) {
+            console.warn(`[auth] User not found: ${email} (check ENCRYPTION_KEY if user should exist)`);
             // Record failed attempt even for non-existent users to prevent enumeration
             await recordFailedLogin(email);
             return null;
@@ -78,12 +80,13 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           
           // Check if user is active
           if (!user.isActive) {
-            console.warn(`Login attempt for inactive user: ${email}`);
+            console.warn(`[auth] Inactive user: ${email}`);
             return null;
           }
           
           const isValid = await verifyPassword(user, password);
           if (!isValid) {
+            console.warn(`[auth] Invalid password for: ${email}`);
             await recordFailedLogin(email);
             return null;
           }

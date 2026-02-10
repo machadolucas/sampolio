@@ -155,10 +155,19 @@ export function proxy(request: NextRequest) {
     }
   }
 
-  // Prevent authenticated users from accessing auth pages (signin/signup)
+  // If a user with a session cookie reaches an auth page, it means their
+  // server-side auth() check failed (stale/invalid JWT) and they were
+  // redirected here.  Clear the invalid cookie so they can re-authenticate
+  // without a redirect loop (proxy sees cookie → redirects away → auth()
+  // fails → redirects back → loop).
   if (pathname.startsWith('/auth/signin') || pathname.startsWith('/auth/signup')) {
     if (hasAuthSession(request)) {
-      return NextResponse.redirect(new URL('/', request.url));
+      const response = NextResponse.next();
+      response.cookies.delete('authjs.session-token');
+      response.cookies.delete('__Secure-authjs.session-token');
+      response.cookies.delete('next-auth.session-token');
+      response.cookies.delete('__Secure-next-auth.session-token');
+      return response;
     }
   }
 

@@ -83,6 +83,17 @@ if [ -z "$ENCRYPTION_KEY" ]; then
     fi
 fi
 
+# Persist or restore AUTH_URL (needed for correct redirects behind a reverse proxy)
+AUTH_URL_CONFIG_FILE="$DATA_DIR/.auth_url"
+if [ -n "$AUTH_URL" ]; then
+    # Save current AUTH_URL for future runs
+    echo "$AUTH_URL" > "$AUTH_URL_CONFIG_FILE"
+    chmod 600 "$AUTH_URL_CONFIG_FILE"
+elif [ -f "$AUTH_URL_CONFIG_FILE" ]; then
+    # Restore from saved config
+    export AUTH_URL=$(cat "$AUTH_URL_CONFIG_FILE")
+fi
+
 echo -e "${GREEN}=== Starting Sampolio ===${NC}"
 echo ""
 echo "  Port: $PORT"

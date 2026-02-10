@@ -78,6 +78,15 @@ if [ -z "$ENCRYPTION_KEY" ]; then
     fi
 fi
 
+# Persist or restore AUTH_URL
+AUTH_URL_CONFIG_FILE="$DATA_DIR/.auth_url"
+if [ -n "$AUTH_URL" ]; then
+    echo "$AUTH_URL" > "$AUTH_URL_CONFIG_FILE"
+    chmod 600 "$AUTH_URL_CONFIG_FILE"
+elif [ -f "$AUTH_URL_CONFIG_FILE" ]; then
+    AUTH_URL=$(cat "$AUTH_URL_CONFIG_FILE")
+fi
+
 # Create the LaunchAgents directory if it doesn't exist
 mkdir -p "$HOME/Library/LaunchAgents"
 
