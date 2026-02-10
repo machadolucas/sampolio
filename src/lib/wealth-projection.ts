@@ -42,7 +42,7 @@ import {
  * Calculate monthly growth rate from annual rate
  * Formula: (1 + annualRate/100)^(1/12) - 1
  */
-export function getMonthlyGrowthRate(annualRate: number): number {
+function getMonthlyGrowthRate(annualRate: number): number {
   return Math.pow(1 + annualRate / 100, 1 / 12) - 1;
 }
 
@@ -87,7 +87,7 @@ function isContributionActiveInMonth(
 /**
  * Calculate investment projection for a single account
  */
-export function calculateInvestmentProjection(
+function calculateInvestmentProjection(
   investment: InvestmentAccount,
   contributions: InvestmentContribution[],
   startDate: YearMonth,
@@ -166,7 +166,7 @@ export function calculateInvestmentProjection(
 /**
  * Calculate receivable projection
  */
-export function calculateReceivableProjection(
+function calculateReceivableProjection(
   receivable: Receivable,
   repayments: ReceivableRepayment[],
   startDate: YearMonth,
@@ -258,7 +258,7 @@ function getEffectiveRate(
 /**
  * Calculate debt amortization schedule
  */
-export function calculateDebtAmortization(
+function calculateDebtAmortization(
   debt: Debt,
   referenceRates: DebtReferenceRate[],
   extraPayments: DebtExtraPayment[],

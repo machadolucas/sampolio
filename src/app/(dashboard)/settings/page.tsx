@@ -12,12 +12,12 @@ import { Divider } from 'primereact/divider';
 import { Message } from 'primereact/message';
 import { useTheme } from '@/components/providers/theme-provider';
 import { useAppContext } from '@/components/layout/app-layout';
-import { getSettings, updateSettings } from '@/lib/actions/admin';
+import { getSettings, updateSettings, revalidateAllCaches } from '@/lib/actions/admin';
 import { getUserPreferences, updateCategories, updateTaxDefaults } from '@/lib/actions/user-preferences';
 import { getAppVersion } from '@/lib/actions/app-info';
 import { ITEM_CATEGORIES } from '@/lib/constants';
 import type { TaxDefaults } from '@/types';
-import { MdDownload, MdUpload, MdAccountBalanceWallet, MdAdd, MdCheck, MdGroup } from 'react-icons/md';
+import { MdDownload, MdUpload, MdAccountBalanceWallet, MdAdd, MdCheck, MdGroup, MdCached } from 'react-icons/md';
 import { FaGithub } from 'react-icons/fa';
 
 export default function SettingsPage() {
@@ -45,6 +45,9 @@ export default function SettingsPage() {
 
     // App version
     const [appVersion, setAppVersion] = useState<string>('');
+
+    // Cache revalidation state
+    const [isRevalidating, setIsRevalidating] = useState(false);
 
     // Active categories = built-in minus removed + custom
     const activeCategories = [
@@ -96,6 +99,22 @@ export default function SettingsPage() {
             setMessage({ type: 'error', text: 'An error occurred' });
         } finally {
             setIsSaving(false);
+        }
+    };
+
+    const handleRevalidateAllCaches = async () => {
+        setIsRevalidating(true);
+        try {
+            const result = await revalidateAllCaches();
+            if (result.success) {
+                setMessage({ type: 'success', text: 'All caches revalidated successfully' });
+            } else {
+                setMessage({ type: 'error', text: result.error || 'Failed to revalidate caches' });
+            }
+        } catch {
+            setMessage({ type: 'error', text: 'An error occurred while revalidating caches' });
+        } finally {
+            setIsRevalidating(false);
         }
     };
 
@@ -463,6 +482,26 @@ export default function SettingsPage() {
                                 outlined
                                 size="small"
                                 onClick={() => appContext?.openDrawer({ mode: 'view', entityType: 'users' })}
+                            />
+                        </div>
+
+                        <Divider />
+
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <p className={isDark ? 'text-gray-200' : 'text-gray-700'}>Force Revalidate Caches</p>
+                                <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                                    Clear all in-memory data caches and force fresh reads from disk
+                                </p>
+                            </div>
+                            <Button
+                                label="Revalidate"
+                                icon={<MdCached />}
+                                outlined
+                                severity="warning"
+                                size="small"
+                                onClick={handleRevalidateAllCaches}
+                                loading={isRevalidating}
                             />
                         </div>
 
