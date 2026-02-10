@@ -116,25 +116,32 @@ export function proxy(request: NextRequest) {
     // Authenticated users' auth requests fall through to general rate limiting below
   }
 
-  // General rate limiting for all other endpoints
-  const generalRateLimitKey = `general:${clientIp}`;
-  const generalLimit = checkRateLimit(generalRateLimitKey, RATE_LIMIT_MAX_GENERAL);
+  // General rate limiting applies only to unauthenticated requests.
+  // Authenticated users are exempt — this is a self-hosted app where server actions
+  // (POST requests to page URLs) can easily generate hundreds of requests per minute
+  // during normal page loads with parallel data fetching.
+  const isAuthenticated = hasAuthSession(request);
 
-  if (!generalLimit.allowed) {
-    return new NextResponse(
-      JSON.stringify({
-        success: false,
-        error: 'Too many requests. Please slow down.',
-        retryAfter: Math.ceil(generalLimit.resetIn / 1000),
-      }),
-      {
-        status: 429,
-        headers: {
-          'Content-Type': 'application/json',
-          'Retry-After': Math.ceil(generalLimit.resetIn / 1000).toString(),
-        },
-      }
-    );
+  if (!isAuthenticated) {
+    const generalRateLimitKey = `general:${clientIp}`;
+    const generalLimit = checkRateLimit(generalRateLimitKey, RATE_LIMIT_MAX_GENERAL);
+
+    if (!generalLimit.allowed) {
+      return new NextResponse(
+        JSON.stringify({
+          success: false,
+          error: 'Too many requests. Please slow down.',
+          retryAfter: Math.ceil(generalLimit.resetIn / 1000),
+        }),
+        {
+          status: 429,
+          headers: {
+            'Content-Type': 'application/json',
+            'Retry-After': Math.ceil(generalLimit.resetIn / 1000).toString(),
+          },
+        }
+      );
+    }
   }
 
   // Protect dashboard routes - require authentication
@@ -157,9 +164,6 @@ export function proxy(request: NextRequest) {
 
   // Add security headers to the response
   const response = NextResponse.next();
-
-  // Add rate limit headers
-  response.headers.set('X-RateLimit-Remaining', generalLimit.remaining.toString());
 
   return response;
 }
