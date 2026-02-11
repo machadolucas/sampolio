@@ -278,6 +278,7 @@ export function OccurrenceOverrideDialog({
                                     value={formData.amount}
                                     onValueChange={(e) => setFormData(prev => ({ ...prev, amount: e.value ?? 0 }))}
                                     mode="decimal"
+                                    locale="fi-FI"
                                     minFractionDigits={2}
                                     maxFractionDigits={2}
                                     className="w-full"

@@ -153,15 +153,17 @@ export function SidebarNav({
             </nav>
 
             {/* User Section */}
-            <div className={`mt-auto border-t ${isDark ? 'border-gray-700' : 'border-gray-200'} p-3`}>
+            <div className={`mt-auto border-t ${isDark ? 'border-gray-700' : 'border-gray-200'} ${expanded ? 'p-3' : 'p-1'} overflow-hidden`}>
                 <Menu model={userMenuItems} popup ref={userMenuRef} />
                 <Button
-                    className={`w-full ${expanded ? 'justify-start' : 'justify-center'}`}
+                    className={`w-full overflow-hidden ${expanded ? 'justify-start' : 'justify-center !px-0'}`}
                     text
                     severity="secondary"
                     onClick={(e) => userMenuRef.current?.toggle(e)}
+                    tooltip={!expanded ? (session?.user?.name || 'User') : undefined}
+                    tooltipOptions={{ position: 'right' }}
                 >
-                    <MdPerson size={18} />
+                    <MdPerson size={18} className="shrink-0" />
                     {expanded && (
                         <span className="ml-3 truncate">{session?.user?.name || 'User'}</span>
                     )}

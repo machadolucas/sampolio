@@ -116,6 +116,14 @@ export async function updateDebt(
   const updatedDebt: Debt = {
     ...debt,
     ...updates,
+    // Keep currentPrincipal in sync when initialPrincipal changes and
+    // currentPrincipal was never independently adjusted (e.g. by reconciliation)
+    ...(updates.initialPrincipal != null &&
+      updates.initialPrincipal !== debt.initialPrincipal &&
+      debt.currentPrincipal === debt.initialPrincipal &&
+      updates.currentPrincipal == null
+      ? { currentPrincipal: updates.initialPrincipal }
+      : {}),
     updatedAt: new Date().toISOString(),
   };
 

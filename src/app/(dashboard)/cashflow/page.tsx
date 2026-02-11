@@ -8,7 +8,7 @@ import { DataTable } from 'primereact/datatable';
 import { Column } from 'primereact/column';
 import { ProgressSpinner } from 'primereact/progressspinner';
 import { Tag } from 'primereact/tag';
-import { ConfirmDialog, confirmDialog } from 'primereact/confirmdialog';
+import { Dialog } from 'primereact/dialog';
 import { useTheme } from '@/components/providers/theme-provider';
 import { useAppContext } from '@/components/layout/app-layout';
 import { formatCurrency, formatYearMonth, MONTHS_SHORT } from '@/lib/constants';
@@ -262,6 +262,11 @@ export default function CashflowPage() {
     const [overrideDialogVisible, setOverrideDialogVisible] = useState(false);
     const [overrideRecurringItemId, setOverrideRecurringItemId] = useState('');
 
+    // Edit choice dialog state (for recurring items: edit occurrence vs series)
+    const [editChoiceVisible, setEditChoiceVisible] = useState(false);
+    const [editChoiceItemId, setEditChoiceItemId] = useState('');
+    const [editChoiceItemType, setEditChoiceItemType] = useState('');
+
     // Fetch accounts
     useEffect(() => {
         async function fetchAccounts() {
@@ -383,28 +388,9 @@ export default function CashflowPage() {
     const handleEditItem = (itemId: string, source: string, itemType?: string) => {
         // For recurring items, ask whether to edit this occurrence or the entire series
         if (source === 'recurring') {
-            confirmDialog({
-                message: 'Do you want to edit just this month\'s occurrence, or the entire recurring series?',
-                header: 'Edit Recurring Item',
-                acceptLabel: 'This Occurrence',
-                rejectLabel: 'Entire Series',
-                acceptClassName: 'p-button-outlined',
-                accept: () => {
-                    // Edit this occurrence only — open override dialog
-                    setOverrideRecurringItemId(itemId);
-                    setOverrideDialogVisible(true);
-                },
-                reject: () => {
-                    // Edit entire series — open normal edit drawer
-                    const entityType = itemType === 'income' ? 'income' : 'expense';
-                    appContext?.openDrawer({
-                        mode: 'edit',
-                        entityType,
-                        entityId: itemId,
-                        yearMonth: selectedMonth,
-                    });
-                },
-            });
+            setEditChoiceItemId(itemId);
+            setEditChoiceItemType(itemType || '');
+            setEditChoiceVisible(true);
             return;
         }
 
@@ -469,8 +455,42 @@ export default function CashflowPage() {
     }
 
     return (
-        <div className="space-y-6">
-            <ConfirmDialog />
+        <div>
+            <Dialog
+                header="Edit Recurring Item"
+                visible={editChoiceVisible}
+                onHide={() => setEditChoiceVisible(false)}
+                style={{ width: '420px' }}
+                modal
+            >
+                <p className="mb-6">Do you want to edit just this month&apos;s occurrence, or the entire recurring series?</p>
+                <div className="flex justify-end gap-2">
+                    <Button
+                        label="Entire Series"
+                        severity="secondary"
+                        outlined
+                        onClick={() => {
+                            setEditChoiceVisible(false);
+                            const entityType = editChoiceItemType === 'income' ? 'income' : 'expense';
+                            appContext?.openDrawer({
+                                mode: 'edit',
+                                entityType,
+                                entityId: editChoiceItemId,
+                                yearMonth: selectedMonth,
+                            });
+                        }}
+                    />
+                    <Button
+                        label="This Occurrence"
+                        outlined
+                        onClick={() => {
+                            setEditChoiceVisible(false);
+                            setOverrideRecurringItemId(editChoiceItemId);
+                            setOverrideDialogVisible(true);
+                        }}
+                    />
+                </div>
+            </Dialog>
             <OccurrenceOverrideDialog
                 visible={overrideDialogVisible}
                 onHide={() => setOverrideDialogVisible(false)}
@@ -480,244 +500,249 @@ export default function CashflowPage() {
                 onDataChange={fetchProjection}
             />
             {/* Sticky Header + Month Strip */}
-            <div className={`sticky top-0 z-10 -mx-6 px-6 pt-2 pb-4 ${isDark ? 'bg-gray-900' : 'bg-gray-50'}`}>
-                {/* Header */}
-                <div className="flex items-center justify-between mb-4">
-                    <div>
-                        <h1 className={`text-2xl font-bold ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
-                            Cashflow
-                        </h1>
-                        <p className={`text-sm mt-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                            Track income and expenses for your cash accounts
-                        </p>
-                    </div>
-                    <div className="flex items-center gap-3">
-                        <Dropdown
-                            value={selectedAccountId}
-                            options={accounts.map(a => ({ label: a.name, value: a.id }))}
-                            onChange={(e) => setSelectedAccountId(e.value)}
-                            placeholder="Select Account"
-                            className="w-48"
-                        />
-                        <Button
-                            label="Add Income"
-                            icon={<MdAdd />}
-                            severity="success"
-                            size="small"
-                            onClick={() => handleAddItem('income')}
-                        />
-                        <Button
-                            label="Add Expense"
-                            icon={<MdRemove />}
-                            severity="danger"
-                            size="small"
-                            onClick={() => handleAddItem('expense')}
-                        />
-                        <Button
-                            label="Manage Items"
-                            icon={<MdList />}
-                            severity="secondary"
-                            size="small"
-                            outlined
-                            onClick={handleManageItems}
-                        />
-                    </div>
-                </div>
+            <div className={`sticky top-0 z-10 -mx-6 px-6 py-3 border-b backdrop-blur-lg ${isDark ? 'bg-linear-to-r from-blue-600/40 to-purple-600/40 border-gray-700/50' : 'bg-linear-to-r from-blue-100/80 to-purple-200/80 border-blue-500/20'}`}>
+                <div className="max-w-360 mx-auto">
+                    {/* Header */}
+                    <div className="flex items-center justify-between mb-3">
+                        <div>
+                            <h1 className={`text-4xl pt-3 font-bold ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
+                                Cashflow
+                            </h1>
+                            <p className={`text-sm mt-1 `}>
+                                Track income and expenses for your cash accounts
+                            </p>
+                        </div>
+                        <div className="flex items-center gap-3">
+                            <Dropdown
+                                value={selectedAccountId}
+                                options={accounts.map(a => ({ label: a.name, value: a.id }))}
+                                onChange={(e) => setSelectedAccountId(e.value)}
+                                placeholder="Select Account"
 
-                {/* Month Strip */}
-                <Card className="p-2!">
+                                className="w-48"
+                            />
+                            <Button
+                                label="Add Income"
+                                icon={<MdAdd />}
+                                severity="success"
+                                size="small"
+                                outlined
+                                onClick={() => handleAddItem('income')}
+                            />
+                            <Button
+                                label="Add Expense"
+                                icon={<MdRemove />}
+                                severity="danger"
+                                size="small"
+                                outlined
+                                onClick={() => handleAddItem('expense')}
+                            />
+                            <Button
+                                label="Manage Items"
+                                icon={<MdList />}
+                                severity="info"
+                                size="small"
+                                onClick={handleManageItems}
+                            />
+                        </div>
+                    </div>
+
+                    {/* Month Strip */}
                     <MonthStrip
                         months={months}
                         selectedMonth={selectedMonth}
                         onSelectMonth={setSelectedMonth}
                     />
-                </Card>
+                </div>
             </div>
 
-            {/* Selected Month Banner */}
-            {selectedProjection && (
-                <Card className="!bg-gradient-to-r from-blue-600/10 to-purple-600/10 border border-blue-500/20">
-                    <div className="flex items-center justify-between">
-                        <div>
-                            <p className={`text-xs uppercase tracking-wider mb-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Selected Month</p>
-                            <h2 className={`text-2xl font-bold ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
-                                {formatYearMonth(selectedMonth)}
-                            </h2>
-                        </div>
-                        <div className="flex items-center gap-6 text-sm">
-                            <div className="text-center">
-                                <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Income</div>
-                                <div className="text-green-500 font-semibold">+{formatCurrency(selectedProjection.totalIncome, currency as Currency)}</div>
+            <div className="space-y-6 max-w-360 mx-auto py-12">
+                {/* Selected Month Banner */}
+                {selectedProjection && (
+                    <Card className="bg-linear-to-r! from-blue-600/10 to-purple-600/10 border border-blue-500/20">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <p className={`text-xs uppercase tracking-wider mb-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Selected Month</p>
+                                <h2 className={`text-2xl font-bold ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
+                                    {formatYearMonth(selectedMonth)}
+                                </h2>
                             </div>
-                            <div className="text-center">
-                                <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Expenses</div>
-                                <div className="text-red-500 font-semibold">-{formatCurrency(selectedProjection.totalExpenses, currency as Currency)}</div>
-                            </div>
-                            <div className="text-center">
-                                <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Net</div>
-                                <div className={`font-semibold ${selectedProjection.netChange >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                                    {selectedProjection.netChange >= 0 ? '+' : ''}{formatCurrency(selectedProjection.netChange, currency as Currency)}
+                            <div className="flex items-center gap-6 text-sm">
+                                <div className="text-center">
+                                    <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Income</div>
+                                    <div className="text-green-500 font-semibold">+{formatCurrency(selectedProjection.totalIncome, currency as Currency)}</div>
+                                </div>
+                                <div className="text-center">
+                                    <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Expenses</div>
+                                    <div className="text-red-500 font-semibold">-{formatCurrency(selectedProjection.totalExpenses, currency as Currency)}</div>
+                                </div>
+                                <div className="text-center">
+                                    <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Net</div>
+                                    <div className={`font-semibold ${selectedProjection.netChange >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                                        {selectedProjection.netChange >= 0 ? '+' : ''}{formatCurrency(selectedProjection.netChange, currency as Currency)}
+                                    </div>
                                 </div>
                             </div>
                         </div>
-                    </div>
-                </Card>
-            )}
-
-            {/* Charts: Left 2/3 (Flow + Projection stacked) | Right 1/3 (Details + Treemap stacked) */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                {/* Left column: 2/3 width */}
-                <div className="lg:col-span-2 space-y-6">
-                    <Card>
-                        <Tooltip target=".info-monthly-flow" position="top" />
-                        <h3 className={`flex items-center font-semibold mb-3 ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
-                            <MdAccountTree className="mr-2" />Monthly Flow
-                            <MdInfoOutline
-                                className="info-monthly-flow ml-auto opacity-40 cursor-help"
-                                size={16}
-                                data-pr-tooltip="Sankey diagram showing how your income flows into expenses. Left side shows individual income sources, center aggregates into your budget, right side breaks down expenses by category and individual items."
-                            />
-                        </h3>
-                        {flowData ? (
-                            <MonthlyFlowChart
-                                data={flowData}
-                                height="350px"
-                                onClickItem={(item) => {
-                                    if (item.id === 'new') {
-                                        handleAddItem(item.type as 'income' | 'expense');
-                                    } else {
-                                        handleEditItem(item.id, item.source, item.type);
-                                    }
-                                }}
-                            />
-                        ) : (
-                            <div className={`text-center py-12 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                                No data for selected month
-                            </div>
-                        )}
                     </Card>
+                )}
 
-                    <Card>
-                        <Tooltip target=".info-waterfall" position="top" />
-                        <h3 className={`flex items-center font-semibold mb-3 ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
-                            <MdBarChart className="mr-2" />Cashflow Projection
-                            <MdInfoOutline
-                                className="info-waterfall ml-auto opacity-40 cursor-help"
-                                size={16}
-                                data-pr-tooltip="Waterfall chart showing your projected balance over time. Green bars represent income, red bars represent expenses, and the line tracks your running balance across months."
-                            />
-                        </h3>
-                        <CashflowWaterfallChart
-                            data={projection}
-                            currency={currency as Currency}
-                            height="350px"
-                        />
-                    </Card>
-                </div>
-
-                {/* Right column: 1/3 width */}
-                <div className="space-y-6">
-                    <Card>
-                        <Tooltip target=".info-month-details" position="top" />
-                        <h3 className={`flex items-center font-semibold mb-2 ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
-                            Month Details
-                            <MdInfoOutline
-                                className="info-month-details ml-auto opacity-40 cursor-help"
-                                size={16}
-                                data-pr-tooltip="Detailed breakdown of all income and expense items for the selected month. Shows starting and ending balance with the net change. Click any item to edit it."
-                            />
-                        </h3>
-                        <MonthDetailsPanel
-                            projection={selectedProjection}
-                            currency={currency as Currency}
-                            onEditItem={handleEditItem}
-                        />
-                    </Card>
-
-                    {selectedProjection && selectedProjection.expenseBreakdown.length > 0 && (
+                {/* Charts: Left 2/3 (Flow + Projection stacked) | Right 1/3 (Details + Treemap stacked) */}
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    {/* Left column: 2/3 width */}
+                    <div className="lg:col-span-2 space-y-6">
                         <Card>
-                            <Tooltip target=".info-treemap" position="top" />
+                            <Tooltip target=".info-monthly-flow" position="top" />
                             <h3 className={`flex items-center font-semibold mb-3 ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
-                                <MdBarChart className="mr-2" />Expenses Breakdown
+                                <MdAccountTree className="mr-2" />Monthly Flow
                                 <MdInfoOutline
-                                    className="info-treemap ml-auto opacity-40 cursor-help"
+                                    className="info-monthly-flow ml-auto opacity-40 cursor-help"
                                     size={16}
-                                    data-pr-tooltip="Treemap showing the proportional size of each expense category and item for the selected month. Larger blocks represent bigger expenses, making it easy to spot where most money goes."
+                                    data-pr-tooltip="Sankey diagram showing how your income flows into expenses. Left side shows individual income sources, center aggregates into your budget, right side breaks down expenses by category and individual items."
                                 />
                             </h3>
-                            <ExpenseTreemapChart
-                                expenses={selectedProjection.expenseBreakdown}
+                            {flowData ? (
+                                <MonthlyFlowChart
+                                    data={flowData}
+                                    height="350px"
+                                    onClickItem={(item) => {
+                                        if (item.id === 'new') {
+                                            handleAddItem(item.type as 'income' | 'expense');
+                                        } else {
+                                            handleEditItem(item.id, item.source, item.type);
+                                        }
+                                    }}
+                                />
+                            ) : (
+                                <div className={`text-center py-12 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                                    No data for selected month
+                                </div>
+                            )}
+                        </Card>
+
+                        <Card>
+                            <Tooltip target=".info-waterfall" position="top" />
+                            <h3 className={`flex items-center font-semibold mb-3 ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
+                                <MdBarChart className="mr-2" />Cashflow Projection
+                                <MdInfoOutline
+                                    className="info-waterfall ml-auto opacity-40 cursor-help"
+                                    size={16}
+                                    data-pr-tooltip="Waterfall chart showing your projected balance over time. Green bars represent income, red bars represent expenses, and the line tracks your running balance across months."
+                                />
+                            </h3>
+                            <CashflowWaterfallChart
+                                data={projection}
                                 currency={currency as Currency}
                                 height="350px"
                             />
                         </Card>
-                    )}
-                </div>
-            </div>
+                    </div>
 
-            {/* Data Table */}
-            <div className={`mt-4 pt-6 border-t-2 ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
-                <p className={`text-xs uppercase tracking-wider mb-3 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>All Months Overview</p>
+                    {/* Right column: 1/3 width */}
+                    <div className="space-y-6">
+                        <Card>
+                            <Tooltip target=".info-month-details" position="top" />
+                            <h3 className={`flex items-center font-semibold mb-2 ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
+                                Month Details
+                                <MdInfoOutline
+                                    className="info-month-details ml-auto opacity-40 cursor-help"
+                                    size={16}
+                                    data-pr-tooltip="Detailed breakdown of all income and expense items for the selected month. Shows starting and ending balance with the net change. Click any item to edit it."
+                                />
+                            </h3>
+                            <MonthDetailsPanel
+                                projection={selectedProjection}
+                                currency={currency as Currency}
+                                onEditItem={handleEditItem}
+                            />
+                        </Card>
+
+                        {selectedProjection && selectedProjection.expenseBreakdown.length > 0 && (
+                            <Card className="overflow-visible">
+                                <Tooltip target=".info-treemap" position="top" />
+                                <h3 className={`flex items-center font-semibold mb-3 ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
+                                    <MdBarChart className="mr-2" />Expenses Breakdown
+                                    <MdInfoOutline
+                                        className="info-treemap ml-auto opacity-40 cursor-help"
+                                        size={16}
+                                        data-pr-tooltip="Treemap showing the proportional size of each expense category and item for the selected month. Larger blocks represent bigger expenses, making it easy to spot where most money goes."
+                                    />
+                                </h3>
+                                <ExpenseTreemapChart
+                                    expenses={selectedProjection.expenseBreakdown}
+                                    currency={currency as Currency}
+                                    height="350px"
+                                    onClickItem={(item) => handleEditItem(item.itemId, item.source, 'expense')}
+                                />
+                            </Card>
+                        )}
+                    </div>
+                </div>
+
+                {/* Data Table */}
+                <div className={`mt-4 pt-6 border-t-2 ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
+                    <p className={`text-xs uppercase tracking-wider mb-3 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>All Months Overview</p>
+                </div>
+                <Card>
+                    <Tooltip target=".info-projection" position="top" />
+                    <h3 className={`flex items-center font-semibold mb-3 ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
+                        <MdTableChart className="mr-2" />Projection Data
+                        <MdInfoOutline
+                            className="info-projection ml-auto opacity-40 cursor-help"
+                            size={16}
+                            data-pr-tooltip="Table showing the full projection across all months — not just the selected one. Displays income, expenses, net change, and running balance. Click any row to jump to that month."
+                        />
+                    </h3>
+                    <DataTable
+                        value={projection}
+                        scrollable
+                        scrollHeight="400px"
+                        size="small"
+                        stripedRows
+                        selectionMode="single"
+                        selection={selectedProjection}
+                        onSelectionChange={(e) => e.value && setSelectedMonth(e.value.yearMonth)}
+                    >
+                        <Column
+                            field="yearMonth"
+                            header="Month"
+                            body={(row) => formatYearMonth(row.yearMonth)}
+                        />
+                        <Column
+                            field="totalIncome"
+                            header="Income"
+                            body={(row) => (
+                                <span className="text-green-500">
+                                    +{formatCurrency(row.totalIncome, currency as Currency)}
+                                </span>
+                            )}
+                        />
+                        <Column
+                            field="totalExpenses"
+                            header="Expenses"
+                            body={(row) => (
+                                <span className="text-red-500">
+                                    -{formatCurrency(row.totalExpenses, currency as Currency)}
+                                </span>
+                            )}
+                        />
+                        <Column
+                            field="netChange"
+                            header="Net"
+                            body={(row) => (
+                                <span className={row.netChange >= 0 ? 'text-green-500' : 'text-red-500'}>
+                                    {row.netChange >= 0 ? '+' : ''}{formatCurrency(row.netChange, currency as Currency)}
+                                </span>
+                            )}
+                        />
+                        <Column
+                            field="endingBalance"
+                            header="Balance"
+                            body={(row) => formatCurrency(row.endingBalance, currency as Currency)}
+                        />
+                    </DataTable>
+                </Card>
             </div>
-            <Card>
-                <Tooltip target=".info-projection" position="top" />
-                <h3 className={`flex items-center font-semibold mb-3 ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
-                    <MdTableChart className="mr-2" />Projection Data
-                    <MdInfoOutline
-                        className="info-projection ml-auto opacity-40 cursor-help"
-                        size={16}
-                        data-pr-tooltip="Table showing the full projection across all months — not just the selected one. Displays income, expenses, net change, and running balance. Click any row to jump to that month."
-                    />
-                </h3>
-                <DataTable
-                    value={projection}
-                    scrollable
-                    scrollHeight="400px"
-                    size="small"
-                    stripedRows
-                    selectionMode="single"
-                    selection={selectedProjection}
-                    onSelectionChange={(e) => e.value && setSelectedMonth(e.value.yearMonth)}
-                >
-                    <Column
-                        field="yearMonth"
-                        header="Month"
-                        body={(row) => formatYearMonth(row.yearMonth)}
-                    />
-                    <Column
-                        field="totalIncome"
-                        header="Income"
-                        body={(row) => (
-                            <span className="text-green-500">
-                                +{formatCurrency(row.totalIncome, currency as Currency)}
-                            </span>
-                        )}
-                    />
-                    <Column
-                        field="totalExpenses"
-                        header="Expenses"
-                        body={(row) => (
-                            <span className="text-red-500">
-                                -{formatCurrency(row.totalExpenses, currency as Currency)}
-                            </span>
-                        )}
-                    />
-                    <Column
-                        field="netChange"
-                        header="Net"
-                        body={(row) => (
-                            <span className={row.netChange >= 0 ? 'text-green-500' : 'text-red-500'}>
-                                {row.netChange >= 0 ? '+' : ''}{formatCurrency(row.netChange, currency as Currency)}
-                            </span>
-                        )}
-                    />
-                    <Column
-                        field="endingBalance"
-                        header="Balance"
-                        body={(row) => formatCurrency(row.endingBalance, currency as Currency)}
-                    />
-                </DataTable>
-            </Card>
         </div>
     );
 }

@@ -376,6 +376,7 @@ export default function SettingsPage() {
                             value={taxDefaults.taxRate}
                             onValueChange={e => setTaxDefaults(prev => ({ ...prev, taxRate: e.value ?? 0 }))}
                             suffix="%"
+                            locale="fi-FI"
                             min={0}
                             max={100}
                             minFractionDigits={0}
@@ -391,6 +392,7 @@ export default function SettingsPage() {
                             value={taxDefaults.contributionsRate}
                             onValueChange={e => setTaxDefaults(prev => ({ ...prev, contributionsRate: e.value ?? 0 }))}
                             suffix="%"
+                            locale="fi-FI"
                             min={0}
                             max={100}
                             minFractionDigits={0}
@@ -407,7 +409,7 @@ export default function SettingsPage() {
                             onValueChange={e => setTaxDefaults(prev => ({ ...prev, otherDeductions: e.value ?? 0 }))}
                             mode="currency"
                             currency="EUR"
-                            locale="en-US"
+                            locale="fi-FI"
                             min={0}
                             className="w-full"
                         />

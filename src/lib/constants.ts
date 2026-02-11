@@ -66,15 +66,17 @@ export function getCurrencySymbol(currency: Currency): string {
   return CURRENCIES.find(c => c.value === currency)?.symbol || currency;
 }
 
+export const LOCALE = 'fi-FI';
+
 export function formatCurrency(amount: number, currency: Currency): string {
   const symbol = getCurrencySymbol(currency);
-  const formatted = new Intl.NumberFormat('en-US', {
+  const formatted = new Intl.NumberFormat(LOCALE, {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(Math.abs(amount));
   
   if (amount < 0) {
-    return `-${symbol}${formatted}`;
+    return `−${symbol}${formatted}`;
   }
   return `${symbol}${formatted}`;
 }

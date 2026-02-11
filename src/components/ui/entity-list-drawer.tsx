@@ -254,7 +254,7 @@ function AccountForm({ account, onSave, onCancel, showToast }: {
 
             <div className="flex flex-col gap-1">
                 <label className="font-medium text-sm">Starting Balance</label>
-                <InputNumber value={startingBalance} onValueChange={(e) => setStartingBalance(e.value || 0)} mode="currency" currency={currency} locale="en-US" placeholder="Current account balance" />
+                <InputNumber value={startingBalance} onValueChange={(e) => setStartingBalance(e.value || 0)} mode="currency" currency={currency} locale="fi-FI" placeholder="Current account balance" />
                 <HelpTip text="Your current account balance. Projections are calculated from this amount." />
             </div>
 
@@ -330,7 +330,7 @@ function InvestmentForm({ investment, onSave, onCancel, showToast }: { investmen
 
             <div className="flex flex-col gap-1">
                 <label className="font-medium text-sm">Current Valuation</label>
-                <InputNumber value={startingValuation} onValueChange={(e) => setStartingValuation(e.value || 0)} mode="currency" currency={currency} locale="en-US" placeholder="Current total value" />
+                <InputNumber value={startingValuation} onValueChange={(e) => setStartingValuation(e.value || 0)} mode="currency" currency={currency} locale="fi-FI" placeholder="Current total value" />
                 <HelpTip text="The current market value of this investment." />
             </div>
 
@@ -341,7 +341,7 @@ function InvestmentForm({ investment, onSave, onCancel, showToast }: { investmen
 
             <div className="flex flex-col gap-1">
                 <label className="font-medium text-sm">Expected Annual Growth Rate</label>
-                <InputNumber value={annualGrowthRate} onValueChange={(e) => setAnnualGrowthRate(e.value || 0)} suffix=" %" minFractionDigits={1} maxFractionDigits={2} placeholder="e.g., 7" />
+                <InputNumber value={annualGrowthRate} onValueChange={(e) => setAnnualGrowthRate(e.value || 0)} suffix=" %" locale="fi-FI" minFractionDigits={1} maxFractionDigits={2} placeholder="e.g., 7" />
                 <HelpTip text="The average yearly return you expect. Historical stock market average is ~7%. Use a conservative estimate." />
             </div>
 
@@ -407,7 +407,7 @@ function ContributionForm({ investmentId, contribution, currency, onSave, onCanc
 
             <div className="flex flex-col gap-1">
                 <label className="font-medium text-sm">Amount</label>
-                <InputNumber value={amount} onValueChange={(e) => setAmount(e.value || 0)} mode="currency" currency={currency} locale="en-US" />
+                <InputNumber value={amount} onValueChange={(e) => setAmount(e.value || 0)} mode="currency" currency={currency} locale="fi-FI" />
             </div>
 
             {contribKind === 'one-off' && (
@@ -502,7 +502,7 @@ function ReceivableForm({ receivable, onSave, onCancel, showToast }: { receivabl
 
             <div className="flex flex-col gap-1">
                 <label className="font-medium text-sm">Initial Principal</label>
-                <InputNumber value={initialPrincipal} onValueChange={(e) => setInitialPrincipal(e.value || 0)} mode="currency" currency={currency} locale="en-US" placeholder="Total amount owed to you" />
+                <InputNumber value={initialPrincipal} onValueChange={(e) => setInitialPrincipal(e.value || 0)} mode="currency" currency={currency} locale="fi-FI" placeholder="Total amount owed to you" />
                 <HelpTip text="The total original amount that was lent or is owed to you." />
             </div>
 
@@ -521,14 +521,14 @@ function ReceivableForm({ receivable, onSave, onCancel, showToast }: { receivabl
             {hasInterest && (
                 <div className="flex flex-col gap-1">
                     <label className="font-medium text-sm">Annual Interest Rate</label>
-                    <InputNumber value={annualInterestRate} onValueChange={(e) => setAnnualInterestRate(e.value || 0)} suffix=" %" minFractionDigits={1} maxFractionDigits={3} placeholder="e.g., 5" />
+                    <InputNumber value={annualInterestRate} onValueChange={(e) => setAnnualInterestRate(e.value || 0)} suffix=" %" locale="fi-FI" minFractionDigits={1} maxFractionDigits={3} placeholder="e.g., 5" />
                     <HelpTip text="The yearly interest rate applied to the outstanding balance." />
                 </div>
             )}
 
             <div className="flex flex-col gap-1">
                 <label className="font-medium text-sm">Expected Monthly Repayment</label>
-                <InputNumber value={expectedMonthlyRepayment} onValueChange={(e) => setExpectedMonthlyRepayment(e.value || 0)} mode="currency" currency={currency} locale="en-US" placeholder="How much do you expect per month?" />
+                <InputNumber value={expectedMonthlyRepayment} onValueChange={(e) => setExpectedMonthlyRepayment(e.value || 0)} mode="currency" currency={currency} locale="fi-FI" placeholder="How much do you expect per month?" />
                 <HelpTip text="The amount you expect to receive each month. Used for projecting when the receivable will be fully repaid." />
             </div>
 
@@ -575,7 +575,7 @@ function RepaymentForm({ receivableId, currency, onSave, onCancel, showToast }: 
 
             <div className="flex flex-col gap-1">
                 <label className="font-medium text-sm">Amount Received</label>
-                <InputNumber value={amount} onValueChange={(e) => setAmount(e.value || 0)} mode="currency" currency={currency} locale="en-US" placeholder="Amount received" />
+                <InputNumber value={amount} onValueChange={(e) => setAmount(e.value || 0)} mode="currency" currency={currency} locale="fi-FI" placeholder="Amount received" />
             </div>
 
             <div className="flex flex-col gap-1">
@@ -669,7 +669,7 @@ function DebtForm({ debt, onSave, onCancel, showToast }: { debt: Debt | null; on
 
             <div className="flex flex-col gap-1">
                 <label className="font-medium text-sm">Initial Principal</label>
-                <InputNumber value={initialPrincipal} onValueChange={(e) => setInitialPrincipal(e.value || 0)} mode="currency" currency={currency} locale="en-US" placeholder="Total amount borrowed" />
+                <InputNumber value={initialPrincipal} onValueChange={(e) => setInitialPrincipal(e.value || 0)} mode="currency" currency={currency} locale="fi-FI" placeholder="Total amount borrowed" />
                 <HelpTip text="The total amount originally borrowed or currently owed." />
             </div>
 
@@ -688,20 +688,20 @@ function DebtForm({ debt, onSave, onCancel, showToast }: { debt: Debt | null; on
                     {interestModelType === 'fixed' && (
                         <div className="flex flex-col gap-1">
                             <label className="font-medium text-sm">Fixed Interest Rate</label>
-                            <InputNumber value={fixedInterestRate} onValueChange={(e) => setFixedInterestRate(e.value || 0)} suffix=" %" minFractionDigits={1} maxFractionDigits={3} placeholder="e.g., 3.5" />
+                            <InputNumber value={fixedInterestRate} onValueChange={(e) => setFixedInterestRate(e.value || 0)} suffix=" %" locale="fi-FI" minFractionDigits={1} maxFractionDigits={3} placeholder="e.g., 3.5" />
                             <HelpTip text="The annual interest rate. E.g., 3.5% means you pay 3.5% of remaining balance per year." />
                         </div>
                     )}
                     {interestModelType === 'variable' && (
                         <div className="flex flex-col gap-1">
                             <label className="font-medium text-sm">Reference Rate Margin</label>
-                            <InputNumber value={referenceRateMargin} onValueChange={(e) => setReferenceRateMargin(e.value || 0)} suffix=" %" minFractionDigits={1} maxFractionDigits={3} placeholder="e.g., 1.5" />
+                            <InputNumber value={referenceRateMargin} onValueChange={(e) => setReferenceRateMargin(e.value || 0)} suffix=" %" locale="fi-FI" minFractionDigits={1} maxFractionDigits={3} placeholder="e.g., 1.5" />
                             <HelpTip text="The margin added on top of the reference rate (e.g., Euribor + this margin = your actual rate). Set reference rates per month in the expanded details." />
                         </div>
                     )}
                     <div className="flex flex-col gap-1">
                         <label className="font-medium text-sm">Monthly Payment</label>
-                        <InputNumber value={monthlyPayment} onValueChange={(e) => setMonthlyPayment(e.value || 0)} mode="currency" currency={currency} locale="en-US" placeholder="Regular monthly payment" />
+                        <InputNumber value={monthlyPayment} onValueChange={(e) => setMonthlyPayment(e.value || 0)} mode="currency" currency={currency} locale="fi-FI" placeholder="Regular monthly payment" />
                         <HelpTip text="The fixed amount you pay each month (principal + interest). Check your loan agreement for this value." />
                     </div>
                 </>
@@ -711,7 +711,7 @@ function DebtForm({ debt, onSave, onCancel, showToast }: { debt: Debt | null; on
                 <>
                     <div className="flex flex-col gap-1">
                         <label className="font-medium text-sm">Installment Amount</label>
-                        <InputNumber value={installmentAmount} onValueChange={(e) => setInstallmentAmount(e.value || 0)} mode="currency" currency={currency} locale="en-US" placeholder="Amount per installment" />
+                        <InputNumber value={installmentAmount} onValueChange={(e) => setInstallmentAmount(e.value || 0)} mode="currency" currency={currency} locale="fi-FI" placeholder="Amount per installment" />
                         <HelpTip text="The fixed amount for each installment payment." />
                     </div>
                     <div className="flex flex-col gap-1">
@@ -759,7 +759,7 @@ function ReferenceRateForm({ debtId, onSave, onCancel, showToast }: { debtId: st
 
             <div className="flex flex-col gap-1">
                 <label className="font-medium text-sm">Rate</label>
-                <InputNumber value={rate} onValueChange={(e) => setRate(e.value || 0)} suffix=" %" minFractionDigits={1} maxFractionDigits={3} placeholder="e.g., 3.2" />
+                <InputNumber value={rate} onValueChange={(e) => setRate(e.value || 0)} suffix=" %" locale="fi-FI" minFractionDigits={1} maxFractionDigits={3} placeholder="e.g., 3.2" />
                 <HelpTip text="The base reference rate (e.g., 6-month Euribor) for this period." />
             </div>
 
@@ -801,7 +801,7 @@ function ExtraPaymentForm({ debtId, currency, onSave, onCancel, showToast }: { d
 
             <div className="flex flex-col gap-1">
                 <label className="font-medium text-sm">Amount</label>
-                <InputNumber value={amount} onValueChange={(e) => setAmount(e.value || 0)} mode="currency" currency={currency} locale="en-US" placeholder="Extra amount paid" />
+                <InputNumber value={amount} onValueChange={(e) => setAmount(e.value || 0)} mode="currency" currency={currency} locale="fi-FI" placeholder="Extra amount paid" />
             </div>
 
             <div className="flex flex-col gap-1">

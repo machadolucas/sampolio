@@ -17,6 +17,7 @@ interface ExpenseTreemapChartProps {
     expenses: ProjectionLineItem[];
     currency: Currency;
     height?: string;
+    onClickItem?: (item: ProjectionLineItem) => void;
 }
 
 // Warm-to-hot color palette for expenses
@@ -39,7 +40,7 @@ const TREEMAP_COLORS = [
  * Treemap chart showing expense breakdown by category or individual item.
  * Groups expenses by category, with individual items as children.
  */
-export function ExpenseTreemapChart({ expenses, currency, height = '350px' }: ExpenseTreemapChartProps) {
+export function ExpenseTreemapChart({ expenses, currency, height = '350px', onClickItem }: ExpenseTreemapChartProps) {
     const { theme } = useTheme();
     const isDark = theme === 'dark';
 
@@ -66,6 +67,8 @@ export function ExpenseTreemapChart({ expenses, currency, height = '350px' }: Ex
                         name: items[0].name,
                         value: total,
                         itemStyle: { color },
+                        itemId: items[0].itemId,
+                        source: items[0].source,
                     };
                 }
                 return {
@@ -77,6 +80,8 @@ export function ExpenseTreemapChart({ expenses, currency, height = '350px' }: Ex
                         .map(item => ({
                             name: item.name,
                             value: item.amount,
+                            itemId: item.itemId,
+                            source: item.source,
                         })),
                 };
             });
@@ -102,11 +107,19 @@ export function ExpenseTreemapChart({ expenses, currency, height = '350px' }: Ex
                 {
                     type: 'treemap',
                     data: treemapData,
-                    width: '100%',
-                    height: '100%',
+                    left: 0,
+                    top: 0,
+                    right: 0,
+                    bottom: 0,
                     roam: false,
                     nodeClick: false,
                     breadcrumb: { show: false },
+                    emphasis: {
+                        itemStyle: {
+                            borderColor: '#fff',
+                            borderWidth: 2,
+                        },
+                    },
                     label: {
                         show: true,
                         formatter: (params: { name: string; value: number }) => {
@@ -194,11 +207,26 @@ export function ExpenseTreemapChart({ expenses, currency, height = '350px' }: Ex
 
     if (!option) return null;
 
+    // Build a click handler that maps treemap nodes back to expense items
+    const onEvents = useMemo(() => {
+        if (!onClickItem) return undefined;
+        return {
+            click: (params: { data?: { itemId?: string; source?: string } }) => {
+                const data = params.data;
+                if (data?.itemId && data?.source) {
+                    const item = expenses.find(e => e.itemId === data.itemId);
+                    if (item) onClickItem(item);
+                }
+            },
+        };
+    }, [onClickItem, expenses]);
+
     return (
         <ReactEChartsCore
             echarts={echarts}
             option={option}
             style={{ height, width: '100%' }}
+            onEvents={onEvents}
             notMerge
             lazyUpdate
         />

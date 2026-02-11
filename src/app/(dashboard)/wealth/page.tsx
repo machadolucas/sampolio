@@ -222,7 +222,7 @@ export default function WealthPage() {
     const totalAssets = currentCash + currentInvestments + currentReceivables;
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-6 max-w-7xl mx-auto">
             {/* Header */}
             <div>
                 <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Wealth Overview</h1>

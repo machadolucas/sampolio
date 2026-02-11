@@ -343,6 +343,7 @@ export interface CreateReceivableRequest {
 
 export interface UpdateReceivableRequest extends Partial<CreateReceivableRequest> {
   isArchived?: boolean;
+  currentBalance?: number;
 }
 
 export interface CreateRepaymentRequest {
@@ -403,6 +404,7 @@ export interface CreateInvestmentAccountRequest {
 
 export interface UpdateInvestmentAccountRequest extends Partial<CreateInvestmentAccountRequest> {
   isArchived?: boolean;
+  currentValuation?: number;
 }
 
 export interface CreateInvestmentContributionRequest {
@@ -496,6 +498,7 @@ export interface CreateDebtRequest {
 
 export interface UpdateDebtRequest extends Partial<CreateDebtRequest> {
   isArchived?: boolean;
+  currentPrincipal?: number;
 }
 
 // ============================================================

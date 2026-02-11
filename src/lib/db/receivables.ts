@@ -121,7 +121,8 @@ export async function updateReceivable(
   };
 
   // Recalculate current balance if initial principal changed
-  if (updates.initialPrincipal !== undefined) {
+  // but only if currentBalance wasn't explicitly provided
+  if (updates.initialPrincipal !== undefined && !('currentBalance' in updates)) {
     const repayments = await getRepayments(userId, receivableId);
     const totalRepaid = repayments.reduce((sum, r) => sum + r.amount, 0);
     updatedReceivable.currentBalance = updates.initialPrincipal - totalRepaid;

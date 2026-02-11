@@ -341,11 +341,11 @@ export default function OverviewPage() {
     }
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-6 max-w-360 mx-auto py-8">
             {/* Header */}
             <div className="flex items-center justify-between">
                 <div>
-                    <h1 className={`text-2xl font-bold ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
+                    <h1 className={`text-4xl font-bold ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
                         Overview
                     </h1>
                     {lastReconciled && (

@@ -181,7 +181,7 @@ export function AppLayout({ children }: AppLayoutProps) {
                     />
 
                     <main className={`transition-all duration-300 ${sidebarCollapsed ? 'ml-16' : 'ml-64'}`}>
-                        <div className="max-w-7xl mx-auto px-6 py-8">
+                        <div className="px-6">
                             {children}
                         </div>
                     </main>

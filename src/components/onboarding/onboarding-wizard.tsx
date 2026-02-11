@@ -322,7 +322,7 @@ export function OnboardingWizard({ visible, onComplete }: OnboardingWizardProps)
                                     onValueChange={(e) => setAccountBalance(e.value ?? 0)}
                                     mode="currency"
                                     currency={currency}
-                                    locale="en-US"
+                                    locale="fi-FI"
                                     className="w-full"
                                 />
                             </div>
@@ -375,7 +375,7 @@ export function OnboardingWizard({ visible, onComplete }: OnboardingWizardProps)
                                         onValueChange={(e) => setIncomeAmount(e.value ?? 0)}
                                         mode="currency"
                                         currency={currency}
-                                        locale="en-US"
+                                        locale="fi-FI"
                                         min={0}
                                         className="w-full"
                                     />
@@ -391,7 +391,7 @@ export function OnboardingWizard({ visible, onComplete }: OnboardingWizardProps)
                                             onValueChange={(e) => setGrossSalary(e.value ?? 0)}
                                             mode="currency"
                                             currency={currency}
-                                            locale="en-US"
+                                            locale="fi-FI"
                                             min={0}
                                             className="w-full"
                                         />
@@ -406,6 +406,7 @@ export function OnboardingWizard({ visible, onComplete }: OnboardingWizardProps)
                                                 value={taxRate}
                                                 onValueChange={(e) => setTaxRate(e.value ?? 0)}
                                                 suffix="%"
+                                                locale="fi-FI"
                                                 min={0}
                                                 max={100}
                                                 minFractionDigits={0}
@@ -421,6 +422,7 @@ export function OnboardingWizard({ visible, onComplete }: OnboardingWizardProps)
                                                 value={contributionsRate}
                                                 onValueChange={(e) => setContributionsRate(e.value ?? 0)}
                                                 suffix="%"
+                                                locale="fi-FI"
                                                 min={0}
                                                 max={100}
                                                 minFractionDigits={0}
@@ -439,7 +441,7 @@ export function OnboardingWizard({ visible, onComplete }: OnboardingWizardProps)
                                             onValueChange={(e) => setOtherDeductions(e.value ?? 0)}
                                             mode="currency"
                                             currency={currency}
-                                            locale="en-US"
+                                            locale="fi-FI"
                                             min={0}
                                             className="w-full"
                                         />
@@ -486,7 +488,7 @@ export function OnboardingWizard({ visible, onComplete }: OnboardingWizardProps)
                                                     }}
                                                     mode="currency"
                                                     currency={currency}
-                                                    locale="en-US"
+                                                    locale="fi-FI"
                                                     min={0}
                                                     className="w-28"
                                                 />
@@ -597,7 +599,7 @@ export function OnboardingWizard({ visible, onComplete }: OnboardingWizardProps)
                                             onValueChange={(e) => updateExpense(idx, 'amount', e.value ?? 0)}
                                             mode="currency"
                                             currency={currency}
-                                            locale="en-US"
+                                            locale="fi-FI"
                                             min={0}
                                             className="w-full"
                                         />

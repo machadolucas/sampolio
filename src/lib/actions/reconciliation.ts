@@ -3,6 +3,10 @@
 import { z } from 'zod';
 import { auth } from '@/lib/auth';
 import * as reconciliationDb from '@/lib/db/reconciliation';
+import * as accountsDb from '@/lib/db/accounts';
+import * as investmentsDb from '@/lib/db/investments';
+import * as receivablesDb from '@/lib/db/receivables';
+import * as debtsDb from '@/lib/db/debts';
 import {
   cachedGetBalanceSnapshots,
   cachedGetSnapshotsForEntity,
@@ -361,6 +365,75 @@ export async function getReconciliationSummary(
     const summary = await reconciliationDb.getReconciliationSummary(userId, yearMonth);
     return { success: true, data: summary };
   } catch (error) {
+    return { success: false, error: (error as Error).message };
+  }
+}
+
+// ============================================================
+// Apply Reconciliation Balances
+// ============================================================
+
+/**
+ * Updates entity balances to match the actual balances entered during
+ * reconciliation. This is called when completing a reconciliation session
+ * so the data reflects reality going forward.
+ */
+const ApplyBalanceSchema = z.object({
+  entityType: EntityTypeSchema,
+  entityId: z.string().min(1),
+  actualBalance: z.number(),
+});
+
+export async function applyReconciliationBalances(
+  entries: z.infer<typeof ApplyBalanceSchema>[]
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const userId = await getCurrentUser();
+
+    for (const entry of entries) {
+      const validated = ApplyBalanceSchema.parse(entry);
+      const { entityType, entityId, actualBalance } = validated;
+
+      switch (entityType) {
+        case 'cash-account': {
+          await accountsDb.updateAccount(userId, entityId, {
+            startingBalance: actualBalance,
+          });
+          break;
+        }
+        case 'investment': {
+          await investmentsDb.updateInvestmentAccount(userId, entityId, {
+            currentValuation: actualBalance,
+          });
+          break;
+        }
+        case 'receivable': {
+          await receivablesDb.updateReceivable(userId, entityId, {
+            currentBalance: actualBalance,
+          });
+          break;
+        }
+        case 'debt': {
+          // Debts are stored as positive currentPrincipal, but displayed as
+          // negative balances during reconciliation. The actual balance in the
+          // wizard is negative, so we negate it back to positive for storage.
+          await debtsDb.updateDebt(userId, entityId, {
+            currentPrincipal: Math.abs(actualBalance),
+          });
+          break;
+        }
+      }
+    }
+
+    // Invalidate all entity caches so dashboards reflect the updated balances
+    updateTag(`user:${userId}:accounts`);
+    updateTag(`user:${userId}:investments`);
+    updateTag(`user:${userId}:receivables`);
+    updateTag(`user:${userId}:debts`);
+
+    return { success: true };
+  } catch (error) {
+    console.error('Apply reconciliation balances error:', error);
     return { success: false, error: (error as Error).message };
   }
 }

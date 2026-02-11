@@ -1,13 +1,12 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { MdCheckCircle, MdWarning, MdArrowBack, MdArrowForward, MdCheck, MdError } from 'react-icons/md';
+import { MdWarning, MdArrowBack, MdArrowForward, MdCheck, MdError } from 'react-icons/md';
 import { Dialog } from 'primereact/dialog';
 import { Button } from 'primereact/button';
 import { Steps } from 'primereact/steps';
 import { InputNumber } from 'primereact/inputnumber';
 import { Dropdown } from 'primereact/dropdown';
-import { InputText } from 'primereact/inputtext';
 import { Card } from 'primereact/card';
 import { Tag } from 'primereact/tag';
 import { ProgressSpinner } from 'primereact/progressspinner';
@@ -21,10 +20,10 @@ import { getDebts } from '@/lib/actions/debts';
 import {
     startReconciliationSession,
     createBalanceSnapshot,
-    createAdjustment,
     completeReconciliationSession,
+    applyReconciliationBalances,
 } from '@/lib/actions/reconciliation';
-import type { FinancialAccount, InvestmentAccount, Receivable, Debt, EntityType, AdjustmentCategory, Currency } from '@/types';
+import type { FinancialAccount, InvestmentAccount, Receivable, Debt, EntityType, Currency } from '@/types';
 
 interface ReconcileWizardProps {
     visible: boolean;
@@ -41,23 +40,11 @@ interface EntityRow {
     expectedBalance: number;
     actualBalance: number | null;
     variance: number;
-    adjustmentCategory?: AdjustmentCategory;
-    adjustmentDescription?: string;
 }
-
-const ADJUSTMENT_CATEGORIES: { value: AdjustmentCategory; label: string }[] = [
-    { value: 'untracked-income', label: 'Untracked Income' },
-    { value: 'untracked-expense', label: 'Untracked Expense' },
-    { value: 'valuation-change', label: 'Valuation Change' },
-    { value: 'interest-adjustment', label: 'Interest Adjustment' },
-    { value: 'data-correction', label: 'Data Correction' },
-    { value: 'other', label: 'Other' },
-];
 
 const WIZARD_STEPS = [
     { label: 'Select Month' },
     { label: 'Enter Balances' },
-    { label: 'Explain Variance' },
     { label: 'Review & Confirm' },
 ];
 
@@ -195,24 +182,6 @@ export function ReconcileWizard({
         }));
     };
 
-    const handleAdjustmentCategoryChange = (entityId: string, category: AdjustmentCategory) => {
-        setEntities(prev => prev.map(e => {
-            if (e.entityId === entityId) {
-                return { ...e, adjustmentCategory: category };
-            }
-            return e;
-        }));
-    };
-
-    const handleAdjustmentDescriptionChange = (entityId: string, description: string) => {
-        setEntities(prev => prev.map(e => {
-            if (e.entityId === entityId) {
-                return { ...e, adjustmentDescription: description };
-            }
-            return e;
-        }));
-    };
-
     const handleStartSession = async () => {
         const result = await startReconciliationSession(selectedYearMonth);
         if (result.success && result.data) {
@@ -233,23 +202,32 @@ export function ReconcileWizard({
             // Create snapshots for all entities with actual balances
             for (const entity of entities) {
                 if (entity.actualBalance !== null) {
-                    const snapshotResult = await createBalanceSnapshot({
+                    await createBalanceSnapshot({
                         entityType: entity.entityType,
                         entityId: entity.entityId,
                         yearMonth: selectedYearMonth,
                         expectedBalance: entity.expectedBalance,
                         actualBalance: entity.actualBalance,
                     });
+                }
+            }
 
-                    // Create adjustment if there's a variance and category
-                    if (snapshotResult.success && snapshotResult.data && entity.variance !== 0 && entity.adjustmentCategory) {
-                        await createAdjustment({
-                            snapshotId: snapshotResult.data.id,
-                            category: entity.adjustmentCategory,
-                            amount: entity.variance,
-                            description: entity.adjustmentDescription,
-                        });
-                    }
+            // Apply actual balances to the entities so projections use
+            // the reconciled values going forward
+            const entriesToApply = entities
+                .filter(e => e.actualBalance !== null)
+                .map(e => ({
+                    entityType: e.entityType,
+                    entityId: e.entityId,
+                    actualBalance: e.actualBalance!,
+                }));
+
+            if (entriesToApply.length > 0) {
+                const applyResult = await applyReconciliationBalances(entriesToApply);
+                if (!applyResult.success) {
+                    setError(applyResult.error || 'Failed to apply balances');
+                    setIsSaving(false);
+                    return;
                 }
             }
 
@@ -387,7 +365,7 @@ export function ReconcileWizard({
                                                             onValueChange={(e) => handleActualBalanceChange(entity.entityId, e.value ?? null)}
                                                             mode="currency"
                                                             currency={entity.currency}
-                                                            locale="en-US"
+                                                            locale="fi-FI"
                                                             placeholder="Enter actual balance"
                                                             className="w-full"
                                                         />
@@ -408,69 +386,7 @@ export function ReconcileWizard({
                     </div>
                 );
 
-            case 2: // Explain Variance
-                return (
-                    <div className="space-y-4">
-                        {entitiesWithVariance.length === 0 ? (
-                            <div className={`text-center py-8 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                                <MdCheckCircle size={36} className="text-green-500 mb-4" />
-                                <p className="text-lg font-medium">No variance to explain!</p>
-                                <p className="text-sm">All your actual balances match expectations.</p>
-                            </div>
-                        ) : (
-                            <>
-                                <p className={isDark ? 'text-gray-300' : 'text-gray-600'}>
-                                    Categorize the variance for each entity to keep your records accurate.
-                                </p>
-
-                                {entitiesWithVariance.map((entity) => (
-                                    <Card key={entity.entityId} className="mb-4">
-                                        <div className="flex items-center justify-between mb-4">
-                                            <div className="flex items-center gap-3">
-                                                {renderEntityTypeLabel(entity.entityType)}
-                                                <span className={`font-medium ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
-                                                    {entity.name}
-                                                </span>
-                                            </div>
-                                            <Tag
-                                                value={`${entity.variance >= 0 ? '+' : ''}${formatCurrency(entity.variance, entity.currency)}`}
-                                                severity={entity.variance >= 0 ? 'success' : 'danger'}
-                                            />
-                                        </div>
-
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <div>
-                                                <label className={`block text-sm mb-2 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                                                    Category
-                                                </label>
-                                                <Dropdown
-                                                    value={entity.adjustmentCategory}
-                                                    options={ADJUSTMENT_CATEGORIES}
-                                                    onChange={(e) => handleAdjustmentCategoryChange(entity.entityId, e.value)}
-                                                    placeholder="Select category"
-                                                    className="w-full"
-                                                />
-                                            </div>
-                                            <div>
-                                                <label className={`block text-sm mb-2 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                                                    Description (optional)
-                                                </label>
-                                                <InputText
-                                                    value={entity.adjustmentDescription || ''}
-                                                    onChange={(e) => handleAdjustmentDescriptionChange(entity.entityId, e.target.value)}
-                                                    placeholder="Brief explanation"
-                                                    className="w-full"
-                                                />
-                                            </div>
-                                        </div>
-                                    </Card>
-                                ))}
-                            </>
-                        )}
-                    </div>
-                );
-
-            case 3: // Review & Confirm
+            case 2: // Review & Confirm
                 return (
                     <div className="space-y-6">
                         <div className={`p-6 rounded-lg ${isDark ? 'bg-gray-800' : 'bg-gray-50'}`}>
@@ -545,8 +461,7 @@ export function ReconcileWizard({
             switch (activeStep) {
                 case 0: return entities.length > 0;
                 case 1: return true; // Can proceed without entering all balances
-                case 2: return true; // Variance explanation is optional
-                case 3: return entitiesEntered.length > 0;
+                case 2: return entitiesEntered.length > 0;
                 default: return false;
             }
         };
@@ -560,7 +475,7 @@ export function ReconcileWizard({
                     onClick={() => setActiveStep(s => s - 1)}
                     disabled={activeStep === 0}
                 />
-                {activeStep < 3 ? (
+                {activeStep < 2 ? (
                     <Button
                         label="Continue"
                         icon={<MdArrowForward />}
