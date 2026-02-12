@@ -1091,7 +1091,7 @@ export function EntityListDrawer({ visible, category, onClose, onRefresh, editEn
                     return (
                         <div key={debt.id}>
                             <ItemCard name={debt.name}
-                                subtitle={`${formatCurrency(debt.currentPrincipal, debt.currency)} · ${debt.debtType} · ${debt.interestModelType}`}
+                                subtitle={`${formatCurrency(debt.initialPrincipal, debt.currency)} · ${debt.debtType} · ${debt.interestModelType}`}
                                 tags={debt.isArchived ? [{ label: 'Archived', severity: 'warning' as const }] : []}
                                 onEdit={() => setFormState({ kind: 'debt', debt })}
                                 onArchive={() => handleArchive(debt.id, !debt.isArchived)} isArchived={debt.isArchived}

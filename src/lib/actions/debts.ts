@@ -42,6 +42,7 @@ const createDebtSchema = z.object({
 
 const updateDebtSchema = createDebtSchema.partial().extend({
   isArchived: z.boolean().optional(),
+  remainingInstallments: z.number().int().min(0).optional(),
 });
 
 // ============================================================

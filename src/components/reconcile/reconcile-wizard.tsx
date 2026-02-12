@@ -40,6 +40,9 @@ interface EntityRow {
     expectedBalance: number;
     actualBalance: number | null;
     variance: number;
+    // Debt-specific reconciliation fields
+    remainingInstallments?: number | null;
+    installmentAmount?: number | null;
 }
 
 const WIZARD_STEPS = [
@@ -139,9 +142,11 @@ export function ReconcileWizard({
                         entityId: debt.id,
                         name: debt.name,
                         currency: debt.currency,
-                        expectedBalance: -debt.currentPrincipal, // Negative for debts
+                        expectedBalance: -debt.initialPrincipal, // Negative for debts
                         actualBalance: null,
                         variance: 0,
+                        remainingInstallments: debt.remainingInstallments ?? null,
+                        installmentAmount: debt.installmentAmount ?? null,
                     });
                 }
             }
@@ -177,6 +182,15 @@ export function ReconcileWizard({
                     actualBalance: value,
                     variance: actual - e.expectedBalance,
                 };
+            }
+            return e;
+        }));
+    };
+
+    const handleDebtFieldChange = (entityId: string, field: 'remainingInstallments' | 'installmentAmount', value: number | null) => {
+        setEntities(prev => prev.map(e => {
+            if (e.entityId === entityId) {
+                return { ...e, [field]: value };
             }
             return e;
         }));
@@ -220,6 +234,13 @@ export function ReconcileWizard({
                     entityType: e.entityType,
                     entityId: e.entityId,
                     actualBalance: e.actualBalance!,
+                    // Include debt-specific fields when present
+                    ...(e.entityType === 'debt' && e.remainingInstallments != null
+                        ? { remainingInstallments: e.remainingInstallments }
+                        : {}),
+                    ...(e.entityType === 'debt' && e.installmentAmount != null
+                        ? { installmentAmount: e.installmentAmount }
+                        : {}),
                 }));
 
             if (entriesToApply.length > 0) {
@@ -377,6 +398,38 @@ export function ReconcileWizard({
                                                         />
                                                     )}
                                                 </div>
+                                                {entity.entityType === 'debt' && (
+                                                    <div className="flex items-center gap-4 mt-3">
+                                                        <div className="flex-1">
+                                                            <label className={`text-xs mb-1 block ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                                                                Remaining Installments
+                                                            </label>
+                                                            <InputNumber
+                                                                value={entity.remainingInstallments}
+                                                                onValueChange={(e) => handleDebtFieldChange(entity.entityId, 'remainingInstallments', e.value ?? null)}
+                                                                locale="fi-FI"
+                                                                placeholder="Remaining installments"
+                                                                className="w-full"
+                                                                min={0}
+                                                            />
+                                                        </div>
+                                                        <div className="flex-1">
+                                                            <label className={`text-xs mb-1 block ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                                                                Installment Amount
+                                                            </label>
+                                                            <InputNumber
+                                                                value={entity.installmentAmount}
+                                                                onValueChange={(e) => handleDebtFieldChange(entity.entityId, 'installmentAmount', e.value ?? null)}
+                                                                mode="currency"
+                                                                currency={entity.currency}
+                                                                locale="fi-FI"
+                                                                placeholder="Installment amount"
+                                                                className="w-full"
+                                                                min={0}
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                )}
                                             </div>
                                         ))}
                                     </div>

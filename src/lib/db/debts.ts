@@ -75,7 +75,6 @@ export async function createDebt(userId: string, data: CreateDebtRequest): Promi
     currency: data.currency,
     debtType: data.debtType,
     initialPrincipal: data.initialPrincipal,
-    currentPrincipal: data.initialPrincipal,
     startDate: data.startDate,
     // Amortized loan fields
     interestModelType: data.interestModelType ?? 'none',
@@ -116,14 +115,6 @@ export async function updateDebt(
   const updatedDebt: Debt = {
     ...debt,
     ...updates,
-    // Keep currentPrincipal in sync when initialPrincipal changes and
-    // currentPrincipal was never independently adjusted (e.g. by reconciliation)
-    ...(updates.initialPrincipal != null &&
-      updates.initialPrincipal !== debt.initialPrincipal &&
-      debt.currentPrincipal === debt.initialPrincipal &&
-      updates.currentPrincipal == null
-      ? { currentPrincipal: updates.initialPrincipal }
-      : {}),
     updatedAt: new Date().toISOString(),
   };
 

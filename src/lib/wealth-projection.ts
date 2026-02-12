@@ -447,11 +447,11 @@ export function calculateWealthProjection(
       const projections = debtProjections.get(debt.id) || [];
       const monthProjection = projections.find((p) => p.yearMonth === currentDate);
       // If projection rows exist but none matches this month, the debt is paid off (principal = 0)
-      // Only fall back to currentPrincipal if the month is before the projection starts
+      // Only fall back to initialPrincipal if the month is before the projection starts
       const principal = monthProjection ? monthProjection.endingPrincipal
         : (projections.length > 0 && compareYearMonths(currentDate, projections[projections.length - 1].yearMonth) > 0)
           ? 0
-          : debt.currentPrincipal;
+          : debt.initialPrincipal;
       debtsBreakdown.push({
         debtId: debt.id,
         name: debt.name,

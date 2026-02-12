@@ -382,6 +382,9 @@ const ApplyBalanceSchema = z.object({
   entityType: EntityTypeSchema,
   entityId: z.string().min(1),
   actualBalance: z.number(),
+  // Optional debt-specific fields for reconciliation
+  remainingInstallments: z.number().int().min(0).optional(),
+  installmentAmount: z.number().min(0).optional(),
 });
 
 export async function applyReconciliationBalances(
@@ -414,12 +417,19 @@ export async function applyReconciliationBalances(
           break;
         }
         case 'debt': {
-          // Debts are stored as positive currentPrincipal, but displayed as
+          // Debts are stored as positive initialPrincipal, but displayed as
           // negative balances during reconciliation. The actual balance in the
           // wizard is negative, so we negate it back to positive for storage.
-          await debtsDb.updateDebt(userId, entityId, {
-            currentPrincipal: Math.abs(actualBalance),
-          });
+          const debtUpdates: Record<string, unknown> = {
+            initialPrincipal: Math.abs(actualBalance),
+          };
+          if (validated.remainingInstallments != null) {
+            debtUpdates.remainingInstallments = validated.remainingInstallments;
+          }
+          if (validated.installmentAmount != null) {
+            debtUpdates.installmentAmount = validated.installmentAmount;
+          }
+          await debtsDb.updateDebt(userId, entityId, debtUpdates as import('@/types').UpdateDebtRequest);
           break;
         }
       }

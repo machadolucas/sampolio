@@ -292,7 +292,7 @@ export default function OverviewPage() {
         const cashTotal = accounts.reduce((sum, a) => sum + a.startingBalance, 0);
         const investmentsTotal = investments.reduce((sum, i) => sum + (i.currentValuation || i.startingValuation), 0);
         const receivablesTotal = receivables.reduce((sum, r) => sum + r.currentBalance, 0);
-        const debtsTotal = debts.reduce((sum, d) => sum + d.currentPrincipal, 0);
+        const debtsTotal = debts.reduce((sum, d) => sum + d.initialPrincipal, 0);
 
         const netWorth = cashTotal + investmentsTotal + receivablesTotal - debtsTotal;
         const prevNetWorth = prevMonth?.netWorth || netWorth;

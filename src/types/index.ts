@@ -434,7 +434,6 @@ export interface Debt {
   currency: Currency;
   debtType: DebtType;
   initialPrincipal: number;
-  currentPrincipal: number; // Calculated from payments
   startDate: YearMonth;
 
   // For amortized loans (mortgage-like)
@@ -498,7 +497,7 @@ export interface CreateDebtRequest {
 
 export interface UpdateDebtRequest extends Partial<CreateDebtRequest> {
   isArchived?: boolean;
-  currentPrincipal?: number;
+  remainingInstallments?: number;
 }
 
 // ============================================================
