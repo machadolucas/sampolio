@@ -92,13 +92,14 @@ export function ReconcileWizard({
             // Cash accounts
             if (accountsResult.success && accountsResult.data) {
                 for (const account of accountsResult.data.filter((a: FinancialAccount) => !a.isArchived)) {
+                    const balance = account.startingBalance;
                     rows.push({
                         entityType: 'cash-account',
                         entityId: account.id,
                         name: account.name,
                         currency: account.currency,
-                        expectedBalance: account.startingBalance, // TODO: Calculate projected balance
-                        actualBalance: null,
+                        expectedBalance: balance,
+                        actualBalance: balance,
                         variance: 0,
                     });
                 }
@@ -107,13 +108,14 @@ export function ReconcileWizard({
             // Investments
             if (investmentsResult.success && investmentsResult.data) {
                 for (const investment of investmentsResult.data.filter((i: InvestmentAccount) => !i.isArchived)) {
+                    const balance = investment.currentValuation || investment.startingValuation;
                     rows.push({
                         entityType: 'investment',
                         entityId: investment.id,
                         name: investment.name,
                         currency: investment.currency,
-                        expectedBalance: investment.currentValuation || investment.startingValuation,
-                        actualBalance: null,
+                        expectedBalance: balance,
+                        actualBalance: balance,
                         variance: 0,
                     });
                 }
@@ -122,19 +124,21 @@ export function ReconcileWizard({
             // Receivables
             if (receivablesResult.success && receivablesResult.data) {
                 for (const receivable of receivablesResult.data.filter((r: Receivable) => !r.isArchived)) {
+                    const balance = receivable.currentBalance;
                     rows.push({
                         entityType: 'receivable',
                         entityId: receivable.id,
                         name: receivable.name,
                         currency: receivable.currency,
-                        expectedBalance: receivable.currentBalance,
-                        actualBalance: null,
+                        expectedBalance: balance,
+                        actualBalance: balance,
                         variance: 0,
                     });
                 }
             }
 
-            // Debts
+            // Debts – stored and displayed as positive values;
+            // the system handles the negative wealth impact internally.
             if (debtsResult.success && debtsResult.data) {
                 for (const debt of debtsResult.data.filter((d: Debt) => !d.isArchived)) {
                     rows.push({
@@ -142,8 +146,8 @@ export function ReconcileWizard({
                         entityId: debt.id,
                         name: debt.name,
                         currency: debt.currency,
-                        expectedBalance: -debt.initialPrincipal, // Negative for debts
-                        actualBalance: null,
+                        expectedBalance: debt.initialPrincipal,
+                        actualBalance: debt.initialPrincipal,
                         variance: 0,
                         remainingInstallments: debt.remainingInstallments ?? null,
                         installmentAmount: debt.installmentAmount ?? null,
@@ -177,10 +181,14 @@ export function ReconcileWizard({
         setEntities(prev => prev.map(e => {
             if (e.entityId === entityId) {
                 const actual = value ?? 0;
+                // For debts, a decrease is positive for wealth
+                const variance = e.entityType === 'debt'
+                    ? e.expectedBalance - actual
+                    : actual - e.expectedBalance;
                 return {
                     ...e,
                     actualBalance: value,
-                    variance: actual - e.expectedBalance,
+                    variance,
                 };
             }
             return e;
@@ -213,15 +221,17 @@ export function ReconcileWizard({
         setError('');
 
         try {
-            // Create snapshots for all entities with actual balances
+            // Create snapshots for entities whose values changed
             for (const entity of entities) {
-                if (entity.actualBalance !== null) {
+                if (entity.actualBalance !== null && entity.variance !== 0) {
+                    // Store debt snapshots as negative values for historical consistency
+                    const sign = entity.entityType === 'debt' ? -1 : 1;
                     await createBalanceSnapshot({
                         entityType: entity.entityType,
                         entityId: entity.entityId,
                         yearMonth: selectedYearMonth,
-                        expectedBalance: entity.expectedBalance,
-                        actualBalance: entity.actualBalance,
+                        expectedBalance: entity.expectedBalance * sign,
+                        actualBalance: entity.actualBalance * sign,
                     });
                 }
             }
@@ -229,11 +239,13 @@ export function ReconcileWizard({
             // Apply actual balances to the entities so projections use
             // the reconciled values going forward
             const entriesToApply = entities
-                .filter(e => e.actualBalance !== null)
+                .filter(e => e.actualBalance !== null && e.variance !== 0)
                 .map(e => ({
                     entityType: e.entityType,
                     entityId: e.entityId,
-                    actualBalance: e.actualBalance!,
+                    // Debts are stored as positive in UI; negate for the action
+                    // (which calls Math.abs internally, so sign doesn't matter)
+                    actualBalance: e.entityType === 'debt' ? -e.actualBalance! : e.actualBalance!,
                     // Include debt-specific fields when present
                     ...(e.entityType === 'debt' && e.remainingInstallments != null
                         ? { remainingInstallments: e.remainingInstallments }
@@ -266,7 +278,7 @@ export function ReconcileWizard({
     };
 
     const entitiesWithVariance = entities.filter(e => e.actualBalance !== null && e.variance !== 0);
-    const entitiesEntered = entities.filter(e => e.actualBalance !== null);
+    const entitiesChanged = entitiesWithVariance;
     const totalVariance = entitiesWithVariance.reduce((sum, e) => sum + e.variance, 0);
 
     const yearOptions = Array.from({ length: 5 }, (_, i) => {
@@ -351,7 +363,8 @@ export function ReconcileWizard({
                 return (
                     <div className="space-y-4">
                         <p className={isDark ? 'text-gray-300' : 'text-gray-600'}>
-                            Enter the actual balance for each entity as of {formatYearMonth(selectedYearMonth)}.
+                            Verify and adjust the actual balances as of {formatYearMonth(selectedYearMonth)}.
+                            Values are pre-filled with current data — update only what changed.
                         </p>
 
                         {['cash-account', 'investment', 'receivable', 'debt'].map((type) => {
@@ -450,10 +463,10 @@ export function ReconcileWizard({
                             <div className="grid grid-cols-2 gap-4 mb-6">
                                 <div>
                                     <span className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                                        Entities Updated
+                                        Entities Changed
                                     </span>
                                     <p className={`text-2xl font-bold ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
-                                        {entitiesEntered.length}
+                                        {entitiesChanged.length}
                                     </p>
                                 </div>
                                 <div>
@@ -466,12 +479,12 @@ export function ReconcileWizard({
                                 </div>
                             </div>
 
-                            {entitiesEntered.length > 0 && (
+                            {entitiesChanged.length > 0 && (
                                 <div className="space-y-2">
                                     <h4 className={`text-sm font-medium ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
                                         Changes
                                     </h4>
-                                    {entitiesEntered.map((entity) => (
+                                    {entitiesChanged.map((entity) => (
                                         <div key={entity.entityId} className="flex items-center justify-between py-2 border-b border-gray-700 last:border-0">
                                             <div className="flex items-center gap-2">
                                                 {renderEntityTypeLabel(entity.entityType)}
@@ -483,11 +496,9 @@ export function ReconcileWizard({
                                                 <span className={isDark ? 'text-gray-100' : 'text-gray-900'}>
                                                     {formatCurrency(entity.actualBalance || 0, entity.currency)}
                                                 </span>
-                                                {entity.variance !== 0 && (
-                                                    <span className={`ml-2 text-sm ${entity.variance >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                                                        ({entity.variance >= 0 ? '+' : ''}{formatCurrency(entity.variance, entity.currency)})
-                                                    </span>
-                                                )}
+                                                <span className={`ml-2 text-sm ${entity.variance >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                                                    ({entity.variance >= 0 ? '+' : ''}{formatCurrency(entity.variance, entity.currency)})
+                                                </span>
                                             </div>
                                         </div>
                                     ))}
@@ -495,10 +506,10 @@ export function ReconcileWizard({
                             )}
                         </div>
 
-                        {entitiesEntered.length === 0 && (
-                            <div className={`flex items-center justify-center py-4 ${isDark ? 'text-yellow-400' : 'text-yellow-600'}`}>
-                                <MdWarning className="mr-2" />
-                                No balances were entered. Please go back and enter at least one balance.
+                        {entitiesChanged.length === 0 && (
+                            <div className={`flex items-center justify-center py-4 ${isDark ? 'text-green-400' : 'text-green-600'}`}>
+                                <MdCheck className="mr-2" />
+                                All balances match. No changes to apply.
                             </div>
                         )}
                     </div>
@@ -514,7 +525,7 @@ export function ReconcileWizard({
             switch (activeStep) {
                 case 0: return entities.length > 0;
                 case 1: return true; // Can proceed without entering all balances
-                case 2: return entitiesEntered.length > 0;
+                case 2: return entitiesChanged.length > 0;
                 default: return false;
             }
         };
