@@ -1,25 +1,67 @@
 # Sampolio - Personal Finance Planner
 
-A personal finance planning tool that replaces your budgeting spreadsheet with a cleaner, more powerful workflow.
+A self-hosted personal finance planning tool that replaces budgeting spreadsheets with a powerful, private workflow. Track multiple accounts, project your financial future, manage debts and investments, and reconcile balances — all stored locally with AES-256-GCM encryption.
 
 ## Features
 
-- **Multi-Account Support**: Manage multiple financial accounts independently (e.g., checking, savings, investment accounts)
-- **Recurring Income & Expenses**: Track fixed monthly items like salary, rent, subscriptions with start/end dates
+### Cash Flow Management
+- **Multi-Account Support**: Manage multiple financial accounts independently with different currencies (EUR, USD, BRL, GBP, JPY, CHF, CAD, AUD)
+- **Recurring Income & Expenses**: Track fixed items (salary, rent, subscriptions) with monthly, quarterly, yearly, or custom interval frequencies
 - **Planned Items**: One-off expenses (taxes, annual fees) and repeating non-monthly items (quarterly payments)
-- **Salary Calculator**: Net salary calculation with deductions, bonuses, and automatic linking to recurring income
-- **Multi-Year Projections**: See your financial future up to 10 years ahead with instant recalculation
-- **User Management**: Admin panel for managing users and app settings
+- **Occurrence Overrides**: Edit or skip individual occurrences of recurring items without changing the series
+- **Salary Calculator**: Net salary computation with gross salary, taxable/non-taxable benefits, tax rate, contributions, and deductions — automatically linked to recurring income
+- **Taxed Income**: Handle bonuses, holiday pay, and other special income with tax withholding (using salary settings or custom rates)
+- **Category Management**: Built-in categories (Salary, Housing, Utilities, etc.) plus custom categories; remove or restore defaults
+
+### Wealth Management
+- **Investments**: Track investment accounts with starting valuations, annual growth rates, and one-off or recurring contributions/withdrawals
+- **Debts**: Manage amortized loans (mortgages with fixed/variable interest, reference rates like Euribor) and fixed-installment debts (no interest). Track extra payments and remaining installments
+- **Receivables**: Track money owed to you with optional interest rates, expected monthly repayments, and repayment recording
+
+### Financial Projections
+- **Multi-Year Cash Flow Projections**: See your financial future up to 10 years ahead with instant recalculation across all accounts
+- **Net Worth Projection**: Aggregate wealth over time combining cash accounts, investments, receivables, and debts
+- **Debt Amortization Schedules**: Automatic calculation with support for variable interest rates and rate reset frequencies
+- **Investment Growth Modeling**: Compound monthly growth based on annual rates, incorporating contributions and withdrawals
+
+### Reconciliation
+- **Monthly Balance Verification**: Compare projected vs. actual balances for all entity types (cash, investments, receivables, debts)
+- **Variance Tracking**: Calculate and display differences between expected and actual balances
+- **Adjustment Categories**: Classify variances as untracked income/expense, valuation change, interest adjustment, data correction, or other
+- **Session Management**: Track reconciliation sessions with in-progress and completed states
+
+### Data Visualization
+- **Sankey Flow Chart**: Visualize how income flows through the budget to expenses each month
+- **Waterfall Chart**: Balance progression month-by-month showing how each month's net change builds on the previous
+- **Treemap Chart**: Expense proportions by category and individual items
+- **Net Worth Line Chart**: Track net worth trend over time
+- **Stacked Area Chart**: Wealth composition breakdown (cash, investments, receivables, debts)
+
+### User Experience
+- **Onboarding Wizard**: Guided 5-step setup for first-time users (account, income, expenses)
+- **Command Palette**: Quick access to any action via keyboard (Cmd+K)
+- **Keyboard Shortcuts**: Cmd+I (add income), Cmd+E (add expense), Cmd+R (reconcile)
+- **Dark/Light Theme**: System-wide theme toggle with PrimeReact dark theme integration
+- **Interactive Month Navigation**: Scrollable month strip for quick date navigation in cashflow view
+
+### Administration
+- **User Management**: Admin panel for creating, updating, and deactivating users
 - **Role-Based Access**: Admin and user roles with first-user-becomes-admin logic
 - **Self-Signup Control**: Admins can enable/disable public registration
-- **Secure & Private**: File-based encrypted storage - your data stays on your server
-- **Single File Deployment**: Deploy as a standalone package - no external database needed
+- **Cache Management**: Force revalidation of all caches from settings
+
+### Security & Privacy
+- **File-Based Encrypted Storage**: AES-256-GCM encryption with PBKDF2 key derivation — your data stays on your server
+- **Password Security**: bcrypt hashing (12 rounds), strong password requirements (8+ chars, mixed case, numbers, special chars)
+- **Brute Force Protection**: Account lockout after 5 failed attempts within 15 minutes
+- **Security Headers**: XSS protection, frame options, CSP, HSTS, restricted permissions policy
+- **Single File Deployment**: Deploy as a standalone package — no external database needed
 
 ## Getting Started
 
 ### Prerequisites
 
-- Node.js 20+ 
+- Node.js 20+
 - pnpm (recommended) or npm
 
 ### Installation
@@ -45,7 +87,7 @@ cp .env.example .env.local
 # Generate AUTH_SECRET
 openssl rand -base64 32
 
-# Generate ENCRYPTION_KEY  
+# Generate ENCRYPTION_KEY
 openssl rand -hex 32
 ```
 
@@ -57,6 +99,76 @@ pnpm dev
 6. Open [http://localhost:3999](http://localhost:3999) and create your account
 
 > **Note**: The first user to sign up automatically becomes an admin.
+
+## Architecture
+
+### Server Actions (No REST API)
+
+The application uses Next.js Server Actions exclusively for all backend operations — there are no traditional REST API routes (except the NextAuth handler at `/api/auth/[...nextauth]`). All server actions are located in `src/lib/actions/` and follow a consistent pattern:
+
+- `'use server'` directive at the top
+- Input validation with Zod schemas
+- Authentication check via `auth()`
+- Return type: `ActionResult<T>` (`{ success: boolean; data?: T; error?: string }`)
+- Cache invalidation via `updateTag()` after mutations
+
+### File-Based Encrypted Database
+
+All data is stored as individually encrypted JSON files in `~/.sampolio/data/` (configurable):
+
+```
+~/.sampolio/data/
+├── users-index.enc              # User ID/email lookup
+├── app-settings.enc             # Global settings (self-signup, etc.)
+└── users/
+    └── {userId}/
+        ├── user.enc             # Profile, password hash, role
+        ├── preferences.enc      # Onboarding state, categories, tax defaults
+        ├── accounts/
+        │   └── {accountId}.enc  # Cash accounts
+        ├── recurring-items/
+        │   └── {itemId}.enc     # Recurring income/expenses
+        ├── planned-items/
+        │   └── {itemId}.enc     # One-off and repeating items
+        ├── salary-configs/
+        │   └── {configId}.enc   # Salary configurations
+        ├── investments/
+        │   └── {investmentId}.enc
+        ├── debts/
+        │   └── {debtId}.enc
+        ├── receivables/
+        │   └── {receivableId}.enc
+        ├── taxed-income/
+        │   └── {incomeId}.enc
+        └── reconciliation/
+            ├── snapshots/       # Balance snapshots
+            └── sessions/        # Reconciliation sessions
+```
+
+**Encryption**: AES-256-GCM with PBKDF2 key derivation (100,000 iterations). Each file has its own random salt and IV. Derived keys are cached in an LRU cache (max 500 entries) to avoid repeated PBKDF2 computation.
+
+### Caching Strategy
+
+- Next.js `cacheLife('indefinite')` for data queries (1-year stale/revalidate/expire)
+- Granular cache tags per entity type: `user:{userId}:accounts`, `user:{userId}:debts`, etc.
+- Cache invalidation via `updateTag()` after any mutation in server actions
+- Admin can force-revalidate all caches from settings
+
+### Projection Engine
+
+**Cash Flow Projection** (`src/lib/projection.ts`):
+1. Starts with each account's starting balance at its starting date
+2. Iterates month-by-month through the planning horizon
+3. For each month: applies recurring items (checking frequency/dates), one-off planned items, and occurrence overrides
+4. Rolls up monthly data into yearly summaries
+
+**Wealth Projection** (`src/lib/wealth-projection.ts`):
+Aggregates across all entity types for each month:
+- Cash accounts: balance from cashflow projection
+- Investments: compound monthly growth + contributions - withdrawals
+- Receivables: principal - repayments + interest accrual
+- Debts: amortization schedule with interest (fixed or variable rates)
+- Net worth: cash + investments + receivables - debts
 
 ## Development
 
@@ -84,7 +196,7 @@ To use: Open the Run and Debug panel (Cmd+Shift+D) and select a configuration.
 | `type-check` | Run TypeScript type checking | - |
 | `package` | Build and create distributable zip | - |
 
-To run: Use Command Palette (Cmd+Shift+P) → "Tasks: Run Task"
+To run: Use Command Palette (Cmd+Shift+P) > "Tasks: Run Task"
 
 ## Production Deployment
 
@@ -159,9 +271,9 @@ Then run normally:
 ./run-sampolio.sh  # or ./install-launchd.sh
 ```
 
-⚠️ **Important**: 
+**Important**:
 - Keep your `.env` file secure and backed up
-- Never change `ENCRYPTION_KEY` - existing data will be unreadable
+- Never change `ENCRYPTION_KEY` — existing data will be unreadable
 - Never commit `.env` to version control
 
 **Alternative: Auto-Generated Secrets**
@@ -179,7 +291,7 @@ SAMPOLIO_DATA_DIR=~/.sampolio/data   # Data directory
 
 **Migrating Data Between Servers**:
 
-⚠️ **Important**: Use the same `ENCRYPTION_KEY` to decrypt existing data.
+**Important**: Use the same `ENCRYPTION_KEY` to decrypt existing data.
 
 **Method 1: Copy .env file and data** (simplest):
 ```bash
@@ -283,8 +395,8 @@ cd sampolio && cp ~/sampolio-backup.env .env
 ./install-launchd.sh
 ```
 
-⚠️ **Important Notes**:
-- Always keep your `.env` file - it contains the encryption key for your data
+**Important Notes**:
+- Always keep your `.env` file — it contains the encryption key for your data
 - Your data in `~/.sampolio/data/` is preserved across upgrades
 - Test upgrades on a development server first for major version changes
 - Keep a backup of your data before major upgrades
@@ -308,44 +420,26 @@ ln -sf ~/sampolio-v1.2.0 ~/sampolio-current
 ./uninstall-launchd.sh
 ```
 
-#### Configuration
-
-| Environment Variable | Description | Default |
-|---------------------|-------------|---------|
-| `SAMPOLIO_PORT` | Server port | `3999` |
-| `SAMPOLIO_HOST` | Server host | `0.0.0.0` |
-| `SAMPOLIO_DATA_DIR` | Data storage directory | `~/.sampolio/data` |
-| `AUTH_SECRET` | Auth secret (auto-generated if not set) | Auto-generated |
-| `ENCRYPTION_KEY` | File encryption key (auto-generated if not set) | Auto-generated |
-
-#### File Locations
-
-| Path | Description |
-|------|-------------|
-| `~/.sampolio/data/` | User data and settings |
-| `~/.sampolio/logs/` | Application logs (when using launchd) |
-| `~/Library/LaunchAgents/com.sampolio.app.plist` | launchd configuration |
-
 ### Docker Deployment
 
 Create a `Dockerfile`:
 
 ```dockerfile
-FROM node:18-alpine AS builder
+FROM node:20-alpine AS builder
 WORKDIR /app
 COPY package.json pnpm-lock.yaml ./
 RUN npm install -g pnpm && pnpm install --frozen-lockfile
 COPY . .
 RUN pnpm build
 
-FROM node:18-alpine AS runner
+FROM node:20-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/public ./public
 
-EXPOSE 3000
+EXPOSE 3999
 CMD ["node", "server.js"]
 ```
 
@@ -354,80 +448,44 @@ Build and run:
 docker build -t sampolio .
 
 # Option 1: Using .env file (recommended)
-docker run -p 3000:3000 -v $(pwd)/data:/app/data --env-file .env sampolio
+docker run -p 3999:3999 -v $(pwd)/data:/app/data --env-file .env sampolio
 
 # Option 2: Explicit environment variables
-docker run -p 3000:3000 \
+docker run -p 3999:3999 \
   -v $(pwd)/data:/app/data \
   -e AUTH_SECRET=your-secret \
   -e ENCRYPTION_KEY=your-key \
   sampolio
 ```
 
-## Architecture
-
-### File-Based Database
-
-All data is stored in encrypted JSON files:
-- `data/users/` - User accounts (password hashed with bcrypt)
-- `data/users/{userId}/accounts.json` - Financial accounts
-- `data/users/{userId}/recurring-items.json` - Recurring income/expenses
-- `data/users/{userId}/planned-items.json` - One-off and repeating items
-- `data/users/{userId}/salary-configs.json` - Salary configurations
-- `data/app-settings.json` - Application settings (self-signup, etc.)
-
-Files are encrypted using AES-256-GCM with PBKDF2 key derivation.
-
-### User Roles
-
-- **Admin**: Can manage all users, create/update/delete accounts, toggle self-signup
-- **User**: Standard user with access to personal finance features
-
-The first user to register automatically becomes an admin.
-
-### Projection Engine
-
-The projection engine calculates future balances by:
-1. Starting with each account's current balance
-2. Applying recurring items based on their frequency and date ranges
-3. Adding planned items on their scheduled dates
-4. Rolling up monthly data into yearly summaries
-
 ## Environment Variables
 
 | Variable | Description | Required | Default |
 |----------|-------------|----------|---------|
-| `AUTH_SECRET` | NextAuth.js secret key | Yes* | Auto-generated in production |
-| `ENCRYPTION_KEY` | 64-character hex key for file encryption | Yes* | Auto-generated in production |
-| `AUTH_TRUST_HOST` | Set to `true` in production | No | - |
+| `AUTH_SECRET` | NextAuth.js secret key | Yes* | Auto-generated |
+| `ENCRYPTION_KEY` | 64-character hex key for file encryption | Yes* | Auto-generated |
+| `AUTH_TRUST_HOST` | Set to `true` behind reverse proxy | No | - |
+| `AUTH_URL` | Public URL for auth (behind reverse proxy) | No | - |
 | `DATA_DIR` / `SAMPOLIO_DATA_DIR` | Custom data directory path | No | `~/.sampolio/data` |
 | `PORT` / `SAMPOLIO_PORT` | Server port | No | `3999` |
 | `HOSTNAME` / `SAMPOLIO_HOST` | Server hostname | No | `0.0.0.0` |
 
-*Required variables are auto-generated if not provided, but using a `.env` file with fixed values is recommended for production.
-
-**For Development**: 
-```bash
-cp .env.example .env.local
-# Edit .env.local with your secrets
-```
-
-**For Production**: 
-```bash
-cp .env.example .env
-# Generate and set AUTH_SECRET and ENCRYPTION_KEY in .env
-# The deployment scripts will load from .env file
-```
+*Auto-generated if not provided, but using a `.env` file with fixed values is recommended for production.
 
 ## Tech Stack
 
-- **Framework**: Next.js 16 (App Router)
-- **Authentication**: NextAuth.js v5
-- **UI Components**: PrimeReact
+- **Framework**: Next.js 16 (App Router, Server Actions)
+- **Language**: TypeScript (strict mode)
+- **Authentication**: NextAuth.js v5 (JWT sessions, credentials provider)
+- **UI Components**: PrimeReact with PrimeIcons
 - **Styling**: Tailwind CSS v4
-- **Icons**: PrimeIcons, Lucide React
+- **Icons**: PrimeIcons, Lucide React, React Icons
 - **Forms**: React Hook Form + Zod validation
+- **Charts**: ECharts (via echarts-for-react), Chart.js
 - **Date Handling**: date-fns
+- **Encryption**: Node.js crypto (AES-256-GCM, PBKDF2)
+- **Password Hashing**: bcryptjs
+- **IDs**: uuid v13
 
 ## Scripts Reference
 
@@ -441,6 +499,14 @@ cp .env.example .env
 | `./scripts/run-sampolio.sh` | Run the standalone server |
 | `./scripts/install-launchd.sh` | Install macOS auto-start |
 | `./scripts/uninstall-launchd.sh` | Remove macOS auto-start |
+
+## File Locations
+
+| Path | Description |
+|------|-------------|
+| `~/.sampolio/data/` | User data and settings (encrypted) |
+| `~/.sampolio/logs/` | Application logs (when using launchd) |
+| `~/Library/LaunchAgents/com.sampolio.app.plist` | launchd configuration |
 
 ## License
 

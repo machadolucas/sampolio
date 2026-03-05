@@ -16,6 +16,7 @@ import { MonthlyFlowChart } from '@/components/charts/monthly-flow-chart';
 import { CashflowWaterfallChart, ExpenseTreemapChart } from '@/components/charts';
 import { getAccounts } from '@/lib/actions/accounts';
 import { getProjection } from '@/lib/actions/projection';
+import { getReconciliationSessions } from '@/lib/actions/reconciliation';
 import { OccurrenceOverrideDialog } from '@/components/modals/occurrence-override-dialog';
 import type { FinancialAccount, MonthlyProjection, MonthFlowData, CashflowItem, Currency } from '@/types';
 import { MdCheckCircle, MdCalendarToday, MdArrowForward, MdAccountBalanceWallet, MdAdd, MdRemove, MdList, MdAccountTree, MdBarChart, MdTableChart, MdInfoOutline } from 'react-icons/md';
@@ -257,6 +258,7 @@ export default function CashflowPage() {
         const now = new Date();
         return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     });
+    const [reconciledMonths, setReconciledMonths] = useState<Set<string>>(new Set());
 
     // Occurrence override dialog state
     const [overrideDialogVisible, setOverrideDialogVisible] = useState(false);
@@ -327,6 +329,20 @@ export default function CashflowPage() {
         }
     }, [appContext, fetchProjection]);
 
+    // Fetch reconciliation sessions to determine which months are reconciled
+    useEffect(() => {
+        async function fetchReconciliationStatus() {
+            const result = await getReconciliationSessions();
+            if (result.success && result.data) {
+                const completed = result.data
+                    .filter(s => s.status === 'completed')
+                    .map(s => s.yearMonth);
+                setReconciledMonths(new Set(completed));
+            }
+        }
+        fetchReconciliationStatus();
+    }, []);
+
     // Get selected account
     const selectedAccount = accounts.find(a => a.id === selectedAccountId);
     const currency = selectedAccount?.currency || 'EUR';
@@ -381,9 +397,9 @@ export default function CashflowPage() {
             totalInflows: selectedProjection.totalIncome,
             totalOutflows: selectedProjection.totalExpenses,
             netChange: selectedProjection.netChange,
-            isReconciled: false, // TODO: Check reconciliation status
+            isReconciled: reconciledMonths.has(selectedMonth),
         };
-    }, [selectedProjection, selectedMonth, selectedAccountId]);
+    }, [selectedProjection, selectedMonth, selectedAccountId, reconciledMonths]);
 
     const handleEditItem = (itemId: string, source: string, itemType?: string) => {
         // For recurring items, ask whether to edit this occurrence or the entire series
@@ -552,6 +568,7 @@ export default function CashflowPage() {
                         months={months}
                         selectedMonth={selectedMonth}
                         onSelectMonth={setSelectedMonth}
+                        reconciledMonths={reconciledMonths}
                     />
                 </div>
             </div>

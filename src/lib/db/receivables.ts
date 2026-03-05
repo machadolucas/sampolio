@@ -52,8 +52,7 @@ export async function getReceivables(userId: string): Promise<Receivable[]> {
     validReceivables.map(async (receivable) => {
       const repayments = await getRepayments(userId, receivable.id);
       const totalRepaid = repayments.reduce((sum, r) => sum + r.amount, 0);
-      receivable.currentBalance = receivable.initialPrincipal - totalRepaid;
-      return receivable;
+      return { ...receivable, currentBalance: receivable.initialPrincipal - totalRepaid };
     })
   );
 
@@ -67,7 +66,7 @@ export async function getReceivableById(userId: string, receivableId: string): P
   if (receivable) {
     const repayments = await getRepayments(userId, receivableId);
     const totalRepaid = repayments.reduce((sum, r) => sum + r.amount, 0);
-    receivable.currentBalance = receivable.initialPrincipal - totalRepaid;
+    return { ...receivable, currentBalance: receivable.initialPrincipal - totalRepaid };
   }
 
   return receivable;

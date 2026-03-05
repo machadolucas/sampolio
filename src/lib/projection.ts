@@ -177,10 +177,12 @@ export function calculateProjection(
   const oneOffByMonth = new Map<YearMonth, PlannedItem[]>();
   for (const item of regularPlannedItems.filter(p => p.kind === 'one-off' && p.scheduledDate)) {
     const month = item.scheduledDate!;
-    if (!oneOffByMonth.has(month)) {
-      oneOffByMonth.set(month, []);
+    const existing = oneOffByMonth.get(month);
+    if (existing) {
+      existing.push(item);
+    } else {
+      oneOffByMonth.set(month, [item]);
     }
-    oneOffByMonth.get(month)!.push(item);
   }
 
   // Build a map of repeating items occurrences
@@ -194,10 +196,12 @@ export function calculateProjection(
     for (const item of repeatingItems) {
       const occurrences = getPlannedRepeatingOccurrences(item, projectionStart, projectionEnd);
       for (const occurrence of occurrences) {
-        if (!repeatingOccurrences.has(occurrence)) {
-          repeatingOccurrences.set(occurrence, []);
+        const existing = repeatingOccurrences.get(occurrence);
+        if (existing) {
+          existing.push(item);
+        } else {
+          repeatingOccurrences.set(occurrence, [item]);
         }
-        repeatingOccurrences.get(occurrence)!.push(item);
       }
     }
   }
@@ -359,10 +363,12 @@ export function calculateYearlyRollups(
   const yearlyMap = new Map<number, MonthlyProjection[]>();
 
   for (const projection of monthlyProjections) {
-    if (!yearlyMap.has(projection.year)) {
-      yearlyMap.set(projection.year, []);
+    const existing = yearlyMap.get(projection.year);
+    if (existing) {
+      existing.push(projection);
+    } else {
+      yearlyMap.set(projection.year, [projection]);
     }
-    yearlyMap.get(projection.year)!.push(projection);
   }
 
   const rollups: YearlyRollup[] = [];
