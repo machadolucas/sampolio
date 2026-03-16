@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { MdWarning, MdArrowBack, MdArrowForward, MdCheck, MdError } from 'react-icons/md';
+import { MdArrowBack, MdArrowForward, MdCheck, MdError } from 'react-icons/md';
 import { Dialog } from 'primereact/dialog';
 import { Button } from 'primereact/button';
 import { Steps } from 'primereact/steps';
@@ -23,6 +23,7 @@ import {
     completeReconciliationSession,
     applyReconciliationBalances,
 } from '@/lib/actions/reconciliation';
+import { useAppContext } from '@/components/layout/app-layout';
 import type { FinancialAccount, InvestmentAccount, Receivable, Debt, EntityType, Currency } from '@/types';
 
 interface ReconcileWizardProps {
@@ -46,9 +47,9 @@ interface EntityRow {
 }
 
 const WIZARD_STEPS = [
-    { label: 'Select Month' },
-    { label: 'Enter Balances' },
-    { label: 'Review & Confirm' },
+    { label: 'Choose Month' },
+    { label: 'Verify Balances' },
+    { label: 'Review' },
 ];
 
 export function ReconcileWizard({
@@ -59,6 +60,8 @@ export function ReconcileWizard({
 }: ReconcileWizardProps) {
     const { theme } = useTheme();
     const isDark = theme === 'dark';
+    const appContext = useAppContext();
+    const isSimple = appContext?.displayMode === 'simple';
 
     const [activeStep, setActiveStep] = useState(0);
     const [isLoading, setIsLoading] = useState(true);
@@ -316,8 +319,8 @@ export function ReconcileWizard({
                 return (
                     <div className="space-y-6">
                         <p className={isDark ? 'text-gray-300' : 'text-gray-600'}>
-                            Select the month you want to reconcile. This will compare your expected balances
-                            with actual values and help track any differences.
+                            Time for a quick check-in! Pick the month you want to review.
+                            We&apos;ll compare what we expected with what actually happened, so your projections stay accurate.
                         </p>
 
                         <div className="flex gap-4">
@@ -347,7 +350,7 @@ export function ReconcileWizard({
 
                         <Card className="mt-6">
                             <div className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                                <p className="font-medium mb-2">Entities to reconcile:</p>
+                                <p className="font-medium mb-2">What we&apos;ll check:</p>
                                 <ul className="list-disc list-inside space-y-1">
                                     <li>{entities.filter(e => e.entityType === 'cash-account').length} Cash Accounts</li>
                                     <li>{entities.filter(e => e.entityType === 'investment').length} Investments</li>
@@ -363,8 +366,8 @@ export function ReconcileWizard({
                 return (
                     <div className="space-y-4">
                         <p className={isDark ? 'text-gray-300' : 'text-gray-600'}>
-                            Verify and adjust the actual balances as of {formatYearMonth(selectedYearMonth)}.
-                            Values are pre-filled with current data — update only what changed.
+                            Check your actual balances for {formatYearMonth(selectedYearMonth)}.
+                            We&apos;ve pre-filled what we expect — just update anything that&apos;s different.
                         </p>
 
                         {['cash-account', 'investment', 'receivable', 'debt'].map((type) => {
@@ -384,13 +387,24 @@ export function ReconcileWizard({
                                                 key={entity.entityId}
                                                 className={`p-4 rounded-lg border ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}
                                             >
-                                                <div className="flex items-center justify-between mb-3">
+                                                <div className="flex items-center justify-between mb-2">
                                                     <span className={`font-medium ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
                                                         {entity.name}
                                                     </span>
-                                                    <span className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                                                        Expected: {formatCurrency(entity.expectedBalance, entity.currency)}
-                                                    </span>
+                                                    {renderEntityTypeLabel(entity.entityType)}
+                                                </div>
+                                                <div className={`flex items-center gap-3 mb-2 text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                                                    <span>Expected: <strong className={isDark ? 'text-gray-200' : 'text-gray-700'}>{formatCurrency(entity.expectedBalance, entity.currency)}</strong></span>
+                                                    {entity.actualBalance !== null && entity.variance !== 0 && (
+                                                        <>
+                                                            <span className={isDark ? 'text-gray-600' : 'text-gray-300'}>&rarr;</span>
+                                                            <span>Actual: <strong className={isDark ? 'text-gray-200' : 'text-gray-700'}>{formatCurrency(entity.actualBalance, entity.currency)}</strong></span>
+                                                            <Tag
+                                                                value={`${entity.variance >= 0 ? '+' : ''}${formatCurrency(entity.variance, entity.currency)}`}
+                                                                severity={entity.variance >= 0 ? 'success' : 'danger'}
+                                                            />
+                                                        </>
+                                                    )}
                                                 </div>
                                                 <div className="flex items-center gap-4">
                                                     <div className="flex-1">
@@ -404,14 +418,8 @@ export function ReconcileWizard({
                                                             className="w-full"
                                                         />
                                                     </div>
-                                                    {entity.actualBalance !== null && entity.variance !== 0 && (
-                                                        <Tag
-                                                            value={`${entity.variance >= 0 ? '+' : ''}${formatCurrency(entity.variance, entity.currency)}`}
-                                                            severity={entity.variance >= 0 ? 'success' : 'danger'}
-                                                        />
-                                                    )}
                                                 </div>
-                                                {entity.entityType === 'debt' && (
+                                                {entity.entityType === 'debt' && !isSimple && (
                                                     <div className="flex items-center gap-4 mt-3">
                                                         <div className="flex-1">
                                                             <label className={`text-xs mb-1 block ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
@@ -474,7 +482,7 @@ export function ReconcileWizard({
                                         Total Variance
                                     </span>
                                     <p className={`text-2xl font-bold ${totalVariance >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                                        {totalVariance >= 0 ? '+' : ''}{formatCurrency(totalVariance, 'EUR')}
+                                        {totalVariance >= 0 ? '+' : ''}{formatCurrency(totalVariance, entities[0]?.currency || 'EUR')}
                                     </p>
                                 </div>
                             </div>
@@ -571,7 +579,7 @@ export function ReconcileWizard({
         <Dialog
             visible={visible}
             onHide={onHide}
-            header="Monthly Reconciliation"
+            header="Monthly Check-in"
             style={{ width: '700px', maxWidth: '95vw' }}
             modal
             dismissableMask

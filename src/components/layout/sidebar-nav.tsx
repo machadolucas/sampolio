@@ -10,8 +10,9 @@ import { Menu } from 'primereact/menu';
 import { Tooltip } from 'primereact/tooltip';
 import { useTheme } from '@/components/providers/theme-provider';
 import { MenuItem } from 'primereact/menuitem';
+import { useAppContext } from '@/components/layout/app-layout';
 import type { NavigationPage } from '@/types';
-import { MdHome, MdAttachMoney, MdSettings, MdLightMode, MdDarkMode, MdLogout, MdSync, MdSearch, MdPerson, MdChevronRight, MdChevronLeft } from 'react-icons/md';
+import { MdHome, MdAttachMoney, MdSettings, MdLightMode, MdDarkMode, MdLogout, MdSync, MdSearch, MdPerson, MdChevronRight, MdChevronLeft, MdExplore, MdTune } from 'react-icons/md';
 
 interface SidebarNavProps {
     onOpenReconcile: () => void;
@@ -30,6 +31,7 @@ interface NavItem {
 const navItems: NavItem[] = [
     { id: 'overview', label: 'Overview', icon: <MdHome size={20} />, href: '/' },
     { id: 'cashflow', label: 'Cashflow', icon: <MdAttachMoney size={20} />, href: '/cashflow' },
+    { id: 'playground', label: 'What If?', icon: <MdExplore size={20} />, href: '/playground' },
     { id: 'settings', label: 'Settings', icon: <MdSettings size={20} />, href: '/settings' },
 ];
 
@@ -45,6 +47,8 @@ export function SidebarNav({
     const userMenuRef = useRef<Menu>(null);
 
     const isDark = theme === 'dark';
+    const appContext = useAppContext();
+    const isSimple = appContext?.displayMode === 'simple';
 
     const isActive = (href: string) => {
         if (href === '/') {
@@ -69,6 +73,11 @@ export function SidebarNav({
             label: isDark ? 'Light Mode' : 'Dark Mode',
             icon: isDark ? <MdLightMode /> : <MdDarkMode />,
             command: toggleTheme,
+        },
+        {
+            label: isSimple ? 'Switch to Advanced' : 'Switch to Simple',
+            icon: <MdTune />,
+            command: () => appContext?.setDisplayMode(isSimple ? 'advanced' : 'simple'),
         },
         { separator: true },
         {
@@ -101,12 +110,12 @@ export function SidebarNav({
             <div className={`flex ${expanded ? 'flex-row gap-2 px-4' : 'flex-col gap-2 px-2'} py-4`}>
                 <Button
                     icon={<MdSync />}
-                    label={expanded ? 'Reconcile' : undefined}
+                    label={expanded ? 'Monthly check-in' : undefined}
                     severity="success"
                     size="small"
                     className={expanded ? 'flex-1' : 'w-full justify-center'}
                     onClick={onOpenReconcile}
-                    tooltip={!expanded ? 'Reconcile' : undefined}
+                    tooltip={!expanded ? 'Monthly check-in' : undefined}
                     tooltipOptions={{ position: 'right' }}
                 />
                 <Button

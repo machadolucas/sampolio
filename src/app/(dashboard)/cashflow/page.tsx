@@ -18,7 +18,7 @@ import { getAccounts } from '@/lib/actions/accounts';
 import { getProjection } from '@/lib/actions/projection';
 import { getReconciliationSessions } from '@/lib/actions/reconciliation';
 import { OccurrenceOverrideDialog } from '@/components/modals/occurrence-override-dialog';
-import type { FinancialAccount, MonthlyProjection, MonthFlowData, CashflowItem, Currency } from '@/types';
+import type { FinancialAccount, MonthlyProjection, MonthFlowData, CashflowItem, Currency, SalaryConfig } from '@/types';
 import { MdCheckCircle, MdCalendarToday, MdArrowForward, MdAccountBalanceWallet, MdAdd, MdRemove, MdList, MdAccountTree, MdBarChart, MdTableChart, MdInfoOutline } from 'react-icons/md';
 import { Tooltip } from 'primereact/tooltip';
 
@@ -254,6 +254,7 @@ export default function CashflowPage() {
     const [accounts, setAccounts] = useState<FinancialAccount[]>([]);
     const [selectedAccountId, setSelectedAccountId] = useState<string>('');
     const [projection, setProjection] = useState<MonthlyProjection[]>([]);
+    const [salaryConfigs, setSalaryConfigs] = useState<SalaryConfig[]>([]);
     const [selectedMonth, setSelectedMonth] = useState(() => {
         const now = new Date();
         return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -307,8 +308,10 @@ export default function CashflowPage() {
             if (result.success && result.data) {
                 // Use startTransition to avoid UI flash during refresh
                 const monthly = result.data.monthly;
+                const configs = result.data.salaryConfigs ?? [];
                 startTransition(() => {
                     setProjection(monthly);
+                    setSalaryConfigs(configs);
                 });
             }
         } catch (err) {
@@ -343,6 +346,11 @@ export default function CashflowPage() {
         fetchReconciliationStatus();
     }, []);
 
+    // Display mode
+    const displayMode = appContext?.displayMode ?? 'advanced';
+    const isSimple = displayMode === 'simple';
+    const [showMoreCharts, setShowMoreCharts] = useState(false);
+
     // Get selected account
     const selectedAccount = accounts.find(a => a.id === selectedAccountId);
     const currency = selectedAccount?.currency || 'EUR';
@@ -358,34 +366,121 @@ export default function CashflowPage() {
     }, [projection, selectedMonth]);
 
     // Convert projection to flow data
+    // For salary items, show gross salary as income with tax/contributions as deduction outflows
     const flowData: MonthFlowData | null = useMemo(() => {
         if (!selectedProjection) return null;
 
-        // Map source from ProjectionLineItem to CashflowItem source
         const mapSource = (src: string): CashflowItem['source'] => {
             if (src === 'planned-one-off' || src === 'planned-repeating') return 'planned';
             return src as CashflowItem['source'];
         };
 
-        const inflows: CashflowItem[] = selectedProjection.incomeBreakdown.map(item => ({
-            id: item.itemId,
-            name: item.name,
-            amount: item.amount,
-            category: item.category,
-            type: 'income' as const,
-            source: mapSource(item.source),
-            isRecurring: item.source === 'recurring' || item.source === 'salary',
-        }));
+        // Build salary config lookup: linkedRecurringItemId -> SalaryConfig
+        const salaryByRecurringId = new Map<string, SalaryConfig>();
+        for (const config of salaryConfigs) {
+            if (config.isLinkedToRecurring && config.linkedRecurringItemId && config.isActive) {
+                salaryByRecurringId.set(config.linkedRecurringItemId, config);
+            }
+        }
 
-        const outflows: CashflowItem[] = selectedProjection.expenseBreakdown.map(item => ({
-            id: item.itemId,
-            name: item.name,
-            amount: item.amount,
-            category: item.category,
-            type: 'expense' as const,
-            source: mapSource(item.source),
-            isRecurring: item.source === 'recurring',
-        }));
+        const inflows: CashflowItem[] = [];
+        const syntheticOutflows: CashflowItem[] = [];
+
+        for (const item of selectedProjection.incomeBreakdown) {
+            const salaryConfig = salaryByRecurringId.get(item.itemId);
+            if (salaryConfig) {
+                // Compute ratio to handle shared expenses correctly
+                const ratio = salaryConfig.netSalary > 0 ? item.amount / salaryConfig.netSalary : 1;
+                const taxableBenefitsTotal = (salaryConfig.benefits || [])
+                    .filter(b => b.isTaxable)
+                    .reduce((sum, b) => sum + b.amount, 0);
+                const taxableBase = salaryConfig.grossSalary + taxableBenefitsTotal;
+                const taxAmount = taxableBase * (salaryConfig.taxRate / 100) * ratio;
+                const contributionsAmount = taxableBase * (salaryConfig.contributionsRate / 100) * ratio;
+                const otherDeductions = salaryConfig.otherDeductions * ratio;
+
+                // Show gross salary as income
+                inflows.push({
+                    id: item.itemId,
+                    name: item.name.replace('Salary:', 'Gross Salary:'),
+                    amount: salaryConfig.grossSalary * ratio,
+                    category: item.category,
+                    type: 'income',
+                    source: 'salary',
+                    isRecurring: true,
+                    linkedEntityId: salaryConfig.id,
+                    linkedEntityType: 'salary',
+                });
+
+                // Add deduction outflows
+                if (taxAmount > 0) {
+                    syntheticOutflows.push({
+                        id: `${salaryConfig.id}-tax`,
+                        name: `Tax (${salaryConfig.taxRate}%)`,
+                        amount: Math.round(taxAmount * 100) / 100,
+                        category: 'Taxes',
+                        type: 'expense',
+                        source: 'salary',
+                        isRecurring: true,
+                        linkedEntityId: salaryConfig.id,
+                        linkedEntityType: 'salary',
+                    });
+                }
+                if (contributionsAmount > 0) {
+                    syntheticOutflows.push({
+                        id: `${salaryConfig.id}-contributions`,
+                        name: `Contributions (${salaryConfig.contributionsRate}%)`,
+                        amount: Math.round(contributionsAmount * 100) / 100,
+                        category: 'Taxes',
+                        type: 'expense',
+                        source: 'salary',
+                        isRecurring: true,
+                        linkedEntityId: salaryConfig.id,
+                        linkedEntityType: 'salary',
+                    });
+                }
+                if (otherDeductions > 0) {
+                    syntheticOutflows.push({
+                        id: `${salaryConfig.id}-other-deductions`,
+                        name: 'Other Deductions',
+                        amount: Math.round(otherDeductions * 100) / 100,
+                        category: 'Taxes',
+                        type: 'expense',
+                        source: 'salary',
+                        isRecurring: true,
+                        linkedEntityId: salaryConfig.id,
+                        linkedEntityType: 'salary',
+                    });
+                }
+            } else {
+                // Non-salary income — pass through unchanged
+                inflows.push({
+                    id: item.itemId,
+                    name: item.name,
+                    amount: item.amount,
+                    category: item.category,
+                    type: 'income',
+                    source: mapSource(item.source),
+                    isRecurring: item.source === 'recurring' || item.source === 'salary',
+                });
+            }
+        }
+
+        const outflows: CashflowItem[] = [
+            ...syntheticOutflows,
+            ...selectedProjection.expenseBreakdown.map(item => ({
+                id: item.itemId,
+                name: item.name,
+                amount: item.amount,
+                category: item.category,
+                type: 'expense' as const,
+                source: mapSource(item.source),
+                isRecurring: item.source === 'recurring',
+            })),
+        ];
+
+        const totalInflows = inflows.reduce((sum, i) => sum + i.amount, 0);
+        const totalOutflows = outflows.reduce((sum, o) => sum + o.amount, 0);
 
         return {
             yearMonth: selectedMonth,
@@ -394,12 +489,12 @@ export default function CashflowPage() {
             endingBalance: selectedProjection.endingBalance,
             inflows,
             outflows,
-            totalInflows: selectedProjection.totalIncome,
-            totalOutflows: selectedProjection.totalExpenses,
-            netChange: selectedProjection.netChange,
+            totalInflows,
+            totalOutflows,
+            netChange: selectedProjection.netChange, // preserve real net change for balance
             isReconciled: reconciledMonths.has(selectedMonth),
         };
-    }, [selectedProjection, selectedMonth, selectedAccountId, reconciledMonths]);
+    }, [selectedProjection, selectedMonth, selectedAccountId, reconciledMonths, salaryConfigs]);
 
     const handleEditItem = (itemId: string, source: string, itemType?: string) => {
         // For recurring items, ask whether to edit this occurrence or the entire series
@@ -554,7 +649,7 @@ export default function CashflowPage() {
                                 onClick={() => handleAddItem('expense')}
                             />
                             <Button
-                                label="Manage Items"
+                                label="View all items"
                                 icon={<MdList />}
                                 severity="info"
                                 size="small"
@@ -605,9 +700,9 @@ export default function CashflowPage() {
                 )}
 
                 {/* Charts: Left 2/3 (Flow + Projection stacked) | Right 1/3 (Details + Treemap stacked) */}
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    {/* Left column: 2/3 width */}
-                    <div className="lg:col-span-2 space-y-6">
+                <div className={`grid grid-cols-1 ${isSimple && !showMoreCharts ? '' : 'lg:grid-cols-3'} gap-6`}>
+                    {/* Left column: 2/3 width — hidden in simple mode unless "Show more" */}
+                    <div className={`lg:col-span-2 space-y-6 ${isSimple && !showMoreCharts ? 'hidden' : ''}`}>
                         <Card>
                             <Tooltip target=".info-monthly-flow" position="top" />
                             <h3 className={`flex items-center font-semibold mb-3 ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
@@ -621,12 +716,14 @@ export default function CashflowPage() {
                             {flowData ? (
                                 <MonthlyFlowChart
                                     data={flowData}
+                                    currency={currency as import('@/types').Currency}
                                     height="350px"
                                     onClickItem={(item) => {
                                         if (item.id === 'new') {
                                             handleAddItem(item.type as 'income' | 'expense');
                                         } else {
-                                            handleEditItem(item.id, item.source, item.type);
+                                            const entityId = item.linkedEntityId || item.id;
+                                            handleEditItem(entityId, item.source, item.type);
                                         }
                                     }}
                                 />
@@ -696,7 +793,20 @@ export default function CashflowPage() {
                     </div>
                 </div>
 
+                {/* Show more charts toggle for simple mode */}
+                {isSimple && (
+                    <div className="text-center">
+                        <Button
+                            label={showMoreCharts ? 'Hide charts' : 'Show more charts'}
+                            text
+                            severity="secondary"
+                            onClick={() => setShowMoreCharts(!showMoreCharts)}
+                        />
+                    </div>
+                )}
+
                 {/* Data Table */}
+                <div className={isSimple && !showMoreCharts ? 'hidden' : ''}>
                 <div className={`mt-4 pt-6 border-t-2 ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
                     <p className={`text-xs uppercase tracking-wider mb-3 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>All Months Overview</p>
                 </div>
@@ -759,6 +869,7 @@ export default function CashflowPage() {
                         />
                     </DataTable>
                 </Card>
+                </div>
             </div>
         </div>
     );

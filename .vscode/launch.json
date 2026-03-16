@@ -5,34 +5,19 @@
             "name": "Next.js: debug server-side",
             "type": "node-terminal",
             "request": "launch",
-            "command": "pnpm dev",
-            "serverReadyAction": {
-                "pattern": "- Local:.+(https?://.+)",
-                "uriFormat": "%s",
-                "action": "debugWithChrome"
-            }
+            "command": "pnpm dev"
         },
         {
             "name": "Next.js: debug full stack",
             "type": "node-terminal",
             "request": "launch",
-            "command": "pnpm dev",
-            "serverReadyAction": {
-                "pattern": "- Local:.+(https?://.+)",
-                "uriFormat": "%s",
-                "action": "debugWithChrome"
-            }
+            "command": "pnpm dev"
         },
         {
             "name": "Next.js: run production build",
             "type": "node-terminal",
             "request": "launch",
-            "command": "pnpm build && pnpm start",
-            "serverReadyAction": {
-                "pattern": "- Local:.+(https?://.+)",
-                "uriFormat": "%s",
-                "action": "openExternally"
-            }
+            "command": "pnpm build && pnpm start"
         }
     ]
 }

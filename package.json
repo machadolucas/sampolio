@@ -1,6 +1,6 @@
 {
   "name": "sampolio",
-  "version": "1.0.3",
+  "version": "1.1.0",
   "private": true,
   "scripts": {
     "dev": "next dev -p 3999",
@@ -8,7 +8,10 @@
     "start": "next start",
     "lint": "eslint",
     "copy-themes": "mkdir -p public/themes && cp node_modules/primereact/resources/themes/mdc-dark-deeppurple/theme.css public/themes/mdc-dark-deeppurple.css && cp node_modules/primereact/resources/themes/mdc-light-deeppurple/theme.css public/themes/mdc-light-deeppurple.css",
-    "postinstall": "npm run copy-themes"
+    "postinstall": "npm run copy-themes",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
@@ -18,7 +21,7 @@
     "date-fns": "^4.1.0",
     "echarts": "^6.0.0",
     "echarts-for-react": "^3.0.6",
-    "lucide-react": "^0.563.0",
+    "lucide-react": "^0.577.0",
     "next": "16.1.6",
     "next-auth": "5.0.0-beta.30",
     "primeicons": "^7.0.0",
@@ -32,14 +35,21 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
     "@types/bcryptjs": "^3.0.0",
-    "@types/node": "^24.10.13",
+    "@types/node": "^24.12.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@types/uuid": "^11.0.0",
-    "eslint": "^9.39.2",
+    "@vitejs/plugin-react": "^6.0.1",
+    "@vitest/coverage-v8": "^4.1.0",
+    "eslint": "^9.39.4",
     "eslint-config-next": "16.1.6",
+    "jsdom": "^29.0.0",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.1.0"
   }
 }

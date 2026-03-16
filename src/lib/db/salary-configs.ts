@@ -2,7 +2,6 @@ import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import type {
   SalaryConfig,
-  SalaryBenefit,
   CreateSalaryConfigRequest,
   UpdateSalaryConfigRequest
 } from '@/types';
@@ -15,6 +14,9 @@ import {
   deleteFile,
 } from './encryption';
 import { createRecurringItem, updateRecurringItem, deleteRecurringItem } from './recurring-items';
+import { calculateNetSalary } from '../salary-utils';
+
+export { calculateNetSalary };
 
 function getSalaryConfigsDir(userId: string, accountId: string): string {
   return path.join(getUserDir(userId), 'accounts', accountId, 'salary');
@@ -22,22 +24,6 @@ function getSalaryConfigsDir(userId: string, accountId: string): string {
 
 function getSalaryConfigFile(userId: string, accountId: string, configId: string): string {
   return path.join(getSalaryConfigsDir(userId, accountId), `${configId}.enc`);
-}
-
-export function calculateNetSalary(
-  grossSalary: number,
-  taxRate: number,
-  contributionsRate: number,
-  otherDeductions: number = 0,
-  benefits: SalaryBenefit[] = []
-): number {
-  // Taxable benefits increase the tax/contributions base but are NOT received as cash
-  const taxableBenefitsTotal = benefits.filter(b => b.isTaxable).reduce((sum, b) => sum + b.amount, 0);
-  const taxableBase = grossSalary + taxableBenefitsTotal;
-  const taxAmount = taxableBase * (taxRate / 100);
-  const contributionsAmount = taxableBase * (contributionsRate / 100);
-  // Net = gross minus all deductions (benefits are NOT added back since they are not received as cash)
-  return grossSalary - taxAmount - contributionsAmount - otherDeductions;
 }
 
 export async function getSalaryConfigs(userId: string, accountId: string): Promise<SalaryConfig[]> {

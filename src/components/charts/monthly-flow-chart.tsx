@@ -8,12 +8,13 @@ import { TooltipComponent } from 'echarts/components';
 import { CanvasRenderer } from 'echarts/renderers';
 import { useTheme } from '@/components/providers/theme-provider';
 import { formatCurrency } from '@/lib/constants';
-import type { MonthFlowData, CashflowItem } from '@/types';
+import type { MonthFlowData, CashflowItem, Currency } from '@/types';
 
 echarts.use([SankeyChart, TooltipComponent, CanvasRenderer]);
 
 interface MonthlyFlowChartProps {
     data: MonthFlowData;
+    currency?: Currency;
     height?: string;
     onClickItem?: (item: CashflowItem) => void;
     onClickStart?: () => void;
@@ -27,6 +28,7 @@ interface NodeMeta {
 
 export function MonthlyFlowChart({
     data,
+    currency = 'EUR',
     height = '400px',
     onClickItem,
 }: MonthlyFlowChartProps) {
@@ -45,7 +47,9 @@ export function MonthlyFlowChart({
         const links: Array<{ source: string; target: string; value: number; lineStyle?: { color: string; opacity: number } }> = [];
         const meta = new Map<string, NodeMeta>();
 
-        const netChange = data.totalInflows - data.totalOutflows;
+        // Use data.netChange (real net based on net salary) for savings/deficit,
+        // not totalInflows - totalOutflows (which includes gross salary + deductions)
+        const netChange = data.netChange;
         const hasSavings = netChange > 0;
         const hasDeficit = netChange < 0;
 
@@ -58,10 +62,18 @@ export function MonthlyFlowChart({
         });
         meta.set(centerNodeName, { items: [], side: 'center' });
 
+        // Separate salary deductions from regular expenses
+        // Salary deductions flow directly from gross salary, not through Budget
+        const salaryDeductions = data.outflows.filter(item => item.source === 'salary');
+        const regularOutflows = data.outflows.filter(item => item.source !== 'salary');
+        const totalSalaryDeductions = salaryDeductions.reduce((s, i) => s + i.amount, 0);
+
+        // Track which salary inflow nodes were created (for linking deductions)
+        const salaryInflowNodeNames = new Map<string, string>(); // linkedEntityId -> nodeName
+
         // Income nodes (depth 0) — individual items, no grouping
         data.inflows.forEach(item => {
             const nodeName = `Income: ${item.name}`;
-            // Handle duplicate names by appending id if needed
             const existingNode = nodes.find(n => n.name === nodeName);
             const uniqueName = existingNode ? `Income: ${item.name} (${item.id.slice(-4)})` : nodeName;
             nodes.push({
@@ -69,18 +81,91 @@ export function MonthlyFlowChart({
                 itemStyle: { color: GREEN, borderColor: GREEN },
                 depth: 0,
             });
-            links.push({
-                source: uniqueName,
-                target: centerNodeName,
-                value: item.amount,
-                lineStyle: { color: GREEN, opacity: 0.3 },
-            });
+
+            // For salary inflows: split into net (→ Budget) and deductions
+            const isSalaryInflow = item.source === 'salary' && item.linkedEntityId;
+            const linkedDeductions = isSalaryInflow
+                ? salaryDeductions.filter(d => d.linkedEntityId === item.linkedEntityId)
+                : [];
+            const deductionTotal = linkedDeductions.reduce((s, d) => s + d.amount, 0);
+            const netToBudget = item.amount - deductionTotal;
+
+            if (isSalaryInflow && deductionTotal > 0 && item.linkedEntityId) {
+                salaryInflowNodeNames.set(item.linkedEntityId, uniqueName);
+                // Only net salary flows to Budget
+                if (netToBudget > 0) {
+                    links.push({
+                        source: uniqueName,
+                        target: centerNodeName,
+                        value: netToBudget,
+                        lineStyle: { color: GREEN, opacity: 0.3 },
+                    });
+                }
+            } else {
+                // Non-salary income: full amount flows to Budget
+                links.push({
+                    source: uniqueName,
+                    target: centerNodeName,
+                    value: item.amount,
+                    lineStyle: { color: GREEN, opacity: 0.3 },
+                });
+            }
             meta.set(uniqueName, { items: [item], side: 'left' });
         });
 
-        // Expense categories (depth 2) + individual items (depth 3)
+        // Salary deductions: flow from gross salary node → Deductions category → individual items
+        if (salaryDeductions.length > 0) {
+            const ORANGE = '#f97316';
+            const deductionsCatName = 'Deductions';
+            nodes.push({
+                name: deductionsCatName,
+                itemStyle: { color: ORANGE, borderColor: ORANGE },
+                depth: 2,
+            });
+            meta.set(deductionsCatName, { items: salaryDeductions, side: 'right' });
+
+            // Link each salary inflow to the Deductions node
+            const deductionsBySource = new Map<string, number>();
+            for (const d of salaryDeductions) {
+                if (d.linkedEntityId) {
+                    deductionsBySource.set(d.linkedEntityId, (deductionsBySource.get(d.linkedEntityId) || 0) + d.amount);
+                }
+            }
+            for (const [entityId, amount] of deductionsBySource) {
+                const sourceName = salaryInflowNodeNames.get(entityId);
+                if (sourceName) {
+                    links.push({
+                        source: sourceName,
+                        target: deductionsCatName,
+                        value: amount,
+                        lineStyle: { color: ORANGE, opacity: 0.3 },
+                    });
+                }
+            }
+
+            // Individual deduction items (depth 3)
+            salaryDeductions.forEach(item => {
+                const itemNodeName = `Deduction: ${item.name}`;
+                const existingNode = nodes.find(n => n.name === itemNodeName);
+                const uniqueName = existingNode ? `Deduction: ${item.name} (${item.id.slice(-4)})` : itemNodeName;
+                nodes.push({
+                    name: uniqueName,
+                    itemStyle: { color: '#fb923c', borderColor: '#fb923c' },
+                    depth: 3,
+                });
+                links.push({
+                    source: deductionsCatName,
+                    target: uniqueName,
+                    value: item.amount,
+                    lineStyle: { color: '#fb923c', opacity: 0.2 },
+                });
+                meta.set(uniqueName, { items: [item], side: 'right' });
+            });
+        }
+
+        // Expense categories (depth 2) + individual items (depth 3) — excludes salary deductions
         const expensesByCategory = new Map<string, CashflowItem[]>();
-        data.outflows.forEach(item => {
+        regularOutflows.forEach(item => {
             const key = item.category || 'Other';
             if (!expensesByCategory.has(key)) expensesByCategory.set(key, []);
             expensesByCategory.get(key)!.push(item);
@@ -187,7 +272,7 @@ export function MonthlyFlowChart({
     }, [metaMap, nodeMetaMap]);
 
     const option = useMemo(() => {
-        const cleanNodeName = (name: string) => name.replace(/^(Income|Expense|Category): /, '').replace(/ \([a-f0-9]{4}\)$/, '');
+        const cleanNodeName = (name: string) => name.replace(/^(Income|Expense|Category|Deduction): /, '').replace(/ \([a-f0-9]{4}\)$/, '');
 
         return {
             tooltip: {
@@ -197,11 +282,11 @@ export function MonthlyFlowChart({
                         const name = params.name as string;
                         const value = params.value as number;
                         const m = metaMap.get(name);
-                        let html = `<strong>${cleanNodeName(name)}</strong><br/>${formatCurrency(value, 'EUR')}`;
+                        let html = `<strong>${cleanNodeName(name)}</strong><br/>${formatCurrency(value, currency)}`;
                         if (m && m.items.length > 1) {
                             html += '<br/><br/>';
                             m.items.slice(0, 8).forEach(item => {
-                                html += `${item.name}: ${formatCurrency(item.amount, 'EUR')}<br/>`;
+                                html += `${item.name}: ${formatCurrency(item.amount, currency)}<br/>`;
                             });
                             if (m.items.length > 8) {
                                 html += `+${m.items.length - 8} more`;
@@ -211,7 +296,7 @@ export function MonthlyFlowChart({
                     }
                     if (params.dataType === 'edge') {
                         const d = params.data as { source: string; target: string; value: number };
-                        return `${cleanNodeName(d.source)} → ${cleanNodeName(d.target)}<br/>${formatCurrency(d.value, 'EUR')}`;
+                        return `${cleanNodeName(d.source)} → ${cleanNodeName(d.target)}<br/>${formatCurrency(d.value, currency)}`;
                     }
                     return '';
                 },
@@ -236,7 +321,7 @@ export function MonthlyFlowChart({
                         formatter: (params: { name: string; value: number }) => {
                             const clean = cleanNodeName(params.name);
                             const truncated = clean.length > 18 ? clean.slice(0, 16) + '…' : clean;
-                            return `${truncated}\n${formatCurrency(params.value, 'EUR')}`;
+                            return `${truncated}\n${formatCurrency(params.value, currency)}`;
                         },
                         fontSize: 10,
                         color: isDark ? '#d1d5db' : '#374151',
@@ -253,7 +338,7 @@ export function MonthlyFlowChart({
                 },
             ],
         };
-    }, [nodes, links, isDark, metaMap]);
+    }, [nodes, links, isDark, metaMap, currency]);
 
     const onEvents = useMemo(() => ({
         click: (params: Record<string, unknown>) => {
@@ -273,13 +358,13 @@ export function MonthlyFlowChart({
             {/* Summary header */}
             <div className="flex items-center justify-between mb-2 px-1 text-sm">
                 <span className="text-green-500 font-semibold">
-                    Income: +{formatCurrency(data.totalInflows, 'EUR')}
+                    Income: +{formatCurrency(data.totalInflows, currency)}
                 </span>
                 <span className={`font-semibold ${data.netChange >= 0 ? 'text-green-600' : 'text-amber-500'}`}>
-                    Net: {data.netChange >= 0 ? '+' : ''}{formatCurrency(data.netChange, 'EUR')}
+                    Net: {data.netChange >= 0 ? '+' : ''}{formatCurrency(data.netChange, currency)}
                 </span>
                 <span className="text-red-500 font-semibold">
-                    Expenses: −{formatCurrency(data.totalOutflows, 'EUR')}
+                    Expenses: −{formatCurrency(data.totalOutflows, currency)}
                 </span>
             </div>
 
@@ -296,8 +381,8 @@ export function MonthlyFlowChart({
 
             {/* Balance footer */}
             <div className={`flex items-center justify-between px-1 text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                <span>Start: {formatCurrency(data.startingBalance, 'EUR')}</span>
-                <span>End: {formatCurrency(data.endingBalance, 'EUR')}</span>
+                <span>Start: {formatCurrency(data.startingBalance, currency)}</span>
+                <span>End: {formatCurrency(data.endingBalance, currency)}</span>
             </div>
         </div>
     );

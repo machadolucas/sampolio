@@ -10,7 +10,7 @@ import { OnboardingWizard } from '@/components/onboarding/onboarding-wizard';
 import { EntityModalRouter } from '@/components/ui/entity-modal-router';
 import { getAccounts } from '@/lib/actions/accounts';
 import { getUserPreferences } from '@/lib/actions/user-preferences';
-import type { FinancialAccount, DrawerState } from '@/types';
+import type { FinancialAccount, DrawerState, DisplayMode } from '@/types';
 
 interface AppLayoutProps {
     children: React.ReactNode;
@@ -35,6 +35,9 @@ interface AppContextValue {
     // Sidebar collapsed state
     sidebarCollapsed: boolean;
     setSidebarCollapsed: (collapsed: boolean) => void;
+    // Display mode
+    displayMode: DisplayMode;
+    setDisplayMode: (mode: DisplayMode) => void;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -101,13 +104,26 @@ export function AppLayout({ children }: AppLayoutProps) {
         });
     }, []);
 
+    // Display mode
+    const [displayMode, setDisplayModeState] = useState<DisplayMode>('advanced');
+    const setDisplayMode = useCallback(async (mode: DisplayMode) => {
+        setDisplayModeState(mode);
+        const { updateDisplayMode } = await import('@/lib/actions/user-preferences');
+        await updateDisplayMode(mode);
+    }, []);
+
     // Onboarding wizard state
     const [showOnboarding, setShowOnboarding] = useState(false);
 
     useEffect(() => {
         getUserPreferences().then(result => {
-            if (result.success && result.data && !result.data.hasCompletedOnboarding) {
-                setShowOnboarding(true);
+            if (result.success && result.data) {
+                if (!result.data.hasCompletedOnboarding) {
+                    setShowOnboarding(true);
+                }
+                if (result.data.displayMode) {
+                    setDisplayModeState(result.data.displayMode);
+                }
             }
         });
     }, []);
@@ -167,6 +183,8 @@ export function AppLayout({ children }: AppLayoutProps) {
         setSelectedYearMonth,
         sidebarCollapsed,
         setSidebarCollapsed,
+        displayMode,
+        setDisplayMode,
     };
 
     return (

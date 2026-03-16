@@ -130,6 +130,46 @@ export default function SettingsPage() {
                 </p>
             </div>
 
+            {/* Display Mode */}
+            <Card>
+                <h2 className={`text-lg font-semibold mb-4 ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
+                    Display Mode
+                </h2>
+
+                <div className="grid grid-cols-2 gap-4">
+                    <button
+                        onClick={() => appContext?.setDisplayMode('simple')}
+                        className={`p-4 rounded-lg border-2 text-left transition-colors ${
+                            appContext?.displayMode === 'simple'
+                                ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                                : isDark ? 'border-gray-700 hover:border-gray-600' : 'border-gray-200 hover:border-gray-300'
+                        }`}
+                    >
+                        <p className={`font-semibold ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
+                            Simple
+                        </p>
+                        <p className={`text-sm mt-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                            Clean overview with key numbers and trends
+                        </p>
+                    </button>
+                    <button
+                        onClick={() => appContext?.setDisplayMode('advanced')}
+                        className={`p-4 rounded-lg border-2 text-left transition-colors ${
+                            appContext?.displayMode === 'advanced'
+                                ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                                : isDark ? 'border-gray-700 hover:border-gray-600' : 'border-gray-200 hover:border-gray-300'
+                        }`}
+                    >
+                        <p className={`font-semibold ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
+                            Advanced
+                        </p>
+                        <p className={`text-sm mt-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                            Full details, charts, and projections
+                        </p>
+                    </button>
+                </div>
+            </Card>
+
             {/* Appearance */}
             <Card>
                 <h2 className={`text-lg font-semibold mb-4 ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
@@ -408,7 +448,7 @@ export default function SettingsPage() {
                             value={taxDefaults.otherDeductions}
                             onValueChange={e => setTaxDefaults(prev => ({ ...prev, otherDeductions: e.value ?? 0 }))}
                             mode="currency"
-                            currency="EUR"
+                            currency={appContext?.accounts?.find(a => !a.isArchived)?.currency || 'EUR'}
                             locale="fi-FI"
                             min={0}
                             className="w-full"

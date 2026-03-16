@@ -315,3 +315,48 @@ export async function deleteRecurringItemOccurrenceOverride(
     return { success: false, error: 'Failed to delete occurrence override' };
   }
 }
+
+/**
+ * Clean up expired recurring-item occurrence overrides for an account.
+ * Deletes override PlannedItems where scheduledDate is more than 2 months ago.
+ */
+export async function cleanupExpiredOverrides(
+  accountId: string
+): Promise<ApiResponse<{ deleted: number }>> {
+  try {
+    const session = await auth();
+    if (!session?.user?.id) {
+      return { success: false, error: 'Unauthorized' };
+    }
+
+    const account = await cachedGetAccountById(session.user.id, accountId);
+    if (!account) {
+      return { success: false, error: 'Account not found' };
+    }
+
+    const allPlanned = await cachedGetPlannedItems(session.user.id, accountId);
+
+    const now = new Date();
+    const cutoffYear = now.getFullYear();
+    const cutoffMonth = now.getMonth() - 1; // 2 months ago
+    const cutoffDate = new Date(cutoffYear, cutoffMonth, 1);
+    const cutoffYM = `${cutoffDate.getFullYear()}-${String(cutoffDate.getMonth() + 1).padStart(2, '0')}`;
+
+    const expired = allPlanned.filter(
+      p => p.isRecurringOverride && p.scheduledDate && p.scheduledDate < cutoffYM
+    );
+
+    for (const item of expired) {
+      await dbDeletePlannedItem(session.user.id, accountId, item.id);
+    }
+
+    if (expired.length > 0) {
+      updateTag(`user:${session.user.id}:account:${accountId}:planned`);
+    }
+
+    return { success: true, data: { deleted: expired.length } };
+  } catch (error) {
+    console.error('Cleanup expired overrides error:', error);
+    return { success: false, error: 'Failed to clean up overrides' };
+  }
+}

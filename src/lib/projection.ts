@@ -3,6 +3,7 @@ import type {
   FinancialAccount,
   RecurringItem,
   PlannedItem,
+  TaxedIncome,
   MonthlyProjection,
   YearlyRollup,
   ProjectionLineItem,
@@ -151,6 +152,7 @@ export function calculateProjection(
   account: FinancialAccount,
   recurringItems: RecurringItem[],
   plannedItems: PlannedItem[],
+  taxedIncomes: TaxedIncome[] = [],
   filters?: ProjectionFilters
 ): MonthlyProjection[] {
   const months = generateMonthList(account);
@@ -159,9 +161,15 @@ export function calculateProjection(
   let runningBalance = account.startingBalance;
 
   // Separate recurring-override PlannedItems from regular ones
+  // Skip overrides older than 2 months before the projection start to keep the override map clean
+  const overrideCutoff = months.length > 0 ? addMonths(months[0], -2) : getCurrentYearMonth();
   const overrideMap = new Map<string, Map<YearMonth, PlannedItem>>();
   const regularPlannedItems = plannedItems.filter(p => {
     if (p.isRecurringOverride && p.linkedRecurringItemId && p.scheduledDate) {
+      // Skip expired overrides
+      if (compareYearMonths(p.scheduledDate, overrideCutoff) < 0) {
+        return false;
+      }
       let itemOverrides = overrideMap.get(p.linkedRecurringItemId);
       if (!itemOverrides) {
         itemOverrides = new Map();
@@ -206,6 +214,17 @@ export function calculateProjection(
     }
   }
 
+  // Build reimbursement map: month -> items expecting reimbursement in that month
+  const reimbursementByMonth = new Map<YearMonth, { item: PlannedItem; effectiveAmount: number }[]>();
+  for (const item of regularPlannedItems) {
+    if (item.kind === 'one-off' && item.isReimbursable && item.reimbursementStatus === 'pending' && item.expectedReimbursementMonth) {
+      const amount = item.isShared ? item.amount * (item.shareRatio ?? 0.5) : item.amount;
+      const existing = reimbursementByMonth.get(item.expectedReimbursementMonth) || [];
+      existing.push({ item, effectiveAmount: amount });
+      reimbursementByMonth.set(item.expectedReimbursementMonth, existing);
+    }
+  }
+
   for (const yearMonth of months) {
     // Apply filters
     if (filters?.startDate && compareYearMonths(yearMonth, filters.startDate) < 0) {
@@ -247,10 +266,13 @@ export function calculateProjection(
         continue;
       }
 
+      const rawAmount = override?.amount ?? item.amount;
+      const effectiveAmount = item.isShared ? rawAmount * (item.shareRatio ?? 0.5) : rawAmount;
+
       const lineItem: ProjectionLineItem = {
         itemId: item.id,
         name: override?.name ?? item.name,
-        amount: override?.amount ?? item.amount,
+        amount: effectiveAmount,
         category: effectiveCategory,
         source: 'recurring',
         isOverridden: !!override,
@@ -281,10 +303,13 @@ export function calculateProjection(
         continue;
       }
 
+      const rawOneOffAmount = item.amount;
+      const effectiveOneOffAmount = item.isShared ? rawOneOffAmount * (item.shareRatio ?? 0.5) : rawOneOffAmount;
+
       const lineItem: ProjectionLineItem = {
         itemId: item.id,
         name: item.name,
-        amount: item.amount,
+        amount: effectiveOneOffAmount,
         category: item.category,
         source: 'planned-one-off',
       };
@@ -294,6 +319,7 @@ export function calculateProjection(
       } else {
         expenseBreakdown.push(lineItem);
       }
+
     }
 
     // Process repeating planned items for this month
@@ -314,10 +340,13 @@ export function calculateProjection(
         continue;
       }
 
+      const rawRepeatingAmount = item.amount;
+      const effectiveRepeatingAmount = item.isShared ? rawRepeatingAmount * (item.shareRatio ?? 0.5) : rawRepeatingAmount;
+
       const lineItem: ProjectionLineItem = {
         itemId: item.id,
         name: item.name,
-        amount: item.amount,
+        amount: effectiveRepeatingAmount,
         category: item.category,
         source: 'planned-repeating',
       };
@@ -327,6 +356,52 @@ export function calculateProjection(
       } else {
         expenseBreakdown.push(lineItem);
       }
+    }
+
+    // Process reimbursement income for this month
+    const reimbursementsThisMonth = reimbursementByMonth.get(yearMonth) || [];
+    for (const { item, effectiveAmount } of reimbursementsThisMonth) {
+      incomeBreakdown.push({
+        itemId: item.id,
+        name: `Reimbursement: ${item.name}`,
+        amount: effectiveAmount,
+        category: 'Reimbursement',
+        source: 'planned-one-off',
+      });
+    }
+
+    // Process taxed income items
+    for (const taxedIncome of taxedIncomes) {
+      if (!taxedIncome.isActive) continue;
+
+      let applies = false;
+      if (taxedIncome.kind === 'one-off') {
+        applies = taxedIncome.scheduledDate === yearMonth;
+      } else {
+        // Recurring taxed income - check frequency alignment
+        const startDate = taxedIncome.startDate || taxedIncome.scheduledDate;
+        if (!startDate || !taxedIncome.frequency) continue;
+
+        if (!isYearMonthInRange(yearMonth, startDate, taxedIncome.endDate)) continue;
+
+        const intervalMonths = getIntervalMonths(taxedIncome.frequency, taxedIncome.customIntervalMonths);
+        if (intervalMonths > 1) {
+          const monthsSinceStart = getMonthsBetween(startDate, yearMonth);
+          if (monthsSinceStart % intervalMonths !== 0) continue;
+        }
+        applies = true;
+      }
+
+      if (!applies) continue;
+
+      const lineItem: ProjectionLineItem = {
+        itemId: taxedIncome.id,
+        name: taxedIncome.name,
+        amount: taxedIncome.netAmount,
+        source: 'taxed-income',
+      };
+
+      incomeBreakdown.push(lineItem);
     }
 
     // Calculate totals

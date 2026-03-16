@@ -41,8 +41,12 @@ export interface TaxDefaults {
   otherDeductions: number; // fixed amount
 }
 
+export type DisplayMode = 'simple' | 'advanced';
+
 export interface UserPreferences {
   hasCompletedOnboarding: boolean;
+  displayMode?: DisplayMode; // default 'advanced'
+  defaultShareRatio?: number; // 0-1, default 0.5
   customCategories?: string[]; // user-defined categories (merged with built-in ones)
   removedDefaultCategories?: string[]; // built-in categories the user has removed
   taxDefaults?: TaxDefaults;
@@ -74,6 +78,8 @@ export interface RecurringItem {
   customIntervalMonths?: number; // used when frequency is 'custom'
   startDate: YearMonth;
   endDate?: YearMonth;
+  isShared?: boolean;
+  shareRatio?: number; // 0-1, default 0.5
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -94,6 +100,13 @@ export interface PlannedItem {
   customIntervalMonths?: number;
   firstOccurrence?: YearMonth;
   endDate?: YearMonth;
+  // Shared expense
+  isShared?: boolean;
+  shareRatio?: number; // 0-1, default 0.5
+  // Reimbursement tracking (one-off items only)
+  isReimbursable?: boolean;
+  reimbursementStatus?: 'pending' | 'received';
+  expectedReimbursementMonth?: YearMonth;
   // For recurring item occurrence overrides
   linkedRecurringItemId?: string; // the recurring item this overrides
   isRecurringOverride?: boolean;  // true if this is an occurrence override
@@ -147,7 +160,7 @@ export interface ProjectionLineItem {
   name: string;
   amount: number;
   category?: string;
-  source: 'recurring' | 'planned-one-off' | 'planned-repeating' | 'salary';
+  source: 'recurring' | 'planned-one-off' | 'planned-repeating' | 'salary' | 'taxed-income';
   isOverridden?: boolean; // true when a recurring item has an occurrence override for this month
 }
 
@@ -193,6 +206,8 @@ export interface CreateRecurringItemRequest {
   customIntervalMonths?: number;
   startDate: YearMonth;
   endDate?: YearMonth;
+  isShared?: boolean;
+  shareRatio?: number;
   isActive?: boolean;
 }
 
@@ -210,6 +225,10 @@ export interface CreatePlannedItemRequest {
   customIntervalMonths?: number;
   firstOccurrence?: YearMonth;
   endDate?: YearMonth;
+  isShared?: boolean;
+  shareRatio?: number;
+  isReimbursable?: boolean;
+  expectedReimbursementMonth?: YearMonth;
   // For recurring item occurrence overrides
   linkedRecurringItemId?: string;
   isRecurringOverride?: boolean;
@@ -550,6 +569,41 @@ export interface CreateTaxedIncomeRequest {
 export interface UpdateTaxedIncomeRequest extends Partial<CreateTaxedIncomeRequest> { }
 
 // ============================================================
+// GOALS
+// ============================================================
+
+export interface Goal {
+  id: string;
+  userId: string;
+  name: string;
+  description?: string;
+  targetAmount: number;
+  currency: Currency;
+  targetDate?: string; // YYYY-MM
+  trackingMethod: 'account-balance' | 'net-worth' | 'manual';
+  linkedAccountId?: string;
+  currentManualAmount?: number;
+  isArchived?: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateGoalRequest {
+  name: string;
+  description?: string;
+  targetAmount: number;
+  currency: Currency;
+  targetDate?: string;
+  trackingMethod: 'account-balance' | 'net-worth' | 'manual';
+  linkedAccountId?: string;
+  currentManualAmount?: number;
+}
+
+export interface UpdateGoalRequest extends Partial<CreateGoalRequest> {
+  isArchived?: boolean;
+}
+
+// ============================================================
 // WEALTH PROJECTION TYPES
 // ============================================================
 
@@ -702,7 +756,7 @@ export interface MonthFlowData {
 // NAVIGATION & UI STATE TYPES
 // ============================================================
 
-export type NavigationPage = 'overview' | 'cashflow' | 'balance-sheet' | 'settings';
+export type NavigationPage = 'overview' | 'cashflow' | 'playground' | 'settings';
 
 export type TimeHorizon = '6m' | '1y' | '3y' | '5y' | 'custom';
 

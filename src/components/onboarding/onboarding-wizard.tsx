@@ -17,6 +17,7 @@ import { createAccount } from '@/lib/actions/accounts';
 import { createRecurringItem } from '@/lib/actions/recurring';
 import { createSalaryConfig } from '@/lib/actions/salary';
 import { completeOnboarding } from '@/lib/actions/user-preferences';
+import { calculateNetSalary } from '@/lib/salary-utils';
 import type { Currency, SalaryBenefit } from '@/types';
 
 interface OnboardingWizardProps {
@@ -54,23 +55,6 @@ const INCOME_TYPE_OPTIONS = [
     { label: 'Simple Amount', value: 'simple' },
     { label: 'Full Salary', value: 'salary' },
 ];
-
-function calculateNetSalary(
-    grossSalary: number,
-    taxRate: number,
-    contributionsRate: number,
-    otherDeductions: number,
-    benefits: SalaryBenefit[] = []
-): number {
-    // Benefits are added to gross to determine the taxable base
-    const taxableBenefitsTotal = benefits.filter(b => b.isTaxable).reduce((sum, b) => sum + b.amount, 0);
-    const allBenefitsTotal = benefits.reduce((sum, b) => sum + b.amount, 0);
-    const taxableBase = grossSalary + taxableBenefitsTotal;
-    const taxAmount = taxableBase * (taxRate / 100);
-    const contributionsAmount = taxableBase * (contributionsRate / 100);
-    // Deductions are subtracted from gross only, then all benefits are added back
-    return grossSalary - taxAmount - contributionsAmount - otherDeductions + allBenefitsTotal;
-}
 
 export function OnboardingWizard({ visible, onComplete }: OnboardingWizardProps) {
     const { theme } = useTheme();

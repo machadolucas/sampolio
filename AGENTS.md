@@ -20,7 +20,6 @@ src/
 │   ├── (dashboard)/                       # Protected pages (route group)
 │   │   ├── overview/page.tsx              # Wealth dashboard / home page
 │   │   ├── cashflow/page.tsx              # Monthly cash flow management
-│   │   ├── wealth/page.tsx                # Balance sheet / net worth
 │   │   └── settings/page.tsx              # User preferences & admin panel
 │   ├── layout.tsx                         # Root layout
 │   └── page.tsx                           # Redirects to overview
@@ -36,7 +35,7 @@ src/
 │   ├── actions/                           # Server actions (all backend logic)
 │   │   ├── accounts.ts                    # Cash account CRUD
 │   │   ├── recurring.ts                   # Recurring income/expense CRUD
-│   │   ├── planned.ts                     # One-off/repeating item CRUD
+│   │   ├── planned.ts                     # One-off/repeating item CRUD + override cleanup
 │   │   ├── salary.ts                      # Salary configuration CRUD
 │   │   ├── investments.ts                 # Investment account CRUD + contributions
 │   │   ├── debts.ts                       # Debt CRUD + reference rates + extra payments
@@ -60,14 +59,21 @@ src/
 │   │   ├── taxed-income.ts                # Taxed income file operations
 │   │   ├── reconciliation.ts              # Reconciliation file operations
 │   │   ├── users.ts                       # User file operations
-│   │   ├── app-settings.ts                # App settings file operations
+│   │   ├── app-settings.ts               # App settings file operations
 │   │   ├── user-preferences.ts            # Preferences file operations
 │   │   └── cached.ts                      # Cached query wrappers
+│   ├── schemas/                           # Zod form validation schemas
+│   │   ├── auth.schema.ts                 # Sign-in / sign-up schemas
+│   │   └── occurrence-override.schema.ts  # Override dialog schema
 │   ├── auth.ts                            # NextAuth configuration
 │   ├── projection.ts                      # Cash flow projection calculation engine
 │   ├── wealth-projection.ts               # Net worth/wealth projection engine
+│   ├── salary-utils.ts                    # Shared salary calculation utility
 │   ├── constants.ts                       # Currencies, frequencies, categories, formatters
 │   └── proxy.ts                           # Reverse proxy utilities
+├── test/
+│   ├── setup.ts                           # Test setup (jest-dom matchers)
+│   └── mocks.ts                           # Mock entity factories
 └── types/
     ├── index.ts                           # All TypeScript type definitions
     └── next-auth.d.ts                     # NextAuth type augmentation
@@ -83,7 +89,7 @@ Every server action follows this pattern:
 ```typescript
 'use server';
 
-export async function doSomething(input: SomeInput): Promise<ActionResult<SomeOutput>> {
+export async function doSomething(input: SomeInput): Promise<ApiResponse<SomeOutput>> {
   const session = await auth();
   if (!session?.user?.id) return { success: false, error: 'Not authenticated' };
 
@@ -101,7 +107,7 @@ export async function doSomething(input: SomeInput): Promise<ActionResult<SomeOu
 }
 ```
 
-**Return type**: `ActionResult<T>` = `{ success: boolean; data?: T; error?: string }`
+**Return type**: `ApiResponse<T>` = `{ success: boolean; data?: T; error?: string }`
 
 ### Database Layer Pattern
 
@@ -141,7 +147,34 @@ After any mutation, call `updateTag(tagName)` to invalidate cached queries. Comm
 - **State management**: React Context (AppContext in `src/components/layout/app-layout.tsx`)
   - No Redux, Zustand, or other state libraries
   - Context provides: drawer state, selected account, refresh callbacks, sidebar state
-- **Forms**: React Hook Form with Zod resolvers from `@hookform/resolvers`
+
+### Forms
+
+New and migrated forms use **React Hook Form + Zod** (`@hookform/resolvers/zod`):
+```typescript
+import { useForm, Controller } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { someSchema, type SomeFormData } from '@/lib/schemas/some.schema';
+
+const { control, handleSubmit, formState: { errors } } = useForm<SomeFormData>({
+  resolver: zodResolver(someSchema),
+  defaultValues: { ... },
+});
+```
+- Zod schemas live in `src/lib/schemas/`
+- PrimeReact inputs require `Controller` wrapper (they use value/onChange, not ref-based)
+- Legacy forms may still use raw `useState` — migrate when touching them
+
+### Projection Engine
+
+The cashflow projection engine (`src/lib/projection.ts`) calculates monthly projections for a single account:
+```typescript
+calculateProjection(account, recurringItems, plannedItems, taxedIncomes?, filters?)
+```
+
+- **TaxedIncome** items are included in projections using their `netAmount` (not `grossAmount`)
+- **Occurrence overrides** older than 2 months before the projection start are automatically excluded
+- The `cachedGetAccountProjectionData` batch function fetches all projection data in one cached call
 
 ### Date Handling
 
@@ -152,6 +185,10 @@ After any mutation, call `updateTag(tagName)` to invalidate cached queries. Comm
 ### ID Generation
 
 - Use `uuid` package (`import { v4 as uuidv4 } from 'uuid'`) for all entity IDs
+
+### Salary Calculation
+
+Use `calculateNetSalary` from `src/lib/salary-utils.ts` — the single canonical implementation. Do NOT define salary calculation inline in components.
 
 ### Type Definitions
 
@@ -171,8 +208,9 @@ All types are centralized in `src/types/index.ts`. Key types:
 2. **Create DB file** in `src/lib/db/` following the existing pattern (CRUD + file I/O)
 3. **Add cached queries** in `src/lib/db/cached.ts`
 4. **Create server actions** in `src/lib/actions/` with Zod validation and cache tags
-5. **Add UI components** (modal form, list display) following existing patterns
-6. **Update projection engine** if the entity affects financial projections
+5. **Create Zod schema** in `src/lib/schemas/` for form validation
+6. **Add UI components** (modal form, list display) following existing patterns
+7. **Update projection engine** if the entity affects financial projections
 
 ## Adding a New Page
 
@@ -182,9 +220,8 @@ All types are centralized in `src/types/index.ts`. Key types:
 
 ## Known Limitations
 
-- **No test suite**: The project has no automated tests. Consider adding tests when making significant changes.
 - **Race conditions**: File-based storage has no atomic operations or file locking. Concurrent write requests could cause data loss. Acceptable for single-user scenarios.
-- **No cross-currency conversion**: Multi-currency is supported but currencies are not converted for aggregation — values in different currencies are summed as-is.
+- **No cross-currency conversion**: Multi-currency is supported but currencies are not converted for aggregation — values in different currencies are summed as-is. Aggregate displays use the primary account's currency with a "(mixed currencies)" note when applicable.
 - **Hardcoded locale**: Number formatting uses `fi-FI` locale (Finnish) in `src/lib/constants.ts`.
 
 ## Known Bugs (Pending Fixes)
@@ -197,4 +234,7 @@ _No known bugs at this time._
 pnpm dev          # Start dev server (port 3999)
 pnpm build        # Production build
 pnpm lint         # Run ESLint
+pnpm test         # Run tests (vitest)
+pnpm test:watch   # Run tests in watch mode
+pnpm test:coverage # Run tests with coverage
 ```

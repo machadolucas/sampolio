@@ -37,6 +37,7 @@ import {
     deleteSalaryConfig,
 } from '@/lib/actions/salary';
 import { getUserPreferences } from '@/lib/actions/user-preferences';
+import { calculateNetSalary } from '@/lib/salary-utils';
 import { MdArrowUpward, MdArrowDownward, MdAdd, MdCheckCircle, MdRadioButtonUnchecked, MdEdit, MdDelete, MdClose, MdCheck } from 'react-icons/md';
 import type {
     FinancialAccount,
@@ -47,22 +48,6 @@ import type {
     Currency,
     TaxDefaults,
 } from '@/types';
-
-function calculateNetSalary(
-    grossSalary: number,
-    taxRate: number,
-    contributionsRate: number,
-    otherDeductions: number,
-    benefits: SalaryBenefit[] = []
-): number {
-    // Taxable benefits increase the tax/contributions base but are NOT received as cash
-    const taxableBenefitsTotal = benefits.filter(b => b.isTaxable).reduce((sum, b) => sum + b.amount, 0);
-    const taxableBase = grossSalary + taxableBenefitsTotal;
-    const taxAmount = taxableBase * (taxRate / 100);
-    const contributionsAmount = taxableBase * (contributionsRate / 100);
-    // Net = gross minus all deductions (benefits are NOT added back since they are not received as cash)
-    return grossSalary - taxAmount - contributionsAmount - otherDeductions;
-}
 
 // Unified item wrapper for the list
 type UnifiedItem = {
@@ -875,7 +860,7 @@ export function CashflowItemModal({
                                 {formData.benefits.length > 0 && (
                                     <div className="space-y-2 mt-2">
                                         {formData.benefits.map((benefit, index) => (
-                                            <div key={benefit.id} className="flex items-center gap-2 p-2 surface-ground border-round">
+                                            <div key={benefit.id} className="flex items-center gap-2 p-2 bg-gray-100 dark:bg-gray-800 rounded-lg">
                                                 <InputText
                                                     placeholder="e.g., Meal Voucher"
                                                     value={benefit.name}
@@ -898,9 +883,9 @@ export function CashflowItemModal({
                                                     mode="currency"
                                                     currency={currency}
                                                     locale="fi-FI"
-                                                    className="w-28"
+                                                    className="w-36"
                                                 />
-                                                <div className="flex items-center gap-1">
+                                                <div className="flex items-center gap-1 shrink-0">
                                                     <InputSwitch
                                                         checked={benefit.isTaxable}
                                                         onChange={(e: InputSwitchChangeEvent) => {
@@ -926,7 +911,7 @@ export function CashflowItemModal({
                             </div>
 
                             {/* Net salary preview */}
-                            <div className="p-4 surface-ground border-round-lg space-y-1">
+                            <div className="p-4 bg-gray-100 dark:bg-gray-800 rounded-lg space-y-1">
                                 {formData.benefits.length > 0 && (
                                     <div className="flex justify-between text-xs opacity-60">
                                         <span>Taxable Gross</span>

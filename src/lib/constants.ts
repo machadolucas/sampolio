@@ -46,6 +46,7 @@ export const ITEM_CATEGORIES = [
   'Taxes',
   'Debt Payment',
   'Savings',
+  'Reimbursement',
   'Other Expense',
 ];
 

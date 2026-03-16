@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { InputText } from 'primereact/inputtext';
-import { MdHome, MdAttachMoney, MdBarChart, MdSettings, MdSync, MdAddCircle, MdRemoveCircle, MdSearch } from 'react-icons/md';
+import { MdHome, MdAttachMoney, MdSettings, MdSync, MdAddCircle, MdRemoveCircle, MdSearch } from 'react-icons/md';
 import { useTheme } from '@/components/providers/theme-provider';
 import type { Command, CommandType } from '@/types';
 
@@ -36,12 +36,12 @@ const NAVIGATION_COMMANDS: Command[] = [
         action: () => { },
     },
     {
-        id: 'nav-balance-sheet',
-        label: 'Go to Balance Sheet',
-        description: 'Assets, investments, and debts',
+        id: 'nav-playground',
+        label: 'Go to What If?',
+        description: 'Explore financial scenarios and hypotheticals',
         type: 'navigate',
-        icon: <MdBarChart />,
-        keywords: ['assets', 'debts', 'investments', 'balance', 'liabilities'],
+        icon: <MdHome />,
+        keywords: ['what if', 'scenario', 'playground', 'explore', 'hypothetical'],
         action: () => { },
     },
     {
@@ -58,12 +58,12 @@ const NAVIGATION_COMMANDS: Command[] = [
 const ACTION_COMMANDS: Command[] = [
     {
         id: 'action-reconcile',
-        label: 'Start Reconciliation',
-        description: 'Update actual balances for this month',
+        label: 'Monthly Check-in',
+        description: 'Verify your actual balances for this month',
         type: 'reconcile',
         icon: <MdSync />,
-        shortcut: '⌘R',
-        keywords: ['reconcile', 'update', 'actual', 'balance'],
+        shortcut: '⌘M',
+        keywords: ['reconcile', 'check-in', 'update', 'actual', 'balance', 'monthly'],
         action: () => { },
     },
     {
@@ -157,7 +157,7 @@ export function CommandPalette({
                 const paths: Record<string, string> = {
                     'nav-overview': '/',
                     'nav-cashflow': '/cashflow',
-                    'nav-balance-sheet': '/balance-sheet',
+                    'nav-playground': '/playground',
                     'nav-settings': '/settings',
                 };
                 const path = paths[command.id];
@@ -349,7 +349,7 @@ export function useCommandPalette(shortcuts?: {
             // Only handle other shortcuts when not in an input
             if (isInput) return;
 
-            if ((e.metaKey || e.ctrlKey) && e.key === 'r') {
+            if ((e.metaKey || e.ctrlKey) && e.key === 'm') {
                 e.preventDefault();
                 shortcuts?.onReconcile?.();
                 return;

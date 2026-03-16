@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import { useSession } from 'next-auth/react';
 import { Card } from 'primereact/card';
 import { Button } from 'primereact/button';
 import { SelectButton } from 'primereact/selectbutton';
@@ -20,9 +21,22 @@ import { calculateWealthProjection, getLatestEndDate } from '@/lib/wealth-projec
 import type { FinancialAccount, InvestmentAccount, Receivable, Debt, TimeHorizon, WealthProjectionMonth, Currency, InvestmentContribution, ReceivableRepayment, DebtReferenceRate, DebtExtraPayment, MonthlyProjection } from '@/types';
 import { NetWorthChart, WealthChart } from '@/components/charts';
 import { EntityListDrawer } from '@/components/ui/entity-list-drawer';
+import { StatusHeroCard } from '@/components/ui/status-hero-card';
 import { MdInfo, MdSync, MdShowChart, MdAttachMoney, MdAccountBalanceWallet, MdBarChart, MdGroup, MdCreditCard, MdArrowForward, MdAddCircle, MdRemoveCircle } from 'react-icons/md';
 
 type EntityCategory = 'cash' | 'investments' | 'receivables' | 'debts';
+
+/** Derive the display currency from the primary (first non-archived) account, default EUR */
+function getPrimaryCurrency(accounts: FinancialAccount[]): Currency {
+    const primary = accounts.find(a => !a.isArchived);
+    return primary?.currency ?? 'EUR';
+}
+
+/** Check if accounts span multiple currencies */
+function hasMixedCurrencies(accounts: FinancialAccount[]): boolean {
+    const currencies = new Set(accounts.filter(a => !a.isArchived).map(a => a.currency));
+    return currencies.size > 1;
+}
 
 const HORIZON_OPTIONS = [
     { label: '6M', value: '6m' },
@@ -140,6 +154,7 @@ function ImpactPanel({ items, currency = 'EUR' as Currency }: { items: ImpactIte
 
 export default function OverviewPage() {
     const router = useRouter();
+    const { data: session } = useSession();
     const appContext = useAppContext();
     const { theme } = useTheme();
     const isDark = theme === 'dark';
@@ -148,6 +163,8 @@ export default function OverviewPage() {
     const [horizon, setHorizon] = useState<TimeHorizon>('1y');
     const [showBreakdown, setShowBreakdown] = useState(true);
     const [entityDrawer, setEntityDrawer] = useState<{ visible: boolean; category: EntityCategory }>({ visible: false, category: 'cash' });
+    const displayMode = appContext?.displayMode ?? 'advanced';
+    const isSimple = displayMode === 'simple';
 
     // Data states
     const [accounts, setAccounts] = useState<FinancialAccount[]>([]);
@@ -156,6 +173,9 @@ export default function OverviewPage() {
     const [debts, setDebts] = useState<Debt[]>([]);
     const [projection, setProjection] = useState<WealthProjectionMonth[]>([]);
     const [lastReconciled, setLastReconciled] = useState<string | null>(null);
+
+    const displayCurrency = useMemo(() => getPrimaryCurrency(accounts), [accounts]);
+    const isMixedCurrency = useMemo(() => hasMixedCurrencies(accounts), [accounts]);
 
     const hasLoadedOnce = useRef(false);
 
@@ -312,6 +332,18 @@ export default function OverviewPage() {
         };
     }, [accounts, investments, receivables, debts, projection, currentYearMonth, filteredProjection]);
 
+    // Hero card projections: find current and previous month from the first account's cash projection
+    const heroProjections = useMemo(() => {
+        if (projection.length === 0) return { current: undefined, previous: undefined };
+        // Use the wealth projection's cash totals to approximate per-month data
+        const currentMonth = projection.find(p => p.yearMonth === currentYearMonth);
+        const prevMonthDate = new Date();
+        prevMonthDate.setMonth(prevMonthDate.getMonth() - 1);
+        const prevYM = `${prevMonthDate.getFullYear()}-${String(prevMonthDate.getMonth() + 1).padStart(2, '0')}`;
+        const prevMonth = projection.find(p => p.yearMonth === prevYM);
+        return { current: currentMonth, previous: prevMonth };
+    }, [projection, currentYearMonth]);
+
     // Mock impact items (in real app, calculate from projection changes)
     const impactItems: ImpactItem[] = useMemo(() => {
         const items: ImpactItem[] = [];
@@ -355,18 +387,70 @@ export default function OverviewPage() {
                     )}
                 </div>
                 <Button
-                    label="Reconcile"
+                    label="Monthly check-in"
                     icon={<MdSync />}
                     severity="success"
                     onClick={() => appContext?.openReconcile()}
                 />
             </div>
 
+            {/* Stale reconciliation banner */}
+            {(() => {
+                if (!lastReconciled) return (
+                    <div className={`flex items-center gap-3 p-4 rounded-lg border ${isDark ? 'bg-yellow-900/20 border-yellow-800 text-yellow-400' : 'bg-yellow-50 border-yellow-200 text-yellow-700'}`}>
+                        <MdSync size={20} />
+                        <span>You haven&apos;t done a check-in yet. Verify your balances to keep projections accurate.</span>
+                        <Button label="Start check-in" size="small" severity="warning" className="ml-auto" onClick={() => appContext?.openReconcile()} />
+                    </div>
+                );
+                const lastDate = new Date(lastReconciled + '-15');
+                const daysSince = Math.floor((Date.now() - lastDate.getTime()) / (1000 * 60 * 60 * 24));
+                if (daysSince > 30) return (
+                    <div className={`flex items-center gap-3 p-4 rounded-lg border ${isDark ? 'bg-yellow-900/20 border-yellow-800 text-yellow-400' : 'bg-yellow-50 border-yellow-200 text-yellow-700'}`}>
+                        <MdSync size={20} />
+                        <span>It&apos;s been over a month since your last check-in ({formatYearMonth(lastReconciled)}). Time for a quick review?</span>
+                        <Button label="Start check-in" size="small" severity="warning" className="ml-auto" onClick={() => appContext?.openReconcile()} />
+                    </div>
+                );
+                return null;
+            })()}
+
+            {/* Hero Card */}
+            <StatusHeroCard
+                userName={session?.user?.name || 'there'}
+                currentMonthProjection={heroProjections.current ? {
+                    yearMonth: currentYearMonth,
+                    year: parseInt(currentYearMonth.split('-')[0]),
+                    month: parseInt(currentYearMonth.split('-')[1]),
+                    startingBalance: heroProjections.current.cashAccountsTotal,
+                    totalIncome: 0,
+                    totalExpenses: 0,
+                    netChange: heroProjections.current.netWorth - (heroProjections.previous?.netWorth ?? heroProjections.current.netWorth),
+                    endingBalance: heroProjections.current.cashAccountsTotal,
+                    incomeBreakdown: [],
+                    expenseBreakdown: [],
+                } : undefined}
+                previousMonthProjection={heroProjections.previous ? {
+                    yearMonth: '',
+                    year: 0,
+                    month: 0,
+                    startingBalance: 0,
+                    totalIncome: 0,
+                    totalExpenses: 0,
+                    netChange: 0,
+                    endingBalance: heroProjections.previous.cashAccountsTotal,
+                    incomeBreakdown: [],
+                    expenseBreakdown: [],
+                } : undefined}
+                currency={displayCurrency}
+            />
+
             {/* KPI Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 ${isSimple ? 'hidden' : ''}`}>
                 <KPICard
                     title="Net Worth"
                     value={kpiValues.netWorth}
+                    currency={displayCurrency}
                     change={kpiValues.netWorthChange}
                     changeLabel="vs last month"
                     icon={<MdShowChart />}
@@ -375,12 +459,14 @@ export default function OverviewPage() {
                 <KPICard
                     title="Liquid Assets"
                     value={kpiValues.liquidAssets}
+                    currency={displayCurrency}
                     icon={<MdAttachMoney />}
                     severity="info"
                 />
                 <KPICard
                     title="Cash"
                     value={kpiValues.cashTotal}
+                    currency={displayCurrency}
                     icon={<MdAccountBalanceWallet />}
                     severity="success"
                     onClick={() => setEntityDrawer({ visible: true, category: 'cash' })}
@@ -388,6 +474,7 @@ export default function OverviewPage() {
                 <KPICard
                     title="Investments"
                     value={kpiValues.investmentsTotal}
+                    currency={displayCurrency}
                     icon={<MdBarChart />}
                     severity="success"
                     onClick={() => setEntityDrawer({ visible: true, category: 'investments' })}
@@ -395,6 +482,7 @@ export default function OverviewPage() {
                 <KPICard
                     title="Receivables"
                     value={kpiValues.receivablesTotal}
+                    currency={displayCurrency}
                     icon={<MdGroup />}
                     severity="warning"
                     onClick={() => setEntityDrawer({ visible: true, category: 'receivables' })}
@@ -402,6 +490,7 @@ export default function OverviewPage() {
                 <KPICard
                     title="Debts"
                     value={-kpiValues.debtsTotal}
+                    currency={displayCurrency}
                     icon={<MdCreditCard />}
                     severity="danger"
                     onClick={() => setEntityDrawer({ visible: true, category: 'debts' })}
@@ -409,7 +498,7 @@ export default function OverviewPage() {
             </div>
 
             {/* Main Chart Section */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className={`grid grid-cols-1 lg:grid-cols-3 gap-6 ${isSimple ? 'hidden' : ''}`}>
                 {/* Net Worth Chart */}
                 <div className="lg:col-span-2">
                     <Card>
@@ -435,9 +524,9 @@ export default function OverviewPage() {
                         </div>
 
                         {showBreakdown ? (
-                            <WealthChart data={filteredProjection} currency="EUR" />
+                            <WealthChart data={filteredProjection} currency={displayCurrency} />
                         ) : (
-                            <NetWorthChart data={filteredProjection} currency="EUR" />
+                            <NetWorthChart data={filteredProjection} currency={displayCurrency} />
                         )}
 
                         <div className="flex justify-center gap-6 mt-4 text-sm">
@@ -471,7 +560,7 @@ export default function OverviewPage() {
                         <h2 className={`text-lg font-semibold mb-4 ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
                             This Month Impact
                         </h2>
-                        <ImpactPanel items={impactItems} />
+                        <ImpactPanel items={impactItems} currency={displayCurrency} />
 
                         <div className="mt-4 pt-4 border-t border-gray-700">
                             <Button
@@ -488,7 +577,7 @@ export default function OverviewPage() {
             </div>
 
             {/* Projected Net Worth at Horizon */}
-            <Card>
+            <Card className={isSimple ? 'hidden' : ''}>
                 <div className="flex items-center justify-between">
                     <div>
                         <h2 className={`text-lg font-semibold ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
@@ -500,10 +589,11 @@ export default function OverviewPage() {
                     </div>
                     <div className="text-right">
                         <p className={`text-3xl font-bold ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
-                            {formatCurrency(kpiValues.projectedNetWorth, 'EUR')}
+                            {formatCurrency(kpiValues.projectedNetWorth, displayCurrency)}
+                            {isMixedCurrency && <span className={`text-sm font-normal ml-2 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>(mixed currencies)</span>}
                         </p>
                         <Tag
-                            value={`${kpiValues.projectedNetWorth >= kpiValues.netWorth ? '+' : ''}${formatCurrency(kpiValues.projectedNetWorth - kpiValues.netWorth, 'EUR')}`}
+                            value={`${kpiValues.projectedNetWorth >= kpiValues.netWorth ? '+' : ''}${formatCurrency(kpiValues.projectedNetWorth - kpiValues.netWorth, displayCurrency)}`}
                             severity={kpiValues.projectedNetWorth >= kpiValues.netWorth ? 'success' : 'danger'}
                         />
                     </div>

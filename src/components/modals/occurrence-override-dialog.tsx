@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { useForm, Controller } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
 import { Dialog } from 'primereact/dialog';
 import { Button } from 'primereact/button';
 import { InputText } from 'primereact/inputtext';
@@ -18,6 +20,7 @@ import {
 import { getRecurringItemById } from '@/lib/actions/recurring';
 import type { RecurringItem, YearMonth } from '@/types';
 import { MdSave, MdDelete, MdClose, MdSkipNext } from 'react-icons/md';
+import { occurrenceOverrideSchema, type OccurrenceOverrideFormData } from '@/lib/schemas/occurrence-override.schema';
 
 interface OccurrenceOverrideDialogProps {
     visible: boolean;
@@ -26,13 +29,6 @@ interface OccurrenceOverrideDialogProps {
     accountId: string;
     yearMonth: YearMonth;
     onDataChange?: () => void;
-}
-
-interface OverrideFormData {
-    name: string;
-    amount: number;
-    category: string;
-    skipOccurrence: boolean;
 }
 
 export function OccurrenceOverrideDialog({
@@ -51,12 +47,23 @@ export function OccurrenceOverrideDialog({
     const [isSaving, setIsSaving] = useState(false);
     const [hasExistingOverride, setHasExistingOverride] = useState(false);
     const [recurringItem, setRecurringItem] = useState<RecurringItem | null>(null);
-    const [formData, setFormData] = useState<OverrideFormData>({
-        name: '',
-        amount: 0,
-        category: '',
-        skipOccurrence: false,
+
+    const {
+        control,
+        handleSubmit,
+        reset,
+        watch,
+    } = useForm<OccurrenceOverrideFormData>({
+        resolver: zodResolver(occurrenceOverrideSchema),
+        defaultValues: {
+            name: '',
+            amount: 0,
+            category: '',
+            skipOccurrence: false,
+        },
     });
+
+    const skipOccurrence = watch('skipOccurrence');
 
     // Load recurring item details + existing override when dialog opens
     useEffect(() => {
@@ -82,14 +89,14 @@ export function OccurrenceOverrideDialog({
 
                     if (existingOverride) {
                         setHasExistingOverride(true);
-                        setFormData({
+                        reset({
                             name: existingOverride.name,
                             amount: existingOverride.amount,
                             category: existingOverride.category || '',
                             skipOccurrence: existingOverride.skipOccurrence ?? false,
                         });
                     } else {
-                        setFormData({
+                        reset({
                             name: item.name,
                             amount: item.amount,
                             category: item.category || '',
@@ -99,9 +106,9 @@ export function OccurrenceOverrideDialog({
                 }
             }).finally(() => setIsLoading(false));
         }
-    }, [visible, recurringItemId, accountId, yearMonth]);
+    }, [visible, recurringItemId, accountId, yearMonth, reset]);
 
-    const handleSave = async () => {
+    const handleSave = async (formData: OccurrenceOverrideFormData) => {
         setIsSaving(true);
         try {
             const result = await upsertRecurringItemOccurrenceOverride(
@@ -203,7 +210,7 @@ export function OccurrenceOverrideDialog({
                 <Button
                     label="Save Override"
                     icon={<MdSave />}
-                    onClick={handleSave}
+                    onClick={handleSubmit(handleSave)}
                     loading={isSaving}
                     disabled={isLoading}
                 />
@@ -248,24 +255,36 @@ export function OccurrenceOverrideDialog({
                                     </div>
                                 </div>
                             </div>
-                            <InputSwitch
-                                checked={formData.skipOccurrence}
-                                onChange={(e) => setFormData(prev => ({ ...prev, skipOccurrence: e.value ?? false }))}
+                            <Controller
+                                name="skipOccurrence"
+                                control={control}
+                                render={({ field }) => (
+                                    <InputSwitch
+                                        checked={field.value}
+                                        onChange={(e) => field.onChange(e.value ?? false)}
+                                    />
+                                )}
                             />
                         </div>
 
                         {/* Fields (dimmed when skipping) */}
-                        <div className={`space-y-3 transition-opacity ${formData.skipOccurrence ? 'opacity-40 pointer-events-none' : ''}`}>
+                        <div className={`space-y-3 transition-opacity ${skipOccurrence ? 'opacity-40 pointer-events-none' : ''}`}>
                             <div>
                                 <label htmlFor="override-name" className={`block text-sm font-medium mb-1 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
                                     Name
                                 </label>
-                                <InputText
-                                    id="override-name"
-                                    value={formData.name}
-                                    onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
-                                    className="w-full"
-                                    placeholder={recurringItem.name}
+                                <Controller
+                                    name="name"
+                                    control={control}
+                                    render={({ field }) => (
+                                        <InputText
+                                            id="override-name"
+                                            value={field.value}
+                                            onChange={(e) => field.onChange(e.target.value)}
+                                            className="w-full"
+                                            placeholder={recurringItem.name}
+                                        />
+                                    )}
                                 />
                             </div>
 
@@ -273,16 +292,22 @@ export function OccurrenceOverrideDialog({
                                 <label htmlFor="override-amount" className={`block text-sm font-medium mb-1 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
                                     Amount
                                 </label>
-                                <InputNumber
-                                    id="override-amount"
-                                    value={formData.amount}
-                                    onValueChange={(e) => setFormData(prev => ({ ...prev, amount: e.value ?? 0 }))}
-                                    mode="decimal"
-                                    locale="fi-FI"
-                                    minFractionDigits={2}
-                                    maxFractionDigits={2}
-                                    className="w-full"
-                                    placeholder={String(recurringItem.amount)}
+                                <Controller
+                                    name="amount"
+                                    control={control}
+                                    render={({ field }) => (
+                                        <InputNumber
+                                            id="override-amount"
+                                            value={field.value}
+                                            onValueChange={(e) => field.onChange(e.value ?? 0)}
+                                            mode="decimal"
+                                            locale="fi-FI"
+                                            minFractionDigits={2}
+                                            maxFractionDigits={2}
+                                            className="w-full"
+                                            placeholder={String(recurringItem.amount)}
+                                        />
+                                    )}
                                 />
                             </div>
 
@@ -290,12 +315,18 @@ export function OccurrenceOverrideDialog({
                                 <label htmlFor="override-category" className={`block text-sm font-medium mb-1 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
                                     Category
                                 </label>
-                                <InputText
-                                    id="override-category"
-                                    value={formData.category}
-                                    onChange={(e) => setFormData(prev => ({ ...prev, category: e.target.value }))}
-                                    className="w-full"
-                                    placeholder={recurringItem.category || 'No category'}
+                                <Controller
+                                    name="category"
+                                    control={control}
+                                    render={({ field }) => (
+                                        <InputText
+                                            id="override-category"
+                                            value={field.value}
+                                            onChange={(e) => field.onChange(e.target.value)}
+                                            className="w-full"
+                                            placeholder={recurringItem.category || 'No category'}
+                                        />
+                                    )}
                                 />
                             </div>
                         </div>

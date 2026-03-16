@@ -6,7 +6,8 @@ import {
 } from '@/lib/db/user-preferences';
 import { cachedGetUserPreferences } from '@/lib/db/cached';
 import { updateTag } from 'next/cache';
-import type { ApiResponse, UserPreferences, TaxDefaults } from '@/types';
+import { z } from 'zod';
+import type { ApiResponse, UserPreferences, TaxDefaults, DisplayMode } from '@/types';
 
 export async function getUserPreferences(): Promise<ApiResponse<UserPreferences>> {
   try {
@@ -57,6 +58,31 @@ export async function updateCategories(
   } catch (error) {
     console.error('Update categories error:', error);
     return { success: false, error: 'Failed to update categories' };
+  }
+}
+
+const displayModeSchema = z.enum(['simple', 'advanced']);
+
+export async function updateDisplayMode(
+  mode: DisplayMode
+): Promise<ApiResponse<UserPreferences>> {
+  try {
+    const session = await auth();
+    if (!session?.user?.id) {
+      return { success: false, error: 'Unauthorized' };
+    }
+    const parsed = displayModeSchema.safeParse(mode);
+    if (!parsed.success) {
+      return { success: false, error: 'Invalid display mode' };
+    }
+    const prefs = await dbUpdateUserPreferences(session.user.id, {
+      displayMode: parsed.data,
+    });
+    updateTag(`user:${session.user.id}:preferences`);
+    return { success: true, data: prefs };
+  } catch (error) {
+    console.error('Update display mode error:', error);
+    return { success: false, error: 'Failed to update display mode' };
   }
 }
 

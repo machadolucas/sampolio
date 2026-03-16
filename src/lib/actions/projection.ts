@@ -1,14 +1,15 @@
 'use server';
 
 import { auth } from '@/lib/auth';
-import { cachedGetAccountById, cachedGetRecurringItems, cachedGetPlannedItems } from '@/lib/db/cached';
+import { cachedGetAccountById, cachedGetAccountProjectionData } from '@/lib/db/cached';
 import { calculateProjection, calculateYearlyRollups, getUniqueCategories } from '@/lib/projection';
-import type { ApiResponse, MonthlyProjection, YearlyRollup, ProjectionFilters } from '@/types';
+import type { ApiResponse, MonthlyProjection, YearlyRollup, ProjectionFilters, SalaryConfig } from '@/types';
 
 interface ProjectionResponse {
   monthly: MonthlyProjection[];
   yearly: YearlyRollup[];
   categories: string[];
+  salaryConfigs: SalaryConfig[];
   account: {
     id: string;
     name: string;
@@ -33,12 +34,12 @@ export async function getProjection(
       return { success: false, error: 'Account not found' };
     }
 
-    const [recurringItems, plannedItems] = await Promise.all([
-      cachedGetRecurringItems(session.user.id, accountId),
-      cachedGetPlannedItems(session.user.id, accountId),
-    ]);
+    const { recurringItems, plannedItems, salaryConfigs, taxedIncomes } = await cachedGetAccountProjectionData(
+      session.user.id,
+      accountId
+    );
 
-    const monthly = calculateProjection(account, recurringItems, plannedItems, filters);
+    const monthly = calculateProjection(account, recurringItems, plannedItems, taxedIncomes, filters);
     const yearly = calculateYearlyRollups(monthly);
     const categories = getUniqueCategories(recurringItems, plannedItems);
 
@@ -48,6 +49,7 @@ export async function getProjection(
         monthly,
         yearly,
         categories,
+        salaryConfigs,
         account: {
           id: account.id,
           name: account.name,

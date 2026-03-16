@@ -4,12 +4,15 @@ import { useState, Suspense, useEffect, useRef } from 'react';
 import { signIn } from 'next-auth/react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+import { useForm, Controller } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
 import { InputText } from 'primereact/inputtext';
 import { Password } from 'primereact/password';
 import { Button } from 'primereact/button';
 import { Card } from 'primereact/card';
 import { Message } from 'primereact/message';
 import { MdLogin, MdSync } from 'react-icons/md';
+import { signInSchema, type SignInFormData } from '@/lib/schemas/auth.schema';
 
 // Constants for rate limiting feedback
 const MAX_ATTEMPTS_BEFORE_WARNING = 3;
@@ -20,8 +23,19 @@ function SignInForm() {
     const searchParams = useSearchParams();
     const callbackUrl = searchParams.get('callbackUrl') || '/';
 
-    const [email, setEmail] = useState('');
-    const [password, setPassword] = useState('');
+    const {
+        register,
+        handleSubmit,
+        control,
+        formState: { errors },
+    } = useForm<SignInFormData>({
+        resolver: zodResolver(signInSchema),
+        defaultValues: {
+            email: '',
+            password: '',
+        },
+    });
+
     const [error, setError] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [attemptCount, setAttemptCount] = useState(0);
@@ -63,9 +77,7 @@ function SignInForm() {
         };
     }, [lockoutTimeRemaining]);
 
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-
+    const onSubmit = async (data: SignInFormData) => {
         if (isLocked) {
             return;
         }
@@ -75,8 +87,8 @@ function SignInForm() {
 
         try {
             const result = await signIn('credentials', {
-                email: email.trim().toLowerCase(),
-                password,
+                email: data.email.trim().toLowerCase(),
+                password: data.password,
                 redirect: false,
             });
 
@@ -128,7 +140,7 @@ function SignInForm() {
     return (
         <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
             <Card header={header} className="w-full max-w-md shadow-lg">
-                <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+                <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
                     {error && (
                         <Message severity="error" text={error} className="w-full" />
                     )}
@@ -148,33 +160,42 @@ function SignInForm() {
                         <InputText
                             id="email"
                             type="email"
-                            value={email}
-                            onChange={(e) => setEmail(e.target.value)}
+                            {...register('email')}
                             placeholder="you@example.com"
-                            required
                             disabled={isLocked}
                             className="w-full"
                             autoComplete="email"
                         />
+                        {errors.email && (
+                            <small className="text-red-500">{errors.email.message}</small>
+                        )}
                     </div>
 
                     <div className="flex flex-col gap-2">
                         <label htmlFor="password" className="font-medium text-gray-700">
                             Password
                         </label>
-                        <Password
-                            id="password"
-                            value={password}
-                            onChange={(e) => setPassword(e.target.value)}
-                            placeholder="••••••••"
-                            required
-                            disabled={isLocked}
-                            feedback={false}
-                            toggleMask
-                            className="w-full"
-                            inputClassName="w-full"
-                            autoComplete="current-password"
+                        <Controller
+                            name="password"
+                            control={control}
+                            render={({ field }) => (
+                                <Password
+                                    id="password"
+                                    value={field.value}
+                                    onChange={(e) => field.onChange(e.target.value)}
+                                    placeholder="••••••••"
+                                    disabled={isLocked}
+                                    feedback={false}
+                                    toggleMask
+                                    className="w-full"
+                                    inputClassName="w-full"
+                                    autoComplete="current-password"
+                                />
+                            )}
                         />
+                        {errors.password && (
+                            <small className="text-red-500">{errors.password.message}</small>
+                        )}
                     </div>
 
                     <Button

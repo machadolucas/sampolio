@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react';
 import { signIn } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { useForm, Controller } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
 import { InputText } from 'primereact/inputtext';
 import { Password } from 'primereact/password';
 import { Button } from 'primereact/button';
@@ -11,14 +13,30 @@ import { Card } from 'primereact/card';
 import { Message } from 'primereact/message';
 import { MdPersonAdd } from 'react-icons/md';
 import { signUp, checkSignupEnabled } from '@/lib/actions/auth';
+import { signUpSchema, type SignUpFormData } from '@/lib/schemas/auth.schema';
 
 export default function SignUpPage() {
     const router = useRouter();
 
-    const [name, setName] = useState('');
-    const [email, setEmail] = useState('');
-    const [password, setPassword] = useState('');
-    const [confirmPassword, setConfirmPassword] = useState('');
+    const {
+        register,
+        handleSubmit,
+        control,
+        watch,
+        formState: { errors },
+    } = useForm<SignUpFormData>({
+        resolver: zodResolver(signUpSchema),
+        defaultValues: {
+            name: '',
+            email: '',
+            password: '',
+            confirmPassword: '',
+        },
+    });
+
+    const password = watch('password');
+    const confirmPassword = watch('confirmPassword');
+
     const [error, setError] = useState('');
     const [isLoading, setIsLoading] = useState(false);
 
@@ -27,44 +45,15 @@ export default function SignUpPage() {
         checkSignupEnabled().catch(() => { }); // Ignore errors
     }, []);
 
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
+    const onSubmit = async (data: SignUpFormData) => {
         setError('');
-
-        // Normalize email
-        const normalizedEmail = email.toLowerCase().trim();
-
-        if (password !== confirmPassword) {
-            setError('Passwords do not match');
-            return;
-        }
-
-        // Client-side password validation (server also validates)
-        if (password.length < 8) {
-            setError('Password must be at least 8 characters');
-            return;
-        }
-        if (!/[a-z]/.test(password)) {
-            setError('Password must contain at least one lowercase letter');
-            return;
-        }
-        if (!/[A-Z]/.test(password)) {
-            setError('Password must contain at least one uppercase letter');
-            return;
-        }
-        if (!/[0-9]/.test(password)) {
-            setError('Password must contain at least one number');
-            return;
-        }
-        if (!/[^a-zA-Z0-9]/.test(password)) {
-            setError('Password must contain at least one special character');
-            return;
-        }
-
         setIsLoading(true);
 
+        // Normalize email
+        const normalizedEmail = data.email.toLowerCase().trim();
+
         try {
-            const result = await signUp({ name: name.trim(), email: normalizedEmail, password });
+            const result = await signUp({ name: data.name.trim(), email: normalizedEmail, password: data.password });
 
             if (!result.success) {
                 setError(result.error || 'Failed to create account');
@@ -76,8 +65,8 @@ export default function SignUpPage() {
 
             // Sign in after successful signup
             const signInResult = await signIn('credentials', {
-                email,
-                password,
+                email: data.email,
+                password: data.password,
                 redirect: false,
             });
 
@@ -105,7 +94,7 @@ export default function SignUpPage() {
     return (
         <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
             <Card header={header} className="w-full max-w-md shadow-lg">
-                <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+                <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
                     {error && (
                         <Message severity="error" text={error} className="w-full" />
                     )}
@@ -117,14 +106,15 @@ export default function SignUpPage() {
                         <InputText
                             id="name"
                             type="text"
-                            value={name}
-                            onChange={(e) => setName(e.target.value)}
+                            {...register('name')}
                             placeholder="John Doe"
-                            required
                             autoComplete="name"
                             maxLength={100}
                             className="w-full"
                         />
+                        {errors.name && (
+                            <small className="text-red-500">{errors.name.message}</small>
+                        )}
                     </div>
 
                     <div className="flex flex-col gap-2">
@@ -134,34 +124,43 @@ export default function SignUpPage() {
                         <InputText
                             id="email"
                             type="email"
-                            value={email}
-                            onChange={(e) => setEmail(e.target.value)}
+                            {...register('email')}
                             placeholder="you@example.com"
-                            required
                             autoComplete="email"
                             className="w-full"
                         />
+                        {errors.email && (
+                            <small className="text-red-500">{errors.email.message}</small>
+                        )}
                     </div>
 
                     <div className="flex flex-col gap-2">
                         <label htmlFor="password" className="font-medium text-gray-700">
                             Password
                         </label>
-                        <Password
-                            id="password"
-                            value={password}
-                            onChange={(e) => setPassword(e.target.value)}
-                            placeholder="••••••••"
-                            required
-                            toggleMask
-                            className="w-full"
-                            inputClassName="w-full"
-                            autoComplete="new-password"
-                            promptLabel="Choose a strong password"
-                            weakLabel="Weak - add more variety"
-                            mediumLabel="Getting better"
-                            strongLabel="Strong password!"
+                        <Controller
+                            name="password"
+                            control={control}
+                            render={({ field }) => (
+                                <Password
+                                    id="password"
+                                    value={field.value}
+                                    onChange={(e) => field.onChange(e.target.value)}
+                                    placeholder="••••••••"
+                                    toggleMask
+                                    className="w-full"
+                                    inputClassName="w-full"
+                                    autoComplete="new-password"
+                                    promptLabel="Choose a strong password"
+                                    weakLabel="Weak - add more variety"
+                                    mediumLabel="Getting better"
+                                    strongLabel="Strong password!"
+                                />
+                            )}
                         />
+                        {errors.password && (
+                            <small className="text-red-500">{errors.password.message}</small>
+                        )}
                         <div className="text-xs text-gray-500 space-y-1">
                             <p className="font-medium">Password requirements:</p>
                             <ul className="list-disc pl-4 space-y-0.5">
@@ -178,19 +177,27 @@ export default function SignUpPage() {
                         <label htmlFor="confirmPassword" className="font-medium text-gray-700">
                             Confirm Password
                         </label>
-                        <Password
-                            id="confirmPassword"
-                            value={confirmPassword}
-                            onChange={(e) => setConfirmPassword(e.target.value)}
-                            placeholder="••••••••"
-                            required
-                            feedback={false}
-                            toggleMask
-                            className="w-full"
-                            inputClassName="w-full"
-                            autoComplete="new-password"
+                        <Controller
+                            name="confirmPassword"
+                            control={control}
+                            render={({ field }) => (
+                                <Password
+                                    id="confirmPassword"
+                                    value={field.value}
+                                    onChange={(e) => field.onChange(e.target.value)}
+                                    placeholder="••••••••"
+                                    feedback={false}
+                                    toggleMask
+                                    className="w-full"
+                                    inputClassName="w-full"
+                                    autoComplete="new-password"
+                                />
+                            )}
                         />
-                        {confirmPassword && password !== confirmPassword && (
+                        {errors.confirmPassword && (
+                            <small className="text-red-500">{errors.confirmPassword.message}</small>
+                        )}
+                        {confirmPassword && password !== confirmPassword && !errors.confirmPassword && (
                             <small className="text-red-500">Passwords do not match</small>
                         )}
                     </div>

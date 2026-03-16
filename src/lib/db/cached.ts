@@ -40,6 +40,7 @@ import {
 } from './investments';
 import { getDebts, getDebtById, getReferenceRates, getExtraPayments } from './debts';
 import { getReceivables, getReceivableById, getRepayments } from './receivables';
+import { getGoals, getGoalById } from './goals';
 import { getUserPreferences } from './user-preferences';
 import { getAppSettings } from './app-settings';
 import { getAllUsers } from './users';
@@ -66,6 +67,7 @@ import type {
   DebtExtraPayment,
   Receivable,
   ReceivableRepayment,
+  Goal,
   UserPreferences,
   AppSettings,
   User,
@@ -288,6 +290,27 @@ export async function cachedGetRepayments(
   );
   cacheLife('indefinite');
   return getRepayments(userId, receivableId);
+}
+
+// ============================================================
+// GOALS
+// ============================================================
+
+export async function cachedGetGoals(userId: string): Promise<Goal[]> {
+  'use cache';
+  cacheTag('all-data', `user:${userId}`, `user:${userId}:goals`);
+  cacheLife('indefinite');
+  return getGoals(userId);
+}
+
+export async function cachedGetGoalById(
+  userId: string,
+  goalId: string
+): Promise<Goal | null> {
+  'use cache';
+  cacheTag('all-data', `user:${userId}`, `user:${userId}:goals`);
+  cacheLife('indefinite');
+  return getGoalById(userId, goalId);
 }
 
 // ============================================================
