@@ -61,14 +61,14 @@ A self-hosted personal finance planning tool that replaces budgeting spreadsheet
 
 ### Prerequisites
 
-- Node.js 20+
+- Node.js 24+
 - pnpm (recommended) or npm
 
 ### Installation
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/sampolio.git
+git clone https://github.com/machadolucas/sampolio.git
 cd sampolio
 ```
 
