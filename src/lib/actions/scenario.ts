@@ -2,9 +2,9 @@
 
 import { z } from 'zod';
 import { auth } from '@/lib/auth';
-import { cachedGetAccountById, cachedGetAccountProjectionData } from '@/lib/db/cached';
+import { cachedGetAccountById, cachedGetAccountProjectionData, cachedGetLatestSnapshot } from '@/lib/db/cached';
 import { calculateProjection } from '@/lib/projection';
-import type { ApiResponse, MonthlyProjection, RecurringItem, PlannedItem } from '@/types';
+import type { ApiResponse, MonthlyProjection, RecurringItem } from '@/types';
 
 const scenarioModSchema = z.object({
   type: z.enum(['add-income', 'add-expense', 'remove-item', 'modify-amount']),
@@ -58,13 +58,13 @@ export async function runScenarioProjection(
       return { success: false, error: 'Account not found' };
     }
 
-    const { recurringItems, plannedItems, taxedIncomes } = await cachedGetAccountProjectionData(
-      session.user.id,
-      accountId
-    );
+    const [{ recurringItems, plannedItems, taxedIncomes }, latestSnapshot] = await Promise.all([
+      cachedGetAccountProjectionData(session.user.id, accountId),
+      cachedGetLatestSnapshot(session.user.id, 'cash-account', accountId),
+    ]);
 
-    // Calculate current projection
-    const current = calculateProjection(account, recurringItems, plannedItems, taxedIncomes);
+    // Calculate current projection (anchored on the latest reconciliation, like the real projection)
+    const current = calculateProjection(account, recurringItems, plannedItems, taxedIncomes, undefined, latestSnapshot);
 
     // Clone and modify items for the scenario
     let modifiedRecurring = [...recurringItems];
@@ -110,8 +110,8 @@ export async function runScenarioProjection(
       }
     }
 
-    // Calculate modified projection
-    const modified = calculateProjection(account, modifiedRecurring, modifiedPlanned, taxedIncomes);
+    // Calculate modified projection (same anchor so the delta is meaningful)
+    const modified = calculateProjection(account, modifiedRecurring, modifiedPlanned, taxedIncomes, undefined, latestSnapshot);
 
     const currentEnd = current[current.length - 1];
     const modifiedEnd = modified[modified.length - 1];

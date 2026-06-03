@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { MdArrowBack, MdArrowForward, MdCheck, MdError } from 'react-icons/md';
 import { Dialog } from 'primereact/dialog';
+import { Toast } from 'primereact/toast';
 import { Button } from 'primereact/button';
 import { Steps } from 'primereact/steps';
 import { InputNumber } from 'primereact/inputnumber';
@@ -17,6 +18,7 @@ import { getAccounts } from '@/lib/actions/accounts';
 import { getInvestmentAccounts } from '@/lib/actions/investments';
 import { getReceivables } from '@/lib/actions/receivables';
 import { getDebts } from '@/lib/actions/debts';
+import { getProjection } from '@/lib/actions/projection';
 import {
     startReconciliationSession,
     createBalanceSnapshot,
@@ -76,6 +78,7 @@ export function ReconcileWizard({
     // Entity data
     const [entities, setEntities] = useState<EntityRow[]>([]);
     const [sessionId, setSessionId] = useState<string | null>(null);
+    const toastRef = useRef<Toast>(null);
 
     // Fetch all entities
     const fetchEntities = useCallback(async () => {
@@ -207,10 +210,45 @@ export function ReconcileWizard({
         }));
     };
 
+    // Refine the "expected" balance for cash accounts to the projected balance
+    // for the chosen month, so the variance shown reflects the actual forecast for
+    // that month (not just the last stored starting balance). Other entity types
+    // keep their current stored value as the expected baseline.
+    const refineExpectedBalances = useCallback(async () => {
+        const cashRows = entities.filter(e => e.entityType === 'cash-account');
+        if (cashRows.length === 0) return;
+
+        const expectedById = new Map<string, number>();
+        await Promise.all(cashRows.map(async (row) => {
+            try {
+                const res = await getProjection(row.entityId);
+                if (res.success && res.data) {
+                    const month = res.data.monthly.find(m => m.yearMonth === selectedYearMonth);
+                    if (month) expectedById.set(row.entityId, month.startingBalance);
+                }
+            } catch {
+                // Non-fatal: fall back to the stored expected balance for this row
+            }
+        }));
+
+        if (expectedById.size === 0) return;
+
+        setEntities(prev => prev.map(e => {
+            if (e.entityType === 'cash-account' && expectedById.has(e.entityId)) {
+                const expected = expectedById.get(e.entityId)!;
+                // The user hasn't edited anything yet at this point, so pre-fill the
+                // actual to the projected value (zero variance until they change it).
+                return { ...e, expectedBalance: expected, actualBalance: expected, variance: 0 };
+            }
+            return e;
+        }));
+    }, [entities, selectedYearMonth]);
+
     const handleStartSession = async () => {
         const result = await startReconciliationSession(selectedYearMonth);
         if (result.success && result.data) {
             setSessionId(result.data.id);
+            await refineExpectedBalances();
             setActiveStep(1);
         } else {
             setError(result.error || 'Failed to start session');
@@ -224,9 +262,12 @@ export function ReconcileWizard({
         setError('');
 
         try {
-            // Create snapshots for entities whose values changed
+            // Create a snapshot for every confirmed balance (non-null), not only
+            // changed ones. The confirmed balance is the anchor projections re-base
+            // on, so recording it every month keeps forecasts correct even when a
+            // balance happens to match the projection (zero variance).
             for (const entity of entities) {
-                if (entity.actualBalance !== null && entity.variance !== 0) {
+                if (entity.actualBalance !== null) {
                     // Store debt snapshots as negative values for historical consistency
                     const sign = entity.entityType === 'debt' ? -1 : 1;
                     await createBalanceSnapshot({
@@ -239,10 +280,10 @@ export function ReconcileWizard({
                 }
             }
 
-            // Apply actual balances to the entities so projections use
+            // Apply actual balances to the entities so current-state displays use
             // the reconciled values going forward
             const entriesToApply = entities
-                .filter(e => e.actualBalance !== null && e.variance !== 0)
+                .filter(e => e.actualBalance !== null)
                 .map(e => ({
                     entityType: e.entityType,
                     entityId: e.entityId,
@@ -269,6 +310,17 @@ export function ReconcileWizard({
 
             // Complete the session
             await completeReconciliationSession(sessionId);
+
+            // Confirm to the user that the check-in landed and projections moved.
+            const changedCount = entities.filter(e => e.actualBalance !== null && e.variance !== 0).length;
+            toastRef.current?.show({
+                severity: 'success',
+                summary: 'Check-in saved',
+                detail: changedCount > 0
+                    ? `${formatYearMonth(selectedYearMonth)}: ${changedCount} ${changedCount === 1 ? 'balance' : 'balances'} updated — your forecasts are now anchored here.`
+                    : `${formatYearMonth(selectedYearMonth)}: balances confirmed — your forecasts are now anchored here.`,
+                life: 4000,
+            });
 
             onComplete?.();
             onHide();
@@ -517,7 +569,7 @@ export function ReconcileWizard({
                         {entitiesChanged.length === 0 && (
                             <div className={`flex items-center justify-center py-4 ${isDark ? 'text-green-400' : 'text-green-600'}`}>
                                 <MdCheck className="mr-2" />
-                                All balances match. No changes to apply.
+                                All balances match — we&apos;ll still record this check-in to keep your forecasts anchored.
                             </div>
                         )}
                     </div>
@@ -533,7 +585,9 @@ export function ReconcileWizard({
             switch (activeStep) {
                 case 0: return entities.length > 0;
                 case 1: return true; // Can proceed without entering all balances
-                case 2: return entitiesChanged.length > 0;
+                // Allow completing even when nothing changed — recording the
+                // check-in still anchors this month's balances for projections.
+                case 2: return entities.some(e => e.actualBalance !== null);
                 default: return false;
             }
         };
@@ -576,6 +630,8 @@ export function ReconcileWizard({
     };
 
     return (
+        <>
+        <Toast ref={toastRef} />
         <Dialog
             visible={visible}
             onHide={onHide}
@@ -600,5 +656,6 @@ export function ReconcileWizard({
                 </div>
             </div>
         </Dialog>
+        </>
     );
 }

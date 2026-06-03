@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { calculateProjection, calculateYearlyRollups } from './projection';
-import { createMockAccount, createMockRecurringItem, createMockPlannedItem, createMockTaxedIncome } from '@/test/mocks';
+import { calculateProjection, calculateYearlyRollups, resolveAnchor, generateMonthList } from './projection';
+import { createMockAccount, createMockRecurringItem, createMockPlannedItem, createMockTaxedIncome, createMockSnapshot } from '@/test/mocks';
 
 describe('calculateProjection', () => {
   const account = createMockAccount({
@@ -504,6 +504,123 @@ describe('calculateProjection', () => {
 
       expect(result[0].totalIncome).toBe(3000); // Only salary
     });
+  });
+
+  describe('snapshot anchoring', () => {
+    it('re-anchors on a later snapshot (month + reconciled balance)', () => {
+      const income = createMockRecurringItem({ accountId: account.id, type: 'income', amount: 3000, frequency: 'monthly', startDate: '2026-01' });
+      const expense = createMockRecurringItem({ accountId: account.id, type: 'expense', amount: 2000, frequency: 'monthly', startDate: '2026-01' });
+      const snapshot = createMockSnapshot({ yearMonth: '2026-04', actualBalance: 9000 });
+
+      const result = calculateProjection(account, [income, expense], [], [], undefined, snapshot);
+
+      // Projection now starts at the snapshot month with the reconciled balance,
+      // not at the genesis month with the genesis balance.
+      expect(result[0].yearMonth).toBe('2026-04');
+      expect(result[0].startingBalance).toBe(9000);
+      expect(result[0].endingBalance).toBe(10000);
+      // Rolling horizon of 6 months from the anchor: Apr..Sep
+      expect(result).toHaveLength(6);
+      expect(result[result.length - 1].yearMonth).toBe('2026-09');
+    });
+
+    it('ignores a snapshot earlier than the genesis month', () => {
+      const income = createMockRecurringItem({ accountId: account.id, type: 'income', amount: 1000, frequency: 'monthly', startDate: '2026-01' });
+      const snapshot = createMockSnapshot({ yearMonth: '2025-10', actualBalance: 99999 });
+
+      const withSnap = calculateProjection(account, [income], [], [], undefined, snapshot);
+      const without = calculateProjection(account, [income], []);
+
+      expect(withSnap).toEqual(without);
+      expect(withSnap[0].yearMonth).toBe('2026-01');
+      expect(withSnap[0].startingBalance).toBe(5000);
+    });
+
+    it('anchors when the snapshot month equals the genesis month', () => {
+      const snapshot = createMockSnapshot({ yearMonth: '2026-01', actualBalance: 7777 });
+      const result = calculateProjection(account, [], [], [], undefined, snapshot);
+      expect(result[0].yearMonth).toBe('2026-01');
+      expect(result[0].startingBalance).toBe(7777);
+    });
+
+    it('falls back to genesis when the snapshot is null (backward compatible)', () => {
+      const withNull = calculateProjection(account, [], [], [], undefined, null);
+      const without = calculateProjection(account, [], []);
+      expect(withNull).toEqual(without);
+    });
+
+    it('drops a pre-anchor recurring override once the projection re-anchors forward', () => {
+      const recurring = createMockRecurringItem({ accountId: account.id, type: 'expense', amount: 1000, startDate: '2026-01' });
+      const override = createMockPlannedItem({
+        accountId: account.id, type: 'expense', kind: 'one-off', amount: 5000,
+        scheduledDate: '2026-01', isRecurringOverride: true, linkedRecurringItemId: recurring.id,
+      });
+      const snapshot = createMockSnapshot({ yearMonth: '2026-04', actualBalance: 9000 });
+
+      const result = calculateProjection(account, [recurring], [override], [], undefined, snapshot);
+
+      // First projected month is the anchor (Apr); the Jan override is gone, so the original amount applies.
+      expect(result[0].yearMonth).toBe('2026-04');
+      expect(result[0].totalExpenses).toBe(1000);
+    });
+  });
+});
+
+describe('resolveAnchor', () => {
+  it('returns genesis when no snapshot is given', () => {
+    expect(resolveAnchor('2026-01', 5000, null)).toEqual({ startMonth: '2026-01', startBalance: 5000 });
+    expect(resolveAnchor('2026-01', 5000, undefined)).toEqual({ startMonth: '2026-01', startBalance: 5000 });
+  });
+
+  it('uses the snapshot when its month is after genesis', () => {
+    const snap = createMockSnapshot({ yearMonth: '2026-05', actualBalance: 8000 });
+    expect(resolveAnchor('2026-01', 5000, snap)).toEqual({ startMonth: '2026-05', startBalance: 8000 });
+  });
+
+  it('uses the snapshot at the genesis-month boundary', () => {
+    const snap = createMockSnapshot({ yearMonth: '2026-01', actualBalance: 8000 });
+    expect(resolveAnchor('2026-01', 5000, snap)).toEqual({ startMonth: '2026-01', startBalance: 8000 });
+  });
+
+  it('falls back to genesis when the snapshot predates it', () => {
+    const snap = createMockSnapshot({ yearMonth: '2025-12', actualBalance: 8000 });
+    expect(resolveAnchor('2026-01', 5000, snap)).toEqual({ startMonth: '2026-01', startBalance: 5000 });
+  });
+
+  it('negates a debt snapshot balance back to positive principal', () => {
+    const snap = createMockSnapshot({ entityType: 'debt', yearMonth: '2026-03', actualBalance: -42000 });
+    expect(resolveAnchor('2025-01', 50000, snap, true)).toEqual({ startMonth: '2026-03', startBalance: 42000 });
+  });
+});
+
+describe('generateMonthList', () => {
+  it('starts at startingDate with no anchor and spans the horizon', () => {
+    const a = createMockAccount({ startingDate: '2026-01', planningHorizonMonths: 6 });
+    const months = generateMonthList(a);
+    expect(months).toHaveLength(6);
+    expect(months[0]).toBe('2026-01');
+    expect(months[5]).toBe('2026-06');
+  });
+
+  it('starts at the anchor month with a rolling horizon', () => {
+    const a = createMockAccount({ startingDate: '2026-01', planningHorizonMonths: 6 });
+    const months = generateMonthList(a, { startMonth: '2026-04', startBalance: 0 });
+    expect(months).toHaveLength(6);
+    expect(months[0]).toBe('2026-04');
+    expect(months[5]).toBe('2026-09');
+  });
+
+  it('respects customEndDate when the anchor is before it', () => {
+    const a = createMockAccount({ startingDate: '2026-01', planningHorizonMonths: -1, customEndDate: '2026-06' });
+    const months = generateMonthList(a, { startMonth: '2026-03', startBalance: 0 });
+    expect(months[0]).toBe('2026-03');
+    expect(months[months.length - 1]).toBe('2026-06');
+  });
+
+  it('returns an empty list when the anchor is past customEndDate', () => {
+    const a = createMockAccount({ startingDate: '2026-01', planningHorizonMonths: -1, customEndDate: '2026-06' });
+    const months = generateMonthList(a, { startMonth: '2026-09', startBalance: 0 });
+    expect(months).toHaveLength(0);
   });
 });
 

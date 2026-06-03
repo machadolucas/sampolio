@@ -106,5 +106,27 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         }
       },
     }),
+    // Dev-only, password-less bypass for local UI testing / Preview browser.
+    // Double-guarded: only outside production AND when DEV_AUTH_BYPASS is set, so
+    // this provider is never even registered in a production build.
+    ...(process.env.NODE_ENV !== 'production' && process.env.DEV_AUTH_BYPASS
+      ? [
+          Credentials({
+            id: 'dev-bypass',
+            name: 'Dev Bypass',
+            credentials: {},
+            async authorize() {
+              const email = process.env.DEV_AUTH_BYPASS!.trim().toLowerCase();
+              const user = await findUserByEmail(email);
+              if (!user) {
+                console.error(`[auth] DEV_AUTH_BYPASS="${email}" but no such user exists locally. Sign that account up first (or check ENCRYPTION_KEY).`);
+                return null;
+              }
+              console.warn(`[auth] ⚠️  DEV AUTH BYPASS active — signing in as ${email} without a password.`);
+              return { id: user.id, email: user.email, name: user.name, role: user.role };
+            },
+          }),
+        ]
+      : []),
   ],
 });

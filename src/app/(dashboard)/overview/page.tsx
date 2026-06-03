@@ -16,9 +16,10 @@ import { getInvestmentAccounts, getContributions } from '@/lib/actions/investmen
 import { getReceivables, getRepayments } from '@/lib/actions/receivables';
 import { getDebts, getReferenceRates, getExtraPayments } from '@/lib/actions/debts';
 import { getProjection } from '@/lib/actions/projection';
-import { getLatestCompletedSession } from '@/lib/actions/reconciliation';
+import { getLatestCompletedSession, getLatestSnapshot } from '@/lib/actions/reconciliation';
 import { calculateWealthProjection, getLatestEndDate } from '@/lib/wealth-projection';
-import type { FinancialAccount, InvestmentAccount, Receivable, Debt, TimeHorizon, WealthProjectionMonth, Currency, InvestmentContribution, ReceivableRepayment, DebtReferenceRate, DebtExtraPayment, MonthlyProjection } from '@/types';
+import { getMonthsBetween } from '@/lib/projection';
+import type { FinancialAccount, InvestmentAccount, Receivable, Debt, TimeHorizon, WealthProjectionMonth, Currency, InvestmentContribution, ReceivableRepayment, DebtReferenceRate, DebtExtraPayment, MonthlyProjection, BalanceSnapshot } from '@/types';
 import { NetWorthChart, WealthChart } from '@/components/charts';
 import { EntityListDrawer } from '@/components/ui/entity-list-drawer';
 import { StatusHeroCard } from '@/components/ui/status-hero-card';
@@ -215,12 +216,15 @@ export default function OverviewPage() {
             }
 
             // Fetch sub-data for wealth projection in parallel
-            const [contributionsResults, repaymentsResults, ratesResults, extraPaymentsResults, cashProjectionsResults] = await Promise.all([
+            const [contributionsResults, repaymentsResults, ratesResults, extraPaymentsResults, cashProjectionsResults, investmentSnapshotResults, receivableSnapshotResults, debtSnapshotResults] = await Promise.all([
                 Promise.all(activeInvestments.map((inv: InvestmentAccount) => getContributions(inv.id).then(r => [inv.id, r.success && r.data ? r.data : []] as [string, InvestmentContribution[]]))),
                 Promise.all(activeReceivables.map((rec: Receivable) => getRepayments(rec.id).then(r => [rec.id, r.success && r.data ? r.data : []] as [string, ReceivableRepayment[]]))),
                 Promise.all(activeDebts.map((d: Debt) => getReferenceRates(d.id).then(r => [d.id, r.success && r.data ? r.data : []] as [string, DebtReferenceRate[]]))),
                 Promise.all(activeDebts.map((d: Debt) => getExtraPayments(d.id).then(r => [d.id, r.success && r.data ? r.data : []] as [string, DebtExtraPayment[]]))),
                 Promise.all(activeAccounts.map((a: FinancialAccount) => getProjection(a.id).then(r => [a.id, r.success && r.data ? r.data.monthly : []] as [string, MonthlyProjection[]]))),
+                Promise.all(activeInvestments.map((inv: InvestmentAccount) => getLatestSnapshot('investment', inv.id).then(r => [inv.id, r.success && r.data ? r.data : null] as [string, BalanceSnapshot | null]))),
+                Promise.all(activeReceivables.map((rec: Receivable) => getLatestSnapshot('receivable', rec.id).then(r => [rec.id, r.success && r.data ? r.data : null] as [string, BalanceSnapshot | null]))),
+                Promise.all(activeDebts.map((d: Debt) => getLatestSnapshot('debt', d.id).then(r => [d.id, r.success && r.data ? r.data : null] as [string, BalanceSnapshot | null]))),
             ]);
 
             const investmentContributions = new Map<string, InvestmentContribution[]>(contributionsResults);
@@ -228,6 +232,9 @@ export default function OverviewPage() {
             const debtReferenceRates = new Map<string, DebtReferenceRate[]>(ratesResults);
             const debtExtraPayments = new Map<string, DebtExtraPayment[]>(extraPaymentsResults);
             const cashProjections = new Map<string, MonthlyProjection[]>(cashProjectionsResults);
+            const investmentSnapshots = new Map<string, BalanceSnapshot | null>(investmentSnapshotResults);
+            const receivableSnapshots = new Map<string, BalanceSnapshot | null>(receivableSnapshotResults);
+            const debtSnapshots = new Map<string, BalanceSnapshot | null>(debtSnapshotResults);
 
             const wealthData = {
                 cashAccounts: activeAccounts,
@@ -239,6 +246,9 @@ export default function OverviewPage() {
                 debts: activeDebts,
                 debtReferenceRates,
                 debtExtraPayments,
+                investmentSnapshots,
+                receivableSnapshots,
+                debtSnapshots,
             };
 
             const now = new Date();
@@ -394,22 +404,27 @@ export default function OverviewPage() {
                 />
             </div>
 
-            {/* Stale reconciliation banner */}
+            {/* Check-in reminder — detects the exact month that still needs a check-in */}
             {(() => {
+                const bannerClass = `flex items-center gap-3 p-4 rounded-lg border ${isDark ? 'bg-yellow-900/20 border-yellow-800 text-yellow-400' : 'bg-yellow-50 border-yellow-200 text-yellow-700'}`;
                 if (!lastReconciled) return (
-                    <div className={`flex items-center gap-3 p-4 rounded-lg border ${isDark ? 'bg-yellow-900/20 border-yellow-800 text-yellow-400' : 'bg-yellow-50 border-yellow-200 text-yellow-700'}`}>
+                    <div className={bannerClass}>
                         <MdSync size={20} />
-                        <span>You haven&apos;t done a check-in yet. Verify your balances to keep projections accurate.</span>
+                        <span>You haven&apos;t done a check-in yet. Verify your balances for {formatYearMonth(currentYearMonth)} to keep projections accurate.</span>
                         <Button label="Start check-in" size="small" severity="warning" className="ml-auto" onClick={() => appContext?.openReconcile()} />
                     </div>
                 );
-                const lastDate = new Date(lastReconciled + '-15');
-                const daysSince = Math.floor((Date.now() - lastDate.getTime()) / (1000 * 60 * 60 * 24));
-                if (daysSince > 30) return (
-                    <div className={`flex items-center gap-3 p-4 rounded-lg border ${isDark ? 'bg-yellow-900/20 border-yellow-800 text-yellow-400' : 'bg-yellow-50 border-yellow-200 text-yellow-700'}`}>
+                // How many whole months between the last check-in and the current month.
+                const monthsBehind = getMonthsBetween(lastReconciled, currentYearMonth);
+                if (monthsBehind >= 1) return (
+                    <div className={bannerClass}>
                         <MdSync size={20} />
-                        <span>It&apos;s been over a month since your last check-in ({formatYearMonth(lastReconciled)}). Time for a quick review?</span>
-                        <Button label="Start check-in" size="small" severity="warning" className="ml-auto" onClick={() => appContext?.openReconcile()} />
+                        <span>
+                            {monthsBehind === 1
+                                ? `Your last check-in was ${formatYearMonth(lastReconciled)}. Time to check in for ${formatYearMonth(currentYearMonth)}.`
+                                : `It's been ${monthsBehind} months since your last check-in (${formatYearMonth(lastReconciled)}). Check in for ${formatYearMonth(currentYearMonth)} to keep your forecasts accurate.`}
+                        </span>
+                        <Button label="Check in now" size="small" severity="warning" className="ml-auto" onClick={() => appContext?.openReconcile()} />
                     </div>
                 );
                 return null;

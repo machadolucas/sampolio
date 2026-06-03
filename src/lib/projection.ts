@@ -8,7 +8,8 @@ import type {
   YearlyRollup,
   ProjectionLineItem,
   ProjectionFilters,
-  Frequency
+  Frequency,
+  BalanceSnapshot
 } from '@/types';
 
 // Year-Month utility functions
@@ -125,20 +126,59 @@ export function getPlannedRepeatingOccurrences(
   return occurrences;
 }
 
+/**
+ * The effective starting point of a projection: either the entity's genesis
+ * (e.g. an account's startingDate/startingBalance) or, when the entity has been
+ * reconciled, its latest reconciliation snapshot (that month + actual balance).
+ */
+export interface ProjectionAnchor {
+  startMonth: YearMonth;
+  startBalance: number;
+}
+
+/**
+ * Resolve the effective projection anchor. When a reconciliation snapshot exists
+ * at or after the genesis month, the projection re-bases on the reconciled
+ * balance for that month; otherwise it falls back to the genesis values.
+ *
+ * This is what keeps forecasts correct after a monthly check-in without the user
+ * having to edit the account's start month — the latest confirmed balance becomes
+ * the new starting point automatically.
+ *
+ * @param negate Debts store snapshot balances as negative values; pass true to
+ *               convert back to the positive principal the engines expect.
+ */
+export function resolveAnchor(
+  genesisMonth: YearMonth,
+  genesisBalance: number,
+  latestSnapshot?: BalanceSnapshot | null,
+  negate = false
+): ProjectionAnchor {
+  if (latestSnapshot && compareYearMonths(latestSnapshot.yearMonth, genesisMonth) >= 0) {
+    const balance = negate ? Math.abs(latestSnapshot.actualBalance) : latestSnapshot.actualBalance;
+    return { startMonth: latestSnapshot.yearMonth, startBalance: balance };
+  }
+  return { startMonth: genesisMonth, startBalance: genesisBalance };
+}
+
 // Generate the list of months for projection
 export function generateMonthList(
-  account: FinancialAccount
+  account: FinancialAccount,
+  anchor?: ProjectionAnchor
 ): YearMonth[] {
   const months: YearMonth[] = [];
+  const startMonth = anchor?.startMonth ?? account.startingDate;
   let endDate: YearMonth;
 
   if (account.customEndDate) {
     endDate = account.customEndDate;
   } else {
-    endDate = addMonths(account.startingDate, account.planningHorizonMonths - 1);
+    // Measure the horizon from the anchor so the forward window stays constant
+    // after each check-in (a rolling horizon), rather than shrinking over time.
+    endDate = addMonths(startMonth, account.planningHorizonMonths - 1);
   }
 
-  let currentDate = account.startingDate;
+  let currentDate = startMonth;
   while (compareYearMonths(currentDate, endDate) <= 0) {
     months.push(currentDate);
     currentDate = addMonths(currentDate, 1);
@@ -153,12 +193,14 @@ export function calculateProjection(
   recurringItems: RecurringItem[],
   plannedItems: PlannedItem[],
   taxedIncomes: TaxedIncome[] = [],
-  filters?: ProjectionFilters
+  filters?: ProjectionFilters,
+  latestSnapshot?: BalanceSnapshot | null
 ): MonthlyProjection[] {
-  const months = generateMonthList(account);
+  const anchor = resolveAnchor(account.startingDate, account.startingBalance, latestSnapshot);
+  const months = generateMonthList(account, anchor);
   const projections: MonthlyProjection[] = [];
 
-  let runningBalance = account.startingBalance;
+  let runningBalance = anchor.startBalance;
 
   // Separate recurring-override PlannedItems from regular ones
   // Skip overrides older than 2 months before the projection start to keep the override map clean

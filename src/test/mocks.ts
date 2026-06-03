@@ -12,6 +12,7 @@ import type {
   DebtReferenceRate,
   DebtExtraPayment,
   SalaryBenefit,
+  BalanceSnapshot,
   Currency,
 } from '@/types';
 
@@ -183,6 +184,21 @@ export function createMockExtraPayment(overrides?: Partial<DebtExtraPayment>): D
     debtId: 'test-debt',
     date: '2026-06',
     amount: 5000,
+    createdAt: now,
+    ...overrides,
+  };
+}
+
+export function createMockSnapshot(overrides?: Partial<BalanceSnapshot>): BalanceSnapshot {
+  return {
+    id: uuidv4(),
+    userId: 'test-user',
+    entityType: 'cash-account',
+    entityId: 'test-account',
+    yearMonth: '2026-03',
+    expectedBalance: 5000,
+    actualBalance: 6000,
+    variance: 1000,
     createdAt: now,
     ...overrides,
   };

@@ -144,6 +144,21 @@ export function proxy(request: NextRequest) {
     }
   }
 
+  // Dev-only auth bypass: route unauthenticated users straight to /dev-login
+  // (which signs them in as DEV_AUTH_BYPASS) instead of the sign-in form, so the
+  // Preview browser reaches an authenticated page in one hop. Inert in production
+  // and when the flag is unset.
+  if (
+    process.env.NODE_ENV !== 'production' &&
+    process.env.DEV_AUTH_BYPASS &&
+    !hasAuthSession(request) &&
+    !pathname.startsWith('/dev-login') &&
+    !pathname.startsWith('/api/auth') &&
+    (pathname === '/' || pathname.startsWith('/auth/signin') || pathname.startsWith('/auth/signup'))
+  ) {
+    return NextResponse.redirect(new URL('/dev-login', request.url));
+  }
+
   // Protect dashboard routes - require authentication
   // Note: This is a lightweight check based on cookie presence
   // The actual session validation happens server-side in auth()

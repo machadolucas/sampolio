@@ -169,12 +169,13 @@ const { control, handleSubmit, formState: { errors } } = useForm<SomeFormData>({
 
 The cashflow projection engine (`src/lib/projection.ts`) calculates monthly projections for a single account:
 ```typescript
-calculateProjection(account, recurringItems, plannedItems, taxedIncomes?, filters?)
+calculateProjection(account, recurringItems, plannedItems, taxedIncomes?, filters?, latestSnapshot?)
 ```
 
 - **TaxedIncome** items are included in projections using their `netAmount` (not `grossAmount`)
 - **Occurrence overrides** older than 2 months before the projection start are automatically excluded
 - The `cachedGetAccountProjectionData` batch function fetches all projection data in one cached call
+- **Snapshot anchoring**: projections start from the *latest reconciliation snapshot* (its `yearMonth` + `actualBalance`) when one exists, falling back to the account's genesis `startingDate`/`startingBalance` otherwise. `resolveAnchor()` (in `projection.ts`) is the single helper for this; pass the latest snapshot (`cachedGetLatestSnapshot`) into `calculateProjection`. This is why forecasts stay correct after a monthly check-in **without** editing the account's start month. The same anchoring applies to investments/debts/receivables in `wealth-projection.ts` (debts negate the snapshot, which is stored negative). The horizon is measured from the anchor (rolling window).
 
 ### Date Handling
 

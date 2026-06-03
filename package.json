@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev -p 3999",
+    "dev:preview": "DEV_AUTH_BYPASS=machadolucas@me.com next dev -p 3999",
     "build": "npm run copy-themes && next build",
     "start": "next start",
     "lint": "eslint",

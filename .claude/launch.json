@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "sampolio-preview",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": ["-c", "DEV_AUTH_BYPASS=machadolucas@me.com exec ./node_modules/.bin/next dev -p 3999"],
+      "port": 3999
+    }
+  ]
+}

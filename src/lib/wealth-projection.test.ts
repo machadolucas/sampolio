@@ -9,6 +9,7 @@ import {
   createMockReceivable,
   createMockReferenceRate,
   createMockExtraPayment,
+  createMockSnapshot,
 } from '@/test/mocks';
 
 function buildWealthData(overrides?: Partial<WealthProjectionData>): WealthProjectionData {
@@ -277,6 +278,77 @@ describe('calculateWealthProjection', () => {
       expect(result[0].netWorth).toBe(13000);
       // Month 3: cash 10000 + inv 5000 - debt 0 = 15000
       expect(result[2].netWorth).toBe(15000);
+    });
+  });
+
+  describe('snapshot anchoring', () => {
+    it('anchors an investment on its latest snapshot (positive balance)', () => {
+      const inv = createMockInvestment({ startingValuation: 10000, annualGrowthRate: 0, valuationDate: '2026-01' });
+      const snapshot = createMockSnapshot({ entityType: 'investment', entityId: inv.id, yearMonth: '2026-03', actualBalance: 22000 });
+
+      const data = buildWealthData({
+        investments: [inv],
+        investmentContributions: new Map([[inv.id, []]]),
+        investmentSnapshots: new Map([[inv.id, snapshot]]),
+      });
+
+      const result = calculateWealthProjection(data, '2026-03', '2026-05');
+      // No growth, no contributions → stays at the reconciled value, not the genesis 10000.
+      expect(result[0].yearMonth).toBe('2026-03');
+      expect(result[0].investmentsTotal).toBe(22000);
+    });
+
+    it('anchors a debt on its latest (negative) snapshot, abs back to principal', () => {
+      const debt = createMockDebt({
+        debtType: 'fixed-installment', initialPrincipal: 100000, interestModelType: 'none',
+        installmentAmount: 1000, totalInstallments: 100, remainingInstallments: 10, startDate: '2025-01',
+      });
+      const snapshot = createMockSnapshot({ entityType: 'debt', entityId: debt.id, yearMonth: '2026-01', actualBalance: -8000 });
+
+      const data = buildWealthData({
+        debts: [debt],
+        debtReferenceRates: new Map([[debt.id, []]]),
+        debtExtraPayments: new Map([[debt.id, []]]),
+        debtSnapshots: new Map([[debt.id, snapshot]]),
+      });
+
+      const result = calculateWealthProjection(data, '2026-01', '2026-03');
+      // Anchored at 8000 principal (|−8000|); 1000/mo installment → 7000, 6000.
+      expect(result[0].debtsTotal).toBe(7000);
+      expect(result[1].debtsTotal).toBe(6000);
+    });
+
+    it('anchors a receivable on its latest snapshot', () => {
+      const rec = createMockReceivable({
+        initialPrincipal: 5000, currentBalance: 5000, hasInterest: false,
+        expectedMonthlyRepayment: 500, startDate: '2025-06',
+      });
+      const snapshot = createMockSnapshot({ entityType: 'receivable', entityId: rec.id, yearMonth: '2026-01', actualBalance: 2000 });
+
+      const data = buildWealthData({
+        receivables: [rec],
+        receivableRepayments: new Map([[rec.id, []]]),
+        receivableSnapshots: new Map([[rec.id, snapshot]]),
+      });
+
+      const result = calculateWealthProjection(data, '2026-01', '2026-03');
+      // Anchored at 2000, 500/mo repayment → 1500, 1000, 500.
+      expect(result[0].receivablesTotal).toBe(1500);
+      expect(result[2].receivablesTotal).toBe(500);
+    });
+
+    it('ignores a snapshot earlier than the entity genesis', () => {
+      const inv = createMockInvestment({ startingValuation: 10000, annualGrowthRate: 0, valuationDate: '2026-06' });
+      const snapshot = createMockSnapshot({ entityType: 'investment', entityId: inv.id, yearMonth: '2026-01', actualBalance: 99999 });
+
+      const data = buildWealthData({
+        investments: [inv],
+        investmentContributions: new Map([[inv.id, []]]),
+        investmentSnapshots: new Map([[inv.id, snapshot]]),
+      });
+
+      const result = calculateWealthProjection(data, '2026-06', '2026-07');
+      expect(result[0].investmentsTotal).toBe(10000); // genesis, snapshot ignored
     });
   });
 });

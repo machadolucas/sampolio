@@ -24,6 +24,7 @@ import type {
   ReceivableProjectionRow,
   MonthlyProjection,
   Frequency,
+  BalanceSnapshot,
 } from '@/types';
 import {
   parseYearMonth,
@@ -32,6 +33,7 @@ import {
   compareYearMonths,
   getIntervalMonths,
   isYearMonthInRange,
+  resolveAnchor,
 } from './projection';
 
 // ============================================================
@@ -91,17 +93,20 @@ function calculateInvestmentProjection(
   investment: InvestmentAccount,
   contributions: InvestmentContribution[],
   startDate: YearMonth,
-  endDate: YearMonth
+  endDate: YearMonth,
+  latestSnapshot?: BalanceSnapshot | null
 ): InvestmentProjectionRow[] {
   const rows: InvestmentProjectionRow[] = [];
   const monthlyRate = getMonthlyGrowthRate(investment.annualGrowthRate);
 
-  let currentDate = investment.valuationDate;
-  let currentValuation = investment.startingValuation;
+  // Anchor on the latest reconciliation snapshot when available, else genesis.
+  const anchor = resolveAnchor(investment.valuationDate, investment.startingValuation, latestSnapshot);
+  let currentDate = anchor.startMonth;
+  let currentValuation = anchor.startBalance;
 
-  // If startDate is before valuationDate, start from valuationDate
-  if (compareYearMonths(startDate, investment.valuationDate) < 0) {
-    currentDate = investment.valuationDate;
+  // If startDate is before the anchor, start from the anchor
+  if (compareYearMonths(startDate, anchor.startMonth) < 0) {
+    currentDate = anchor.startMonth;
   } else {
     // Project forward to startDate first
     while (compareYearMonths(currentDate, startDate) < 0) {
@@ -170,7 +175,8 @@ function calculateReceivableProjection(
   receivable: Receivable,
   repayments: ReceivableRepayment[],
   startDate: YearMonth,
-  endDate: YearMonth
+  endDate: YearMonth,
+  latestSnapshot?: BalanceSnapshot | null
 ): ReceivableProjectionRow[] {
   const rows: ReceivableProjectionRow[] = [];
 
@@ -181,8 +187,10 @@ function calculateReceivableProjection(
     repaymentsByMonth.set(repayment.date, existing + repayment.amount);
   }
 
-  let currentDate = receivable.startDate;
-  let currentBalance = receivable.initialPrincipal;
+  // Anchor on the latest reconciliation snapshot when available, else genesis.
+  const anchor = resolveAnchor(receivable.startDate, receivable.initialPrincipal, latestSnapshot);
+  let currentDate = anchor.startMonth;
+  let currentBalance = anchor.startBalance;
   const monthlyInterestRate = receivable.hasInterest
     ? (receivable.annualInterestRate ?? 0) / 100 / 12
     : 0;
@@ -263,7 +271,8 @@ function calculateDebtAmortization(
   referenceRates: DebtReferenceRate[],
   extraPayments: DebtExtraPayment[],
   startDate: YearMonth,
-  endDate: YearMonth
+  endDate: YearMonth,
+  latestSnapshot?: BalanceSnapshot | null
 ): DebtAmortizationRow[] {
   const rows: DebtAmortizationRow[] = [];
 
@@ -274,11 +283,17 @@ function calculateDebtAmortization(
     extraPaymentsByMonth.set(payment.date, existing + payment.amount);
   }
 
-  let currentDate = debt.startDate;
-  let remainingPrincipal = debt.initialPrincipal;
+  // Anchor on the latest reconciliation snapshot when available, else genesis.
+  // Debt snapshots are stored negative, so negate back to a positive principal.
+  const anchored = !!latestSnapshot && compareYearMonths(latestSnapshot.yearMonth, debt.startDate) >= 0;
+  const anchor = resolveAnchor(debt.startDate, debt.initialPrincipal, latestSnapshot, true);
+  let currentDate = anchor.startMonth;
+  let remainingPrincipal = anchor.startBalance;
 
-  // For fixed-installment debts
-  let installmentsRemaining = debt.totalInstallments ?? 0;
+  // For fixed-installment debts: prefer the reconciled remaining count when anchored.
+  let installmentsRemaining = anchored && debt.remainingInstallments != null
+    ? debt.remainingInstallments
+    : (debt.totalInstallments ?? 0);
 
   while (compareYearMonths(currentDate, endDate) <= 0 && remainingPrincipal > 0) {
     const startingPrincipal = remainingPrincipal;
@@ -345,6 +360,11 @@ export interface WealthProjectionData {
   debts: Debt[];
   debtReferenceRates: Map<string, DebtReferenceRate[]>;
   debtExtraPayments: Map<string, DebtExtraPayment[]>;
+  // Latest reconciliation snapshot per entity, used to re-anchor projections
+  // on the most recently confirmed balance. Optional/back-compatible.
+  investmentSnapshots?: Map<string, BalanceSnapshot | null>;
+  receivableSnapshots?: Map<string, BalanceSnapshot | null>;
+  debtSnapshots?: Map<string, BalanceSnapshot | null>;
 }
 
 /**
@@ -363,7 +383,7 @@ export function calculateWealthProjection(
     const contribs = data.investmentContributions.get(inv.id) || [];
     investmentProjections.set(
       inv.id,
-      calculateInvestmentProjection(inv, contribs, startDate, endDate)
+      calculateInvestmentProjection(inv, contribs, startDate, endDate, data.investmentSnapshots?.get(inv.id))
     );
   }
 
@@ -372,7 +392,7 @@ export function calculateWealthProjection(
     const repayments = data.receivableRepayments.get(rec.id) || [];
     receivableProjections.set(
       rec.id,
-      calculateReceivableProjection(rec, repayments, startDate, endDate)
+      calculateReceivableProjection(rec, repayments, startDate, endDate, data.receivableSnapshots?.get(rec.id))
     );
   }
 
@@ -382,7 +402,7 @@ export function calculateWealthProjection(
     const extras = data.debtExtraPayments.get(debt.id) || [];
     debtProjections.set(
       debt.id,
-      calculateDebtAmortization(debt, rates, extras, startDate, endDate)
+      calculateDebtAmortization(debt, rates, extras, startDate, endDate, data.debtSnapshots?.get(debt.id))
     );
   }
 
@@ -414,7 +434,7 @@ export function calculateWealthProjection(
     for (const inv of data.investments) {
       const projections = investmentProjections.get(inv.id) || [];
       const monthProjection = projections.find((p) => p.yearMonth === currentDate);
-      const valuation = monthProjection?.endingValuation ?? inv.startingValuation;
+      const valuation = monthProjection?.endingValuation ?? (inv.currentValuation ?? inv.startingValuation);
       investmentsBreakdown.push({
         accountId: inv.id,
         name: inv.name,

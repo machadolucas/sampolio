@@ -219,6 +219,9 @@ function AccountForm({ account, onSave, onCancel, showToast }: {
     const [startingDate, setStartingDate] = useState(account?.startingDate || getCurrentYearMonth());
     const [planningHorizonMonths, setPlanningHorizonMonths] = useState(account?.planningHorizonMonths || 36);
     const [customEndDate, setCustomEndDate] = useState(account?.customEndDate || '');
+    // Hidden by default — the start month is auto-managed. Only auto-expand for an
+    // existing account whose start month isn't the current month (e.g. backfilled history).
+    const [showAdvanced, setShowAdvanced] = useState(!!account && account.startingDate !== getCurrentYearMonth());
     const [error, setError] = useState('');
     const [isSaving, setIsSaving] = useState(false);
 
@@ -259,11 +262,6 @@ function AccountForm({ account, onSave, onCancel, showToast }: {
             </div>
 
             <div className="flex flex-col gap-1">
-                <label className="font-medium text-sm">Starting Date</label>
-                <MonthPicker value={startingDate} onChange={setStartingDate} placeholder="When to start projections" helpText="The month from which projections begin. Usually the current month." />
-            </div>
-
-            <div className="flex flex-col gap-1">
                 <label className="font-medium text-sm">Planning Horizon</label>
                 <Dropdown value={planningHorizonMonths} onChange={(e: DropdownChangeEvent) => setPlanningHorizonMonths(e.value)} options={PLANNING_HORIZONS} optionLabel="label" optionValue="value" placeholder="How far ahead to project" />
                 <HelpTip text="How many months into the future to project your balance." />
@@ -273,6 +271,19 @@ function AccountForm({ account, onSave, onCancel, showToast }: {
                 <div className="flex flex-col gap-1">
                     <label className="font-medium text-sm">Custom End Date</label>
                     <MonthPicker value={customEndDate} onChange={setCustomEndDate} placeholder="Projection end date" helpText="The last month to include in projections." />
+                </div>
+            )}
+
+            <div>
+                <button type="button" onClick={() => setShowAdvanced(v => !v)} className="text-sm text-blue-500 hover:underline">
+                    {showAdvanced ? 'Hide advanced options' : 'Advanced options'}
+                </button>
+            </div>
+
+            {showAdvanced && (
+                <div className="flex flex-col gap-1">
+                    <label className="font-medium text-sm">History Start Month</label>
+                    <MonthPicker value={startingDate} onChange={setStartingDate} placeholder="When to start projections" helpText="The month your history begins. Defaults to the current month — you normally don't need to change it. After each monthly check-in, projections automatically re-anchor on your latest confirmed balance." />
                 </div>
             )}
 
