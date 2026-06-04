@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { InputText } from 'primereact/inputtext';
-import { MdHome, MdAttachMoney, MdSettings, MdSync, MdAddCircle, MdRemoveCircle, MdSearch } from 'react-icons/md';
+import { MdHome, MdAttachMoney, MdSettings, MdSync, MdAddCircle, MdRemoveCircle, MdSearch, MdHouse } from 'react-icons/md';
 import { useTheme } from '@/components/providers/theme-provider';
 import type { Command, CommandType } from '@/types';
 
@@ -33,6 +33,15 @@ const NAVIGATION_COMMANDS: Command[] = [
         type: 'navigate',
         icon: <MdAttachMoney />,
         keywords: ['cash', 'flow', 'monthly', 'income', 'expense'],
+        action: () => { },
+    },
+    {
+        id: 'nav-mortgage',
+        label: 'Go to Mortgage',
+        description: 'Your shared home loan, ownership split, and payment schedule',
+        type: 'navigate',
+        icon: <MdHouse />,
+        keywords: ['mortgage', 'loan', 'house', 'home', 'asp', 'euribor', 'ownership'],
         action: () => { },
     },
     {
@@ -157,6 +166,7 @@ export function CommandPalette({
                 const paths: Record<string, string> = {
                     'nav-overview': '/',
                     'nav-cashflow': '/cashflow',
+                    'nav-mortgage': '/mortgage',
                     'nav-playground': '/playground',
                     'nav-settings': '/settings',
                 };

@@ -520,6 +520,319 @@ export interface UpdateDebtRequest extends Partial<CreateDebtRequest> {
 }
 
 // ============================================================
+// SHARED MORTGAGE
+// A dedicated, multi-user-shared home loan. Unlike Debt (single owner,
+// naïve monthly interest), this models a Finnish-style mortgage: one or
+// more sub-loans (e.g. an interest-subsidized ASP loan + a regular loan),
+// a yearly Euribor reset, actual/360 interest, time-effective fees, and a
+// 50/50 ownership-balancing story between the members.
+// Storage is shared (data/shared/mortgages); access is controlled by the
+// `members` list, not a single `userId`.
+// ============================================================
+
+export type MortgageLoanKind = 'asp' | 'regular';
+/** annuity-fixed-term: recompute the level payment at each rate reset to keep maturity fixed (Finnish tasaerä). */
+export type MortgagePaymentMode = 'annuity-fixed-term' | 'fixed-payment';
+export type MortgageDayCount = 'actual/360' | '30E/360';
+export type MortgageMemberRole = 'owner' | 'member';
+export type MortgageExtraPaymentMode = 'shorten-term' | 'lower-payment';
+/** loan-insurance is per-loan (needs loanId); invoicing-fee and service-fee are mortgage-level. */
+export type MortgageCostType = 'loan-insurance' | 'invoicing-fee' | 'service-fee';
+
+/** Government ASP interest-subsidy parameters (Finnish first-home scheme). */
+export interface MortgageAspSubsidyConfig {
+  enabled: boolean;
+  thresholdRate: number; // annual % above which the subsidy applies, e.g. 3.8
+  subsidyShare: number; // fraction of the excess interest the state pays, e.g. 0.7
+  eligibilityYears: number; // window from the loan start, e.g. 10
+}
+
+/** One sub-loan inside a shared mortgage (e.g. ASP vs regular). */
+export interface MortgageLoan {
+  id: string;
+  label: string; // "ASP loan", "Regular loan"
+  kind: MortgageLoanKind;
+  initialPrincipal: number; // genesis principal, e.g. 140000 / 153000
+  startDate: YearMonth; // first amortization month
+  originalTermMonths: number; // used to recompute the annuity at each reset
+  paymentMode: MortgagePaymentMode;
+  margin: number; // pp added on top of Euribor, e.g. 0.4
+  dayCount: MortgageDayCount;
+  paymentDayOfMonth?: number; // day the bank debits (e.g. 14); drives exact actual/360 spans
+  currentMonthlyPayment?: number; // last known principal+interest payment; seeds/overrides month 1
+  aspSubsidy?: MortgageAspSubsidyConfig; // meaningful only when kind === 'asp'
+}
+
+/** A member of the shared mortgage and their ownership-balancing config. */
+export interface MortgageMember {
+  userId: string;
+  email: string; // denormalized for display; resolved when added
+  name: string; // denormalized for display
+  role: MortgageMemberRole;
+  initialPayment: number; // down payment this member contributed, e.g. 31000 / 4000
+  loanSharePercent: number; // 0..1 share of the ongoing loan, e.g. 0.454 / 0.546
+  ownershipTargetPercent: number; // 0..1 target share of the home; members' targets sum to 1
+}
+
+/** Annual Euribor reset entry. Applies to the whole mortgage (every loan adds its own margin). */
+export interface MortgageRateEntry {
+  id: string;
+  mortgageId: string;
+  effectiveDate: YearMonth; // when this rate takes effect
+  euriborRate: number; // Euribor 12m, EXCLUDING margin
+  note?: string;
+  createdAt: string;
+}
+
+/** Time-effective fee/insurance value, so a later change keeps the full history. */
+export interface MortgageCostEntry {
+  id: string;
+  mortgageId: string;
+  type: MortgageCostType;
+  loanId?: string; // required for 'loan-insurance'
+  effectiveDate: YearMonth;
+  amount: number; // monthly amount (positive)
+  note?: string;
+  createdAt: string;
+}
+
+/** Manual early / extra payment against a specific sub-loan. */
+export interface MortgageExtraPayment {
+  id: string;
+  mortgageId: string;
+  loanId: string;
+  date: YearMonth;
+  amount: number;
+  mode: MortgageExtraPaymentMode; // shorten-term (finish earlier) or lower-payment (smaller installments)
+  note?: string;
+  createdAt: string;
+}
+
+/** Drift re-anchor: an observed actual balance for one loan at a month. */
+export interface MortgageBalanceSnapshot {
+  id: string;
+  mortgageId: string;
+  loanId: string;
+  yearMonth: YearMonth;
+  actualBalance: number; // POSITIVE remaining principal
+  note?: string;
+  createdAt: string;
+}
+
+/**
+ * A recorded ACTUAL monthly figure for one loan, imported from the bank's
+ * statements (or the user's spreadsheet). When present for a loan-month, the
+ * engine uses these verbatim instead of computing them — making the historical
+ * ledger an exact match. Projection resumes from the latest actual balance.
+ * All amounts are POSITIVE magnitudes.
+ */
+export interface MortgageActualEntry {
+  id: string;
+  mortgageId: string;
+  loanId: string;
+  yearMonth: YearMonth;
+  remaining: number; // remaining balance at end of the month
+  repayment: number; // the bank's total charge for the loan this month (incl insurance + invoicing share)
+  interest: number; // interest paid this month
+  insurance: number; // insurance paid this month
+  createdAt: string;
+}
+
+export interface SharedMortgage {
+  id: string;
+  name: string;
+  currency: Currency;
+  housePrice: number;
+  rateResetMonth: number; // 1-12, e.g. 12 (December)
+  rateResetDay: number; // 1-31, e.g. 14
+  loans: MortgageLoan[];
+  members: MortgageMember[];
+  isArchived: boolean;
+  createdBy: string; // userId of creator (becomes an 'owner')
+  createdAt: string;
+  updatedAt: string;
+  updatedBy: string;
+}
+
+// ---------- Request types ----------
+export interface CreateMortgageLoanInput {
+  label: string;
+  kind: MortgageLoanKind;
+  initialPrincipal: number;
+  startDate: YearMonth;
+  originalTermMonths: number;
+  paymentMode?: MortgagePaymentMode;
+  margin: number;
+  dayCount?: MortgageDayCount;
+  paymentDayOfMonth?: number;
+  currentMonthlyPayment?: number;
+  aspSubsidy?: MortgageAspSubsidyConfig;
+}
+
+export interface CreateMortgageMemberInput {
+  email: string;
+  role?: MortgageMemberRole;
+  initialPayment: number;
+  loanSharePercent: number;
+  ownershipTargetPercent: number;
+}
+
+export interface CreateMortgageRateInput {
+  effectiveDate: YearMonth;
+  euriborRate: number;
+  note?: string;
+}
+
+export interface CreateMortgageCostInput {
+  type: MortgageCostType;
+  loanId?: string;
+  effectiveDate: YearMonth;
+  amount: number;
+  note?: string;
+}
+
+export interface CreateMortgageRequest {
+  name: string;
+  currency: Currency;
+  housePrice: number;
+  rateResetMonth?: number;
+  rateResetDay?: number;
+  loans: CreateMortgageLoanInput[];
+  creatorInitialPayment: number;
+  creatorLoanSharePercent: number;
+  creatorOwnershipTargetPercent: number;
+  members?: CreateMortgageMemberInput[];
+  // genesis schedules (optional) so the back-history amortizes correctly
+  rates?: CreateMortgageRateInput[];
+  costs?: CreateMortgageCostInput[];
+}
+
+export interface UpdateMortgageRequest {
+  name?: string;
+  housePrice?: number;
+  rateResetMonth?: number;
+  rateResetDay?: number;
+  isArchived?: boolean;
+}
+
+export type UpdateMortgageLoanRequest = Partial<CreateMortgageLoanInput>;
+
+export interface AddMortgageMemberRequest {
+  email: string;
+  initialPayment: number;
+  loanSharePercent: number;
+  ownershipTargetPercent: number;
+  role?: MortgageMemberRole;
+}
+
+export interface UpdateMortgageMemberRequest {
+  role?: MortgageMemberRole;
+  initialPayment?: number;
+  loanSharePercent?: number;
+  ownershipTargetPercent?: number;
+}
+
+export interface SetMortgageRateRequest {
+  effectiveDate: YearMonth;
+  euriborRate: number;
+  note?: string;
+}
+
+export interface SetMortgageCostRequest {
+  type: MortgageCostType;
+  loanId?: string;
+  effectiveDate: YearMonth;
+  amount: number;
+  note?: string;
+}
+
+export interface CreateMortgageExtraPaymentRequest {
+  loanId: string;
+  date: YearMonth;
+  amount: number;
+  mode: MortgageExtraPaymentMode;
+  note?: string;
+}
+
+export interface CreateMortgageBalanceSnapshotRequest {
+  loanId: string;
+  yearMonth: YearMonth;
+  actualBalance: number;
+  note?: string;
+}
+
+export interface MortgageActualInput {
+  loanId: string;
+  yearMonth: YearMonth;
+  remaining: number;
+  repayment: number;
+  interest: number;
+  insurance: number;
+}
+
+export interface ImportMortgageActualsRequest {
+  entries: MortgageActualInput[];
+  /** When true, replace all existing actuals; otherwise upsert by loan+month. */
+  replaceAll?: boolean;
+}
+
+// ---------- Projection output types ----------
+export interface MortgageLoanProjectionMonth {
+  loanId: string;
+  startingPrincipal: number;
+  effectiveAnnualRate: number; // Euribor + margin, %
+  periodDays: number;
+  scheduledPayment: number; // principal + interest portion for the month
+  interestAccrued: number;
+  subsidy: number; // ASP subsidy applied this month (reduces interest paid)
+  interestPaid: number; // interestAccrued - subsidy
+  principalPaid: number;
+  extraPayment: number;
+  insurance: number; // monthly insurance for this loan
+  invoicingFeeShare: number; // this loan's share of the invoicing fee
+  monthlyCharge: number; // total bank charge for the loan = P+I + invoicing share + insurance + extra
+  endingPrincipal: number;
+  isActual: boolean; // true when this row came from a recorded actual
+}
+
+export interface MortgageMemberPosition {
+  userId: string;
+  stake: number; // initialPayment + loanShare*initialLoanTotal (≈ half the house)
+  liability: number; // loanShare*remainingTotal
+  equity: number; // stake - liability (== initialPayment + loanShare*principalPaid)
+  ownershipPercent: number; // equity / housePrice (→ target at payoff)
+  leftToOwnTarget: number; // member.ownershipTargetPercent*housePrice - equity
+  monthlyDeposit: number; // loanShare*totalRepayment + serviceFee — amount to transfer to the loan account
+}
+
+export interface MortgageProjectionMonth {
+  yearMonth: YearMonth;
+  year: number;
+  month: number;
+  periodDays: number;
+  isHistorical: boolean; // yearMonth <= current month
+  loans: MortgageLoanProjectionMonth[]; // per-loan detail (the expandable columns)
+  isAllActual: boolean; // every loan row this month is a recorded actual
+  // Summary/total columns (sums of the per-loan values)
+  totalRemaining: number;
+  totalRepayment: number; // Σ principal+interest (the amortizing installment)
+  totalCharge: number; // Σ monthlyCharge (full bank charge incl insurance + invoicing) = spreadsheet "total repayment"
+  totalInterest: number;
+  totalSubsidy: number;
+  totalInsurance: number;
+  invoicingFee: number; // mortgage-level
+  serviceFee: number; // mortgage-level
+  principalPaidTotal: number; // initialLoanTotal - totalRemaining
+  // Running cumulative totals to date (for the ledger footer)
+  cumPrincipalPaid: number;
+  cumInterestPaid: number;
+  cumInsurancePaid: number;
+  cumFeesPaid: number;
+  // Per-member ownership/equity positions
+  members: MortgageMemberPosition[];
+}
+
+// ============================================================
 // TAXED INCOME (Bonuses, Holiday Pay, etc.)
 // ============================================================
 
@@ -623,6 +936,13 @@ export interface WealthProjectionMonth {
   // Debts (negative values)
   debtsTotal: number;
   debtsBreakdown: { debtId: string; name: string; principal: number; interestPaid?: number }[];
+  // Shared mortgage — the logged-in member's slice (optional / back-compatible).
+  // equity is folded into netWorth; stake (home asset) and liability (loan share)
+  // are exposed separately so the wealth chart can show them as distinct bands.
+  mortgageEquityTotal?: number;
+  mortgageLiabilityTotal?: number;
+  mortgageStakeTotal?: number;
+  mortgagesBreakdown?: { mortgageId: string; name: string; stake: number; liability: number; equity: number }[];
   // Net worth
   netWorth: number;
 }
@@ -756,7 +1076,7 @@ export interface MonthFlowData {
 // NAVIGATION & UI STATE TYPES
 // ============================================================
 
-export type NavigationPage = 'overview' | 'cashflow' | 'playground' | 'settings';
+export type NavigationPage = 'overview' | 'cashflow' | 'mortgage' | 'playground' | 'settings';
 
 export type TimeHorizon = '6m' | '1y' | '3y' | '5y' | 'custom';
 

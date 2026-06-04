@@ -23,6 +23,13 @@
  *   user:{userId}:reconciliation                      – reconciliation data
  *   app-settings                                      – global app settings
  *   users                                             – all users list
+ *   mortgage:{mortgageId}                             – shared mortgage doc (loans + members)
+ *   mortgage:{mortgageId}:rates                       – Euribor reset history
+ *   mortgage:{mortgageId}:costs                       – fee/insurance history
+ *   mortgage:{mortgageId}:payments                    – extra payments
+ *   mortgage:{mortgageId}:snapshots                   – drift snapshots
+ *   mortgage:{mortgageId}:actuals                     – imported actual monthly history
+ *   user:{userId}:mortgages                           – a user's mortgage membership list
  */
 
 import { cacheTag, cacheLife } from 'next/cache';
@@ -39,6 +46,15 @@ import {
   getContributions,
 } from './investments';
 import { getDebts, getDebtById, getReferenceRates, getExtraPayments } from './debts';
+import {
+  getMortgageById as dbGetMortgageById,
+  getMortgagesForUser as dbGetMortgagesForUser,
+  getRates as dbGetMortgageRates,
+  getCosts as dbGetMortgageCosts,
+  getExtraPayments as dbGetMortgageExtraPayments,
+  getBalanceSnapshots as dbGetMortgageSnapshots,
+  getActuals as dbGetMortgageActuals,
+} from './shared-mortgages';
 import { getReceivables, getReceivableById, getRepayments } from './receivables';
 import { getGoals, getGoalById } from './goals';
 import { getUserPreferences } from './user-preferences';
@@ -74,6 +90,12 @@ import type {
   BalanceSnapshot,
   ReconciliationSession,
   EntityType,
+  SharedMortgage,
+  MortgageRateEntry,
+  MortgageCostEntry,
+  MortgageExtraPayment,
+  MortgageBalanceSnapshot,
+  MortgageActualEntry,
 } from '@/types';
 
 // ============================================================
@@ -411,6 +433,102 @@ export async function cachedGetLatestCompletedSession(
   cacheTag('all-data', `user:${userId}`, `user:${userId}:reconciliation`);
   cacheLife('indefinite');
   return getLatestCompletedSession(userId);
+}
+
+// ============================================================
+// SHARED MORTGAGES
+// Tags are keyed by mortgageId (not userId) so a single invalidation reaches
+// every member. Only the membership list is user-scoped.
+// ============================================================
+
+export async function cachedGetMortgagesForUser(userId: string): Promise<SharedMortgage[]> {
+  'use cache';
+  cacheTag('all-data', `user:${userId}:mortgages`);
+  cacheLife('indefinite');
+  return dbGetMortgagesForUser(userId);
+}
+
+export async function cachedGetMortgageById(mortgageId: string): Promise<SharedMortgage | null> {
+  'use cache';
+  cacheTag('all-data', `mortgage:${mortgageId}`);
+  cacheLife('indefinite');
+  return dbGetMortgageById(mortgageId);
+}
+
+export async function cachedGetMortgageRates(mortgageId: string): Promise<MortgageRateEntry[]> {
+  'use cache';
+  cacheTag('all-data', `mortgage:${mortgageId}:rates`);
+  cacheLife('indefinite');
+  return dbGetMortgageRates(mortgageId);
+}
+
+export async function cachedGetMortgageCosts(mortgageId: string): Promise<MortgageCostEntry[]> {
+  'use cache';
+  cacheTag('all-data', `mortgage:${mortgageId}:costs`);
+  cacheLife('indefinite');
+  return dbGetMortgageCosts(mortgageId);
+}
+
+export async function cachedGetMortgageExtraPayments(
+  mortgageId: string
+): Promise<MortgageExtraPayment[]> {
+  'use cache';
+  cacheTag('all-data', `mortgage:${mortgageId}:payments`);
+  cacheLife('indefinite');
+  return dbGetMortgageExtraPayments(mortgageId);
+}
+
+export async function cachedGetMortgageBalanceSnapshots(
+  mortgageId: string
+): Promise<MortgageBalanceSnapshot[]> {
+  'use cache';
+  cacheTag('all-data', `mortgage:${mortgageId}:snapshots`);
+  cacheLife('indefinite');
+  return dbGetMortgageSnapshots(mortgageId);
+}
+
+export async function cachedGetMortgageActuals(mortgageId: string): Promise<MortgageActualEntry[]> {
+  'use cache';
+  cacheTag('all-data', `mortgage:${mortgageId}:actuals`);
+  cacheLife('indefinite');
+  return dbGetMortgageActuals(mortgageId);
+}
+
+/**
+ * Fetch everything needed to project one mortgage in a single cached call.
+ * Returns null if the mortgage no longer exists.
+ */
+export async function cachedGetMortgageProjectionData(mortgageId: string): Promise<{
+  mortgage: SharedMortgage;
+  rates: MortgageRateEntry[];
+  costs: MortgageCostEntry[];
+  extraPayments: MortgageExtraPayment[];
+  snapshots: MortgageBalanceSnapshot[];
+  actuals: MortgageActualEntry[];
+} | null> {
+  'use cache';
+  cacheTag(
+    'all-data',
+    `mortgage:${mortgageId}`,
+    `mortgage:${mortgageId}:rates`,
+    `mortgage:${mortgageId}:costs`,
+    `mortgage:${mortgageId}:payments`,
+    `mortgage:${mortgageId}:snapshots`,
+    `mortgage:${mortgageId}:actuals`
+  );
+  cacheLife('indefinite');
+
+  const [mortgage, rates, costs, extraPayments, snapshots, actuals] = await Promise.all([
+    dbGetMortgageById(mortgageId),
+    dbGetMortgageRates(mortgageId),
+    dbGetMortgageCosts(mortgageId),
+    dbGetMortgageExtraPayments(mortgageId),
+    dbGetMortgageSnapshots(mortgageId),
+    dbGetMortgageActuals(mortgageId),
+  ]);
+
+  if (!mortgage) return null;
+  return { mortgage, rates, costs, extraPayments, snapshots, actuals };
 }
 
 // ============================================================

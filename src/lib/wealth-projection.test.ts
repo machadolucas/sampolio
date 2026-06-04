@@ -10,7 +10,10 @@ import {
   createMockReferenceRate,
   createMockExtraPayment,
   createMockSnapshot,
+  createMockSharedMortgage,
+  createMockMortgageRate,
 } from '@/test/mocks';
+import { calculateMortgageProjection } from './mortgage-projection';
 
 function buildWealthData(overrides?: Partial<WealthProjectionData>): WealthProjectionData {
   return {
@@ -349,6 +352,47 @@ describe('calculateWealthProjection', () => {
 
       const result = calculateWealthProjection(data, '2026-06', '2026-07');
       expect(result[0].investmentsTotal).toBe(10000); // genesis, snapshot ignored
+    });
+  });
+
+  describe('shared mortgage integration', () => {
+    const rates = [
+      createMockMortgageRate({ effectiveDate: '2022-12', euriborRate: 2.963 }),
+      createMockMortgageRate({ effectiveDate: '2023-12', euriborRate: 3.644 }),
+      createMockMortgageRate({ effectiveDate: '2024-12', euriborRate: 2.405 }),
+      createMockMortgageRate({ effectiveDate: '2025-12', euriborRate: 2.31 }),
+    ];
+    const mortgageMonths = calculateMortgageProjection(
+      { mortgage: createMockSharedMortgage(), rates, costs: [], extraPayments: [], snapshots: [] },
+      '2050-12'
+    );
+
+    it('folds the member home equity into net worth (equity = stake − liability)', () => {
+      const account = createMockAccount({ startingBalance: 10000, startingDate: '2026-06', planningHorizonMonths: 1 });
+      const data = buildWealthData({
+        cashAccounts: [account],
+        cashProjections: new Map([[account.id, [{ yearMonth: '2026-06', year: 2026, month: 6, startingBalance: 10000, totalIncome: 0, totalExpenses: 0, netChange: 0, endingBalance: 10000, incomeBreakdown: [], expenseBreakdown: [] }]]]),
+        mortgageProjections: [mortgageMonths],
+        mortgageNames: ['Home'],
+        currentUserId: 'lucas',
+      });
+      const result = calculateWealthProjection(data, '2026-06', '2026-06');
+      const m = result[0];
+      expect(m.mortgageEquityTotal).toBeGreaterThan(0);
+      expect(m.mortgageStakeTotal).toBeCloseTo(164000, -2);
+      expect(m.mortgageEquityTotal!).toBeCloseTo(m.mortgageStakeTotal! - m.mortgageLiabilityTotal!, 4);
+      expect(m.netWorth).toBeCloseTo(10000 + m.mortgageEquityTotal!, 4);
+    });
+
+    it('leaves net worth unchanged when no mortgage data is supplied (back-compat)', () => {
+      const account = createMockAccount({ startingBalance: 10000, startingDate: '2026-06', planningHorizonMonths: 1 });
+      const data = buildWealthData({
+        cashAccounts: [account],
+        cashProjections: new Map([[account.id, [{ yearMonth: '2026-06', year: 2026, month: 6, startingBalance: 10000, totalIncome: 0, totalExpenses: 0, netChange: 0, endingBalance: 10000, incomeBreakdown: [], expenseBreakdown: [] }]]]),
+      });
+      const result = calculateWealthProjection(data, '2026-06', '2026-06');
+      expect(result[0].netWorth).toBe(10000);
+      expect(result[0].mortgageEquityTotal).toBeUndefined();
     });
   });
 });

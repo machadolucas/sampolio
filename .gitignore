@@ -48,3 +48,6 @@ next-env.d.ts
 
 # Distribution
 /dist/
+
+# Personal data (reference spreadsheets, etc.)
+*.numbers

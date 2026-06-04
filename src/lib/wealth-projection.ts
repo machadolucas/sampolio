@@ -25,6 +25,7 @@ import type {
   MonthlyProjection,
   Frequency,
   BalanceSnapshot,
+  MortgageProjectionMonth,
 } from '@/types';
 import {
   parseYearMonth,
@@ -365,6 +366,12 @@ export interface WealthProjectionData {
   investmentSnapshots?: Map<string, BalanceSnapshot | null>;
   receivableSnapshots?: Map<string, BalanceSnapshot | null>;
   debtSnapshots?: Map<string, BalanceSnapshot | null>;
+  // Shared mortgages the logged-in member belongs to: one pre-computed
+  // projection series per mortgage. Folded into net worth as the member's
+  // home equity (stake − loan-share liability). Optional / back-compatible.
+  mortgageProjections?: MortgageProjectionMonth[][];
+  mortgageNames?: string[]; // parallel to mortgageProjections
+  currentUserId?: string;
 }
 
 /**
@@ -481,8 +488,40 @@ export function calculateWealthProjection(
       debtsTotal += principal;
     }
 
-    // Net worth = assets - liabilities
-    const netWorth = cashAccountsTotal + investmentsTotal + receivablesTotal - debtsTotal;
+    // Shared mortgages — the logged-in member's slice. Home equity (stake −
+    // loan-share liability) is folded into net worth; stake and liability are
+    // exposed separately so the wealth chart can show the home asset and the
+    // loan liability as distinct bands. Never double-counted as a Debt.
+    let mortgageEquityTotal: number | undefined;
+    let mortgageLiabilityTotal: number | undefined;
+    let mortgageStakeTotal: number | undefined;
+    let mortgagesBreakdown: WealthProjectionMonth['mortgagesBreakdown'];
+
+    if (data.mortgageProjections && data.currentUserId) {
+      mortgageEquityTotal = 0;
+      mortgageLiabilityTotal = 0;
+      mortgageStakeTotal = 0;
+      mortgagesBreakdown = [];
+      data.mortgageProjections.forEach((projection, idx) => {
+        const monthRow = projection.find((p) => p.yearMonth === currentDate);
+        const pos = monthRow?.members.find((m) => m.userId === data.currentUserId);
+        if (!pos) return;
+        mortgageEquityTotal! += pos.equity;
+        mortgageLiabilityTotal! += pos.liability;
+        mortgageStakeTotal! += pos.stake;
+        mortgagesBreakdown!.push({
+          mortgageId: `mortgage-${idx}`,
+          name: data.mortgageNames?.[idx] ?? 'Mortgage',
+          stake: pos.stake,
+          liability: pos.liability,
+          equity: pos.equity,
+        });
+      });
+    }
+
+    // Net worth = assets - liabilities (+ member's home equity, if any)
+    const netWorth =
+      cashAccountsTotal + investmentsTotal + receivablesTotal - debtsTotal + (mortgageEquityTotal ?? 0);
 
     months.push({
       yearMonth: currentDate,
@@ -496,6 +535,10 @@ export function calculateWealthProjection(
       receivablesBreakdown,
       debtsTotal,
       debtsBreakdown,
+      mortgageEquityTotal,
+      mortgageLiabilityTotal,
+      mortgageStakeTotal,
+      mortgagesBreakdown,
       netWorth,
     });
 

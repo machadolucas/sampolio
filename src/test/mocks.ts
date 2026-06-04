@@ -14,6 +14,14 @@ import type {
   SalaryBenefit,
   BalanceSnapshot,
   Currency,
+  SharedMortgage,
+  MortgageLoan,
+  MortgageMember,
+  MortgageRateEntry,
+  MortgageCostEntry,
+  MortgageExtraPayment,
+  MortgageBalanceSnapshot,
+  MortgageActualEntry,
 } from '@/types';
 
 const now = new Date().toISOString();
@@ -210,6 +218,146 @@ export function createMockSalaryBenefit(overrides?: Partial<SalaryBenefit>): Sal
     name: 'Lunch Benefit',
     amount: 150,
     isTaxable: true,
+    ...overrides,
+  };
+}
+
+// ============================================================
+// SHARED MORTGAGE MOCKS
+// ============================================================
+
+export function createMockMortgageLoan(overrides?: Partial<MortgageLoan>): MortgageLoan {
+  return {
+    id: uuidv4(),
+    label: 'Regular loan',
+    kind: 'regular',
+    initialPrincipal: 153000,
+    startDate: '2023-02',
+    originalTermMonths: 300,
+    paymentMode: 'annuity-fixed-term',
+    margin: 0.4,
+    dayCount: 'actual/360',
+    ...overrides,
+  };
+}
+
+export function createMockMortgageMember(overrides?: Partial<MortgageMember>): MortgageMember {
+  return {
+    userId: 'test-user',
+    email: 'lucas@demola.net',
+    name: 'Lucas',
+    role: 'owner',
+    initialPayment: 31000,
+    loanSharePercent: 0.454,
+    ownershipTargetPercent: 0.5,
+    ...overrides,
+  };
+}
+
+/**
+ * The real family mortgage from the spreadsheet: €328k home, €35k down
+ * (€31k / €4k), an ASP loan (€140k) + a regular loan (€153k), 50/50 target.
+ */
+export function createMockSharedMortgage(overrides?: Partial<SharedMortgage>): SharedMortgage {
+  return {
+    id: 'test-mortgage',
+    name: 'Home',
+    currency: 'EUR' as Currency,
+    housePrice: 328000,
+    rateResetMonth: 12,
+    rateResetDay: 14,
+    loans: [
+      createMockMortgageLoan({
+        id: 'loan-asp',
+        label: 'ASP loan',
+        kind: 'asp',
+        initialPrincipal: 140000,
+      }),
+      createMockMortgageLoan({
+        id: 'loan-regular',
+        label: 'Regular loan',
+        kind: 'regular',
+        initialPrincipal: 153000,
+      }),
+    ],
+    members: [
+      createMockMortgageMember({ userId: 'lucas', name: 'Lucas', initialPayment: 31000, loanSharePercent: 0.454 }),
+      createMockMortgageMember({ userId: 'marja', name: 'Marja', email: 'marja@example.com', role: 'member', initialPayment: 4000, loanSharePercent: 0.546 }),
+    ],
+    isArchived: false,
+    createdBy: 'lucas',
+    createdAt: now,
+    updatedAt: now,
+    updatedBy: 'lucas',
+    ...overrides,
+  };
+}
+
+export function createMockMortgageRate(overrides?: Partial<MortgageRateEntry>): MortgageRateEntry {
+  return {
+    id: uuidv4(),
+    mortgageId: 'test-mortgage',
+    effectiveDate: '2022-12',
+    euriborRate: 2.963, // + 0.4 margin = 3.363% total
+    createdAt: now,
+    ...overrides,
+  };
+}
+
+export function createMockMortgageCost(overrides?: Partial<MortgageCostEntry>): MortgageCostEntry {
+  return {
+    id: uuidv4(),
+    mortgageId: 'test-mortgage',
+    type: 'invoicing-fee',
+    effectiveDate: '2023-02',
+    amount: 5.4,
+    createdAt: now,
+    ...overrides,
+  };
+}
+
+export function createMockMortgageExtraPayment(
+  overrides?: Partial<MortgageExtraPayment>
+): MortgageExtraPayment {
+  return {
+    id: uuidv4(),
+    mortgageId: 'test-mortgage',
+    loanId: 'loan-regular',
+    date: '2026-01',
+    amount: 5000,
+    mode: 'shorten-term',
+    createdAt: now,
+    ...overrides,
+  };
+}
+
+export function createMockMortgageSnapshot(
+  overrides?: Partial<MortgageBalanceSnapshot>
+): MortgageBalanceSnapshot {
+  return {
+    id: uuidv4(),
+    mortgageId: 'test-mortgage',
+    loanId: 'loan-regular',
+    yearMonth: '2025-06',
+    actualBalance: 145000,
+    createdAt: now,
+    ...overrides,
+  };
+}
+
+export function createMockMortgageActual(
+  overrides?: Partial<MortgageActualEntry>
+): MortgageActualEntry {
+  return {
+    id: uuidv4(),
+    mortgageId: 'test-mortgage',
+    loanId: 'loan-asp',
+    yearMonth: '2023-02',
+    remaining: 140000,
+    repayment: 612.54,
+    interest: 609.84,
+    insurance: 0,
+    createdAt: now,
     ...overrides,
   };
 }

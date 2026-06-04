@@ -42,6 +42,7 @@ src/
 │   │   ├── receivables.ts                 # Receivable CRUD + repayments
 │   │   ├── taxed-income.ts                # Taxed income CRUD
 │   │   ├── reconciliation.ts              # Balance snapshots, adjustments, sessions
+│   │   ├── shared-mortgages.ts            # Shared mortgage CRUD + members/rates/costs/payments/snapshots
 │   │   ├── projection.ts                  # Cash flow projection action
 │   │   ├── admin.ts                       # User management, app settings (admin only)
 │   │   ├── auth.ts                        # Sign-up, signup-enabled check
@@ -58,16 +59,20 @@ src/
 │   │   ├── receivables.ts                 # Receivable file operations
 │   │   ├── taxed-income.ts                # Taxed income file operations
 │   │   ├── reconciliation.ts              # Reconciliation file operations
+│   │   ├── shared-mortgages.ts            # Shared mortgage file ops (loans, members, rates, costs, payments, snapshots, actuals)
 │   │   ├── users.ts                       # User file operations
 │   │   ├── app-settings.ts               # App settings file operations
 │   │   ├── user-preferences.ts            # Preferences file operations
 │   │   └── cached.ts                      # Cached query wrappers
 │   ├── schemas/                           # Zod form validation schemas
 │   │   ├── auth.schema.ts                 # Sign-in / sign-up schemas
+│   │   ├── mortgage.schema.ts             # Mortgage setup form schema
 │   │   └── occurrence-override.schema.ts  # Override dialog schema
 │   ├── auth.ts                            # NextAuth configuration
 │   ├── projection.ts                      # Cash flow projection calculation engine
 │   ├── wealth-projection.ts               # Net worth/wealth projection engine
+│   ├── mortgage-projection.ts             # Shared mortgage amortization engine (dual loan, actual/360, annuity reset)
+│   ├── mortgage-utils.ts                  # Pure mortgage helpers (loan-share derivation, Euribor-due detection)
 │   ├── salary-utils.ts                    # Shared salary calculation utility
 │   ├── constants.ts                       # Currencies, frequencies, categories, formatters
 │   └── proxy.ts                           # Reverse proxy utilities
@@ -177,6 +182,21 @@ calculateProjection(account, recurringItems, plannedItems, taxedIncomes?, filter
 - The `cachedGetAccountProjectionData` batch function fetches all projection data in one cached call
 - **Snapshot anchoring**: projections start from the *latest reconciliation snapshot* (its `yearMonth` + `actualBalance`) when one exists, falling back to the account's genesis `startingDate`/`startingBalance` otherwise. `resolveAnchor()` (in `projection.ts`) is the single helper for this; pass the latest snapshot (`cachedGetLatestSnapshot`) into `calculateProjection`. This is why forecasts stay correct after a monthly check-in **without** editing the account's start month. The same anchoring applies to investments/debts/receivables in `wealth-projection.ts` (debts negate the snapshot, which is stored negative). The horizon is measured from the anchor (rolling window).
 
+### Shared Mortgage (the one multi-user / non-user-scoped entity)
+
+Unlike every other entity (owned by one `userId` under `data/users/{id}/`), a **mortgage is shared** by a set of members and lives in a **global directory**:
+
+```
+data/shared/mortgages/{id}.enc                 # SharedMortgage (loans + members embedded)
+data/shared/mortgages/{id}/rates|costs|extra-payments|snapshots/{id}.enc
+data/shared/mortgage-members/{userId}.enc      # reverse index userId → mortgageIds
+```
+
+- The encryption key is **global**, so the shared dir is decryptable; **access control is enforced in the action layer** (`loadMortgageForMember` in `src/lib/actions/shared-mortgages.ts`) by checking `mortgage.members[].userId` against `session.user.id`. Add a partner by account email (`findUserByEmail`).
+- **Cache tags are keyed by `mortgage:{id}`** (member-agnostic) so one `updateTag` reaches every member; only the membership list uses `user:{userId}:mortgages`.
+- **Amortization engine** (`src/lib/mortgage-projection.ts`, pure): two+ sub-loans, each `interest = balance × rate × dayCountFraction` (actual/360); rate = most-recent Euribor entry + per-loan margin; `annuity-fixed-term` recomputes the level payment at each rate reset to hold maturity. Fees/insurance are **time-effective `MortgageCostEntry`** records (change from a month onward, history preserved). Drift snapshots are applied **inline** at their month (continuous history, re-anchored forward) — this differs from `resolveAnchor`, which discards pre-snapshot history. The schedule is emitted **from genesis** so the ledger shows full history.
+- **Ownership identity** (reproduces the spreadsheet): `stake = initialPayment + loanShare × initialLoanTotal` (≈ half the house); `liability = loanShare × remainingTotal`; `equity = stake − liability`. Each member's **equity** folds into net worth in `wealth-projection.ts` (guarded by `mortgageProjections` + `currentUserId`, so existing callers are unaffected). Never also enter the mortgage as a `Debt` (double counting). `deriveLoanShares` (`src/lib/mortgage-utils.ts`) is the single source of truth for the share split.
+
 ### Date Handling
 
 - **Library**: `date-fns` for all date operations
@@ -224,6 +244,9 @@ All types are centralized in `src/types/index.ts`. Key types:
 - **Race conditions**: File-based storage has no atomic operations or file locking. Concurrent write requests could cause data loss. Acceptable for single-user scenarios.
 - **No cross-currency conversion**: Multi-currency is supported but currencies are not converted for aggregation — values in different currencies are summed as-is. Aggregate displays use the primary account's currency with a "(mixed currencies)" note when applicable.
 - **Hardcoded locale**: Number formatting uses `fi-FI` locale (Finnish) in `src/lib/constants.ts`.
+- **Shared mortgage concurrency**: Shared mortgages have no file locking either; concurrent edits by two members can clobber. Acceptable for a small household.
+- **Mortgage auto-amortization is a model**: With zero data entry the engine tracks the real bank balance within ~0.5% (validated against a 41-month schedule). The residual comes from the bank's irregular early payments (e.g. an interest-only start) that a level annuity can't reproduce. For an **exact (zero-delta) match**, import the actual monthly history: `MortgageActualEntry` rows (per loan: remaining, repayment, interest, insurance) are used verbatim by the engine for recorded months — the projection resumes from the latest actual. Import via the "Import actual history" CSV/paste dialog (`mortgage-import-dialog.tsx`). The ledger marks **actual** vs **forecast** rows. See the "reproduces the spreadsheet EXACTLY" tests in `src/lib/mortgage-projection.test.ts` (max delta €0.00). The lighter **drift adjustment** still exists for a single-point re-anchor.
+- **Euribor effective month**: a reset takes effect on payments only after the bank's notice period — e.g. a mid-December fixing applies to payments from ~February. Enter each rate's "effective from" month accordingly (the Euribor dialog lets you pick it); the engine applies a rate from its `effectiveDate` month, with no built-in lag.
 
 ## Known Bugs (Pending Fixes)
 

@@ -91,3 +91,22 @@ export function formatYearMonthShort(yearMonth: string): string {
   const [year, month] = yearMonth.split('-');
   return `${MONTHS_SHORT[parseInt(month, 10) - 1]} ${year}`;
 }
+
+/** Format a percentage rate with two decimals, fi-FI style (e.g. "2,71 %"). */
+export function formatRate(rate: number): string {
+  return `${new Intl.NumberFormat(LOCALE, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(rate)} %`;
+}
+
+// Mortgage option lists
+export const MORTGAGE_PAYMENT_MODES = [
+  { value: 'annuity-fixed-term', label: 'Fixed term (payment recalculated each year)' },
+  { value: 'fixed-payment', label: 'Fixed payment (term flexes)' },
+];
+
+export const MORTGAGE_DAY_COUNTS = [
+  { value: 'actual/360', label: 'Actual / 360 (Finnish default)' },
+  { value: '30E/360', label: '30 / 360' },
+];

@@ -15,15 +15,17 @@ import { getAccounts } from '@/lib/actions/accounts';
 import { getInvestmentAccounts, getContributions } from '@/lib/actions/investments';
 import { getReceivables, getRepayments } from '@/lib/actions/receivables';
 import { getDebts, getReferenceRates, getExtraPayments } from '@/lib/actions/debts';
+import { getMyMortgages, getMortgageProjectionInputs } from '@/lib/actions/shared-mortgages';
 import { getProjection } from '@/lib/actions/projection';
 import { getLatestCompletedSession, getLatestSnapshot } from '@/lib/actions/reconciliation';
 import { calculateWealthProjection, getLatestEndDate } from '@/lib/wealth-projection';
+import { calculateMortgageProjection } from '@/lib/mortgage-projection';
 import { getMonthsBetween } from '@/lib/projection';
-import type { FinancialAccount, InvestmentAccount, Receivable, Debt, TimeHorizon, WealthProjectionMonth, Currency, InvestmentContribution, ReceivableRepayment, DebtReferenceRate, DebtExtraPayment, MonthlyProjection, BalanceSnapshot } from '@/types';
+import type { FinancialAccount, InvestmentAccount, Receivable, Debt, TimeHorizon, WealthProjectionMonth, Currency, InvestmentContribution, ReceivableRepayment, DebtReferenceRate, DebtExtraPayment, MonthlyProjection, BalanceSnapshot, MortgageProjectionMonth } from '@/types';
 import { NetWorthChart, WealthChart } from '@/components/charts';
 import { EntityListDrawer } from '@/components/ui/entity-list-drawer';
 import { StatusHeroCard } from '@/components/ui/status-hero-card';
-import { MdInfo, MdSync, MdShowChart, MdAttachMoney, MdAccountBalanceWallet, MdBarChart, MdGroup, MdCreditCard, MdArrowForward, MdAddCircle, MdRemoveCircle } from 'react-icons/md';
+import { MdInfo, MdSync, MdShowChart, MdAttachMoney, MdAccountBalanceWallet, MdBarChart, MdGroup, MdCreditCard, MdArrowForward, MdAddCircle, MdRemoveCircle, MdHouse, MdHomeWork } from 'react-icons/md';
 
 type EntityCategory = 'cash' | 'investments' | 'receivables' | 'debts';
 
@@ -174,6 +176,10 @@ export default function OverviewPage() {
     const [debts, setDebts] = useState<Debt[]>([]);
     const [projection, setProjection] = useState<WealthProjectionMonth[]>([]);
     const [lastReconciled, setLastReconciled] = useState<string | null>(null);
+    // The logged-in member's slice of any shared mortgage(s), for the current month.
+    const [mortgageSummary, setMortgageSummary] = useState<{ equity: number; liability: number; stake: number } | null>(null);
+
+    const userId = session?.user?.id;
 
     const displayCurrency = useMemo(() => getPrimaryCurrency(accounts), [accounts]);
     const isMixedCurrency = useMemo(() => hasMixedCurrencies(accounts), [accounts]);
@@ -185,12 +191,13 @@ export default function OverviewPage() {
             setIsLoading(true);
         }
         try {
-            const [accountsRes, investmentsRes, receivablesRes, debtsRes, sessionRes] = await Promise.all([
+            const [accountsRes, investmentsRes, receivablesRes, debtsRes, sessionRes, mortgagesRes] = await Promise.all([
                 getAccounts(),
                 getInvestmentAccounts(),
                 getReceivables(),
                 getDebts(),
                 getLatestCompletedSession(),
+                getMyMortgages(),
             ]);
 
             const activeAccounts = accountsRes.success && accountsRes.data
@@ -236,6 +243,17 @@ export default function OverviewPage() {
             const receivableSnapshots = new Map<string, BalanceSnapshot | null>(receivableSnapshotResults);
             const debtSnapshots = new Map<string, BalanceSnapshot | null>(debtSnapshotResults);
 
+            const now = new Date();
+            const startDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+            // Shared mortgages the logged-in member belongs to: project each and fold
+            // the member's equity (asset) and loan-share (liability) into net worth.
+            const activeMortgages = mortgagesRes.success && mortgagesRes.data
+                ? mortgagesRes.data.filter((m) => !m.isArchived)
+                : [];
+            const mortgageProjections: MortgageProjectionMonth[][] = [];
+            const mortgageNames: string[] = [];
+
             const wealthData = {
                 cashAccounts: activeAccounts,
                 cashProjections,
@@ -249,14 +267,40 @@ export default function OverviewPage() {
                 investmentSnapshots,
                 receivableSnapshots,
                 debtSnapshots,
+                mortgageProjections,
+                mortgageNames,
+                currentUserId: userId,
             };
 
-            const now = new Date();
-            const startDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
             const endDate = getLatestEndDate(wealthData, 60);
+
+            if (activeMortgages.length > 0) {
+                const inputs = await Promise.all(
+                    activeMortgages.map((m) => getMortgageProjectionInputs(m.id))
+                );
+                inputs.forEach((res, idx) => {
+                    if (res.success && res.data) {
+                        mortgageProjections.push(calculateMortgageProjection(res.data, endDate));
+                        mortgageNames.push(activeMortgages[idx].name);
+                    }
+                });
+            }
 
             const projectionMonths = calculateWealthProjection(wealthData, startDate, endDate);
             setProjection(projectionMonths);
+
+            // Current-month mortgage slice for the logged-in member (drives the KPIs + net worth).
+            if (mortgageProjections.length > 0 && userId) {
+                let equity = 0, liability = 0, stake = 0;
+                for (const proj of mortgageProjections) {
+                    const row = proj.find((p) => p.yearMonth === startDate) ?? proj[proj.length - 1];
+                    const pos = row?.members.find((p) => p.userId === userId);
+                    if (pos) { equity += pos.equity; liability += pos.liability; stake += pos.stake; }
+                }
+                setMortgageSummary({ equity, liability, stake });
+            } else {
+                setMortgageSummary(null);
+            }
         } catch (err) {
             console.error('Failed to fetch data:', err);
         } finally {
@@ -265,7 +309,7 @@ export default function OverviewPage() {
                 setIsLoading(false);
             }
         }
-    }, []);
+    }, [userId]);
 
     useEffect(() => {
         fetchData();
@@ -324,7 +368,11 @@ export default function OverviewPage() {
         const receivablesTotal = receivables.reduce((sum, r) => sum + r.currentBalance, 0);
         const debtsTotal = debts.reduce((sum, d) => sum + d.initialPrincipal, 0);
 
-        const netWorth = cashTotal + investmentsTotal + receivablesTotal - debtsTotal;
+        // Member's home equity (stake − loan-share liability) adds to net worth.
+        const mortgageEquity = mortgageSummary?.equity ?? 0;
+        const mortgageLiability = mortgageSummary?.liability ?? 0;
+
+        const netWorth = cashTotal + investmentsTotal + receivablesTotal - debtsTotal + mortgageEquity;
         const prevNetWorth = prevMonth?.netWorth || netWorth;
         const projectedNetWorth = endMonth?.netWorth || netWorth;
 
@@ -339,8 +387,10 @@ export default function OverviewPage() {
             liquidAssets,
             receivablesTotal,
             debtsTotal,
+            mortgageEquity,
+            mortgageLiability,
         };
-    }, [accounts, investments, receivables, debts, projection, currentYearMonth, filteredProjection]);
+    }, [accounts, investments, receivables, debts, projection, currentYearMonth, filteredProjection, mortgageSummary]);
 
     // Hero card projections: find current and previous month from the first account's cash projection
     const heroProjections = useMemo(() => {
@@ -510,6 +560,26 @@ export default function OverviewPage() {
                     severity="danger"
                     onClick={() => setEntityDrawer({ visible: true, category: 'debts' })}
                 />
+                {mortgageSummary && (
+                    <>
+                        <KPICard
+                            title="Home equity"
+                            value={kpiValues.mortgageEquity}
+                            currency={displayCurrency}
+                            icon={<MdHouse />}
+                            severity="success"
+                            onClick={() => router.push('/mortgage')}
+                        />
+                        <KPICard
+                            title="Mortgage (your share)"
+                            value={-kpiValues.mortgageLiability}
+                            currency={displayCurrency}
+                            icon={<MdHomeWork />}
+                            severity="danger"
+                            onClick={() => router.push('/mortgage')}
+                        />
+                    </>
+                )}
             </div>
 
             {/* Main Chart Section */}
