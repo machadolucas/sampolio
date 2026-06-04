@@ -14,9 +14,11 @@ import { Message } from 'primereact/message';
 import { MdLogin, MdSync } from 'react-icons/md';
 import { signInSchema, type SignInFormData } from '@/lib/schemas/auth.schema';
 
-// Constants for rate limiting feedback
-const MAX_ATTEMPTS_BEFORE_WARNING = 3;
-const LOCKOUT_WARNING_THRESHOLD = 4;
+// Constants for rate limiting feedback.
+// Keep MAX_FAILED_ATTEMPTS in sync with the server-side value in src/lib/db/users.ts.
+const MAX_FAILED_ATTEMPTS = 10;
+const MAX_ATTEMPTS_BEFORE_WARNING = 7;
+const LOCKOUT_WARNING_THRESHOLD = 9;
 
 function SignInForm() {
     const router = useRouter();
@@ -99,7 +101,7 @@ function SignInForm() {
                 if (newAttemptCount >= LOCKOUT_WARNING_THRESHOLD) {
                     setError('Invalid credentials. Your account may be temporarily locked after too many failed attempts.');
                 } else if (newAttemptCount >= MAX_ATTEMPTS_BEFORE_WARNING) {
-                    setError(`Invalid email or password. ${5 - newAttemptCount} attempts remaining before temporary lockout.`);
+                    setError(`Invalid email or password. ${MAX_FAILED_ATTEMPTS - newAttemptCount} attempts remaining before temporary lockout.`);
                 } else {
                     setError('Invalid email or password');
                 }

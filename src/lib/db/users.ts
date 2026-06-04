@@ -229,7 +229,7 @@ export async function getAllUserIds(): Promise<string[]> {
 // For production with multiple instances, use Redis
 const failedLoginAttempts = new Map<string, { count: number; lastAttempt: number; lockedUntil: number | null }>();
 
-const MAX_FAILED_ATTEMPTS = 5;
+const MAX_FAILED_ATTEMPTS = 10;
 const LOCKOUT_DURATION = 15 * 60 * 1000; // 15 minutes
 const ATTEMPT_WINDOW = 15 * 60 * 1000; // 15 minutes - reset count after this
 
