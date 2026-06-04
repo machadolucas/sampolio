@@ -61,7 +61,7 @@ A self-hosted personal finance planning tool that replaces budgeting spreadsheet
 
 ### Prerequisites
 
-- Node.js 24+
+- Node.js 26+
 - pnpm (recommended) or npm
 
 ### Installation
@@ -363,16 +363,17 @@ open http://localhost:3999
 Create a `Dockerfile`:
 
 ```dockerfile
-# Use the Node version pinned in .nvmrc (24)
-FROM node:24-alpine AS builder
+# Use the Node version pinned in .nvmrc (26)
+FROM node:26-alpine AS builder
 WORKDIR /app
-RUN corepack enable pnpm
+# Node 25+ no longer bundles corepack — install pnpm directly
+RUN npm i -g pnpm
 COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
 COPY . .
 RUN pnpm build
 
-FROM node:24-alpine AS runner
+FROM node:26-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 ENV DATA_DIR=/app/data

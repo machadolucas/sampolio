@@ -2,6 +2,10 @@
   "name": "sampolio",
   "version": "1.2.0",
   "private": true,
+  "packageManager": "pnpm@11.5.1",
+  "engines": {
+    "node": ">=26"
+  },
   "scripts": {
     "dev": "next dev -p 3999",
     "dev:preview": "DEV_AUTH_BYPASS=machadolucas@me.com next dev -p 3999",
@@ -40,7 +44,7 @@
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
     "@types/bcryptjs": "^3.0.0",
-    "@types/node": "^24.13.0",
+    "@types/node": "^25.0.0",
     "@types/react": "^19.2.16",
     "@types/react-dom": "^19.2.3",
     "@types/uuid": "^11.0.0",
