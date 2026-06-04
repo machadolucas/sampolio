@@ -1,7 +1,12 @@
 #!/bin/bash
 
 # Sampolio launchd Installation Script
-# Adds Sampolio to start automatically on macOS login
+# Runs the app automatically on macOS login, via `next start` from this git clone.
+# Build first with ./scripts/server-deploy.sh, then run this.
+#
+# The Node.js binary path is resolved at install time (honoring .nvmrc) and baked
+# into the plist, so launchd uses the intended version without depending on an
+# interactive shell or version manager at boot.
 
 set -e
 
@@ -11,31 +16,44 @@ YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m'
 
-# Get script directory (installation directory)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(dirname "$SCRIPT_DIR")"
 
 # Configuration
 PLIST_NAME="com.sampolio.app"
 PLIST_FILE="$HOME/Library/LaunchAgents/${PLIST_NAME}.plist"
 LOG_DIR="$HOME/.sampolio/logs"
 DATA_DIR="$HOME/.sampolio/data"
+PORT="${SAMPOLIO_PORT:-3999}"
+HOST="${SAMPOLIO_HOST:-0.0.0.0}"
 
 echo -e "${YELLOW}=== Sampolio Auto-Start Installation ===${NC}"
 echo ""
 
-# Check if Node.js is installed and get its path
-NODE_PATH=$(which node 2>/dev/null || echo "")
-if [ -z "$NODE_PATH" ]; then
-    echo -e "${RED}Error: Node.js is not installed.${NC}"
-    echo "Please install Node.js first."
+# --- Resolve the Node.js binary to bake into the plist -----------------------
+# shellcheck source=lib-node.sh
+. "$SCRIPT_DIR/lib-node.sh"
+sampolio_activate_node "$REPO_ROOT"
+
+# process.execPath is the real, stable install path (not an ephemeral shell shim)
+NODE_PATH="$(node -e 'process.stdout.write(process.execPath)')"
+if [ -z "$NODE_PATH" ] || [ ! -x "$NODE_PATH" ]; then
+    echo -e "${RED}Error: could not resolve a usable Node.js binary path.${NC}"
+    exit 1
+fi
+NODE_BIN_DIR="$(dirname "$NODE_PATH")"
+
+echo "Node.js:                $($NODE_PATH -v) ($NODE_PATH)"
+echo "Installation directory: $REPO_ROOT"
+echo ""
+
+# Make sure the app is installed and built
+if [ ! -f "$REPO_ROOT/node_modules/next/dist/bin/next" ] || [ ! -f "$REPO_ROOT/.next/BUILD_ID" ]; then
+    echo -e "${RED}Error: app isn't installed/built. Run ./scripts/server-deploy.sh first.${NC}"
     exit 1
 fi
 
-echo "Node.js found at: $NODE_PATH"
-echo "Installation directory: $SCRIPT_DIR"
-echo ""
-
-# Create log directory
+# Create log and data directories
 mkdir -p "$LOG_DIR"
 mkdir -p "$DATA_DIR"
 
@@ -46,11 +64,11 @@ if [ -f "$PLIST_FILE" ]; then
 fi
 
 # Load .env file if it exists
-if [ -f "$SCRIPT_DIR/.env" ]; then
+if [ -f "$REPO_ROOT/.env" ]; then
     echo -e "${GREEN}Loading environment variables from .env file...${NC}"
-    # Source variables from .env file
     set -a
-    source "$SCRIPT_DIR/.env"
+    # shellcheck disable=SC1091
+    source "$REPO_ROOT/.env"
     set +a
 fi
 
@@ -98,22 +116,29 @@ cat > "$PLIST_FILE" << EOF
 <dict>
     <key>Label</key>
     <string>${PLIST_NAME}</string>
-    
+
     <key>ProgramArguments</key>
     <array>
         <string>${NODE_PATH}</string>
-        <string>${SCRIPT_DIR}/server.js</string>
+        <string>${REPO_ROOT}/node_modules/next/dist/bin/next</string>
+        <string>start</string>
+        <string>-p</string>
+        <string>${PORT}</string>
+        <string>-H</string>
+        <string>${HOST}</string>
     </array>
-    
+
     <key>WorkingDirectory</key>
-    <string>${SCRIPT_DIR}</string>
-    
+    <string>${REPO_ROOT}</string>
+
     <key>EnvironmentVariables</key>
     <dict>
+        <key>PATH</key>
+        <string>${NODE_BIN_DIR}:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
         <key>PORT</key>
-        <string>3999</string>
+        <string>${PORT}</string>
         <key>HOSTNAME</key>
-        <string>0.0.0.0</string>
+        <string>${HOST}</string>
         <key>NODE_ENV</key>
         <string>production</string>
         <key>DATA_DIR</key>
@@ -127,22 +152,22 @@ cat > "$PLIST_FILE" << EOF
         <key>AUTH_URL</key>
         <string>${AUTH_URL}</string>}
     </dict>
-    
+
     <key>RunAtLoad</key>
     <true/>
-    
+
     <key>KeepAlive</key>
     <dict>
         <key>SuccessfulExit</key>
         <false/>
     </dict>
-    
+
     <key>StandardOutPath</key>
     <string>${LOG_DIR}/sampolio.log</string>
-    
+
     <key>StandardErrorPath</key>
     <string>${LOG_DIR}/sampolio-error.log</string>
-    
+
     <key>ProcessType</key>
     <string>Background</string>
 </dict>
@@ -159,7 +184,7 @@ echo -e "${GREEN}=== Installation Complete! ===${NC}"
 echo ""
 echo "Sampolio has been installed and is now running!"
 echo ""
-echo "  Web Interface: http://localhost:3999"
+echo "  Web Interface: http://localhost:${PORT}"
 echo "  Logs:          $LOG_DIR/sampolio.log"
 echo "  Data:          $DATA_DIR"
 echo ""
@@ -168,4 +193,4 @@ echo ""
 echo "To check status:   launchctl list | grep sampolio"
 echo "To stop:           launchctl unload $PLIST_FILE"
 echo "To start:          launchctl load $PLIST_FILE"
-echo "To uninstall:      ./uninstall-launchd.sh"
+echo "To uninstall:      ./scripts/uninstall-launchd.sh"

@@ -55,7 +55,7 @@ A self-hosted personal finance planning tool that replaces budgeting spreadsheet
 - **Password Security**: bcrypt hashing (12 rounds), strong password requirements (8+ chars, mixed case, numbers, special chars)
 - **Brute Force Protection**: Account lockout after 5 failed attempts within 15 minutes
 - **Security Headers**: XSS protection, frame options, CSP, HSTS, restricted permissions policy
-- **Single File Deployment**: Deploy as a standalone package — no external database needed
+- **Self-Hosted**: Deploy by cloning and building on your own server — no external database needed
 
 ## Getting Started
 
@@ -200,62 +200,53 @@ To run: Use Command Palette (Cmd+Shift+P) > "Tasks: Run Task"
 
 ## Production Deployment
 
-### Build for Production
+The app is deployed by cloning this repository on the server and building it
+**in place** with `./scripts/server-deploy.sh`. There is no separate packaging
+step — `next start` serves the production build from the installed
+`node_modules`, which avoids the standalone-bundle dependency-tracing issues that
+broke the old zip-based packaging.
 
+### Deploying on a server (git clone)
+
+**Prerequisites on the server**: `git`, `pnpm`, and a Node.js version manager
+(`fnm` or `nvm`) so the version pinned in [`.nvmrc`](.nvmrc) can be installed.
+
+**1. Clone the repository:**
 ```bash
-pnpm build
+git clone https://github.com/machadolucas/sampolio.git ~/sampolio
+cd ~/sampolio
 ```
 
-This creates a standalone build in `.next/standalone` that includes everything needed to run the app.
-
-### Run Production Build
-
+**2. Install dependencies and build:**
 ```bash
-node .next/standalone/server.js
+./scripts/server-deploy.sh
+```
+This activates the Node version from `.nvmrc` (installing it via fnm/nvm if
+needed), runs `pnpm install --frozen-lockfile`, and builds the app. It **refuses
+to continue on the wrong Node major version**, so a mismatched server Node can't
+silently produce a broken build.
+
+**3a. Run manually (foreground):**
+```bash
+./scripts/run-sampolio.sh
 ```
 
-### macOS Standalone Deployment
-
-Build and package the app into a distributable zip file:
-
+**3b. Or install as an auto-starting service (recommended):**
 ```bash
-./scripts/build-package.sh
+./scripts/install-launchd.sh
 ```
-
-This creates `/dist/sampolio-v{version}-macos.zip` containing:
-- Standalone Next.js server
-- Static assets
-- Run and install scripts
-
-#### Installing on macOS
-
-1. Copy the zip file to the target machine
-2. Unzip:
-```bash
-unzip sampolio-v0.1.0-macos.zip
-cd sampolio
-```
-
-3. Run manually:
-```bash
-./run-sampolio.sh
-```
-
-4. Or install as auto-starting service:
-```bash
-./install-launchd.sh
-```
-
-The app will start automatically when you log in.
+The app starts automatically on login and restarts if it crashes. The resolved
+Node binary path (matching `.nvmrc`) is baked into the launchd plist at install
+time, so it doesn't depend on an interactive shell at boot.
 
 #### Environment Variables on Deployment
 
 **Recommended: Using .env File** (ensures secrets stay consistent)
 
-The package includes a `.env.example` template. Create your `.env` file with fixed secrets:
+The repo includes a `.env.example` template. Create your `.env` file at the repo root with fixed secrets:
 
 ```bash
-# In the deployment directory
+# In the cloned repo (~/sampolio)
 cp .env.example .env
 
 # Generate your secrets
@@ -268,7 +259,7 @@ nano .env
 
 Then run normally:
 ```bash
-./run-sampolio.sh  # or ./install-launchd.sh
+./scripts/run-sampolio.sh  # or ./scripts/install-launchd.sh
 ```
 
 **Important**:
@@ -296,17 +287,17 @@ SAMPOLIO_DATA_DIR=~/.sampolio/data   # Data directory
 **Method 1: Copy .env file and data** (simplest):
 ```bash
 # On source server, backup everything
-tar -czf sampolio-backup.tar.gz -C /path/to/sampolio .env -C ~/.sampolio data
+tar -czf sampolio-backup.tar.gz -C ~/sampolio .env -C ~/.sampolio data
 
-# Transfer to new server
+# Transfer to new server (clone the repo there first, then:)
 scp sampolio-backup.tar.gz new-server:~/
 
-# On new server, extract
-cd /path/to/new/sampolio
+# On new server, extract into the clone
+cd ~/sampolio
 tar -xzf ~/sampolio-backup.tar.gz
 
 # The .env file from source server is now in place
-./run-sampolio.sh
+./scripts/server-deploy.sh && ./scripts/run-sampolio.sh
 ```
 
 **Method 2: Using auto-generated secrets**:
@@ -322,102 +313,49 @@ cd ~
 mkdir -p .sampolio
 tar -xzf sampolio-backup.tar.gz -C .sampolio
 
-# Run - will use existing .auth_secret and .encryption_key files
-cd /path/to/sampolio
-./run-sampolio.sh
+# Build, then run - will use existing .auth_secret and .encryption_key files
+cd ~/sampolio
+./scripts/server-deploy.sh && ./scripts/run-sampolio.sh
 ```
 
 #### Upgrading to a New Version
 
-When you develop and release a new version, follow these steps to upgrade the server:
+On the server, pull the latest code and rebuild in place:
 
-**1. Build the new version** (on development machine):
 ```bash
-./scripts/build-package.sh
-```
+cd ~/sampolio
 
-**2. Transfer to server**:
-```bash
-scp dist/sampolio-v*.zip server:~/
-```
-
-**3. On the server, backup your configuration and data**:
-```bash
-# Backup .env file (contains your secrets)
-cp /path/to/current/sampolio/.env ~/sampolio-config-backup.env
-
-# Optional: Backup data (recommended before major upgrades)
+# (Optional) back up your data before a major upgrade
 tar -czf ~/sampolio-data-backup-$(date +%Y%m%d).tar.gz -C ~/.sampolio data
+
+# Pull + install + build in one step
+./scripts/server-deploy.sh --pull
+
+# Reload the service to pick up the new build
+./scripts/install-launchd.sh   # re-running it reloads the launchd agent
 ```
 
-**4. Stop the running app** (if using launchd):
+If you run manually instead of via launchd, stop with `Ctrl+C` and start again
+with `./scripts/run-sampolio.sh`.
+
+Verify:
 ```bash
-cd /path/to/current/sampolio
-./uninstall-launchd.sh
-```
-
-Or if running manually, press `Ctrl+C` to stop.
-
-**5. Extract new version**:
-```bash
-cd ~
-unzip sampolio-v*.zip
-# Optionally rename: mv sampolio sampolio-v1.2.0
-```
-
-**6. Restore your .env file**:
-```bash
-cd ~/sampolio  # or your versioned directory
-cp ~/sampolio-config-backup.env .env
-```
-
-**7. Start the new version**:
-```bash
-./run-sampolio.sh  # or ./install-launchd.sh for auto-start
-```
-
-**8. Verify the upgrade**:
-```bash
-# Check logs if using launchd
-tail -f ~/.sampolio/logs/sampolio.log
-
-# Open the app in browser
+tail -f ~/.sampolio/logs/sampolio.log   # if using launchd
 open http://localhost:3999
 ```
 
-**Quick Upgrade (when using launchd)**:
-```bash
-# Stop, backup, upgrade, and restart in one go
-cd /path/to/current/sampolio && ./uninstall-launchd.sh
-cp .env ~/sampolio-backup.env
-cd ~ && unzip -o sampolio-v*.zip
-cd sampolio && cp ~/sampolio-backup.env .env
-./install-launchd.sh
-```
-
-**Important Notes**:
-- Always keep your `.env` file — it contains the encryption key for your data
-- Your data in `~/.sampolio/data/` is preserved across upgrades
-- Test upgrades on a development server first for major version changes
-- Keep a backup of your data before major upgrades
-- To rollback: Keep the old version directory, stop the new version, and restart the old one
-
-**Version Management Tip**: Keep multiple versions side-by-side:
-```bash
-~/sampolio-v1.0.0/
-~/sampolio-v1.1.0/
-~/sampolio-v1.2.0/  # Current
-```
-Use symbolic link for easy switching:
-```bash
-ln -sf ~/sampolio-v1.2.0 ~/sampolio-current
-# Update launchd to point to ~/sampolio-current/
-```
+**Notes**:
+- Your data in `~/.sampolio/data/` and your `.env` are untouched by upgrades.
+- `--pull` runs `git pull --ff-only`; commit or stash local changes first.
+- If `.nvmrc` changed, `server-deploy.sh` installs/activates the new Node version
+  automatically (via fnm/nvm).
+- To roll back: `git checkout <previous-tag-or-commit>` then
+  `./scripts/server-deploy.sh`.
 
 #### Uninstalling Auto-Start
 
 ```bash
-./uninstall-launchd.sh
+./scripts/uninstall-launchd.sh
 ```
 
 ### Docker Deployment
@@ -425,22 +363,24 @@ ln -sf ~/sampolio-v1.2.0 ~/sampolio-current
 Create a `Dockerfile`:
 
 ```dockerfile
-FROM node:20-alpine AS builder
+# Use the Node version pinned in .nvmrc (24)
+FROM node:24-alpine AS builder
 WORKDIR /app
+RUN corepack enable pnpm
 COPY package.json pnpm-lock.yaml ./
-RUN npm install -g pnpm && pnpm install --frozen-lockfile
+RUN pnpm install --frozen-lockfile
 COPY . .
 RUN pnpm build
 
-FROM node:20-alpine AS runner
+FROM node:24-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
-COPY --from=builder /app/.next/standalone ./
-COPY --from=builder /app/.next/static ./.next/static
-COPY --from=builder /app/public ./public
+ENV DATA_DIR=/app/data
+# Copy the built app together with its node_modules and run via `next start`
+COPY --from=builder /app ./
 
 EXPOSE 3999
-CMD ["node", "server.js"]
+CMD ["node", "node_modules/next/dist/bin/next", "start", "-p", "3999", "-H", "0.0.0.0"]
 ```
 
 Build and run:
@@ -485,7 +425,7 @@ docker run -p 3999:3999 \
 - **Date Handling**: date-fns
 - **Encryption**: Node.js crypto (AES-256-GCM, PBKDF2)
 - **Password Hashing**: bcryptjs
-- **IDs**: uuid v13
+- **IDs**: uuid v14
 
 ## Scripts Reference
 
@@ -495,9 +435,9 @@ docker run -p 3999:3999 \
 | `pnpm build` | Create production build |
 | `pnpm start` | Start production server |
 | `pnpm lint` | Run ESLint |
-| `./scripts/build-package.sh` | Build and create distributable zip for deployment/upgrades |
-| `./scripts/run-sampolio.sh` | Run the standalone server |
-| `./scripts/install-launchd.sh` | Install macOS auto-start |
+| `./scripts/server-deploy.sh` | Install deps + build in place on the server (`--pull` to git pull first, `--run` to start after) |
+| `./scripts/run-sampolio.sh` | Run the production server in the foreground |
+| `./scripts/install-launchd.sh` | Install/reload macOS auto-start (launchd) |
 | `./scripts/uninstall-launchd.sh` | Remove macOS auto-start |
 
 ## File Locations

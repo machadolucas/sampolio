@@ -55,8 +55,9 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
-  // Enable standalone output for single-file deployment
-  output: 'standalone',
+  // Deployed via `next start` from a git clone built in place (see scripts/).
+  // We intentionally do NOT use `output: 'standalone'` — its dependency tracing
+  // dropped @swc/helpers for this Next + pnpm combo, breaking the packaged server.
 
   // Enable Next.js 16 Cache Components ("use cache" directive)
   cacheComponents: true,
