@@ -49,5 +49,6 @@ next-env.d.ts
 # Distribution
 /dist/
 
-# Personal data (reference spreadsheets, etc.)
+# Personal data (reference spreadsheets, exported ledgers, etc.)
 *.numbers
+actuals.csv
