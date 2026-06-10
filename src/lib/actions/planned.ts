@@ -2,13 +2,14 @@
 
 import { z } from 'zod';
 import { auth } from '@/lib/auth';
-import { cachedGetAccountById, cachedGetPlannedItems, cachedGetPlannedItemById } from '@/lib/db/cached';
+import { cachedGetAccountById, cachedGetPlannedItems, cachedGetPlannedItemById, cachedGetLatestSnapshot } from '@/lib/db/cached';
 import {
   getPlannedItems as dbGetPlannedItems,
   createPlannedItem as dbCreatePlannedItem,
   updatePlannedItem as dbUpdatePlannedItem,
   deletePlannedItem as dbDeletePlannedItem,
 } from '@/lib/db/planned-items';
+import { resolveAnchor, addMonths, compareYearMonths } from '@/lib/projection';
 import { updateTag } from 'next/cache';
 import type { ApiResponse, PlannedItem, YearMonth } from '@/types';
 
@@ -271,6 +272,8 @@ export async function upsertRecurringItemOccurrenceOverride(
     }
 
     updateTag(`user:${session.user.id}:account:${accountId}:planned`);
+    // Opportunistically prune overrides the projection no longer uses.
+    await cleanupExpiredOverrides(accountId).catch(() => {});
     return { success: true, data: result };
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -309,6 +312,7 @@ export async function deleteRecurringItemOccurrenceOverride(
 
     await dbDeletePlannedItem(session.user.id, accountId, override.id);
     updateTag(`user:${session.user.id}:account:${accountId}:planned`);
+    await cleanupExpiredOverrides(accountId).catch(() => {});
     return { success: true };
   } catch (error) {
     console.error('Delete occurrence override error:', error);
@@ -336,14 +340,16 @@ export async function cleanupExpiredOverrides(
 
     const allPlanned = await cachedGetPlannedItems(session.user.id, accountId);
 
-    const now = new Date();
-    const cutoffYear = now.getFullYear();
-    const cutoffMonth = now.getMonth() - 1; // 2 months ago
-    const cutoffDate = new Date(cutoffYear, cutoffMonth, 1);
-    const cutoffYM = `${cutoffDate.getFullYear()}-${String(cutoffDate.getMonth() + 1).padStart(2, '0')}`;
+    // Cut off relative to the projection anchor (latest reconciliation snapshot,
+    // else genesis) minus 2 months — the SAME window the projection itself uses
+    // to exclude overrides (see calculateProjection). This guarantees we only
+    // delete overrides the projection already ignores, so forecasts never change.
+    const latestSnapshot = await cachedGetLatestSnapshot(session.user.id, 'cash-account', accountId);
+    const anchor = resolveAnchor(account.startingDate, account.startingBalance, latestSnapshot);
+    const cutoffYM = addMonths(anchor.startMonth, -2);
 
     const expired = allPlanned.filter(
-      p => p.isRecurringOverride && p.scheduledDate && p.scheduledDate < cutoffYM
+      p => p.isRecurringOverride && p.scheduledDate && compareYearMonths(p.scheduledDate, cutoffYM) < 0
     );
 
     for (const item of expired) {

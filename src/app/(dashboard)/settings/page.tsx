@@ -15,9 +15,10 @@ import { useAppContext } from '@/components/layout/app-layout';
 import { getSettings, updateSettings, revalidateAllCaches } from '@/lib/actions/admin';
 import { getUserPreferences, updateCategories, updateTaxDefaults } from '@/lib/actions/user-preferences';
 import { getAppVersion } from '@/lib/actions/app-info';
+import { previewHistoryCompaction, compactHistory, type HistoryCompactionStats } from '@/lib/actions/maintenance';
 import { ITEM_CATEGORIES } from '@/lib/constants';
 import type { TaxDefaults } from '@/types';
-import { MdDownload, MdUpload, MdAccountBalanceWallet, MdAdd, MdCheck, MdGroup, MdCached } from 'react-icons/md';
+import { MdDownload, MdUpload, MdAccountBalanceWallet, MdAdd, MdCheck, MdGroup, MdCached, MdStorage, MdDeleteSweep } from 'react-icons/md';
 import { FaGithub } from 'react-icons/fa';
 
 export default function SettingsPage() {
@@ -48,6 +49,12 @@ export default function SettingsPage() {
 
     // Cache revalidation state
     const [isRevalidating, setIsRevalidating] = useState(false);
+
+    // Data & storage (history compaction)
+    const [compactPreview, setCompactPreview] = useState<HistoryCompactionStats | null>(null);
+    const [isPreviewing, setIsPreviewing] = useState(false);
+    const [isCompacting, setIsCompacting] = useState(false);
+    const [compactMessage, setCompactMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
     // Active categories = built-in minus removed + custom
     const activeCategories = [
@@ -115,6 +122,38 @@ export default function SettingsPage() {
             setMessage({ type: 'error', text: 'An error occurred while revalidating caches' });
         } finally {
             setIsRevalidating(false);
+        }
+    };
+
+    const handlePreviewCompaction = async () => {
+        setIsPreviewing(true);
+        setCompactMessage(null);
+        try {
+            const res = await previewHistoryCompaction();
+            if (res.success && res.data) setCompactPreview(res.data);
+            else setCompactMessage({ type: 'error', text: res.error || 'Failed to analyze history' });
+        } finally {
+            setIsPreviewing(false);
+        }
+    };
+
+    const handleCompact = async () => {
+        if (!compactPreview) return;
+        const total = compactPreview.snapshots + compactPreview.sessions + compactPreview.adjustments;
+        if (total === 0) return;
+        if (!confirm(`Remove ${total} old history record(s)? Your latest balances and all forecasts stay the same. This cannot be undone.`)) return;
+        setIsCompacting(true);
+        setCompactMessage(null);
+        try {
+            const res = await compactHistory();
+            if (res.success && res.data) {
+                setCompactMessage({ type: 'success', text: `Removed ${res.data.snapshots} snapshots, ${res.data.sessions} check-in logs, ${res.data.adjustments} adjustments.` });
+                setCompactPreview(null);
+            } else {
+                setCompactMessage({ type: 'error', text: res.error || 'Failed to compact history' });
+            }
+        } finally {
+            setIsCompacting(false);
         }
     };
 
@@ -558,6 +597,53 @@ export default function SettingsPage() {
                     </div>
                 </Card>
             )}
+
+            {/* Data & storage — per-user history compaction */}
+            <Card>
+                <h2 className={`text-lg font-semibold mb-2 ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
+                    Data &amp; storage
+                </h2>
+                <p className={`text-sm mb-4 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                    Old reconciliation history — balance snapshots and check-in logs from before your latest check-in —
+                    isn&apos;t used by your forecasts. Clearing it keeps your data tidy. Your latest balances (the anchors
+                    your forecasts build on) and every projection stay exactly the same.
+                </p>
+
+                {compactPreview && (
+                    <Message
+                        severity={compactPreview.snapshots + compactPreview.sessions + compactPreview.adjustments > 0 ? 'info' : 'success'}
+                        className="mb-3 block"
+                        text={
+                            compactPreview.snapshots + compactPreview.sessions + compactPreview.adjustments > 0
+                                ? `Can remove ${compactPreview.snapshots} old snapshot(s), ${compactPreview.sessions} check-in log(s) and ${compactPreview.adjustments} adjustment(s). ${compactPreview.keptAnchors} current balance anchor(s) will be kept.`
+                                : `Nothing to clean up — your history is already compact (${compactPreview.keptAnchors} anchor(s) kept).`
+                        }
+                    />
+                )}
+                {compactMessage && (
+                    <Message severity={compactMessage.type} className="mb-3 block" text={compactMessage.text} />
+                )}
+
+                <div className="flex gap-2">
+                    <Button
+                        label="Preview cleanup"
+                        icon={<MdStorage />}
+                        outlined
+                        size="small"
+                        onClick={handlePreviewCompaction}
+                        loading={isPreviewing}
+                    />
+                    <Button
+                        label="Compact now"
+                        icon={<MdDeleteSweep />}
+                        severity="warning"
+                        size="small"
+                        onClick={handleCompact}
+                        loading={isCompacting}
+                        disabled={!compactPreview || compactPreview.snapshots + compactPreview.sessions + compactPreview.adjustments === 0}
+                    />
+                </div>
+            </Card>
 
             {/* About */}
             <Card>

@@ -2,7 +2,7 @@
 
 import type React from 'react';
 
-export type Currency = 'EUR' | 'USD' | 'BRL' | 'GBP' | 'JPY' | 'CHF' | 'CAD' | 'AUD';
+export type Currency = 'EUR' | 'USD' | 'BRL' | 'GBP' | 'JPY' | 'CHF' | 'CAD' | 'AUD' | 'SEK' | 'NOK' | 'DKK';
 
 export type Frequency = 'monthly' | 'quarterly' | 'yearly' | 'custom';
 
@@ -160,7 +160,7 @@ export interface ProjectionLineItem {
   name: string;
   amount: number;
   category?: string;
-  source: 'recurring' | 'planned-one-off' | 'planned-repeating' | 'salary' | 'taxed-income';
+  source: 'recurring' | 'planned-one-off' | 'planned-repeating' | 'salary' | 'taxed-income' | 'mortgage-payment' | 'budget';
   isOverridden?: boolean; // true when a recurring item has an occurrence override for this month
 }
 
@@ -572,6 +572,7 @@ export interface MortgageMember {
   initialPayment: number; // down payment this member contributed, e.g. 31000 / 4000
   loanSharePercent: number; // 0..1 share of the ongoing loan, e.g. 0.454 / 0.546
   ownershipTargetPercent: number; // 0..1 target share of the home; members' targets sum to 1
+  linkedAccountId?: string; // this member's cash account the monthly transfer is paid from (drives cashflow)
 }
 
 /** Annual Euribor reset entry. Applies to the whole mortgage (every loan adds its own margin). */
@@ -633,8 +634,9 @@ export interface MortgageActualEntry {
   yearMonth: YearMonth;
   remaining: number; // remaining balance at end of the month
   repayment: number; // the bank's total charge for the loan this month (incl insurance + invoicing share)
-  interest: number; // interest paid this month
+  interest: number; // interest paid this month (after any subsidy)
   insurance: number; // insurance paid this month
+  subsidy: number; // government interest subsidy this month (e.g. ASP)
   createdAt: string;
 }
 
@@ -730,6 +732,7 @@ export interface UpdateMortgageMemberRequest {
   initialPayment?: number;
   loanSharePercent?: number;
   ownershipTargetPercent?: number;
+  linkedAccountId?: string; // omit/undefined clears the link
 }
 
 export interface SetMortgageRateRequest {
@@ -768,6 +771,7 @@ export interface MortgageActualInput {
   repayment: number;
   interest: number;
   insurance: number;
+  subsidy?: number;
 }
 
 export interface ImportMortgageActualsRequest {
@@ -917,6 +921,132 @@ export interface UpdateGoalRequest extends Partial<CreateGoalRequest> {
 }
 
 // ============================================================
+// BUDGETS (trip/project budgets with grant funding)
+// ============================================================
+
+export type BudgetStatus = 'draft' | 'confirmed';
+
+export type BudgetLineKind = 'one-off' | 'monthly';
+
+export interface BudgetLine {
+  id: string;
+  name: string; // "Rent", "Flight to Stockholm"
+  category: string; // from BUDGET_CATEGORIES (free string)
+  amount: number; // per occurrence, in the budget's currency
+  kind: BudgetLineKind;
+  month?: YearMonth; // one-off: which month (clamped to the budget period)
+  startMonth?: YearMonth; // monthly: defaults to budget.startMonth
+  endMonth?: YearMonth; // monthly: defaults to budget.endMonth
+}
+
+export type BudgetFundingType = 'grant' | 'per-diem' | 'other';
+
+export type BudgetFundingTiming = 'upfront' | 'monthly' | 'specific-month';
+
+export interface BudgetFundingSource {
+  id: string;
+  name: string; // "Kone Foundation grant"
+  type: BudgetFundingType;
+  amount: number; // total, in the budget's currency (per-diem: rate × days, recomputed on save)
+  // Empty/undefined = the money can pay for anything. Restrictions match
+  // categories by exact string; renaming a category does not follow.
+  restrictedToCategories?: string[];
+  timing: BudgetFundingTiming;
+  receivedMonth?: YearMonth; // required when timing === 'specific-month'
+  perDiemRate?: number; // kept for re-editing when type === 'per-diem'
+  perDiemDays?: number;
+  note?: string;
+}
+
+export interface BudgetExpenseEntry {
+  id: string;
+  // Plain 'YYYY-MM-DD' string — derive the month with date.slice(0, 7),
+  // never via new Date() (timezone safety).
+  date: string;
+  description: string;
+  amount: number; // in the budget's currency
+  category: string;
+  fundingSourceId?: string; // which source this will be claimed against
+  note?: string;
+  createdAt: string;
+}
+
+export interface Budget {
+  id: string;
+  userId: string;
+  name: string;
+  destination?: string; // just a label; empty for non-travel budgets
+  description?: string;
+  currency: Currency;
+  startMonth: YearMonth; // inclusive
+  endMonth: YearMonth; // inclusive
+  status: BudgetStatus; // changed only via confirm/unconfirm actions
+  isArchived: boolean;
+  linkedAccountId?: string; // cash account for cashflow injection + income pull
+  exchangeRate?: number; // 1 unit of budget currency = X units of account currency
+  includeRegularIncome: boolean; // display-only pull on the budget page
+  lines: BudgetLine[];
+  fundingSources: BudgetFundingSource[];
+  expenseEntries: BudgetExpenseEntry[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateBudgetRequest {
+  name: string;
+  destination?: string;
+  description?: string;
+  currency: Currency;
+  startMonth: YearMonth;
+  endMonth: YearMonth;
+  linkedAccountId?: string;
+  exchangeRate?: number;
+  includeRegularIncome?: boolean;
+}
+
+// status is deliberately NOT updatable here — only confirmBudget/unconfirmBudget change it
+export interface UpdateBudgetRequest extends Partial<CreateBudgetRequest> {
+  isArchived?: boolean;
+}
+
+export interface CreateBudgetLineRequest {
+  name: string;
+  category: string;
+  amount: number;
+  kind: BudgetLineKind;
+  month?: YearMonth;
+  startMonth?: YearMonth;
+  endMonth?: YearMonth;
+}
+
+export type UpdateBudgetLineRequest = Partial<CreateBudgetLineRequest>;
+
+export interface CreateBudgetFundingSourceRequest {
+  name: string;
+  type: BudgetFundingType;
+  amount: number;
+  restrictedToCategories?: string[];
+  timing: BudgetFundingTiming;
+  receivedMonth?: YearMonth;
+  perDiemRate?: number;
+  perDiemDays?: number;
+  note?: string;
+}
+
+export type UpdateBudgetFundingSourceRequest = Partial<CreateBudgetFundingSourceRequest>;
+
+export interface CreateBudgetExpenseEntryRequest {
+  date: string; // YYYY-MM-DD
+  description: string;
+  amount: number;
+  category: string;
+  fundingSourceId?: string;
+  note?: string;
+}
+
+export type UpdateBudgetExpenseEntryRequest = Partial<CreateBudgetExpenseEntryRequest>;
+
+// ============================================================
 // WEALTH PROJECTION TYPES
 // ============================================================
 
@@ -1052,7 +1182,7 @@ export interface CashflowItem {
   amount: number;
   category?: string;
   type: 'income' | 'expense' | 'transfer' | 'adjustment';
-  source: 'recurring' | 'planned' | 'salary' | 'taxed-income' | 'adjustment' | 'debt-payment';
+  source: 'recurring' | 'planned' | 'salary' | 'taxed-income' | 'adjustment' | 'debt-payment' | 'mortgage-payment' | 'budget';
   isRecurring: boolean;
   linkedEntityId?: string; // For drill-down
   linkedEntityType?: string;
@@ -1076,7 +1206,7 @@ export interface MonthFlowData {
 // NAVIGATION & UI STATE TYPES
 // ============================================================
 
-export type NavigationPage = 'overview' | 'cashflow' | 'mortgage' | 'playground' | 'settings';
+export type NavigationPage = 'overview' | 'cashflow' | 'mortgage' | 'budgets' | 'playground' | 'settings';
 
 export type TimeHorizon = '6m' | '1y' | '3y' | '5y' | 'custom';
 

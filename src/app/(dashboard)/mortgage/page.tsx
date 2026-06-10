@@ -11,7 +11,7 @@ import { Toast } from 'primereact/toast';
 import { MdHouse, MdPercent, MdMoreVert } from 'react-icons/md';
 import { useAppContext } from '@/components/layout/app-layout';
 import { useTheme } from '@/components/providers/theme-provider';
-import { getMyMortgages, getMortgageProjectionInputs, deleteMortgage } from '@/lib/actions/shared-mortgages';
+import { getMyMortgages, getMortgageProjectionInputs, deleteMortgage, revertMortgageMonth } from '@/lib/actions/shared-mortgages';
 import type { MortgageProjectionInputsResult } from '@/lib/actions/shared-mortgages';
 import { calculateMortgageProjection, getMortgageStartDate, getPayoffMonth } from '@/lib/mortgage-projection';
 import { isEuriborUpdateDue } from '@/lib/mortgage-utils';
@@ -22,6 +22,7 @@ import { MortgageLedgerTable } from '@/components/mortgage/mortgage-ledger-table
 import { MortgageHistoryStrips } from '@/components/mortgage/mortgage-history-strips';
 import { MortgageSetupWizard } from '@/components/mortgage/mortgage-setup-wizard';
 import { MortgageImportDialog } from '@/components/mortgage/mortgage-import-dialog';
+import { MortgageReconcileDialog } from '@/components/mortgage/mortgage-reconcile-dialog';
 import { EuriborUpdateDialog, DriftAdjustmentDialog, ExtraPaymentDialog, MortgageMembersDialog } from '@/components/mortgage/mortgage-dialogs';
 import {
   MortgageBalanceChart,
@@ -70,6 +71,7 @@ export default function MortgagePage() {
   const [extraOpen, setExtraOpen] = useState(false);
   const [membersOpen, setMembersOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [reconcileYM, setReconcileYM] = useState<string | null>(null);
 
   const currentMonth = getCurrentYearMonth();
   const hasLoadedOnce = useRef(false);
@@ -152,6 +154,19 @@ export default function MortgagePage() {
     const res = await deleteMortgage(inputs.mortgage.id);
     if (res.success) { toast('Mortgage deleted'); fetchData(); }
     else toast(res.error ?? 'Failed to delete', 'error');
+  };
+
+  const reconcileMonth = useMemo(
+    () => (reconcileYM ? months.find((m) => m.yearMonth === reconcileYM) ?? null : null),
+    [reconcileYM, months]
+  );
+
+  const handleRevert = async (yearMonth: string) => {
+    if (!inputs) return;
+    if (!confirm(`Revert ${yearMonth} back to a forecast? Its recorded figures will be removed.`)) return;
+    const res = await revertMortgageMonth(inputs.mortgage.id, yearMonth);
+    if (res.success) { toast(`${yearMonth} reverted to forecast`); fetchData(); }
+    else toast(res.error ?? 'Failed to revert', 'error');
   };
 
   if (isLoading) {
@@ -257,7 +272,16 @@ export default function MortgagePage() {
 
       {/* Ledger */}
       <Card>
-        <MortgageLedgerTable months={months} mortgage={mortgage} currency={mortgage.currency} showBreakdown={showBreakdown} onToggleBreakdown={setShowBreakdown} isSimple={!!isSimple} />
+        <MortgageLedgerTable
+          months={months}
+          mortgage={mortgage}
+          currency={mortgage.currency}
+          showBreakdown={showBreakdown}
+          onToggleBreakdown={setShowBreakdown}
+          isSimple={!!isSimple}
+          onReconcile={setReconcileYM}
+          onRevert={handleRevert}
+        />
       </Card>
 
       {/* History strips */}
@@ -312,6 +336,14 @@ export default function MortgagePage() {
         hasActuals={inputs.actuals.length > 0}
         onClose={() => setImportOpen(false)}
         onImported={(msg) => { setImportOpen(false); toast(msg); fetchData(); }}
+      />
+      <MortgageReconcileDialog
+        visible={reconcileYM !== null}
+        month={reconcileMonth}
+        mortgage={mortgage}
+        currency={mortgage.currency}
+        onClose={() => setReconcileYM(null)}
+        onSaved={(msg) => { setReconcileYM(null); toast(msg); fetchData(); }}
       />
     </div>
   );

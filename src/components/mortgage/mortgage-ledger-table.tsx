@@ -6,6 +6,7 @@ import { Column } from 'primereact/column';
 import { InputSwitch } from 'primereact/inputswitch';
 import { Tooltip } from 'primereact/tooltip';
 import { Tag } from 'primereact/tag';
+import { Button } from 'primereact/button';
 import { formatCurrency, formatYearMonthShort, formatRate } from '@/lib/constants';
 import { getCurrentYearMonth } from '@/lib/projection';
 import type { SharedMortgage, MortgageProjectionMonth, Currency } from '@/types';
@@ -14,6 +15,7 @@ interface LedgerRow {
   yearMonth: string;
   label: string;
   isActual: boolean;
+  isHistorical: boolean;
   rate: number;
   totalRemaining: number;
   totalCharge: number;
@@ -51,6 +53,8 @@ export function MortgageLedgerTable({
   showBreakdown,
   onToggleBreakdown,
   isSimple,
+  onReconcile,
+  onRevert,
 }: {
   months: MortgageProjectionMonth[];
   mortgage: SharedMortgage;
@@ -58,9 +62,17 @@ export function MortgageLedgerTable({
   showBreakdown: boolean;
   onToggleBreakdown: (v: boolean) => void;
   isSimple: boolean;
+  /** Mark an elapsed forecast month as actual (opens the reconcile dialog). */
+  onReconcile?: (yearMonth: string) => void;
+  /** Revert a recorded actual month back to a forecast. */
+  onRevert?: (yearMonth: string) => void;
 }) {
   const cur = (v: number) => formatCurrency(v, currency);
   const currentMonth = getCurrentYearMonth();
+
+  // The next month still awaiting reconciliation (earliest elapsed forecast),
+  // surfaced as a one-click action in the header.
+  const monthToReconcile = months.find((m) => m.isHistorical && !m.isAllActual)?.yearMonth ?? null;
 
   const rows = useMemo<LedgerRow[]>(
     () =>
@@ -68,6 +80,7 @@ export function MortgageLedgerTable({
         yearMonth: m.yearMonth,
         label: formatYearMonthShort(m.yearMonth),
         isActual: m.isAllActual,
+        isHistorical: m.isHistorical,
         rate: m.loans[0]?.effectiveAnnualRate ?? 0,
         totalRemaining: m.totalRemaining,
         totalCharge: m.totalCharge,
@@ -97,7 +110,12 @@ export function MortgageLedgerTable({
     return acc;
   }, [months]);
 
-  const hasSubsidy = months.some((m) => m.totalSubsidy > 0.005);
+  // Show the ASP-subsidy column whenever the mortgage has a subsidy-eligible loan
+  // (so the column is present even in months/years the rate sits below the
+  // threshold and the subsidy is €0) or any recorded month actually has one.
+  const hasSubsidy =
+    mortgage.loans.some((l) => l.kind === 'asp' && l.aspSubsidy?.enabled) ||
+    months.some((m) => m.totalSubsidy > 0.005);
 
   // Forecast rows dimmed, recorded actuals solid; current month bolded + tagged.
   const rowClass = (row: LedgerRow) =>
@@ -170,19 +188,48 @@ export function MortgageLedgerTable({
   };
 
   // Month (with actual/forecast tag) + "Paid so far" footer label.
+  const canReconcile = !!onReconcile;
   cols.push(
     <Column
       key="month"
       header="Month"
       frozen={false}
       body={(r: LedgerRow) => (
-        <span className="whitespace-nowrap">
+        <span className="whitespace-nowrap inline-flex items-center gap-1">
           {r.label}
-          <Tag value={r.isActual ? 'actual' : 'forecast'} severity={r.isActual ? 'success' : 'info'} className="ml-2 text-xs" />
+          <Tag value={r.isActual ? 'actual' : 'forecast'} severity={r.isActual ? 'success' : 'info'} className="ml-1 text-xs" />
+          {/* Elapsed-but-unreconciled → offer to mark it actual. */}
+          {canReconcile && r.isHistorical && !r.isActual && (
+            <Button
+              icon="pi pi-check"
+              rounded
+              text
+              size="small"
+              severity="success"
+              className="!w-7 !h-7"
+              tooltip="Mark this month as actual"
+              tooltipOptions={{ position: 'top' }}
+              onClick={() => onReconcile?.(r.yearMonth)}
+            />
+          )}
+          {/* Recorded actual → allow reverting to a forecast. */}
+          {onRevert && r.isActual && (
+            <Button
+              icon="pi pi-undo"
+              rounded
+              text
+              size="small"
+              severity="secondary"
+              className="!w-7 !h-7 opacity-50 hover:opacity-100"
+              tooltip="Revert to forecast"
+              tooltipOptions={{ position: 'top' }}
+              onClick={() => onRevert(r.yearMonth)}
+            />
+          )}
         </span>
       )}
       footer={<span className="font-semibold whitespace-nowrap">Paid so far ▸</span>}
-      style={{ minWidth: '150px' }}
+      style={{ minWidth: '190px' }}
     />
   );
   cols.push(
@@ -217,20 +264,32 @@ export function MortgageLedgerTable({
 
   return (
     <div ref={containerRef}>
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex items-start justify-between mb-3 gap-4">
         <div>
           <h2 className="text-lg font-semibold">Payment schedule</h2>
           <p className="text-sm opacity-60">
-            Every month from the start of the loan, scroll freely. <b className="text-green-600">Actual</b> rows are your imported
-            bank figures; <b>forecast</b> rows (dimmed) are projected. Opens centered on the current month.
+            Every month from the start of the loan, scroll freely. <b className="text-green-600">Actual</b> rows are your confirmed
+            bank figures; <b>forecast</b> rows (dimmed) are projected. Opens centered on the current month. Use the{' '}
+            <i className="pi pi-check text-green-600 text-xs" /> on an elapsed month to mark it as actual.
           </p>
         </div>
-        {!isSimple && (
-          <div className="flex items-center gap-2">
-            <span className="text-sm opacity-70">Loan-by-loan breakdown</span>
-            <InputSwitch checked={showBreakdown} onChange={(e) => onToggleBreakdown(e.value)} />
-          </div>
-        )}
+        <div className="flex items-center gap-3 shrink-0">
+          {canReconcile && monthToReconcile && (
+            <Button
+              label={`Reconcile ${formatYearMonthShort(monthToReconcile)}`}
+              icon="pi pi-check"
+              size="small"
+              severity="success"
+              onClick={() => onReconcile?.(monthToReconcile)}
+            />
+          )}
+          {!isSimple && (
+            <div className="flex items-center gap-2">
+              <span className="text-sm opacity-70">Loan-by-loan breakdown</span>
+              <InputSwitch checked={showBreakdown} onChange={(e) => onToggleBreakdown(e.value)} />
+            </div>
+          )}
+        </div>
       </div>
 
       <Tooltip target="[data-pr-tooltip]" />

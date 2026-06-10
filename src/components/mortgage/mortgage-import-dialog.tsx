@@ -69,10 +69,10 @@ export function MortgageImportDialog({
       // Skip a header row.
       if (i === 0 && /month|loan|remaining/i.test(line)) return;
       if (cols.length < 6) {
-        errors.push(`Line ${i + 1}: expected 6 columns (month, loan, remaining, repayment, interest, insurance)`);
+        errors.push(`Line ${i + 1}: expected 6 columns (month, loan, remaining, repayment, interest, insurance) — subsidy optional`);
         return;
       }
-      const [month, loanTok, rem, rep, intr, ins] = cols;
+      const [month, loanTok, rem, rep, intr, ins, sub] = cols;
       if (!/^\d{4}-\d{2}$/.test(month)) {
         errors.push(`Line ${i + 1}: bad month "${month}" (use YYYY-MM)`);
         return;
@@ -83,17 +83,19 @@ export function MortgageImportDialog({
         return;
       }
       const remaining = parseNum(rem), repayment = parseNum(rep), interest = parseNum(intr), insurance = parseNum(ins);
-      if (remaining == null || repayment == null || interest == null || insurance == null) {
+      // Subsidy column is optional; a blank/missing value means €0.
+      const subsidy = sub != null && sub !== '' ? parseNum(sub) : 0;
+      if (remaining == null || repayment == null || interest == null || insurance == null || subsidy == null) {
         errors.push(`Line ${i + 1}: non-numeric value`);
         return;
       }
-      entries.push({ loanId, yearMonth: month, remaining: Math.abs(remaining), repayment: Math.abs(repayment), interest: Math.abs(interest), insurance: Math.abs(insurance) });
+      entries.push({ loanId, yearMonth: month, remaining: Math.abs(remaining), repayment: Math.abs(repayment), interest: Math.abs(interest), insurance: Math.abs(insurance), subsidy: Math.abs(subsidy) });
     });
     return { entries, errors };
   }, [text, loanLookup]);
 
   const loanNames = mortgage.loans.map((l) => `${l.label} → "${l.kind}"`).join(', ');
-  const example = `month,loan,remaining,repayment,interest,insurance\n2023-02,${mortgage.loans[0]?.kind ?? 'asp'},140000,612.54,609.84,0`;
+  const example = `month,loan,remaining,repayment,interest,insurance,subsidy\n2023-02,${mortgage.loans[0]?.kind ?? 'asp'},140000,612.54,609.84,0,0`;
 
   const doImport = async () => {
     if (parsed.entries.length === 0) { setError('Nothing to import'); return; }
@@ -122,11 +124,12 @@ export function MortgageImportDialog({
       </p>
       <div className="text-xs opacity-70 mb-2 p-2 rounded surface-ground">
         <div className="font-medium mb-1">Columns (comma, semicolon or tab separated):</div>
-        <code>month, loan, remaining, repayment, interest, insurance</code>
+        <code>month, loan, remaining, repayment, interest, insurance, subsidy</code>
         <ul className="list-disc ml-5 mt-1 space-y-0.5">
           <li><b>month</b>: YYYY-MM · <b>loan</b>: {loanNames}</li>
           <li><b>remaining</b>: balance left after the month · <b>repayment</b>: the bank&apos;s total charge for the loan (incl. insurance)</li>
           <li><b>interest</b> and <b>insurance</b>: that month&apos;s amounts (positive numbers)</li>
+          <li><b>subsidy</b> (optional): government ASP interest subsidy that month — leave blank or 0 when none</li>
         </ul>
         <div className="mt-1">Example:<br /><code className="whitespace-pre">{example}</code></div>
       </div>

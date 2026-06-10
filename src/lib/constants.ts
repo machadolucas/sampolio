@@ -1,5 +1,9 @@
 import type { Currency } from '@/types';
 
+// Single source of truth for currency codes — keep in sync with the Currency
+// type union and reuse via z.enum(CURRENCY_VALUES) in validation schemas.
+export const CURRENCY_VALUES = ['EUR', 'USD', 'BRL', 'GBP', 'JPY', 'CHF', 'CAD', 'AUD', 'SEK', 'NOK', 'DKK'] as const;
+
 export const CURRENCIES: { value: Currency; label: string; symbol: string }[] = [
   { value: 'EUR', label: 'Euro', symbol: '€' },
   { value: 'USD', label: 'US Dollar', symbol: '$' },
@@ -9,6 +13,9 @@ export const CURRENCIES: { value: Currency; label: string; symbol: string }[] = 
   { value: 'CHF', label: 'Swiss Franc', symbol: 'CHF' },
   { value: 'CAD', label: 'Canadian Dollar', symbol: 'C$' },
   { value: 'AUD', label: 'Australian Dollar', symbol: 'A$' },
+  { value: 'SEK', label: 'Swedish Krona', symbol: 'kr' },
+  { value: 'NOK', label: 'Norwegian Krone', symbol: 'kr' },
+  { value: 'DKK', label: 'Danish Krone', symbol: 'kr' },
 ];
 
 export const PLANNING_HORIZONS = [
@@ -48,6 +55,19 @@ export const ITEM_CATEGORIES = [
   'Savings',
   'Reimbursement',
   'Other Expense',
+];
+
+// Short, plain-word categories for trip/project budgets (lines, grant
+// restrictions and the expense log all pick from this same list).
+export const BUDGET_CATEGORIES = [
+  'Accommodation',
+  'Travel',
+  'Local transport',
+  'Food',
+  'Insurance',
+  'Fees',
+  'Equipment',
+  'Other',
 ];
 
 export const APP_NAME = 'Sampolio';

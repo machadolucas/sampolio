@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { InputText } from 'primereact/inputtext';
-import { MdHome, MdAttachMoney, MdSettings, MdSync, MdAddCircle, MdRemoveCircle, MdSearch, MdHouse } from 'react-icons/md';
+import { MdHome, MdAttachMoney, MdSettings, MdSync, MdAddCircle, MdRemoveCircle, MdSearch, MdHouse, MdLuggage } from 'react-icons/md';
 import { useTheme } from '@/components/providers/theme-provider';
 import type { Command, CommandType } from '@/types';
 
@@ -42,6 +42,15 @@ const NAVIGATION_COMMANDS: Command[] = [
         type: 'navigate',
         icon: <MdHouse />,
         keywords: ['mortgage', 'loan', 'house', 'home', 'asp', 'euribor', 'ownership'],
+        action: () => { },
+    },
+    {
+        id: 'nav-budgets',
+        label: 'Go to Budgets',
+        description: 'Plan trips and projects, and track grant money',
+        type: 'navigate',
+        icon: <MdLuggage />,
+        keywords: ['budget', 'trip', 'travel', 'grant', 'project', 'per diem', 'allowance'],
         action: () => { },
     },
     {
@@ -167,6 +176,7 @@ export function CommandPalette({
                     'nav-overview': '/',
                     'nav-cashflow': '/cashflow',
                     'nav-mortgage': '/mortgage',
+                    'nav-budgets': '/budgets',
                     'nav-playground': '/playground',
                     'nav-settings': '/settings',
                 };

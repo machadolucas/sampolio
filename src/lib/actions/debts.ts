@@ -1,6 +1,7 @@
 'use server';
 
 import { z } from 'zod';
+import { CURRENCY_VALUES } from '@/lib/constants';
 import { auth } from '@/lib/auth';
 import {
   createDebt as dbCreateDebt,
@@ -23,7 +24,7 @@ import type { ApiResponse, Debt, DebtReferenceRate, DebtExtraPayment } from '@/t
 const createDebtSchema = z.object({
   name: z.string().min(1, 'Name is required'),
   description: z.string().optional(),
-  currency: z.enum(['EUR', 'USD', 'BRL', 'GBP', 'JPY', 'CHF', 'CAD', 'AUD']),
+  currency: z.enum(CURRENCY_VALUES),
   debtType: z.enum(['amortized', 'fixed-installment']),
   initialPrincipal: z.number().positive('Initial principal must be positive'),
   startDate: z.string().regex(/^\d{4}-\d{2}$/, 'Invalid date format (YYYY-MM)'),

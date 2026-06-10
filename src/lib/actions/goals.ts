@@ -1,6 +1,7 @@
 'use server';
 
 import { z } from 'zod';
+import { CURRENCY_VALUES } from '@/lib/constants';
 import { auth } from '@/lib/auth';
 import {
   createGoal as dbCreateGoal,
@@ -17,7 +18,7 @@ import type { ApiResponse, Goal } from '@/types';
 const createGoalSchema = z.object({
   name: z.string().min(1, 'Name is required'),
   targetAmount: z.number().positive('Target amount must be positive'),
-  currency: z.enum(['EUR', 'USD', 'BRL', 'GBP', 'JPY', 'CHF', 'CAD', 'AUD']),
+  currency: z.enum(CURRENCY_VALUES),
   targetDate: z.string().regex(/^\d{4}-\d{2}$/).optional(),
   trackingMethod: z.enum(['account-balance', 'net-worth', 'manual']),
   linkedAccountId: z.string().optional(),

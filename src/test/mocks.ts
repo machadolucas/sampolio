@@ -22,6 +22,10 @@ import type {
   MortgageExtraPayment,
   MortgageBalanceSnapshot,
   MortgageActualEntry,
+  Budget,
+  BudgetLine,
+  BudgetFundingSource,
+  BudgetExpenseEntry,
 } from '@/types';
 
 const now = new Date().toISOString();
@@ -357,6 +361,63 @@ export function createMockMortgageActual(
     repayment: 612.54,
     interest: 609.84,
     insurance: 0,
+    subsidy: 0,
+    createdAt: now,
+    ...overrides,
+  };
+}
+
+export function createMockBudget(overrides?: Partial<Budget>): Budget {
+  return {
+    id: uuidv4(),
+    userId: 'test-user',
+    name: 'Sweden research stay',
+    destination: 'Stockholm',
+    currency: 'SEK' as Currency,
+    startMonth: '2026-03',
+    endMonth: '2026-04',
+    status: 'draft',
+    isArchived: false,
+    includeRegularIncome: true,
+    lines: [],
+    fundingSources: [],
+    expenseEntries: [],
+    createdAt: now,
+    updatedAt: now,
+    ...overrides,
+  };
+}
+
+export function createMockBudgetLine(overrides?: Partial<BudgetLine>): BudgetLine {
+  return {
+    id: uuidv4(),
+    name: 'Rent',
+    category: 'Accommodation',
+    amount: 800,
+    kind: 'monthly',
+    ...overrides,
+  };
+}
+
+export function createMockFundingSource(overrides?: Partial<BudgetFundingSource>): BudgetFundingSource {
+  return {
+    id: uuidv4(),
+    name: 'Test grant',
+    type: 'grant',
+    amount: 2000,
+    restrictedToCategories: ['Accommodation', 'Travel'],
+    timing: 'upfront',
+    ...overrides,
+  };
+}
+
+export function createMockBudgetExpenseEntry(overrides?: Partial<BudgetExpenseEntry>): BudgetExpenseEntry {
+  return {
+    id: uuidv4(),
+    date: '2026-03-14',
+    description: 'Groceries at ICA',
+    amount: 240,
+    category: 'Food',
     createdAt: now,
     ...overrides,
   };

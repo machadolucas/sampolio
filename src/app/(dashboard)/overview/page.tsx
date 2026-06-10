@@ -20,12 +20,15 @@ import { getProjection } from '@/lib/actions/projection';
 import { getLatestCompletedSession, getLatestSnapshot } from '@/lib/actions/reconciliation';
 import { calculateWealthProjection, getLatestEndDate } from '@/lib/wealth-projection';
 import { calculateMortgageProjection } from '@/lib/mortgage-projection';
-import { getMonthsBetween } from '@/lib/projection';
-import type { FinancialAccount, InvestmentAccount, Receivable, Debt, TimeHorizon, WealthProjectionMonth, Currency, InvestmentContribution, ReceivableRepayment, DebtReferenceRate, DebtExtraPayment, MonthlyProjection, BalanceSnapshot, MortgageProjectionMonth } from '@/types';
+import { isEuriborUpdateDue } from '@/lib/mortgage-utils';
+import { getMonthsBetween, addMonths, compareYearMonths } from '@/lib/projection';
+import { getBudgets } from '@/lib/actions/budgets';
+import { computeActualsRollup } from '@/lib/budget-utils';
+import type { FinancialAccount, InvestmentAccount, Receivable, Debt, TimeHorizon, WealthProjectionMonth, Currency, InvestmentContribution, ReceivableRepayment, DebtReferenceRate, DebtExtraPayment, MonthlyProjection, BalanceSnapshot, MortgageProjectionMonth, Budget } from '@/types';
 import { NetWorthChart, WealthChart } from '@/components/charts';
 import { EntityListDrawer } from '@/components/ui/entity-list-drawer';
 import { StatusHeroCard } from '@/components/ui/status-hero-card';
-import { MdInfo, MdSync, MdShowChart, MdAttachMoney, MdAccountBalanceWallet, MdBarChart, MdGroup, MdCreditCard, MdArrowForward, MdAddCircle, MdRemoveCircle, MdHouse, MdHomeWork } from 'react-icons/md';
+import { MdInfo, MdSync, MdShowChart, MdAttachMoney, MdAccountBalanceWallet, MdBarChart, MdGroup, MdCreditCard, MdArrowForward, MdAddCircle, MdRemoveCircle, MdHouse, MdHomeWork, MdPercent, MdLuggage } from 'react-icons/md';
 
 type EntityCategory = 'cash' | 'investments' | 'receivables' | 'debts';
 
@@ -178,6 +181,10 @@ export default function OverviewPage() {
     const [lastReconciled, setLastReconciled] = useState<string | null>(null);
     // The logged-in member's slice of any shared mortgage(s), for the current month.
     const [mortgageSummary, setMortgageSummary] = useState<{ equity: number; liability: number; stake: number } | null>(null);
+    // Set when a mortgage's yearly Euribor rate is due for an update (drives the reminder banner).
+    const [euriborDue, setEuriborDue] = useState<{ name: string; lastResetDate: Date } | null>(null);
+    // At most one budget reminder: an over-budget category beats an upcoming trip.
+    const [budgetBanner, setBudgetBanner] = useState<{ type: 'upcoming' | 'over-budget'; budget: Budget; category?: string } | null>(null);
 
     const userId = session?.user?.id;
 
@@ -191,14 +198,39 @@ export default function OverviewPage() {
             setIsLoading(true);
         }
         try {
-            const [accountsRes, investmentsRes, receivablesRes, debtsRes, sessionRes, mortgagesRes] = await Promise.all([
+            const [accountsRes, investmentsRes, receivablesRes, debtsRes, sessionRes, mortgagesRes, budgetsRes] = await Promise.all([
                 getAccounts(),
                 getInvestmentAccounts(),
                 getReceivables(),
                 getDebts(),
                 getLatestCompletedSession(),
                 getMyMortgages(),
+                getBudgets(),
             ]);
+
+            // Budget reminders: an over-budget category on an active confirmed
+            // budget, or a confirmed budget starting this/next month.
+            {
+                const now = new Date();
+                const cur = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+                const confirmed = budgetsRes.success && budgetsRes.data
+                    ? budgetsRes.data.filter((b) => b.status === 'confirmed' && !b.isArchived)
+                    : [];
+                let banner: { type: 'upcoming' | 'over-budget'; budget: Budget; category?: string } | null = null;
+                for (const b of confirmed) {
+                    const isActive = compareYearMonths(b.startMonth, cur) <= 0 && compareYearMonths(cur, b.endMonth) <= 0;
+                    if (isActive) {
+                        const over = computeActualsRollup(b).perCategory.find((c) => c.planned > 0 && c.actual > c.planned);
+                        if (over) { banner = { type: 'over-budget', budget: b, category: over.category }; break; }
+                    }
+                }
+                if (!banner) {
+                    const next = addMonths(cur, 1);
+                    const upcoming = confirmed.find((b) => b.startMonth === cur || b.startMonth === next);
+                    if (upcoming && compareYearMonths(cur, upcoming.endMonth) <= 0) banner = { type: 'upcoming', budget: upcoming };
+                }
+                setBudgetBanner(banner);
+            }
 
             const activeAccounts = accountsRes.success && accountsRes.data
                 ? accountsRes.data.filter((a: FinancialAccount) => !a.isArchived)
@@ -274,6 +306,7 @@ export default function OverviewPage() {
 
             const endDate = getLatestEndDate(wealthData, 60);
 
+            let dueBanner: { name: string; lastResetDate: Date } | null = null;
             if (activeMortgages.length > 0) {
                 const inputs = await Promise.all(
                     activeMortgages.map((m) => getMortgageProjectionInputs(m.id))
@@ -282,9 +315,13 @@ export default function OverviewPage() {
                     if (res.success && res.data) {
                         mortgageProjections.push(calculateMortgageProjection(res.data, endDate));
                         mortgageNames.push(activeMortgages[idx].name);
+                        // Surface a reminder if this mortgage's yearly Euribor reset is due.
+                        const due = isEuriborUpdateDue(res.data.mortgage, res.data.rates);
+                        if (due.due && !dueBanner) dueBanner = { name: activeMortgages[idx].name, lastResetDate: due.lastResetDate };
                     }
                 });
             }
+            setEuriborDue(dueBanner);
 
             const projectionMonths = calculateWealthProjection(wealthData, startDate, endDate);
             setProjection(projectionMonths);
@@ -479,6 +516,38 @@ export default function OverviewPage() {
                 );
                 return null;
             })()}
+
+            {/* Euribor rate reminder — surfaced here so the yearly reset isn't missed. */}
+            {euriborDue && (
+                <div className={`flex items-center gap-3 p-4 rounded-lg border ${isDark ? 'bg-yellow-900/20 border-yellow-800 text-yellow-400' : 'bg-yellow-50 border-yellow-200 text-yellow-700'}`}>
+                    <MdPercent size={20} />
+                    <span>
+                        Time to update the Euribor rate for <b>{euriborDue.name}</b>. Banks reset the 12-month Euribor around{' '}
+                        {euriborDue.lastResetDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })} — enter the new rate so your payments stay accurate.
+                    </span>
+                    <Button label="Update rate" size="small" severity="warning" className="ml-auto" onClick={() => router.push('/mortgage')} />
+                </div>
+            )}
+
+            {/* Budget reminder — over-budget warning while a trip is running, or a heads-up that one is about to start. */}
+            {budgetBanner && budgetBanner.type === 'over-budget' && (
+                <div className={`flex items-center gap-3 p-4 rounded-lg border ${isDark ? 'bg-yellow-900/20 border-yellow-800 text-yellow-400' : 'bg-yellow-50 border-yellow-200 text-yellow-700'}`}>
+                    <MdLuggage size={20} />
+                    <span>
+                        You&apos;ve spent more than planned on <b>{budgetBanner.category}</b> for &ldquo;{budgetBanner.budget.name}&rdquo;.
+                    </span>
+                    <Button label="Open the log" size="small" severity="warning" className="ml-auto" onClick={() => router.push(`/budgets/${budgetBanner.budget.id}`)} />
+                </div>
+            )}
+            {budgetBanner && budgetBanner.type === 'upcoming' && (
+                <div className={`flex items-center gap-3 p-4 rounded-lg border ${isDark ? 'bg-blue-900/20 border-blue-800 text-blue-400' : 'bg-blue-50 border-blue-200 text-blue-700'}`}>
+                    <MdLuggage size={20} />
+                    <span>
+                        Your budget &ldquo;{budgetBanner.budget.name}&rdquo; starts in {formatYearMonth(budgetBanner.budget.startMonth)}. Give it a look before the trip.
+                    </span>
+                    <Button label="View budget" size="small" className="ml-auto" onClick={() => router.push(`/budgets/${budgetBanner.budget.id}`)} />
+                </div>
+            )}
 
             {/* Hero Card */}
             <StatusHeroCard

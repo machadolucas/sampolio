@@ -21,6 +21,7 @@
  *   user:{userId}:receivable:{id}:repayments          – repayments
  *   user:{userId}:preferences                         – user preferences
  *   user:{userId}:reconciliation                      – reconciliation data
+ *   user:{userId}:budgets                             – trip/project budgets (single docs)
  *   app-settings                                      – global app settings
  *   users                                             – all users list
  *   mortgage:{mortgageId}                             – shared mortgage doc (loans + members)
@@ -57,6 +58,7 @@ import {
 } from './shared-mortgages';
 import { getReceivables, getReceivableById, getRepayments } from './receivables';
 import { getGoals, getGoalById } from './goals';
+import { getBudgets, getBudgetById } from './budgets';
 import { getUserPreferences } from './user-preferences';
 import { getAppSettings } from './app-settings';
 import { getAllUsers } from './users';
@@ -84,6 +86,7 @@ import type {
   Receivable,
   ReceivableRepayment,
   Goal,
+  Budget,
   UserPreferences,
   AppSettings,
   User,
@@ -333,6 +336,27 @@ export async function cachedGetGoalById(
   cacheTag('all-data', `user:${userId}`, `user:${userId}:goals`);
   cacheLife('indefinite');
   return getGoalById(userId, goalId);
+}
+
+// ============================================================
+// BUDGETS
+// ============================================================
+
+export async function cachedGetBudgets(userId: string): Promise<Budget[]> {
+  'use cache';
+  cacheTag('all-data', `user:${userId}`, `user:${userId}:budgets`);
+  cacheLife('indefinite');
+  return getBudgets(userId);
+}
+
+export async function cachedGetBudgetById(
+  userId: string,
+  budgetId: string
+): Promise<Budget | null> {
+  'use cache';
+  cacheTag('all-data', `user:${userId}`, `user:${userId}:budgets`);
+  cacheLife('indefinite');
+  return getBudgetById(userId, budgetId);
 }
 
 // ============================================================

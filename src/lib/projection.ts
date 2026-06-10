@@ -12,6 +12,27 @@ import type {
   BalanceSnapshot
 } from '@/types';
 
+/** A mortgage's monthly transfer for one month, injected into a cash account's
+ * cashflow as a read-only expense line (see calculateProjection). */
+export interface MortgageTransfer {
+  yearMonth: YearMonth;
+  mortgageId: string;
+  mortgageName: string;
+  amount: number;
+}
+
+/** A confirmed budget's aggregated flow for one month (planned costs out,
+ * usable funding in), injected into its linked cash account's cashflow as
+ * read-only lines (see calculateProjection). Amounts are already converted
+ * to the account's currency via the budget's manual exchange rate. */
+export interface BudgetTransfer {
+  yearMonth: YearMonth;
+  budgetId: string;
+  budgetName: string;
+  amount: number;
+  direction: 'income' | 'expense';
+}
+
 // Year-Month utility functions
 export function parseYearMonth(yearMonth: YearMonth): { year: number; month: number } {
   const [yearStr, monthStr] = yearMonth.split('-');
@@ -194,11 +215,32 @@ export function calculateProjection(
   plannedItems: PlannedItem[],
   taxedIncomes: TaxedIncome[] = [],
   filters?: ProjectionFilters,
-  latestSnapshot?: BalanceSnapshot | null
+  latestSnapshot?: BalanceSnapshot | null,
+  mortgageTransfers: MortgageTransfer[] = [],
+  budgetTransfers: BudgetTransfer[] = []
 ): MonthlyProjection[] {
   const anchor = resolveAnchor(account.startingDate, account.startingBalance, latestSnapshot);
   const months = generateMonthList(account, anchor);
   const projections: MonthlyProjection[] = [];
+
+  // Per-month mortgage transfers (this user's share of the bank charge), injected
+  // as read-only expense lines. Computed by the mortgage engine, so they track
+  // rate resets / reconciled actuals automatically.
+  const transfersByMonth = new Map<YearMonth, MortgageTransfer[]>();
+  for (const t of mortgageTransfers) {
+    const existing = transfersByMonth.get(t.yearMonth);
+    if (existing) existing.push(t);
+    else transfersByMonth.set(t.yearMonth, [t]);
+  }
+
+  // Per-month budget transfers (confirmed trip/project budgets linked to this
+  // account), injected as read-only lines. Computed by the budget engine.
+  const budgetTransfersByMonth = new Map<YearMonth, BudgetTransfer[]>();
+  for (const t of budgetTransfers) {
+    const existing = budgetTransfersByMonth.get(t.yearMonth);
+    if (existing) existing.push(t);
+    else budgetTransfersByMonth.set(t.yearMonth, [t]);
+  }
 
   let runningBalance = anchor.startBalance;
 
@@ -444,6 +486,40 @@ export function calculateProjection(
       };
 
       incomeBreakdown.push(lineItem);
+    }
+
+    // Mortgage transfers — this user's monthly payment into the loan account,
+    // computed by the mortgage engine. Read-only (edited on the mortgage page).
+    const transfers = transfersByMonth.get(yearMonth);
+    if (transfers) {
+      for (const t of transfers) {
+        if (t.amount <= 0.005) continue;
+        expenseBreakdown.push({
+          itemId: t.mortgageId,
+          name: `Mortgage: ${t.mortgageName}`,
+          amount: t.amount,
+          category: 'Housing',
+          source: 'mortgage-payment',
+        });
+      }
+    }
+
+    // Budget transfers — confirmed budgets linked to this account, aggregated
+    // per budget per month. Read-only (edited on the budget's own page; the
+    // itemId is the budgetId so the UI can deep-link to /budgets/{id}).
+    const monthBudgetTransfers = budgetTransfersByMonth.get(yearMonth);
+    if (monthBudgetTransfers) {
+      for (const t of monthBudgetTransfers) {
+        if (t.amount <= 0.005) continue;
+        const lineItem: ProjectionLineItem = {
+          itemId: t.budgetId,
+          name: t.direction === 'expense' ? `Budget: ${t.budgetName}` : `Budget: ${t.budgetName} (funding)`,
+          amount: t.amount,
+          source: 'budget',
+        };
+        if (t.direction === 'expense') expenseBreakdown.push(lineItem);
+        else incomeBreakdown.push(lineItem);
+      }
     }
 
     // Calculate totals

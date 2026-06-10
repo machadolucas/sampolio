@@ -88,6 +88,19 @@ export async function createPlannedItem(
     customIntervalMonths: data.customIntervalMonths,
     firstOccurrence: data.firstOccurrence,
     endDate: data.endDate,
+    // Shared-expense fields
+    isShared: data.isShared,
+    shareRatio: data.shareRatio,
+    // Reimbursement tracking (one-off)
+    isReimbursable: data.isReimbursable,
+    reimbursementStatus: data.isReimbursable ? 'pending' : undefined,
+    expectedReimbursementMonth: data.expectedReimbursementMonth,
+    // Recurring-item occurrence override metadata — MUST persist, otherwise the
+    // override is read back as a plain one-off and double-counts against the
+    // recurring occurrence (and re-edits can't find it, creating duplicates).
+    linkedRecurringItemId: data.linkedRecurringItemId,
+    isRecurringOverride: data.isRecurringOverride,
+    skipOccurrence: data.skipOccurrence,
     createdAt: now,
     updatedAt: now,
   };

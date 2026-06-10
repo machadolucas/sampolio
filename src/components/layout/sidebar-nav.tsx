@@ -12,7 +12,7 @@ import { useTheme } from '@/components/providers/theme-provider';
 import { MenuItem } from 'primereact/menuitem';
 import { useAppContext } from '@/components/layout/app-layout';
 import type { NavigationPage } from '@/types';
-import { MdHome, MdAttachMoney, MdSettings, MdLightMode, MdDarkMode, MdLogout, MdSync, MdSearch, MdPerson, MdChevronRight, MdChevronLeft, MdExplore, MdTune, MdHouse } from 'react-icons/md';
+import { MdHome, MdAttachMoney, MdSettings, MdLightMode, MdDarkMode, MdLogout, MdSync, MdSearch, MdPerson, MdChevronRight, MdChevronLeft, MdExplore, MdTune, MdHouse, MdLuggage } from 'react-icons/md';
 
 interface SidebarNavProps {
     onOpenReconcile: () => void;
@@ -32,6 +32,7 @@ const navItems: NavItem[] = [
     { id: 'overview', label: 'Overview', icon: <MdHome size={20} />, href: '/' },
     { id: 'cashflow', label: 'Cashflow', icon: <MdAttachMoney size={20} />, href: '/cashflow' },
     { id: 'mortgage', label: 'Mortgage', icon: <MdHouse size={20} />, href: '/mortgage' },
+    { id: 'budgets', label: 'Budgets', icon: <MdLuggage size={20} />, href: '/budgets' },
     { id: 'playground', label: 'What If?', icon: <MdExplore size={20} />, href: '/playground' },
     { id: 'settings', label: 'Settings', icon: <MdSettings size={20} />, href: '/settings' },
 ];

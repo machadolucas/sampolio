@@ -106,10 +106,22 @@ export async function deleteBalanceSnapshot(userId: string, snapshotId: string):
   const data = await readSnapshots(userId);
   const index = data.snapshots.findIndex(s => s.id === snapshotId);
   if (index === -1) return false;
-  
+
   data.snapshots.splice(index, 1);
   await writeSnapshots(userId, data);
   return true;
+}
+
+/** Bulk-delete snapshots by id in a single rewrite. Returns the count removed. */
+export async function deleteSnapshotsByIds(userId: string, ids: string[]): Promise<number> {
+  if (ids.length === 0) return 0;
+  const idSet = new Set(ids);
+  const data = await readSnapshots(userId);
+  const before = data.snapshots.length;
+  data.snapshots = data.snapshots.filter(s => !idSet.has(s.id));
+  const removed = before - data.snapshots.length;
+  if (removed > 0) await writeSnapshots(userId, data);
+  return removed;
 }
 
 // ============================================================
@@ -139,6 +151,23 @@ export async function getAdjustmentsForSnapshot(
 ): Promise<ReconciliationAdjustment[]> {
   const data = await readAdjustments(userId);
   return data.adjustments.filter(a => a.snapshotId === snapshotId);
+}
+
+export async function getAllAdjustments(userId: string): Promise<ReconciliationAdjustment[]> {
+  const data = await readAdjustments(userId);
+  return data.adjustments;
+}
+
+/** Bulk-delete adjustments by id in a single rewrite. Returns the count removed. */
+export async function deleteAdjustmentsByIds(userId: string, ids: string[]): Promise<number> {
+  if (ids.length === 0) return 0;
+  const idSet = new Set(ids);
+  const data = await readAdjustments(userId);
+  const before = data.adjustments.length;
+  data.adjustments = data.adjustments.filter(a => !idSet.has(a.id));
+  const removed = before - data.adjustments.length;
+  if (removed > 0) await writeAdjustments(userId, data);
+  return removed;
 }
 
 export async function createAdjustment(
@@ -216,6 +245,18 @@ export async function getLatestCompletedSession(
     .filter(s => s.status === 'completed')
     .sort((a, b) => b.yearMonth.localeCompare(a.yearMonth));
   return completed.length > 0 ? completed[0] : null;
+}
+
+/** Bulk-delete reconciliation sessions by id in a single rewrite. Returns the count removed. */
+export async function deleteSessionsByIds(userId: string, ids: string[]): Promise<number> {
+  if (ids.length === 0) return 0;
+  const idSet = new Set(ids);
+  const data = await readSessions(userId);
+  const before = data.sessions.length;
+  data.sessions = data.sessions.filter(s => !idSet.has(s.id));
+  const removed = before - data.sessions.length;
+  if (removed > 0) await writeSessions(userId, data);
+  return removed;
 }
 
 export async function createReconciliationSession(

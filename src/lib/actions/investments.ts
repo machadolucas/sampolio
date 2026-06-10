@@ -1,6 +1,7 @@
 'use server';
 
 import { z } from 'zod';
+import { CURRENCY_VALUES } from '@/lib/constants';
 import { auth } from '@/lib/auth';
 import {
   createInvestmentAccount as dbCreateInvestmentAccount,
@@ -21,7 +22,7 @@ import type { ApiResponse, InvestmentAccount, InvestmentContribution } from '@/t
 const createInvestmentSchema = z.object({
   name: z.string().min(1, 'Name is required'),
   description: z.string().optional(),
-  currency: z.enum(['EUR', 'USD', 'BRL', 'GBP', 'JPY', 'CHF', 'CAD', 'AUD']),
+  currency: z.enum(CURRENCY_VALUES),
   startingValuation: z.number().min(0, 'Starting valuation must be non-negative'),
   valuationDate: z.string().regex(/^\d{4}-\d{2}$/, 'Invalid date format (YYYY-MM)'),
   annualGrowthRate: z.number().min(-100).max(1000, 'Growth rate must be reasonable'),

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo, useRef, startTransition } from 'react';
+import { useRouter } from 'next/navigation';
 import { Card } from 'primereact/card';
 import { Button } from 'primereact/button';
 import { Dropdown } from 'primereact/dropdown';
@@ -21,6 +22,33 @@ import { OccurrenceOverrideDialog } from '@/components/modals/occurrence-overrid
 import type { FinancialAccount, MonthlyProjection, MonthFlowData, CashflowItem, Currency, SalaryConfig } from '@/types';
 import { MdCheckCircle, MdCalendarToday, MdArrowForward, MdAccountBalanceWallet, MdAdd, MdRemove, MdList, MdAccountTree, MdBarChart, MdTableChart, MdInfoOutline } from 'react-icons/md';
 import { Tooltip } from 'primereact/tooltip';
+
+/** Sort-by toggle for the income/expense breakdown lists. Module-scope so it
+ * isn't recreated on every render (which would reset its state). */
+function SortToggle({ value, onChange, isDark }: { value: 'name' | 'amount'; onChange: (v: 'name' | 'amount') => void; isDark: boolean }) {
+    return (
+        <div className="flex gap-1">
+            <button
+                className={`px-1.5 py-0.5 rounded text-xs ${value === 'amount'
+                    ? isDark ? 'bg-gray-700 text-gray-200' : 'bg-gray-200 text-gray-800'
+                    : isDark ? 'text-gray-500 hover:text-gray-300' : 'text-gray-400 hover:text-gray-600'
+                    }`}
+                onClick={() => onChange('amount')}
+            >
+                Amount
+            </button>
+            <button
+                className={`px-1.5 py-0.5 rounded text-xs ${value === 'name'
+                    ? isDark ? 'bg-gray-700 text-gray-200' : 'bg-gray-200 text-gray-800'
+                    : isDark ? 'text-gray-500 hover:text-gray-300' : 'text-gray-400 hover:text-gray-600'
+                    }`}
+                onClick={() => onChange('name')}
+            >
+                Name
+            </button>
+        </div>
+    );
+}
 
 interface MonthStripProps {
     months: string[];
@@ -121,28 +149,6 @@ function MonthDetailsPanel({ projection, currency, onEditItem }: MonthDetailsPan
         );
     };
 
-    const SortToggle = ({ value, onChange }: { value: 'name' | 'amount'; onChange: (v: 'name' | 'amount') => void }) => (
-        <div className="flex gap-1">
-            <button
-                className={`px-1.5 py-0.5 rounded text-xs ${value === 'amount'
-                    ? isDark ? 'bg-gray-700 text-gray-200' : 'bg-gray-200 text-gray-800'
-                    : isDark ? 'text-gray-500 hover:text-gray-300' : 'text-gray-400 hover:text-gray-600'
-                    }`}
-                onClick={() => onChange('amount')}
-            >
-                Amount
-            </button>
-            <button
-                className={`px-1.5 py-0.5 rounded text-xs ${value === 'name'
-                    ? isDark ? 'bg-gray-700 text-gray-200' : 'bg-gray-200 text-gray-800'
-                    : isDark ? 'text-gray-500 hover:text-gray-300' : 'text-gray-400 hover:text-gray-600'
-                    }`}
-                onClick={() => onChange('name')}
-            >
-                Name
-            </button>
-        </div>
-    );
 
     return (
         <div className="space-y-2">
@@ -182,7 +188,7 @@ function MonthDetailsPanel({ projection, currency, onEditItem }: MonthDetailsPan
                         <h4 className={`text-xs font-semibold ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
                             Income
                         </h4>
-                        <SortToggle value={incomeSortBy} onChange={setIncomeSortBy} />
+                        <SortToggle value={incomeSortBy} onChange={setIncomeSortBy} isDark={isDark} />
                     </div>
                     <div className="space-y-0">
                         {sortItems(projection.incomeBreakdown, incomeSortBy).map((item) => (
@@ -196,6 +202,9 @@ function MonthDetailsPanel({ projection, currency, onEditItem }: MonthDetailsPan
                                     <span className={`truncate ${isDark ? 'text-gray-200' : 'text-gray-700'}`}>{item.name}</span>
                                     {item.isOverridden && (
                                         <Tag value="edited" className="text-xs !py-0 !px-1" severity="contrast" />
+                                    )}
+                                    {item.source === 'budget' && (
+                                        <Tag value="budget" className="text-xs !py-0 !px-1" severity="info" />
                                     )}
                                     {item.category && (
                                         <Tag value={item.category} className="text-xs !py-0 !px-1" severity="info" />
@@ -215,7 +224,7 @@ function MonthDetailsPanel({ projection, currency, onEditItem }: MonthDetailsPan
                         <h4 className={`text-xs font-semibold ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
                             Expenses
                         </h4>
-                        <SortToggle value={expenseSortBy} onChange={setExpenseSortBy} />
+                        <SortToggle value={expenseSortBy} onChange={setExpenseSortBy} isDark={isDark} />
                     </div>
                     <div className="space-y-0">
                         {sortItems(projection.expenseBreakdown, expenseSortBy).map((item) => (
@@ -229,6 +238,9 @@ function MonthDetailsPanel({ projection, currency, onEditItem }: MonthDetailsPan
                                     <span className={`truncate ${isDark ? 'text-gray-200' : 'text-gray-700'}`}>{item.name}</span>
                                     {item.isOverridden && (
                                         <Tag value="edited" className="text-xs !py-0 !px-1" severity="contrast" />
+                                    )}
+                                    {item.source === 'budget' && (
+                                        <Tag value="budget" className="text-xs !py-0 !px-1" severity="info" />
                                     )}
                                     {item.category && (
                                         <Tag value={item.category} className="text-xs !py-0 !px-1" severity="warning" />
@@ -246,6 +258,7 @@ function MonthDetailsPanel({ projection, currency, onEditItem }: MonthDetailsPan
 
 export default function CashflowPage() {
     const appContext = useAppContext();
+    const router = useRouter();
     const { theme } = useTheme();
     const isDark = theme === 'dark';
 
@@ -497,6 +510,19 @@ export default function CashflowPage() {
     }, [selectedProjection, selectedMonth, selectedAccountId, reconciledMonths, salaryConfigs]);
 
     const handleEditItem = (itemId: string, source: string, itemType?: string) => {
+        // Mortgage transfers are computed from the mortgage (single source of truth);
+        // editing happens on the mortgage page, not here.
+        if (source === 'mortgage-payment') {
+            router.push('/mortgage');
+            return;
+        }
+
+        // Budget transfers likewise: the itemId is the budgetId, edited on its own page.
+        if (source === 'budget') {
+            router.push(`/budgets/${itemId}`);
+            return;
+        }
+
         // For recurring items, ask whether to edit this occurrence or the entire series
         if (source === 'recurring') {
             setEditChoiceItemId(itemId);

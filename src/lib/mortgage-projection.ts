@@ -163,6 +163,7 @@ interface LoanProjectionInput {
   extraPayments: MortgageExtraPayment[];
   snapshots: MortgageBalanceSnapshot[];
   actuals: MortgageActualEntry[];
+  loanCount: number; // to split the mortgage-level invoicing fee
 }
 
 interface LoanRowWithMonth {
@@ -180,7 +181,7 @@ function projectLoan(
   input: LoanProjectionInput,
   endDate: YearMonth
 ): LoanRowWithMonth[] {
-  const { loan, rates, costs, extraPayments, snapshots, actuals } = input;
+  const { loan, rates, costs, extraPayments, snapshots, actuals, loanCount } = input;
   const rows: LoanRowWithMonth[] = [];
 
   const extrasByMonth = new Map<YearMonth, MortgageExtraPayment[]>();
@@ -220,8 +221,10 @@ function projectLoan(
     const periodDays = Math.round(frac * 360);
     const monthsSinceStart = getMonthsBetween(loan.startDate, currentDate);
     const actual = actualByMonth.get(currentDate);
+    const invShare = loanCount > 0 ? getEffectiveCost(costs, 'invoicing-fee', undefined, currentDate) / loanCount : 0;
 
-    // Recompute the level annuity at each rate reset (keeps maturity fixed).
+    // Recompute the level annuity at each rate reset (keeps maturity fixed). The
+    // bank only changes the installment at a reset — between resets it's fixed.
     if (
       loan.paymentMode !== 'fixed-payment' &&
       !Number.isNaN(prevRate) &&
@@ -235,21 +238,23 @@ function projectLoan(
     let subsidy: number;
     let insurance: number;
     let principalPaid: number;
-    let scheduledPayment: number;
+    let scheduledPayment: number; // principal + interest installment (excl. insurance/fees)
     let extraPayment = 0;
     let endingPrincipal: number;
-    let monthlyCharge: number;
+    let monthlyCharge: number; // full bank charge: P+I + invoicing share + insurance + extra
     let recomputeAfter = false;
 
     if (actual) {
       // Recorded actual: use the bank's real figures verbatim.
       interestPaid = actual.interest;
-      subsidy = 0;
+      subsidy = actual.subsidy ?? 0;
       insurance = actual.insurance;
       endingPrincipal = Math.max(0, actual.remaining);
       principalPaid = Math.max(0, startingPrincipal - endingPrincipal);
       monthlyCharge = actual.repayment; // full bank charge incl insurance + invoicing share
-      scheduledPayment = Math.max(0, monthlyCharge - insurance); // P+I (+ invoicing share)
+      scheduledPayment = Math.max(0, monthlyCharge - insurance - invShare); // P+I installment
+      // Carry the bank's installment forward — forecasts hold it until the next reset.
+      levelPayment = scheduledPayment;
     } else {
       const interestAccrued = balance * (rate / 100) * frac;
       subsidy = computeAspSubsidy(loan, rate, interestAccrued, monthsSinceStart);
@@ -271,7 +276,7 @@ function projectLoan(
       }
       endingPrincipal = Math.max(0, startingPrincipal - principalPaid);
       insurance = getEffectiveCost(costs, 'loan-insurance', loan.id, currentDate);
-      monthlyCharge = 0; // finalized in the aggregate (needs the invoicing-fee split)
+      monthlyCharge = scheduledPayment + invShare + insurance + extraPayment;
     }
 
     rows.push({
@@ -282,13 +287,13 @@ function projectLoan(
         effectiveAnnualRate: rate,
         periodDays,
         scheduledPayment,
-        interestAccrued: actual ? interestPaid : interestPaid + subsidy,
+        interestAccrued: interestPaid + subsidy,
         subsidy,
         interestPaid,
         principalPaid,
         extraPayment,
         insurance,
-        invoicingFeeShare: 0, // filled by the aggregate (mortgage-level fee split)
+        invoicingFeeShare: invShare,
         monthlyCharge,
         endingPrincipal,
         isActual: !!actual,
@@ -377,6 +382,7 @@ export function calculateMortgageProjection(
         extraPayments: extraPayments.filter((e) => e.loanId === loan.id),
         snapshots: snapshots.filter((s) => s.loanId === loan.id),
         actuals: actuals.filter((a) => a.loanId === loan.id),
+        loanCount: loans.length,
       },
       endDate
     );
@@ -411,22 +417,7 @@ export function calculateMortgageProjection(
       return zeroLoanRow(loan.id);
     });
 
-    // Finalize the invoicing-fee split and the full monthly charge per loan.
-    // Projected loans split the mortgage-level invoicing fee evenly; actual loans
-    // back out their invoicing share so the stored charge stays exact.
-    const projectedActive = perLoan.filter((r) => activeLoanIds.includes(r.loanId) && !r.isActual);
-    const share = projectedActive.length > 0 ? invoicingFee / projectedActive.length : 0;
-    for (const row of perLoan) {
-      if (!activeLoanIds.includes(row.loanId)) continue;
-      if (row.isActual) {
-        // monthlyCharge is the recorded bank charge; the residual is the invoicing share.
-        row.invoicingFeeShare = Math.max(0, row.monthlyCharge - row.scheduledPayment - row.insurance);
-      } else {
-        row.invoicingFeeShare = share;
-        row.monthlyCharge = row.scheduledPayment + row.invoicingFeeShare + row.insurance + row.extraPayment;
-      }
-    }
-
+    // projectLoan already set each row's invoicingFeeShare and monthlyCharge.
     const isAllActual = activeLoanIds.length > 0 && perLoan.every((r) => !activeLoanIds.includes(r.loanId) || r.isActual);
     const totalRemaining = perLoan.reduce((s, r) => s + r.endingPrincipal, 0);
     const totalRepayment = perLoan.reduce((s, r) => s + r.scheduledPayment + r.extraPayment, 0);

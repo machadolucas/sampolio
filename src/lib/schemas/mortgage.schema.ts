@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { CURRENCY_VALUES } from '@/lib/constants';
 
 const yearMonth = z.string().regex(/^\d{4}-\d{2}$/, 'Use a month (YYYY-MM)');
 
@@ -19,7 +20,7 @@ export const mortgageLoanSchema = z.object({
 export const mortgageSetupSchema = z
   .object({
     name: z.string().min(1, 'Give your mortgage a name'),
-    currency: z.enum(['EUR', 'USD', 'BRL', 'GBP', 'JPY', 'CHF', 'CAD', 'AUD']),
+    currency: z.enum(CURRENCY_VALUES),
     housePrice: z.number().positive('House price must be positive'),
     rateResetMonth: z.number().int().min(1).max(12),
     rateResetDay: z.number().int().min(1).max(31),

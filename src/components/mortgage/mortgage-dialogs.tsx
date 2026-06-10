@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Dialog } from 'primereact/dialog';
 import { InputNumber } from 'primereact/inputnumber';
 import { InputText } from 'primereact/inputtext';
@@ -19,8 +19,10 @@ import {
   addMortgageExtraPayment,
   addMortgageMemberByEmail,
   removeMortgageMember,
+  setMyMortgageLinkedAccount,
 } from '@/lib/actions/shared-mortgages';
-import type { SharedMortgage, Currency } from '@/types';
+import { getAccounts } from '@/lib/actions/accounts';
+import type { SharedMortgage, Currency, FinancialAccount } from '@/types';
 
 interface PreviewLoan {
   label: string;
@@ -277,7 +279,23 @@ export function MortgageMembersDialog({
   const [targetPercent, setTargetPercent] = useState<number>(50);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [accounts, setAccounts] = useState<FinancialAccount[]>([]);
   const isOwner = mortgage.members.find((m) => m.userId === currentUserId)?.role === 'owner';
+  const myLinkedAccountId = mortgage.members.find((m) => m.userId === currentUserId)?.linkedAccountId ?? null;
+
+  // Load the current user's own cash accounts to offer as the "pay from" account.
+  useEffect(() => {
+    if (!visible) return;
+    getAccounts().then((res) => {
+      if (res.success && res.data) setAccounts(res.data.filter((a) => !a.isArchived));
+    });
+  }, [visible]);
+
+  const linkAccount = async (accountId: string | null) => {
+    const res = await setMyMortgageLinkedAccount(mortgage.id, accountId);
+    if (res.success) onChanged(accountId ? 'Mortgage transfer will show in that account’s cashflow.' : 'Mortgage transfer removed from cashflow.');
+    else setError(res.error ?? 'Failed to update linked account');
+  };
 
   const add = async () => {
     setSaving(true);
@@ -301,15 +319,32 @@ export function MortgageMembersDialog({
       <p className="text-sm opacity-70 mb-3">Both members can see and edit everything here — there&apos;s no privacy between you.</p>
       <div className="space-y-2 mb-4">
         {mortgage.members.map((m) => (
-          <div key={m.userId} className="flex items-center justify-between p-2 rounded surface-ground text-sm">
-            <div>
-              <span className="font-medium">{m.name}</span>
-              <span className="opacity-50 ml-2">{m.email}</span>
-              {m.role === 'owner' && <Tag value="owner" severity="info" className="ml-2 text-xs" />}
-              {m.userId === currentUserId && <Tag value="you" severity="success" className="ml-1 text-xs" />}
+          <div key={m.userId} className="p-2 rounded surface-ground text-sm">
+            <div className="flex items-center justify-between">
+              <div>
+                <span className="font-medium">{m.name}</span>
+                <span className="opacity-50 ml-2">{m.email}</span>
+                {m.role === 'owner' && <Tag value="owner" severity="info" className="ml-2 text-xs" />}
+                {m.userId === currentUserId && <Tag value="you" severity="success" className="ml-1 text-xs" />}
+              </div>
+              {isOwner && m.userId !== currentUserId && (
+                <Button icon="pi pi-trash" text severity="danger" size="small" onClick={() => remove(m.userId)} />
+              )}
             </div>
-            {isOwner && m.userId !== currentUserId && (
-              <Button icon="pi pi-trash" text severity="danger" size="small" onClick={() => remove(m.userId)} />
+            {/* Each member privately links the cash account they pay the transfer from. */}
+            {m.userId === currentUserId && (
+              <div className="mt-2 flex items-center gap-2">
+                <span className="text-xs opacity-70 whitespace-nowrap">Pay this mortgage from</span>
+                <Dropdown
+                  value={myLinkedAccountId}
+                  options={[{ label: 'Not linked (hide from cashflow)', value: null }, ...accounts.map((a) => ({ label: a.name, value: a.id }))]}
+                  onChange={(e) => linkAccount(e.value ?? null)}
+                  placeholder="Choose an account"
+                  className="flex-1"
+                  showClear={false}
+                />
+                <HelpTip text="Your monthly transfer to this mortgage will appear as a recurring expense in the chosen account's cashflow, recomputed each month from the loan." />
+              </div>
             )}
           </div>
         ))}

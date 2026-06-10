@@ -1,6 +1,7 @@
 'use server';
 
 import { z } from 'zod';
+import { CURRENCY_VALUES } from '@/lib/constants';
 import { auth } from '@/lib/auth';
 import {
   createAccount as dbCreateAccount,
@@ -13,7 +14,7 @@ import type { ApiResponse, FinancialAccount } from '@/types';
 
 const createAccountSchema = z.object({
   name: z.string().min(1, 'Name is required'),
-  currency: z.enum(['EUR', 'USD', 'BRL', 'GBP', 'JPY', 'CHF', 'CAD', 'AUD']),
+  currency: z.enum(CURRENCY_VALUES),
   startingBalance: z.number(),
   startingDate: z.string().regex(/^\d{4}-\d{2}$/, 'Invalid date format (YYYY-MM)'),
   planningHorizonMonths: z.number().min(1).max(600),
@@ -22,7 +23,7 @@ const createAccountSchema = z.object({
 
 const updateAccountSchema = z.object({
   name: z.string().min(1).optional(),
-  currency: z.enum(['EUR', 'USD', 'BRL', 'GBP', 'JPY', 'CHF', 'CAD', 'AUD']).optional(),
+  currency: z.enum(CURRENCY_VALUES).optional(),
   startingBalance: z.number().optional(),
   startingDate: z.string().regex(/^\d{4}-\d{2}$/).optional(),
   planningHorizonMonths: z.number().min(1).max(600).optional(),

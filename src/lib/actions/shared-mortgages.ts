@@ -1,6 +1,7 @@
 'use server';
 
 import { z } from 'zod';
+import { CURRENCY_VALUES } from '@/lib/constants';
 import { auth } from '@/lib/auth';
 import { updateTag } from 'next/cache';
 import { findUserByEmail } from '@/lib/db/users';
@@ -18,6 +19,7 @@ import {
   deleteCost as dbDeleteCost,
   bulkSetActuals as dbBulkSetActuals,
   deleteAllActuals as dbDeleteAllActuals,
+  deleteActualsForMonth as dbDeleteActualsForMonth,
   createExtraPayment as dbCreateExtraPayment,
   deleteExtraPayment as dbDeleteExtraPayment,
   createBalanceSnapshot as dbCreateSnapshot,
@@ -43,7 +45,7 @@ import type {
 } from '@/types';
 
 const yearMonth = z.string().regex(/^\d{4}-\d{2}$/, 'Invalid date format (YYYY-MM)');
-const currencyEnum = z.enum(['EUR', 'USD', 'BRL', 'GBP', 'JPY', 'CHF', 'CAD', 'AUD']);
+const currencyEnum = z.enum(CURRENCY_VALUES);
 const share = z.number().min(0).max(1);
 
 const aspSubsidySchema = z.object({
@@ -120,6 +122,7 @@ const actualInputSchema = z.object({
   repayment: z.number().min(0),
   interest: z.number().min(0),
   insurance: z.number().min(0),
+  subsidy: z.number().min(0).optional(),
 });
 const importActualsSchema = z.object({
   entries: z.array(actualInputSchema).min(1, 'No rows to import'),
@@ -420,6 +423,30 @@ export async function updateMortgageMember(
   }
 }
 
+/**
+ * Link (or unlink) the *current* user's own cash account that this mortgage's
+ * monthly transfer is paid from. Any member may set this for their own row — it
+ * only affects their private cashflow, so it is not owner-gated. Pass `null` to
+ * clear. Returns the updated mortgage.
+ */
+export async function setMyMortgageLinkedAccount(
+  mortgageId: string,
+  accountId: string | null
+): Promise<ApiResponse<SharedMortgage>> {
+  const session = await auth();
+  if (!session?.user?.id) return { success: false, error: 'Not authenticated' };
+  const loaded = await loadMortgageForMember(mortgageId);
+  if (!loaded.ok) return { success: false, error: loaded.error };
+  const updated = await dbUpdateMortgageMember(mortgageId, session.user.id, {
+    linkedAccountId: accountId ?? undefined,
+  });
+  if (!updated) return { success: false, error: 'Mortgage not found' };
+  invalidateForMembers(updated);
+  // The cashflow projection (getProjection) recomputes fresh each call and will
+  // pick up / drop this transfer on the next load — no extra cache tag needed.
+  return { success: true, data: updated };
+}
+
 // ---------- Rates ----------
 
 export async function setMortgageRate(
@@ -602,4 +629,46 @@ export async function clearMortgageActuals(mortgageId: string): Promise<ApiRespo
   await dbDeleteAllActuals(mortgageId);
   updateTag(`mortgage:${mortgageId}:actuals`);
   return { success: true };
+}
+
+/**
+ * Reconcile one month: record the (per-loan) figures as the confirmed actual,
+ * flipping that month from forecast to actual. Upserts in place (does not touch
+ * other months). The caller typically passes the projected values, optionally
+ * edited to match the bank statement.
+ */
+export async function reconcileMortgageMonth(
+  mortgageId: string,
+  entries: z.infer<typeof actualInputSchema>[]
+): Promise<ApiResponse<{ saved: number }>> {
+  try {
+    const loaded = await loadMortgageForMember(mortgageId);
+    if (!loaded.ok) return { success: false, error: loaded.error };
+    const validated = z.array(actualInputSchema).min(1, 'Nothing to reconcile').parse(entries);
+    const loanIds = new Set(loaded.mortgage.loans.map((l) => l.id));
+    const unknown = validated.find((e) => !loanIds.has(e.loanId));
+    if (unknown) return { success: false, error: `Unknown loan "${unknown.loanId}"` };
+    // Upsert these rows, leaving every other recorded month untouched.
+    const count = await dbBulkSetActuals(mortgageId, validated, false);
+    updateTag(`mortgage:${mortgageId}:actuals`);
+    return { success: true, data: { saved: count } };
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return { success: false, error: error.issues[0]?.message ?? 'Validation error' };
+    }
+    console.error('Reconcile month error:', error);
+    return { success: false, error: 'Failed to reconcile month' };
+  }
+}
+
+/** Un-reconcile a month: drop its recorded actuals so it reverts to a forecast. */
+export async function revertMortgageMonth(
+  mortgageId: string,
+  yearMonth: string
+): Promise<ApiResponse<{ removed: number }>> {
+  const loaded = await loadMortgageForMember(mortgageId);
+  if (!loaded.ok) return { success: false, error: loaded.error };
+  const removed = await dbDeleteActualsForMonth(mortgageId, yearMonth);
+  updateTag(`mortgage:${mortgageId}:actuals`);
+  return { success: true, data: { removed } };
 }

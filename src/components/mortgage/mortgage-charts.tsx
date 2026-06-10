@@ -9,6 +9,7 @@
 
 import { Chart } from 'primereact/chart';
 import { formatCurrency, formatYearMonthShort, formatRate } from '@/lib/constants';
+import { getCurrentYearMonth } from '@/lib/projection';
 import type { SharedMortgage, MortgageProjectionMonth, Currency } from '@/types';
 
 const RED = 'rgb(239, 68, 68)';
@@ -21,6 +22,62 @@ const MEMBER_COLORS = [BLUE, PURPLE, AMBER, GREEN];
 
 function EmptyState({ label }: { label: string }) {
   return <div className="flex items-center justify-center h-64 text-gray-500 text-sm">{label}</div>;
+}
+
+/** Index of the current month within a month slice (−1 if not in range). */
+function todayIndexOf(months: MortgageProjectionMonth[]): number {
+  const cur = getCurrentYearMonth();
+  const exact = months.findIndex((m) => m.yearMonth === cur);
+  if (exact >= 0) return exact;
+  // Fall back to the last elapsed month (e.g. when the slice starts after today).
+  let last = -1;
+  for (let i = 0; i < months.length; i++) if (months[i].isHistorical) last = i;
+  return last;
+}
+
+/**
+ * A Chart.js inline plugin that draws a dashed vertical "Today" line on a
+ * category x-axis at the given index. No-op when index < 0.
+ */
+function todayLinePlugin(index: number) {
+  return {
+    id: 'todayLine',
+    afterDatasetsDraw(chart: {
+      ctx: CanvasRenderingContext2D;
+      chartArea: { top: number; bottom: number };
+      scales: { x?: { getPixelForValue: (v: number) => number } };
+    }) {
+      if (index < 0) return;
+      const x = chart.scales.x;
+      if (!x) return;
+      const px = x.getPixelForValue(index);
+      if (px == null || Number.isNaN(px)) return;
+      const { ctx, chartArea } = chart;
+      ctx.save();
+      ctx.beginPath();
+      ctx.setLineDash([4, 4]);
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = 'rgba(120,120,120,0.8)';
+      ctx.moveTo(px, chartArea.top);
+      ctx.lineTo(px, chartArea.bottom);
+      ctx.stroke();
+      // "Today" pill near the top of the line.
+      ctx.setLineDash([]);
+      ctx.font = '600 10px sans-serif';
+      const label = 'Today';
+      const tw = ctx.measureText(label).width;
+      const boxW = tw + 8;
+      ctx.fillStyle = 'rgba(120,120,120,0.9)';
+      ctx.beginPath();
+      ctx.roundRect(px - boxW / 2, chartArea.top + 2, boxW, 14, 3);
+      ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(label, px, chartArea.top + 9);
+      ctx.restore();
+    },
+  };
 }
 
 const baseOptions = (currency: Currency) => ({
@@ -68,7 +125,7 @@ export function MortgageBalanceChart({ months, mortgage, currency }: { months: M
     },
     scales: { ...baseOptions(currency).scales, y: { ...baseOptions(currency).scales.y, stacked: true }, x: { ...baseOptions(currency).scales.x, stacked: true } },
   };
-  return <div style={{ height: '320px' }}><Chart type="line" data={data} options={options} style={{ height: '100%' }} /></div>;
+  return <div style={{ height: '320px' }}><Chart type="line" data={data} options={options} plugins={[todayLinePlugin(todayIndexOf(months))]} style={{ height: '100%' }} /></div>;
 }
 
 // ── (b) Ownership progress to the target split ─────────────────────────────
@@ -113,7 +170,7 @@ export function OwnershipProgressChart({ months, mortgage, currency }: { months:
       y: { grid: { color: 'rgba(128,128,128,0.12)' }, ticks: { callback: (v: number | string) => `${v}%` } },
     },
   };
-  return <div style={{ height: '320px' }}><Chart type="line" data={data} options={options} style={{ height: '100%' }} /></div>;
+  return <div style={{ height: '320px' }}><Chart type="line" data={data} options={options} plugins={[todayLinePlugin(todayIndexOf(months))]} style={{ height: '100%' }} /></div>;
 }
 
 // ── (c) Where each payment goes: principal vs interest (yearly buckets) ────
@@ -163,7 +220,7 @@ export function CumulativeCostChart({ months, currency }: { months: MortgageProj
     ...baseOptions(currency),
     plugins: { legend: { display: true, position: 'top' as const }, tooltip: { callbacks: { label: (c: { dataset: { label?: string }; raw: number }) => `${c.dataset.label}: ${formatCurrency(c.raw, currency)}` } } },
   };
-  return <div style={{ height: '320px' }}><Chart type="line" data={data} options={options} style={{ height: '100%' }} /></div>;
+  return <div style={{ height: '320px' }}><Chart type="line" data={data} options={options} plugins={[todayLinePlugin(todayIndexOf(months))]} style={{ height: '100%' }} /></div>;
 }
 
 // ── (e) Interest-rate history (stepped) ────────────────────────────────────
@@ -195,7 +252,7 @@ export function RateHistoryChart({ months, mortgage }: { months: MortgageProject
       y: { grid: { color: 'rgba(128,128,128,0.12)' }, ticks: { callback: (v: number | string) => `${v}%` } },
     },
   };
-  return <div style={{ height: '300px' }}><Chart type="line" data={data} options={options} style={{ height: '100%' }} /></div>;
+  return <div style={{ height: '300px' }}><Chart type="line" data={data} options={options} plugins={[todayLinePlugin(todayIndexOf(months))]} style={{ height: '100%' }} /></div>;
 }
 
 // ── (f) This month's payment, broken down ──────────────────────────────────
@@ -246,5 +303,5 @@ export function EquityBuildupChart({ months, mortgage, currency }: { months: Mor
     plugins: { legend: { display: true, position: 'top' as const }, tooltip: { callbacks: { label: (c: { dataset: { label?: string }; raw: number }) => `${c.dataset.label}: ${formatCurrency(c.raw, currency)}` } } },
     scales: { ...baseOptions(currency).scales, y: { ...baseOptions(currency).scales.y, stacked: true }, x: { ...baseOptions(currency).scales.x, stacked: true } },
   };
-  return <div style={{ height: '320px' }}><Chart type="line" data={data} options={options} style={{ height: '100%' }} /></div>;
+  return <div style={{ height: '320px' }}><Chart type="line" data={data} options={options} plugins={[todayLinePlugin(todayIndexOf(months))]} style={{ height: '100%' }} /></div>;
 }

@@ -1,6 +1,7 @@
 'use server';
 
 import { z } from 'zod';
+import { CURRENCY_VALUES } from '@/lib/constants';
 import { auth } from '@/lib/auth';
 import {
   createReceivable as dbCreateReceivable,
@@ -20,7 +21,7 @@ import type { ApiResponse, Receivable, ReceivableRepayment } from '@/types';
 const createReceivableSchema = z.object({
   name: z.string().min(1, 'Name is required'),
   description: z.string().optional(),
-  currency: z.enum(['EUR', 'USD', 'BRL', 'GBP', 'JPY', 'CHF', 'CAD', 'AUD']),
+  currency: z.enum(CURRENCY_VALUES),
   initialPrincipal: z.number().positive('Initial principal must be positive'),
   note: z.string().optional(),
   hasInterest: z.boolean().optional(),

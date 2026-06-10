@@ -519,6 +519,7 @@ export async function setActual(
       repayment: input.repayment,
       interest: input.interest,
       insurance: input.insurance,
+      subsidy: input.subsidy ?? 0,
     };
     await writeEncryptedFile(path.join(dir, `${existing.id}.enc`), updated);
     return updated;
@@ -532,6 +533,7 @@ export async function setActual(
     repayment: input.repayment,
     interest: input.interest,
     insurance: input.insurance,
+    subsidy: input.subsidy ?? 0,
     createdAt: new Date().toISOString(),
   };
   await writeEncryptedFile(path.join(dir, `${entry.id}.enc`), entry);
@@ -546,6 +548,15 @@ export async function deleteAllActuals(mortgageId: string): Promise<void> {
   } catch {
     // dir may not exist
   }
+}
+
+/** Remove every recorded actual for one month (all loans). Used to "un-reconcile"
+ * a month so it reverts to a projected forecast. Returns the number deleted. */
+export async function deleteActualsForMonth(mortgageId: string, yearMonth: string): Promise<number> {
+  const dir = getActualsDir(mortgageId);
+  const toDelete = (await getActuals(mortgageId)).filter((a) => a.yearMonth === yearMonth);
+  for (const a of toDelete) await deleteFile(path.join(dir, `${a.id}.enc`));
+  return toDelete.length;
 }
 
 /** Bulk import. When replaceAll is true, clears existing actuals first. */
