@@ -4,7 +4,7 @@
  * so the setup wizard, panels, and charts share one source of truth.
  */
 
-import type { SharedMortgage, MortgageRateEntry, YearMonth } from '@/types';
+import type { SharedMortgage, MortgageRateEntry, MortgageProjectionMonth, YearMonth } from '@/types';
 import { compareYearMonths } from './projection';
 
 /**
@@ -34,6 +34,72 @@ export function deriveLoanShares(
     return initialPayments.map(() => 1 / initialPayments.length);
   }
   return remaining.map((r) => r / sum);
+}
+
+export interface MortgageSankeySnapshot {
+  /** Each member's total paid in up to the selected month: down payment + monthly transfers. */
+  members: Array<{ userId: string; name: string; paidSoFar: number }>;
+  /** Future payments (all members) from the selected month to payoff. */
+  stillToPay: number;
+  /** Middle node: down payments + every monthly transfer over the loan's life. */
+  wholeMortgage: number;
+  interestPaid: number;
+  amortizationPaid: number;
+  interestLeft: number;
+  amortizationLeft: number;
+  downPayments: number;
+  /** Lifetime insurance + invoicing + service fees (residual of the transfers). */
+  feesAndInsurance: number;
+}
+
+/**
+ * Figures behind the ownership Sankey at one scrubber position. Balanced by
+ * construction: Σ members.paidSoFar + stillToPay = wholeMortgage = the sum of
+ * the six right-hand buckets, so every Sankey flow conserves.
+ */
+export function buildMortgageSankeySnapshot(
+  months: MortgageProjectionMonth[],
+  mortgage: SharedMortgage,
+  idx: number
+): MortgageSankeySnapshot | null {
+  if (months.length === 0) return null;
+  const i = Math.min(Math.max(idx, 0), months.length - 1);
+  const row = months[i];
+  const last = months[months.length - 1];
+  const clamp = (v: number) => (v > 0 ? v : 0);
+
+  // Lifetime totals come from the final month (post-payoff months add zero).
+  const lifetimeInterest = last.cumInterestPaid;
+  const lifetimeAmortization = last.cumPrincipalPaid;
+
+  const paidToIdx = new Map<string, number>();
+  let lifetimeDeposits = 0;
+  months.forEach((m, k) => {
+    for (const p of m.members) {
+      lifetimeDeposits += p.monthlyDeposit;
+      if (k <= i) paidToIdx.set(p.userId, (paidToIdx.get(p.userId) ?? 0) + p.monthlyDeposit);
+    }
+  });
+
+  const downPayments = mortgage.members.reduce((s, m) => s + m.initialPayment, 0);
+  const wholeMortgage = downPayments + lifetimeDeposits;
+  const members = mortgage.members.map((m) => ({
+    userId: m.userId,
+    name: m.name,
+    paidSoFar: m.initialPayment + (paidToIdx.get(m.userId) ?? 0),
+  }));
+
+  return {
+    members,
+    stillToPay: clamp(wholeMortgage - members.reduce((s, m) => s + m.paidSoFar, 0)),
+    wholeMortgage,
+    interestPaid: clamp(row.cumInterestPaid),
+    amortizationPaid: clamp(row.cumPrincipalPaid),
+    interestLeft: clamp(lifetimeInterest - row.cumInterestPaid),
+    amortizationLeft: clamp(lifetimeAmortization - row.cumPrincipalPaid),
+    downPayments,
+    feesAndInsurance: clamp(lifetimeDeposits - lifetimeInterest - lifetimeAmortization),
+  };
 }
 
 export interface EuriborDueInfo {

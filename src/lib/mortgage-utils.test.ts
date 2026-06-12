@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { deriveLoanShares, isEuriborUpdateDue } from './mortgage-utils';
-import { createMockMortgageRate } from '@/test/mocks';
+import { deriveLoanShares, isEuriborUpdateDue, buildMortgageSankeySnapshot } from './mortgage-utils';
+import { calculateMortgageProjection } from './mortgage-projection';
+import { createMockSharedMortgage, createMockMortgageRate, createMockMortgageCost } from '@/test/mocks';
 
 describe('deriveLoanShares', () => {
   it('reproduces the spreadsheet 45.4 / 54.6 split from the down payments', () => {
@@ -26,6 +27,62 @@ describe('deriveLoanShares', () => {
   it('falls back to an even split when everyone is already at target', () => {
     const shares = deriveLoanShares(300000, [150000, 150000], [0.5, 0.5]);
     expect(shares[0]).toBeCloseTo(0.5, 10);
+  });
+});
+
+describe('buildMortgageSankeySnapshot', () => {
+  const mortgage = createMockSharedMortgage();
+  const input = {
+    mortgage,
+    rates: [createMockMortgageRate({ effectiveDate: '2022-12', euriborRate: 2.963 })],
+    costs: [
+      createMockMortgageCost({ type: 'invoicing-fee', effectiveDate: '2023-02', amount: 5.4 }),
+      createMockMortgageCost({ type: 'service-fee', effectiveDate: '2023-02', amount: 2.5 }),
+      createMockMortgageCost({ type: 'loan-insurance', loanId: 'loan-asp', effectiveDate: '2023-04', amount: 36.65 }),
+    ],
+    extraPayments: [],
+    snapshots: [],
+  };
+  // Run past payoff so lifetime totals are final.
+  const months = calculateMortgageProjection(input, '2050-02');
+
+  it('returns null for an empty schedule', () => {
+    expect(buildMortgageSankeySnapshot([], mortgage, 0)).toBeNull();
+  });
+
+  it('left, middle, and right flows balance at any scrubber position', () => {
+    for (const idx of [0, 12, 100, months.length - 1]) {
+      const s = buildMortgageSankeySnapshot(months, mortgage, idx)!;
+      const left = s.members.reduce((sum, m) => sum + m.paidSoFar, 0) + s.stillToPay;
+      const right =
+        s.interestPaid + s.amortizationPaid + s.interestLeft + s.amortizationLeft + s.downPayments + s.feesAndInsurance;
+      expect(left).toBeCloseTo(s.wholeMortgage, 6);
+      expect(right).toBeCloseTo(s.wholeMortgage, 6);
+    }
+  });
+
+  it('paid buckets grow and left buckets shrink as the scrubber advances', () => {
+    const early = buildMortgageSankeySnapshot(months, mortgage, 12)!;
+    const late = buildMortgageSankeySnapshot(months, mortgage, 120)!;
+    expect(late.interestPaid).toBeGreaterThan(early.interestPaid);
+    expect(late.amortizationPaid).toBeGreaterThan(early.amortizationPaid);
+    expect(late.interestLeft).toBeLessThan(early.interestLeft);
+    expect(late.amortizationLeft).toBeLessThan(early.amortizationLeft);
+    expect(late.stillToPay).toBeLessThan(early.stillToPay);
+  });
+
+  it('at the end of the schedule nothing is left to pay', () => {
+    const s = buildMortgageSankeySnapshot(months, mortgage, months.length - 1)!;
+    expect(s.interestLeft).toBeCloseTo(0, 6);
+    expect(s.amortizationLeft).toBeCloseTo(0, 6);
+    expect(s.stillToPay).toBeCloseTo(0, 6);
+    expect(s.amortizationPaid).toBeCloseTo(mortgage.loans.reduce((sum, l) => sum + l.initialPrincipal, 0), 2);
+  });
+
+  it('members include the down payment from month zero', () => {
+    const s = buildMortgageSankeySnapshot(months, mortgage, 0)!;
+    const lucas = s.members.find((m) => m.name === 'Lucas')!;
+    expect(lucas.paidSoFar).toBeGreaterThanOrEqual(31000);
   });
 });
 

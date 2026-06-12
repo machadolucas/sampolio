@@ -8,6 +8,7 @@ import { Slider } from 'primereact/slider';
 import { Tooltip } from 'primereact/tooltip';
 import { MdHouse, MdPercent, MdEvent, MdCheckCircle, MdPayments } from 'react-icons/md';
 import { formatCurrency, formatYearMonth, formatRate } from '@/lib/constants';
+import { MortgageOwnershipSankey } from '@/components/mortgage/mortgage-sankey';
 import type { SharedMortgage, MortgageProjectionMonth, MortgageLoan, Currency } from '@/types';
 
 /** A hover-info icon that teaches without crowding the layout. */
@@ -177,7 +178,7 @@ export function OwnershipBalancePanel({
                 </div>
                 <span className="text-sm opacity-70">Owns {ownershipPct.toFixed(1)}% {isNow ? 'now' : `by ${formatYearMonth(row.yearMonth)}`} · aiming for {Math.round(memberTargetPct)}%</span>
               </div>
-              <ProgressBar value={progressToTarget} showValue={false} style={{ height: '8px' }} />
+              <ProgressBar value={progressToTarget} showValue={false} style={{ height: '8px' }} className="progressbar-instant" />
               <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-3 text-sm">
                 <div>
                   <div className="opacity-60 text-xs">Equity built<InfoIcon tip="What you've actually paid toward the home: your up-front down payment plus your share of the principal paid off since." /></div>
@@ -203,6 +204,18 @@ export function OwnershipBalancePanel({
             </div>
           );
         })}
+      </div>
+
+      {/* Money-flow Sankey: follows the scrubber month above. */}
+      <div className="mt-5">
+        <h3 className="text-sm font-semibold mb-1">
+          Where the money flows · {isNow ? 'Today' : formatYearMonth(row.yearMonth)}
+        </h3>
+        <p className="text-xs opacity-60 mb-2">
+          What each of you has paid in so far (down payment + monthly transfers), against the whole mortgage and how
+          much of its interest and amortization is already behind you.
+        </p>
+        <MortgageOwnershipSankey months={months} mortgage={mortgage} currency={currency} idx={safeIdx} currentUserId={currentUserId} />
       </div>
       {!isSimple && (
         <p className="text-xs opacity-60 mt-4">

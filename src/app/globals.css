@@ -211,6 +211,12 @@ h1, h2, h3, h4, h5, h6 {
 .dark .hover\:bg-gray-100:hover { background-color: #374151 !important; }
 .dark .hover\:bg-gray-50:hover { background-color: #2d2d2d !important; }
 
+/* Progress bars driven by the projection scrubber must track it instantly
+ * (PrimeReact's base CSS animates .p-progressbar-value-animate over 1s). */
+.progressbar-instant .p-progressbar-value-animate {
+  transition: none;
+}
+
 /* ============================================================
  * PRIMEREACT STEPS — fix text cropping in horizontal layout
  * The MDC theme constrains step titles; ensure they don't clip.
