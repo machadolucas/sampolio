@@ -37,9 +37,12 @@ Floating action buttons for common operations:
 ### Last Reconciled Date
 Shows when data was last reconciled. Clicking opens the reconciliation wizard.
 
+### Shared Mortgage Summary & Euribor Reminder
+If the user is a member of a shared mortgage, the page computes their current-month equity/liability/stake (via the mortgage engine) and folds equity into net worth. It also surfaces a **reminder banner** when a mortgage's yearly Euribor rate is due for an update (`isEuriborUpdateDue` from `src/lib/mortgage-utils.ts`).
+
 ## Data Flow
 
-1. Server component fetches: accounts, investments, debts, receivables, wealth projection
+1. Server component fetches: accounts, investments, debts, receivables, budgets, shared mortgage(s), wealth projection
 2. Data passed to client components for rendering
 3. User interactions (create/edit) happen via modals/drawers that call server actions
 4. After mutations, `refreshData()` from AppContext triggers re-fetch
@@ -50,6 +53,8 @@ Shows when data was last reconciled. Clicking opens the reconciliation wizard.
 - `src/lib/actions/debts.ts` — Debt data
 - `src/lib/actions/receivables.ts` — Receivable data
 - `src/lib/actions/accounts.ts` — Cash account data
-- `src/lib/wealth-projection.ts` — Wealth projection calculation
+- `src/lib/actions/shared-mortgages.ts` — Shared mortgage data + projection inputs
+- `src/lib/wealth-projection.ts` — Wealth projection calculation (folds in mortgage equity)
+- `src/lib/mortgage-projection.ts` / `src/lib/mortgage-utils.ts` — Mortgage engine + Euribor-due check
 - `src/components/charts/net-worth-chart.tsx` — Main chart
 - `src/components/ui/entity-list-drawer.tsx` — Entity list panel

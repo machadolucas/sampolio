@@ -16,10 +16,12 @@ Shows available keyboard shortcuts:
 - `Cmd+K` — Open command palette
 - `Cmd+I` — Quick add income
 - `Cmd+E` — Quick add expense
-- `Cmd+R` — Start reconciliation
+- `Cmd+M` — Monthly check-in / reconciliation
 
-### Data & Export
-- Export and Import buttons (UI placeholders — functionality not yet implemented)
+### Data & Storage (history compaction)
+- Preview then run history compaction via `previewHistoryCompaction` / `compactHistory` (`src/lib/actions/maintenance.ts`)
+- Prunes accumulated reconciliation snapshots/sessions/adjustments; keeps the latest snapshot per entity, is anchor-gated and idempotent (projections stay byte-identical), and never touches mortgage data
+- Note: the only data export in the app is the per-budget grant-report CSV (on the budget detail page), not here
 
 ### Accounts Management
 - Button to open accounts management drawer

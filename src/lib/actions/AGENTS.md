@@ -10,7 +10,7 @@ Every action file starts with `'use server'` and exports async functions. The co
 2. **Validate**: Use Zod schema to parse input
 3. **Execute**: Call DB layer functions from `src/lib/db/`
 4. **Invalidate cache**: Call `updateTag(tagName)` for affected data
-5. **Return**: `ActionResult<T>` = `{ success: boolean; data?: T; error?: string }`
+5. **Return**: `ApiResponse<T>` = `{ success: boolean; data?: T; error?: string }`
 
 ## Action Files
 
@@ -25,8 +25,13 @@ Every action file starts with `'use server'` and exports async functions. The co
 | `receivables.ts` | Receivables | CRUD + repayment recording |
 | `taxed-income.ts` | Bonuses/holiday pay | CRUD (scoped to account) |
 | `reconciliation.ts` | Balance verification | Snapshots, adjustments, sessions |
-| `projection.ts` | Cash flow projection | Read-only calculation |
+| `shared-mortgages.ts` | Shared mortgages | CRUD + members/rates/costs/payments/snapshots/actuals (member-scoped, not user-scoped) |
+| `budgets.ts` | Trip/project budgets | CRUD + lines/funding/expense log + confirm/unconfirm |
+| `goals.ts` | Financial goals | CRUD (backend-only — no UI yet) |
+| `projection.ts` | Cash flow projection | Read-only calculation (also injects mortgage + budget transfers) |
+| `scenario.ts` | "What If?" projection | Read-only, ephemeral — never persisted |
 | `admin.ts` | Users & app settings | User CRUD, settings (admin only) |
+| `maintenance.ts` | Data maintenance | History compaction preview/run (prune snapshots/sessions) |
 | `auth.ts` | Authentication | Sign-up, signup-enabled check |
 | `user-preferences.ts` | User preferences | Read/update preferences |
 | `app-info.ts` | App metadata | Version info |
@@ -45,10 +50,16 @@ user:{userId}:debts
 user:{userId}:receivables
 user:{userId}:taxed-income:{accountId}
 user:{userId}:reconciliation
+user:{userId}:budgets
+user:{userId}:goals
+user:{userId}:mortgages        (a member's mortgage membership list)
+mortgage:{mortgageId}          (member-agnostic; one updateTag reaches every member)
 users                          (admin operations)
 app-settings                   (admin operations)
 all-data                       (admin cache clear)
 ```
+
+> Scenarios (`scenario.ts`) and projections (`projection.ts`) are read-only and use **no** tags of their own.
 
 ## Adding a New Server Action
 

@@ -5,7 +5,7 @@ A self-hosted personal finance planning tool that replaces budgeting spreadsheet
 ## Features
 
 ### Cash Flow Management
-- **Multi-Account Support**: Manage multiple financial accounts independently with different currencies (EUR, USD, BRL, GBP, JPY, CHF, CAD, AUD)
+- **Multi-Account Support**: Manage multiple financial accounts independently with different currencies (EUR, USD, BRL, GBP, JPY, CHF, CAD, AUD, SEK, NOK, DKK)
 - **Recurring Income & Expenses**: Track fixed items (salary, rent, subscriptions) with monthly, quarterly, yearly, or custom interval frequencies
 - **Planned Items**: One-off expenses (taxes, annual fees) and repeating non-monthly items (quarterly payments)
 - **Occurrence Overrides**: Edit or skip individual occurrences of recurring items without changing the series
@@ -18,11 +18,27 @@ A self-hosted personal finance planning tool that replaces budgeting spreadsheet
 - **Debts**: Manage amortized loans (mortgages with fixed/variable interest, reference rates like Euribor) and fixed-installment debts (no interest). Track extra payments and remaining installments
 - **Receivables**: Track money owed to you with optional interest rates, expected monthly repayments, and repayment recording
 
+### Shared Mortgage
+- **Co-Owned Mortgage Tracking**: Model a household mortgage shared between members (e.g. a couple), with multiple sub-loans, per-loan margins, and Euribor reference rates
+- **Auto-Amortization Engine**: Monthly amortization on an actual/360 day count, re-annuitizing the payment at each rate reset to hold the maturity date
+- **Ownership & Equity**: Derives each member's stake, liability, and equity from the down payments and house price; equity folds into net worth (no double counting as a debt)
+- **Exact Reconciliation**: Reconcile each month from the bank's real figures (or bulk-import history via CSV), so the ledger matches the bank exactly; forecasts carry the current installment forward until the next rate reset
+- **Euribor Reminder**: The Overview page flags when a mortgage's yearly Euribor rate is due for an update
+- **Cashflow Integration**: Each member can link the mortgage to their own cash account so their share of the monthly charge appears as a read-only line in their projection
+
+### Budgets
+- **Trip/Project Budgets**: Plan a bounded-period budget (e.g. a research stay abroad) with one-off and monthly cost lines
+- **Grant Funding**: Add funding sources — grants (optionally restricted to specific categories), per-diem allowances, and other income — with automatic allocation and a feasibility verdict (out-of-pocket, surplus)
+- **Expense Log**: Record dated actual expenses and track them against the plan
+- **CSV Export**: Export a grant report (spending log + summary) as a fi-FI Excel-friendly CSV
+- **Cashflow Integration**: A confirmed budget linked to a cash account injects its monthly impact into that account's projection (with manual exchange rate for cross-currency budgets)
+
 ### Financial Projections
 - **Multi-Year Cash Flow Projections**: See your financial future up to 10 years ahead with instant recalculation across all accounts
 - **Net Worth Projection**: Aggregate wealth over time combining cash accounts, investments, receivables, and debts
 - **Debt Amortization Schedules**: Automatic calculation with support for variable interest rates and rate reset frequencies
 - **Investment Growth Modeling**: Compound monthly growth based on annual rates, incorporating contributions and withdrawals
+- **"What If?" Playground**: Explore hypothetical changes (a raise, a new expense, a cancelled subscription, extra savings) and instantly compare the projected balance against your current plan — scenarios are computed on the fly and never saved
 
 ### Reconciliation
 - **Monthly Balance Verification**: Compare projected vs. actual balances for all entity types (cash, investments, receivables, debts)
@@ -35,14 +51,16 @@ A self-hosted personal finance planning tool that replaces budgeting spreadsheet
 - **Waterfall Chart**: Balance progression month-by-month showing how each month's net change builds on the previous
 - **Treemap Chart**: Expense proportions by category and individual items
 - **Net Worth Line Chart**: Track net worth trend over time
-- **Stacked Area Chart**: Wealth composition breakdown (cash, investments, receivables, debts)
+- **Wealth Composition Chart**: Stacked breakdown of assets over time (cash, investments, receivables, liabilities)
+- **Mortgage Ownership Sankey**: Visualize how each monthly mortgage charge splits into interest, principal, fees, and ownership equity
 
 ### User Experience
 - **Onboarding Wizard**: Guided 5-step setup for first-time users (account, income, expenses)
 - **Command Palette**: Quick access to any action via keyboard (Cmd+K)
-- **Keyboard Shortcuts**: Cmd+I (add income), Cmd+E (add expense), Cmd+R (reconcile)
+- **Keyboard Shortcuts**: Cmd+I (add income), Cmd+E (add expense), Cmd+M (monthly check-in / reconcile)
 - **Dark/Light Theme**: System-wide theme toggle with PrimeReact dark theme integration
 - **Interactive Month Navigation**: Scrollable month strip for quick date navigation in cashflow view
+- **Data Maintenance**: Prune accumulated reconciliation snapshots/sessions from Settings → Data & storage (preview then compact); projections stay byte-identical and mortgage data is never touched
 
 ### Administration
 - **User Management**: Admin panel for creating, updating, and deactivating users
@@ -53,7 +71,8 @@ A self-hosted personal finance planning tool that replaces budgeting spreadsheet
 ### Security & Privacy
 - **File-Based Encrypted Storage**: AES-256-GCM encryption with PBKDF2 key derivation — your data stays on your server
 - **Password Security**: bcrypt hashing (12 rounds), strong password requirements (8+ chars, mixed case, numbers, special chars)
-- **Brute Force Protection**: Account lockout after 5 failed attempts within 15 minutes
+- **Brute Force Protection**: Account lockout after 10 failed attempts within 15 minutes
+- **Rate Limiting**: Edge middleware caps unauthenticated auth requests (20/min) and general requests (300/min) per IP
 - **Security Headers**: XSS protection, frame options, CSP, HSTS, restricted permissions policy
 - **Self-Hosted**: Deploy by cloning and building on your own server — no external database needed
 
@@ -109,7 +128,7 @@ The application uses Next.js Server Actions exclusively for all backend operatio
 - `'use server'` directive at the top
 - Input validation with Zod schemas
 - Authentication check via `auth()`
-- Return type: `ActionResult<T>` (`{ success: boolean; data?: T; error?: string }`)
+- Return type: `ApiResponse<T>` (`{ success: boolean; data?: T; error?: string }`)
 - Cache invalidation via `updateTag()` after mutations
 
 ### File-Based Encrypted Database
@@ -120,6 +139,12 @@ All data is stored as individually encrypted JSON files in `~/.sampolio/data/` (
 ~/.sampolio/data/
 ├── users-index.enc              # User ID/email lookup
 ├── app-settings.enc             # Global settings (self-signup, etc.)
+├── shared/                      # Shared (non-user-scoped) entities
+│   ├── mortgages/
+│   │   ├── {mortgageId}.enc     # Shared mortgage (loans + members embedded)
+│   │   └── {mortgageId}/        # rates/ costs/ extra-payments/ snapshots/
+│   └── mortgage-members/
+│       └── {userId}.enc         # Reverse index: userId → mortgageIds
 └── users/
     └── {userId}/
         ├── user.enc             # Profile, password hash, role
@@ -140,10 +165,16 @@ All data is stored as individually encrypted JSON files in `~/.sampolio/data/` (
         │   └── {receivableId}.enc
         ├── taxed-income/
         │   └── {incomeId}.enc
+        ├── budgets/
+        │   └── {budgetId}.enc   # Trip/project budgets (lines, funding, expenses embedded)
+        ├── goals/
+        │   └── {goalId}.enc     # Financial goals
         └── reconciliation/
             ├── snapshots/       # Balance snapshots
             └── sessions/        # Reconciliation sessions
 ```
+
+> **Note**: A mortgage is the one entity shared by multiple users, so it lives under `shared/` rather than under a single user. Access control is enforced in the action layer by checking the requester against the mortgage's member list.
 
 **Encryption**: AES-256-GCM with PBKDF2 key derivation (100,000 iterations). Each file has its own random salt and IV. Derived keys are cached in an LRU cache (max 500 entries) to avoid repeated PBKDF2 computation.
 

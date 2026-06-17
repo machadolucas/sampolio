@@ -20,19 +20,22 @@ src/
 │   ├── (dashboard)/                       # Protected pages (route group)
 │   │   ├── overview/page.tsx              # Wealth dashboard / home page
 │   │   ├── cashflow/page.tsx              # Monthly cash flow management
+│   │   ├── mortgage/page.tsx              # Shared mortgage ledger, charts, reconcile/import
 │   │   ├── budgets/page.tsx               # Trip/project budgets list (+ [id]/page.tsx detail)
-│   │   └── settings/page.tsx              # User preferences & admin panel
+│   │   ├── playground/page.tsx            # "What If?" scenario explorer (ephemeral)
+│   │   └── settings/page.tsx              # User preferences, admin panel & data maintenance
 │   ├── layout.tsx                         # Root layout
 │   └── page.tsx                           # Redirects to overview
 ├── components/
 │   ├── charts/                            # ECharts and Chart.js components
 │   ├── layout/                            # AppLayout, SidebarNav
-│   ├── modals/                            # Entity create/edit modals
+│   ├── modals/                            # Entity create/edit modals (cashflow item, override, users)
 │   ├── budgets/                           # Budget wizard, verdict card, coverage bars, expense log, dialogs
+│   ├── mortgage/                          # Mortgage setup wizard, ledger table, charts, Sankey, reconcile/import dialogs
 │   ├── onboarding/                        # Onboarding wizard
 │   ├── providers/                         # Theme, PrimeReact, Session providers
 │   ├── reconcile/                         # Reconciliation wizard
-│   └── ui/                               # Shared UI (CommandPalette, EntityListDrawer, etc.)
+│   └── ui/                               # Shared UI (CommandPalette, EntityListDrawer, debt-progress-card, etc.)
 ├── lib/
 │   ├── actions/                           # Server actions (all backend logic)
 │   │   ├── accounts.ts                    # Cash account CRUD
@@ -46,8 +49,11 @@ src/
 │   │   ├── reconciliation.ts              # Balance snapshots, adjustments, sessions
 │   │   ├── shared-mortgages.ts            # Shared mortgage CRUD + members/rates/costs/payments/snapshots
 │   │   ├── budgets.ts                     # Trip/project budget CRUD + lines/funding/expense log + confirm/unconfirm
+│   │   ├── goals.ts                       # Financial goal CRUD (backend-only; no UI yet)
 │   │   ├── projection.ts                  # Cash flow projection action
+│   │   ├── scenario.ts                    # "What If?" projection (ephemeral, never persisted)
 │   │   ├── admin.ts                       # User management, app settings (admin only)
+│   │   ├── maintenance.ts                 # History compaction preview/run (data pruning)
 │   │   ├── auth.ts                        # Sign-up, signup-enabled check
 │   │   ├── user-preferences.ts            # User preferences CRUD
 │   │   └── app-info.ts                    # App version info
@@ -63,6 +69,7 @@ src/
 │   │   ├── taxed-income.ts                # Taxed income file operations
 │   │   ├── reconciliation.ts              # Reconciliation file operations
 │   │   ├── budgets.ts                     # Budget file ops (one doc per budget, sub-entities embedded)
+│   │   ├── goals.ts                       # Goal file operations
 │   │   ├── shared-mortgages.ts            # Shared mortgage file ops (loans, members, rates, costs, payments, snapshots, actuals)
 │   │   ├── users.ts                       # User file operations
 │   │   ├── app-settings.ts               # App settings file operations
@@ -72,6 +79,10 @@ src/
 │   │   ├── auth.schema.ts                 # Sign-in / sign-up schemas
 │   │   ├── mortgage.schema.ts             # Mortgage setup form schema
 │   │   ├── budget.schema.ts               # Budget form schemas (details, line, funding, expense entry)
+│   │   ├── goal.schema.ts                 # Goal form + action schemas
+│   │   ├── recurring-item.schema.ts       # Recurring item schema
+│   │   ├── planned-item.schema.ts         # Planned item schema
+│   │   ├── salary-config.schema.ts        # Salary config schema
 │   │   └── occurrence-override.schema.ts  # Override dialog schema
 │   ├── auth.ts                            # NextAuth configuration
 │   ├── projection.ts                      # Cash flow projection calculation engine
@@ -82,8 +93,11 @@ src/
 │   ├── budget-utils.ts                    # Pure budget engine (restricted-grant allocation, feasibility, transfers)
 │   ├── budget-csv.ts                      # Grant-report CSV builders (spending log + summary)
 │   ├── csv-utils.ts                       # Generic CSV build/download (semicolon + BOM, fi-FI Excel friendly)
-│   ├── constants.ts                       # Currencies, frequencies, categories, formatters
-│   └── proxy.ts                           # Reverse proxy utilities
+│   ├── debt-utils.ts                      # Pure debt helper (payoff date/info from amortization)
+│   ├── goal-utils.ts                      # Pure goal engine (progress vs. account/net-worth/manual)
+│   ├── maintenance-utils.ts               # Pure history-compaction plan logic (anchor-gated, idempotent)
+│   └── constants.ts                       # Currencies, frequencies, categories, formatters
+├── proxy.ts                               # Next.js middleware (rate limiting + auth gating) — runs on the Edge runtime; security headers are in next.config.ts
 ├── test/
 │   ├── setup.ts                           # Test setup (jest-dom matchers)
 │   └── mocks.ts                           # Mock entity factories
@@ -182,7 +196,7 @@ const { control, handleSubmit, formState: { errors } } = useForm<SomeFormData>({
 
 The cashflow projection engine (`src/lib/projection.ts`) calculates monthly projections for a single account:
 ```typescript
-calculateProjection(account, recurringItems, plannedItems, taxedIncomes?, filters?, latestSnapshot?)
+calculateProjection(account, recurringItems, plannedItems, taxedIncomes?, filters?, latestSnapshot?, mortgageTransfers?, budgetTransfers?)
 ```
 
 - **TaxedIncome** items are included in projections using their `netAmount` (not `grossAmount`)
@@ -216,6 +230,21 @@ A **Budget** is a user-scoped, bounded-period plan (e.g. a 2-month research stay
 - **Expense log**: `BudgetExpenseEntry.date` is a plain `'YYYY-MM-DD'` string (month via `date.slice(0, 7)`, never `new Date()` parsing). Entries outside the period still count in rollups.
 - **CSV export** (`src/lib/csv-utils.ts` + `budget-csv.ts`, the app's only export): semicolon delimiter + UTF-8 BOM + comma decimals so files open correctly in fi-FI Excel by double-click.
 - Budget UI categories use the short plain-word `BUDGET_CATEGORIES` list (constants.ts), not `ITEM_CATEGORIES`.
+
+### Goals (backend-only — no UI yet)
+
+A **Goal** is a user-scoped financial target (e.g. "grow the emergency fund to €10k"), stored one-per-file at `data/users/{id}/goals/{id}.enc`. The full backend exists — server actions (`src/lib/actions/goals.ts`), DB layer (`src/lib/db/goals.ts`), cached queries (`cachedGetGoals` / `cachedGetGoalById`, tag `user:{userId}:goals`), Zod schema (`src/lib/schemas/goal.schema.ts`), and types (`Goal`, `CreateGoalRequest`, `UpdateGoalRequest`) — **but it is not surfaced in any page, component, sidebar, or command-palette entry**. Treat it as plumbing ready for a UI.
+
+- **Tracking methods** (`trackingMethod`): `'manual'` (user sets `currentManualAmount`), `'account-balance'` (progress = projected balance of `linkedAccountId`), or `'net-worth'` (progress = net-worth projection).
+- **Pure engine** (`src/lib/goal-utils.ts`): `calculateGoalProgress(goal, cashProjections?, wealthProjections?)` returns `{ currentAmount, targetAmount, percentComplete (capped 100), projectedAmountAtTarget, onTrack, projectedDate }`. Goals **read** projections; they never feed back into the cashflow/wealth engines (a pure monitoring layer).
+- `targetDate` is a `YYYY-MM` string. Goals are archivable (`isArchived`), and `getGoals` returns them sorted by name.
+
+### Scenarios / "What If?" Playground (ephemeral — never persisted)
+
+The `/playground` page ("What If?" in the sidebar, `MdExplore` icon) lets the user model a hypothetical change to one account and see the projected end-balance delta. There is **no stored entity and no cache tag** — `runScenarioProjection` (`src/lib/actions/scenario.ts`) reads the live cached projection inputs, clones the recurring/planned arrays, applies the requested modification, and runs `calculateProjection` twice (current vs. modified), returning a `ScenarioResult` (`{ current, modified, summary }`) held only in memory.
+
+- **Modification types**: `'add-income'`, `'add-expense'`, `'remove-item'`, `'modify-amount'`. The action accepts an array of mods (the UI currently sends one). Synthetic items get throwaway IDs (`scenario-…`) so they never collide with real data.
+- The modified projection inherits all real engine behavior (mortgage/budget transfers, taxes, overrides, anchoring), so the delta is directly comparable.
 
 ### Date Handling
 

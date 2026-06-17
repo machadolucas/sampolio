@@ -29,6 +29,10 @@ deleteFile(filePath: string): Promise<void>
 {dataDir}/
 ├── users-index.enc           # { users: [{ id, email }] }
 ├── app-settings.enc          # { selfSignupEnabled, updatedAt, updatedBy }
+├── shared/                   # Shared (non-user-scoped) entities — access control in the action layer
+│   ├── mortgages/{id}.enc    # SharedMortgage (loans + members embedded)
+│   ├── mortgages/{id}/       # rates/ costs/ extra-payments/ snapshots/ (+ embedded actuals)
+│   └── mortgage-members/{userId}.enc   # Reverse index: userId → mortgageIds
 └── users/{userId}/
     ├── user.enc              # User profile with passwordHash
     ├── preferences.enc       # Onboarding, categories, tax defaults
@@ -40,10 +44,14 @@ deleteFile(filePath: string): Promise<void>
     ├── debts/{id}.enc
     ├── receivables/{id}.enc
     ├── taxed-income/{id}.enc
+    ├── budgets/{id}.enc      # One doc per budget (lines, funding, expenses embedded)
+    ├── goals/{id}.enc        # Financial goals (backend-only — no UI yet)
     └── reconciliation/
         ├── snapshots/{id}.enc
         └── sessions/{id}.enc
 ```
+
+> Most entities are **user-scoped** (`users/{userId}/…`). The exception is the **shared mortgage**, which lives under `shared/` because it is co-owned by multiple members; the encryption key is global, so member access control is enforced in `src/lib/actions/shared-mortgages.ts`, not by the filesystem.
 
 ## DB File Pattern
 

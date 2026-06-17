@@ -65,6 +65,9 @@ Full monthly data table with columns: Month, Income, Expenses, Net Change, Balan
 3. Results displayed as charts and tables
 4. Edits go through server actions → file writes → cache invalidation → refresh
 
+### Injected read-only lines
+When the account is linked to a shared mortgage or a confirmed budget, `getProjection` injects **read-only** lines into the projection: a `mortgage-payment` line (this member's share of the bank charge) and/or up to two aggregated `budget` lines per month. They are not stored cashflow items — clicking them deep-links to `/mortgage` or `/budgets/{id}`, where the underlying data is edited.
+
 ## Key Types
 
 - `MonthlyProjection` — Monthly income/expense breakdown with balances
