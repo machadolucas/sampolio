@@ -214,7 +214,7 @@ export interface CreateRecurringItemRequest {
   isActive?: boolean;
 }
 
-export interface UpdateRecurringItemRequest extends Partial<CreateRecurringItemRequest> { }
+export type UpdateRecurringItemRequest = Partial<CreateRecurringItemRequest>;
 
 export interface CreatePlannedItemRequest {
   accountId: string;
@@ -238,7 +238,7 @@ export interface CreatePlannedItemRequest {
   skipOccurrence?: boolean;
 }
 
-export interface UpdatePlannedItemRequest extends Partial<CreatePlannedItemRequest> { }
+export type UpdatePlannedItemRequest = Partial<CreatePlannedItemRequest>;
 
 export interface CreateSalaryConfigRequest {
   accountId: string;
@@ -254,7 +254,7 @@ export interface CreateSalaryConfigRequest {
   isLinkedToRecurring?: boolean;
 }
 
-export interface UpdateSalaryConfigRequest extends Partial<CreateSalaryConfigRequest> { }
+export type UpdateSalaryConfigRequest = Partial<CreateSalaryConfigRequest>;
 
 // Auth types
 export interface SignUpRequest {
@@ -442,7 +442,7 @@ export interface CreateInvestmentContributionRequest {
   isActive?: boolean;
 }
 
-export interface UpdateInvestmentContributionRequest extends Partial<CreateInvestmentContributionRequest> { }
+export type UpdateInvestmentContributionRequest = Partial<CreateInvestmentContributionRequest>;
 
 // ============================================================
 // DEBTS / LIABILITIES
@@ -886,7 +886,7 @@ export interface CreateTaxedIncomeRequest {
   isActive?: boolean;
 }
 
-export interface UpdateTaxedIncomeRequest extends Partial<CreateTaxedIncomeRequest> { }
+export type UpdateTaxedIncomeRequest = Partial<CreateTaxedIncomeRequest>;
 
 // ============================================================
 // GOALS

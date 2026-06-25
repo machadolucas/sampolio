@@ -249,10 +249,12 @@ export function CommandPalette({
         return () => document.removeEventListener('keydown', handleKeyDown);
     }, [isOpen, filteredCommands, selectedIndex, onClose, executeCommand]);
 
-    // Focus input when opened
+    // Focus input when opened (reset transient palette state on open).
     useEffect(() => {
         if (isOpen) {
+            // eslint-disable-next-line react-hooks/set-state-in-effect
             setQuery('');
+            // eslint-disable-next-line react-hooks/set-state-in-effect
             setSelectedIndex(0);
             setTimeout(() => inputRef.current?.focus(), 50);
         }
@@ -260,6 +262,7 @@ export function CommandPalette({
 
     // Reset selection when filtered results change
     useEffect(() => {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setSelectedIndex(0);
     }, [query]);
 

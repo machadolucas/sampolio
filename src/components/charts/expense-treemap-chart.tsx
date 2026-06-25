@@ -194,20 +194,8 @@ export function ExpenseTreemapChart({ expenses, currency, height = '350px', onCl
         };
     }, [expenses, currency, isDark]);
 
-    if (expenses.length === 0) {
-        return (
-            <div className="flex items-center justify-center h-40 opacity-50">
-                <div className="text-center">
-                    <MdBarChart size={30} className="mb-2" />
-                    <p className="text-sm">No expenses this month</p>
-                </div>
-            </div>
-        );
-    }
-
-    if (!option) return null;
-
-    // Build a click handler that maps treemap nodes back to expense items
+    // Build a click handler that maps treemap nodes back to expense items.
+    // Declared before the early returns below so hooks run in a stable order.
     const onEvents = useMemo(() => {
         if (!onClickItem) return undefined;
         return {
@@ -220,6 +208,19 @@ export function ExpenseTreemapChart({ expenses, currency, height = '350px', onCl
             },
         };
     }, [onClickItem, expenses]);
+
+    if (expenses.length === 0) {
+        return (
+            <div className="flex items-center justify-center h-40 opacity-50">
+                <div className="text-center">
+                    <MdBarChart size={30} className="mb-2" />
+                    <p className="text-sm">No expenses this month</p>
+                </div>
+            </div>
+        );
+    }
+
+    if (!option) return null;
 
     return (
         <ReactEChartsCore

@@ -64,14 +64,18 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
         if (!isClient) return;
 
         // Check localStorage first
+        // Hydrate theme from the external store (localStorage / system pref) on
+        // mount — a legitimate effect→state sync, not derivable during render.
         const savedTheme = localStorage.getItem('sampolio-theme') as Theme | null;
         if (savedTheme) {
+            // eslint-disable-next-line react-hooks/set-state-in-effect
             setThemeState(savedTheme);
             applyTheme(savedTheme);
         } else {
             // Check system preference
             const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
             const initialTheme = prefersDark ? 'dark' : 'light';
+            // eslint-disable-next-line react-hooks/set-state-in-effect
             setThemeState(initialTheme);
             applyTheme(initialTheme);
         }
