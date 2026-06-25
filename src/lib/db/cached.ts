@@ -22,6 +22,10 @@
  *   user:{userId}:preferences                         – user preferences
  *   user:{userId}:reconciliation                      – reconciliation data
  *   user:{userId}:budgets                             – trip/project budgets (single docs)
+ *   user:{userId}:bank-connections                    – bank connection list
+ *   user:{userId}:bank-connection:{id}                – one bank connection
+ *   user:{userId}:bank-account:{linkedAccountId}:transactions – bank tx ledger
+ *   user:{userId}:bank-connection:{id}:runs           – sync-run audit log
  *   app-settings                                      – global app settings
  *   users                                             – all users list
  *   mortgage:{mortgageId}                             – shared mortgage doc (loans + members)
@@ -62,6 +66,9 @@ import { getBudgets, getBudgetById } from './budgets';
 import { getUserPreferences } from './user-preferences';
 import { getAppSettings } from './app-settings';
 import { getAllUsers } from './users';
+import { getBankConnections, getBankConnectionById } from './bank-connections';
+import { getBankTransactions } from './bank-transactions';
+import { getBankSyncRuns, getLatestBankSyncRun } from './bank-sync-runs';
 import {
   getBalanceSnapshots,
   getReconciliationSessions,
@@ -99,6 +106,9 @@ import type {
   MortgageExtraPayment,
   MortgageBalanceSnapshot,
   MortgageActualEntry,
+  BankConnection,
+  BankTransaction,
+  BankSyncRun,
 } from '@/types';
 
 // ============================================================
@@ -553,6 +563,69 @@ export async function cachedGetMortgageProjectionData(mortgageId: string): Promi
 
   if (!mortgage) return null;
   return { mortgage, rates, costs, extraPayments, snapshots, actuals };
+}
+
+// ============================================================
+// ENABLE BANKING (PSD2 AIS)
+// All reads here are cache-first: the UI only ever reads these wrappers; the
+// bank API is touched solely by the background sync + "Refresh now". The live
+// session secret is NEVER cached (read directly via the db layer).
+// ============================================================
+
+export async function cachedGetBankConnections(userId: string): Promise<BankConnection[]> {
+  'use cache';
+  cacheTag('all-data', `user:${userId}`, `user:${userId}:bank-connections`);
+  cacheLife('indefinite');
+  return getBankConnections(userId);
+}
+
+export async function cachedGetBankConnectionById(
+  userId: string,
+  connectionId: string
+): Promise<BankConnection | null> {
+  'use cache';
+  cacheTag(
+    'all-data',
+    `user:${userId}`,
+    `user:${userId}:bank-connections`,
+    `user:${userId}:bank-connection:${connectionId}`
+  );
+  cacheLife('indefinite');
+  return getBankConnectionById(userId, connectionId);
+}
+
+export async function cachedGetBankTransactions(
+  userId: string,
+  linkedAccountId: string
+): Promise<BankTransaction[]> {
+  'use cache';
+  cacheTag(
+    'all-data',
+    `user:${userId}`,
+    `user:${userId}:bank-account:${linkedAccountId}:transactions`
+  );
+  cacheLife('indefinite');
+  return getBankTransactions(userId, linkedAccountId);
+}
+
+export async function cachedGetBankSyncRuns(
+  userId: string,
+  connectionId: string
+): Promise<BankSyncRun[]> {
+  'use cache';
+  cacheTag('all-data', `user:${userId}`, `user:${userId}:bank-connection:${connectionId}:runs`);
+  cacheLife('indefinite');
+  return getBankSyncRuns(userId, connectionId);
+}
+
+export async function cachedGetLatestBankSyncRun(
+  userId: string,
+  connectionId: string
+): Promise<BankSyncRun | null> {
+  'use cache';
+  cacheTag('all-data', `user:${userId}`, `user:${userId}:bank-connection:${connectionId}:runs`);
+  cacheLife('indefinite');
+  return getLatestBankSyncRun(userId, connectionId);
 }
 
 // ============================================================

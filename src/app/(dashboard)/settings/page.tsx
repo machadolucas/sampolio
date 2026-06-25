@@ -17,6 +17,7 @@ import { getUserPreferences, updateCategories, updateTaxDefaults } from '@/lib/a
 import { getAppVersion } from '@/lib/actions/app-info';
 import { previewHistoryCompaction, compactHistory, type HistoryCompactionStats } from '@/lib/actions/maintenance';
 import { ITEM_CATEGORIES } from '@/lib/constants';
+import { BankConnectionsPanel } from '@/components/bank/bank-connections-panel';
 import type { TaxDefaults } from '@/types';
 import { MdDownload, MdUpload, MdAccountBalanceWallet, MdAdd, MdCheck, MdGroup, MdCached, MdStorage, MdDeleteSweep } from 'react-icons/md';
 import { FaGithub } from 'react-icons/fa';
@@ -331,6 +332,9 @@ export default function SettingsPage() {
                     onClick={() => appContext?.openDrawer({ mode: 'view', entityType: 'account' })}
                 />
             </Card>
+
+            {/* Bank connections (Enable Banking / PSD2 AIS) */}
+            <BankConnectionsPanel />
 
             {/* Categories */}
             <Card>

@@ -153,7 +153,15 @@ cat > "$PLIST_FILE" << EOF
         <key>ENCRYPTION_KEY</key>
         <string>${ENCRYPTION_KEY}</string>
         <key>AUTH_TRUST_HOST</key>
-        <string>true</string>${AUTH_URL:+
+        <string>true</string>${ENABLE_BANKING_APP_ID:+
+        <key>ENABLE_BANKING_APP_ID</key>
+        <string>${ENABLE_BANKING_APP_ID}</string>}${ENABLE_BANKING_REDIRECT_URL:+
+        <key>ENABLE_BANKING_REDIRECT_URL</key>
+        <string>${ENABLE_BANKING_REDIRECT_URL}</string>}${ENABLE_BANKING_PRIVATE_KEY_FILE:+
+        <key>ENABLE_BANKING_PRIVATE_KEY_FILE</key>
+        <string>${ENABLE_BANKING_PRIVATE_KEY_FILE}</string>}${ENABLE_BANKING_BASE_URL:+
+        <key>ENABLE_BANKING_BASE_URL</key>
+        <string>${ENABLE_BANKING_BASE_URL}</string>}${AUTH_URL:+
         <key>AUTH_URL</key>
         <string>${AUTH_URL}</string>}
     </dict>

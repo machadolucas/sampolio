@@ -63,6 +63,9 @@ export interface FinancialAccount {
   planningHorizonMonths: number; // e.g., 12, 36, 120 for 1, 3, 10 years
   customEndDate?: YearMonth; // optional specific end date
   isArchived: boolean;
+  // Enable Banking (PSD2 AIS): when true, this account is auto-anchored from a
+  // linked bank account's balance. Additive/optional — undefined ⇒ manual only.
+  bankSyncEnabled?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -160,7 +163,7 @@ export interface ProjectionLineItem {
   name: string;
   amount: number;
   category?: string;
-  source: 'recurring' | 'planned-one-off' | 'planned-repeating' | 'salary' | 'taxed-income' | 'mortgage-payment' | 'budget';
+  source: 'recurring' | 'planned-one-off' | 'planned-repeating' | 'salary' | 'taxed-income' | 'mortgage-payment' | 'budget' | 'credit-card';
   isOverridden?: boolean; // true when a recurring item has an occurrence override for this month
 }
 
@@ -1073,6 +1076,11 @@ export interface WealthProjectionMonth {
   mortgageLiabilityTotal?: number;
   mortgageStakeTotal?: number;
   mortgagesBreakdown?: { mortgageId: string; name: string; stake: number; liability: number; equity: number }[];
+  // Linked credit cards — the outstanding owed but not yet paid as of this month
+  // (drops to 0 once the bill is paid via the injected cashflow line, so there's
+  // no double count). Optional / back-compatible.
+  cardLiabilitiesTotal?: number;
+  cardLiabilitiesBreakdown?: { linkId: string; name: string; outstanding: number }[];
   // Net worth
   netWorth: number;
 }
@@ -1127,6 +1135,10 @@ export interface BalanceSnapshot {
   expectedBalance: number; // What the system projected
   actualBalance: number; // What user reported
   variance: number; // actualBalance - expectedBalance
+  // Provenance: 'manual' (a user reconciliation, the default for all existing
+  // snapshots) or 'bank-sync' (auto-written by the Enable Banking sync). A
+  // manual snapshot always wins over a bank-sync one for the same entity/month.
+  source?: 'manual' | 'bank-sync';
   createdAt: string;
 }
 
@@ -1173,6 +1185,136 @@ export interface ReconciliationSummary {
 }
 
 // ============================================================
+// ENABLE BANKING (PSD2 AIS) — read-only bank-data sync
+//
+// Sampolio pulls balances + transactions from the user's banks via Enable
+// Banking (a licensed aggregator) to auto-anchor forecasts and model cards.
+// Everything is additive: the UI reads only the local encrypted cache; the
+// bank API is touched only by a background sync + an on-demand "Refresh now".
+// Phase 1 is per-user (data/users/{id}/bank/...); the model carries enough
+// fields (applicationId, etc.) to later mirror the shared-mortgage pattern.
+// ============================================================
+
+export type BankConnectionStatus = 'pending' | 'active' | 'expired' | 'error' | 'revoked';
+export type BankAccountRole = 'cash' | 'credit-card' | 'savings' | 'other';
+export type BankTransactionStatus = 'booked' | 'pending' | 'other';
+export type BankSyncTrigger = 'callback-backfill' | 'scheduled' | 'manual';
+export type BankSyncStatus = 'ok' | 'partial' | 'error';
+
+/** One real bank account exposed by a connection, and how Sampolio uses it. */
+export interface BankAccountLink {
+  id: string; // our uuid; STABLE across re-consent (re-matched by accountUid/iban)
+  connectionId: string;
+  accountUid: string; // Enable Banking account_id, used for data calls
+  iban?: string; // stored; masked in UI, never logged
+  name?: string;
+  currency: Currency;
+  accountRole: BankAccountRole;
+  // cash/savings: the FinancialAccount this balance ANCHORS.
+  // credit-card: the cash account the bill is PAID FROM (like Debt.linkedAccountId).
+  linkedFinancialAccountId?: string;
+  // --- credit-card billing (accountRole === 'credit-card') ---
+  statementDay?: number; // 1-31, manual config (AIS usually omits it)
+  paymentDueDay?: number; // 1-31
+  creditLimit?: number;
+  lastStatementBalance?: number;
+  lastStatementDate?: string; // 'YYYY-MM-DD'
+  includeOpenCycleEstimate?: boolean; // also bill the current not-yet-closed spend as an estimate
+  // --- balances / incremental cursor ---
+  lastBalance?: number;
+  lastBalanceType?: string; // e.g. 'closingBooked'
+  lastBalanceAt?: string; // ISO timestamp of the last balance fetch
+  outstanding?: number; // credit-card: amount owed (positive magnitude)
+  syncCursor?: { lastBookingDate?: string; lastSeenEntryRefs?: string[]; backfilledThrough?: string };
+  isExcluded?: boolean; // user opted this real account out of any modeling
+}
+
+export interface BankConnection {
+  id: string;
+  userId: string;
+  aspspName: string; // bank name, e.g. "Nordea"
+  aspspCountry: string; // ISO country, e.g. "FI"
+  applicationId?: string; // which Enable Banking app/key this consent belongs to
+  status: BankConnectionStatus;
+  psuType: 'personal';
+  linkedAccounts: BankAccountLink[];
+  consentGrantedAt?: string;
+  consentExpiresAt?: string; // = the returned access.valid_until
+  nextSyncDueAt?: string; // persisted scheduler cursor (restart-safe)
+  lastSyncAt?: string;
+  lastSyncStatus?: BankSyncStatus;
+  lastError?: string; // error CODE only, never PII
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Live consent secrets — a SEPARATE file, never cached, never logged. */
+export interface BankSessionSecret {
+  connectionId: string;
+  state: string; // single-use CSRF token matched at the callback
+  authorizationId?: string;
+  sessionId?: string;
+  createdAt: string;
+}
+
+export interface BankTransaction {
+  id: string;
+  linkedAccountId: string; // BankAccountLink.id
+  dedupKey: string; // entry_reference (booked) OR synthetic hash (pending)
+  entryReference?: string;
+  bookingDate: string; // 'YYYY-MM-DD'
+  valueDate?: string;
+  amount: number; // signed (credit +, debit -)
+  currency: Currency;
+  status: BankTransactionStatus;
+  counterpartyName?: string;
+  remittanceInfo?: string;
+  bankTransactionCode?: string;
+  firstSeenAt: string;
+  lastSeenAt: string;
+}
+
+export interface BankSyncRunAccountResult {
+  linkedAccountId: string;
+  balanceFetched: boolean;
+  txAdded: number;
+  txUpdated: number;
+  fromDate?: string;
+  toDate?: string;
+  error?: string; // code only
+  rateLimited?: boolean;
+}
+
+export interface BankSyncRun {
+  id: string;
+  connectionId: string;
+  trigger: BankSyncTrigger;
+  startedAt: string;
+  finishedAt?: string;
+  status: BankSyncStatus;
+  perAccount: BankSyncRunAccountResult[];
+  psuPresent: boolean; // whether PSU-IP-Address was sent (higher rate allowance)
+  error?: string; // code only
+}
+
+// ---------- Request / input types ----------
+export interface StartBankConnectionRequest {
+  aspspName: string;
+  aspspCountry: string;
+}
+
+export interface UpdateBankAccountLinkRequest {
+  accountRole?: BankAccountRole;
+  linkedFinancialAccountId?: string | null; // null clears the link
+  isExcluded?: boolean;
+  // credit-card config
+  statementDay?: number | null;
+  paymentDueDay?: number | null;
+  creditLimit?: number | null;
+  includeOpenCycleEstimate?: boolean;
+}
+
+// ============================================================
 // CASHFLOW VISUALIZATION TYPES
 // ============================================================
 
@@ -1182,7 +1324,7 @@ export interface CashflowItem {
   amount: number;
   category?: string;
   type: 'income' | 'expense' | 'transfer' | 'adjustment';
-  source: 'recurring' | 'planned' | 'salary' | 'taxed-income' | 'adjustment' | 'debt-payment' | 'mortgage-payment' | 'budget';
+  source: 'recurring' | 'planned' | 'salary' | 'taxed-income' | 'adjustment' | 'debt-payment' | 'mortgage-payment' | 'budget' | 'credit-card';
   isRecurring: boolean;
   linkedEntityId?: string; // For drill-down
   linkedEntityType?: string;
@@ -1206,7 +1348,7 @@ export interface MonthFlowData {
 // NAVIGATION & UI STATE TYPES
 // ============================================================
 
-export type NavigationPage = 'overview' | 'cashflow' | 'mortgage' | 'budgets' | 'playground' | 'settings';
+export type NavigationPage = 'overview' | 'cashflow' | 'mortgage' | 'budgets' | 'playground' | 'bank' | 'settings';
 
 export type TimeHorizon = '6m' | '1y' | '3y' | '5y' | 'custom';
 

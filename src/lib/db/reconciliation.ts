@@ -71,17 +71,25 @@ export async function createBalanceSnapshot(
   entityId: string,
   yearMonth: string,
   expectedBalance: number,
-  actualBalance: number
+  actualBalance: number,
+  source: 'manual' | 'bank-sync' = 'manual'
 ): Promise<BalanceSnapshot> {
   const data = await readSnapshots(userId);
-  
+
   // Check if snapshot already exists for this entity/month
   const existingIndex = data.snapshots.findIndex(
     s => s.entityType === entityType && s.entityId === entityId && s.yearMonth === yearMonth
   );
-  
+  const existing = existingIndex >= 0 ? data.snapshots[existingIndex] : null;
+
+  // Manual snapshots always win: an automated bank-sync write must never
+  // clobber a balance the user confirmed by hand for the same entity/month.
+  if (existing && source === 'bank-sync' && (existing.source ?? 'manual') === 'manual') {
+    return existing;
+  }
+
   const snapshot: BalanceSnapshot = {
-    id: existingIndex >= 0 ? data.snapshots[existingIndex].id : crypto.randomUUID(),
+    id: existing ? existing.id : crypto.randomUUID(),
     userId,
     entityType,
     entityId,
@@ -89,15 +97,16 @@ export async function createBalanceSnapshot(
     expectedBalance,
     actualBalance,
     variance: actualBalance - expectedBalance,
+    source,
     createdAt: new Date().toISOString(),
   };
-  
+
   if (existingIndex >= 0) {
     data.snapshots[existingIndex] = snapshot;
   } else {
     data.snapshots.push(snapshot);
   }
-  
+
   await writeSnapshots(userId, data);
   return snapshot;
 }

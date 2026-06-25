@@ -33,6 +33,18 @@ export interface BudgetTransfer {
   direction: 'income' | 'expense';
 }
 
+/** A linked credit card's statement bill for one month, injected into the
+ * paying cash account's cashflow as a read-only expense line (see
+ * calculateProjection). The itemId is the bank-account link id so the UI can
+ * deep-link to the card; an estimate (open cycle) is labeled as such. */
+export interface CardBillTransfer {
+  yearMonth: YearMonth;
+  linkId: string;
+  cardName: string;
+  amount: number;
+  isEstimate: boolean;
+}
+
 // Year-Month utility functions
 export function parseYearMonth(yearMonth: YearMonth): { year: number; month: number } {
   const [yearStr, monthStr] = yearMonth.split('-');
@@ -217,7 +229,8 @@ export function calculateProjection(
   filters?: ProjectionFilters,
   latestSnapshot?: BalanceSnapshot | null,
   mortgageTransfers: MortgageTransfer[] = [],
-  budgetTransfers: BudgetTransfer[] = []
+  budgetTransfers: BudgetTransfer[] = [],
+  cardBillTransfers: CardBillTransfer[] = []
 ): MonthlyProjection[] {
   const anchor = resolveAnchor(account.startingDate, account.startingBalance, latestSnapshot);
   const months = generateMonthList(account, anchor);
@@ -240,6 +253,15 @@ export function calculateProjection(
     const existing = budgetTransfersByMonth.get(t.yearMonth);
     if (existing) existing.push(t);
     else budgetTransfersByMonth.set(t.yearMonth, [t]);
+  }
+
+  // Per-month credit-card statement bills (linked cards paid from this account),
+  // injected as read-only expense lines. Computed by the card-billing engine.
+  const cardBillsByMonth = new Map<YearMonth, CardBillTransfer[]>();
+  for (const t of cardBillTransfers) {
+    const existing = cardBillsByMonth.get(t.yearMonth);
+    if (existing) existing.push(t);
+    else cardBillsByMonth.set(t.yearMonth, [t]);
   }
 
   let runningBalance = anchor.startBalance;
@@ -519,6 +541,23 @@ export function calculateProjection(
         };
         if (t.direction === 'expense') expenseBreakdown.push(lineItem);
         else incomeBreakdown.push(lineItem);
+      }
+    }
+
+    // Credit-card bills — a linked card's statement balance billed to this
+    // (paying) account on its payment-due month. Read-only (the card cycle is
+    // configured in settings; the itemId is the bank-link id for deep-linking).
+    const cardBills = cardBillsByMonth.get(yearMonth);
+    if (cardBills) {
+      for (const b of cardBills) {
+        if (b.amount <= 0.005) continue;
+        expenseBreakdown.push({
+          itemId: b.linkId,
+          name: b.isEstimate ? `Card: ${b.cardName} (estimate)` : `Card: ${b.cardName}`,
+          amount: b.amount,
+          category: 'Shopping',
+          source: 'credit-card',
+        });
       }
     }
 

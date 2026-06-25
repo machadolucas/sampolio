@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { InputText } from 'primereact/inputtext';
-import { MdHome, MdAttachMoney, MdSettings, MdSync, MdAddCircle, MdRemoveCircle, MdSearch, MdHouse, MdLuggage } from 'react-icons/md';
+import { MdHome, MdAttachMoney, MdSettings, MdSync, MdAddCircle, MdRemoveCircle, MdSearch, MdHouse, MdLuggage, MdAccountBalance } from 'react-icons/md';
 import { useTheme } from '@/components/providers/theme-provider';
 import type { Command, CommandType } from '@/types';
 
@@ -51,6 +51,15 @@ const NAVIGATION_COMMANDS: Command[] = [
         type: 'navigate',
         icon: <MdLuggage />,
         keywords: ['budget', 'trip', 'travel', 'grant', 'project', 'per diem', 'allowance'],
+        action: () => { },
+    },
+    {
+        id: 'nav-bank',
+        label: 'Go to Bank',
+        description: 'Connected bank accounts and imported transactions',
+        type: 'navigate',
+        icon: <MdAccountBalance />,
+        keywords: ['bank', 'accounts', 'transactions', 'sync', 'enable banking', 'psd2', 'card'],
         action: () => { },
     },
     {
@@ -177,6 +186,7 @@ export function CommandPalette({
                     'nav-cashflow': '/cashflow',
                     'nav-mortgage': '/mortgage',
                     'nav-budgets': '/budgets',
+                    'nav-bank': '/bank',
                     'nav-playground': '/playground',
                     'nav-settings': '/settings',
                 };

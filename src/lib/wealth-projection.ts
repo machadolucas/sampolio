@@ -372,6 +372,9 @@ export interface WealthProjectionData {
   mortgageProjections?: MortgageProjectionMonth[][];
   mortgageNames?: string[]; // parallel to mortgageProjections
   currentUserId?: string;
+  // Linked credit-card outstandings (from the bank sync). Each reduces net worth
+  // until its bill is paid via the cashflow line. Optional / back-compatible.
+  cardLiabilities?: { linkId: string; name: string; outstanding: number; billYearMonth?: YearMonth }[];
 }
 
 /**
@@ -519,9 +522,35 @@ export function calculateWealthProjection(
       });
     }
 
+    // Credit-card liabilities — the outstanding owed but not yet paid as of this
+    // month. Once the bill's payment month arrives, the cashflow line has already
+    // reduced cash, so the liability drops to 0 here (no double count) and net
+    // worth stays continuous across the boundary.
+    let cardLiabilitiesTotal: number | undefined;
+    let cardLiabilitiesBreakdown: WealthProjectionMonth['cardLiabilitiesBreakdown'];
+    if (data.cardLiabilities && data.cardLiabilities.length > 0) {
+      cardLiabilitiesTotal = 0;
+      cardLiabilitiesBreakdown = [];
+      for (const card of data.cardLiabilities) {
+        const stillOwed =
+          !card.billYearMonth || compareYearMonths(currentDate, card.billYearMonth) < 0
+            ? card.outstanding
+            : 0;
+        if (stillOwed > 0) {
+          cardLiabilitiesTotal += stillOwed;
+          cardLiabilitiesBreakdown.push({ linkId: card.linkId, name: card.name, outstanding: stillOwed });
+        }
+      }
+    }
+
     // Net worth = assets - liabilities (+ member's home equity, if any)
     const netWorth =
-      cashAccountsTotal + investmentsTotal + receivablesTotal - debtsTotal + (mortgageEquityTotal ?? 0);
+      cashAccountsTotal +
+      investmentsTotal +
+      receivablesTotal -
+      debtsTotal +
+      (mortgageEquityTotal ?? 0) -
+      (cardLiabilitiesTotal ?? 0);
 
     months.push({
       yearMonth: currentDate,
@@ -539,6 +568,8 @@ export function calculateWealthProjection(
       mortgageLiabilityTotal,
       mortgageStakeTotal,
       mortgagesBreakdown,
+      cardLiabilitiesTotal,
+      cardLiabilitiesBreakdown,
       netWorth,
     });
 

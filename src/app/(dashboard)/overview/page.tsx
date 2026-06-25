@@ -23,12 +23,13 @@ import { calculateMortgageProjection } from '@/lib/mortgage-projection';
 import { isEuriborUpdateDue } from '@/lib/mortgage-utils';
 import { getMonthsBetween, addMonths, compareYearMonths } from '@/lib/projection';
 import { getBudgets } from '@/lib/actions/budgets';
+import { getBankConnectionsNeedingAttention, getCardLiabilities, type ConnectionAttention } from '@/lib/actions/bank';
 import { computeActualsRollup } from '@/lib/budget-utils';
 import type { FinancialAccount, InvestmentAccount, Receivable, Debt, TimeHorizon, WealthProjectionMonth, Currency, InvestmentContribution, ReceivableRepayment, DebtReferenceRate, DebtExtraPayment, MonthlyProjection, BalanceSnapshot, MortgageProjectionMonth, Budget } from '@/types';
 import { NetWorthChart, WealthChart } from '@/components/charts';
 import { EntityListDrawer } from '@/components/ui/entity-list-drawer';
 import { StatusHeroCard } from '@/components/ui/status-hero-card';
-import { MdInfo, MdSync, MdShowChart, MdAttachMoney, MdAccountBalanceWallet, MdBarChart, MdGroup, MdCreditCard, MdArrowForward, MdAddCircle, MdRemoveCircle, MdHouse, MdHomeWork, MdPercent, MdLuggage } from 'react-icons/md';
+import { MdInfo, MdSync, MdShowChart, MdAttachMoney, MdAccountBalanceWallet, MdAccountBalance, MdBarChart, MdGroup, MdCreditCard, MdArrowForward, MdAddCircle, MdRemoveCircle, MdHouse, MdHomeWork, MdPercent, MdLuggage } from 'react-icons/md';
 
 type EntityCategory = 'cash' | 'investments' | 'receivables' | 'debts';
 
@@ -183,6 +184,7 @@ export default function OverviewPage() {
     const [mortgageSummary, setMortgageSummary] = useState<{ equity: number; liability: number; stake: number } | null>(null);
     // Set when a mortgage's yearly Euribor rate is due for an update (drives the reminder banner).
     const [euriborDue, setEuriborDue] = useState<{ name: string; lastResetDate: Date } | null>(null);
+    const [bankAttention, setBankAttention] = useState<ConnectionAttention[]>([]);
     // At most one budget reminder: an over-budget category beats an upcoming trip.
     const [budgetBanner, setBudgetBanner] = useState<{ type: 'upcoming' | 'over-budget'; budget: Budget; category?: string } | null>(null);
 
@@ -198,7 +200,7 @@ export default function OverviewPage() {
             setIsLoading(true);
         }
         try {
-            const [accountsRes, investmentsRes, receivablesRes, debtsRes, sessionRes, mortgagesRes, budgetsRes] = await Promise.all([
+            const [accountsRes, investmentsRes, receivablesRes, debtsRes, sessionRes, mortgagesRes, budgetsRes, cardLiabRes] = await Promise.all([
                 getAccounts(),
                 getInvestmentAccounts(),
                 getReceivables(),
@@ -206,6 +208,7 @@ export default function OverviewPage() {
                 getLatestCompletedSession(),
                 getMyMortgages(),
                 getBudgets(),
+                getCardLiabilities(),
             ]);
 
             // Budget reminders: an over-budget category on an active confirmed
@@ -302,6 +305,7 @@ export default function OverviewPage() {
                 mortgageProjections,
                 mortgageNames,
                 currentUserId: userId,
+                cardLiabilities: cardLiabRes.success && cardLiabRes.data ? cardLiabRes.data : [],
             };
 
             const endDate = getLatestEndDate(wealthData, 60);
@@ -351,6 +355,13 @@ export default function OverviewPage() {
     useEffect(() => {
         fetchData();
     }, [fetchData]);
+
+    // Bank consent-expiry check (cheap, cache-first) — feeds the reconnect banner.
+    useEffect(() => {
+        getBankConnectionsNeedingAttention().then((res) => {
+            if (res.success && res.data) setBankAttention(res.data);
+        });
+    }, []);
 
     // Register refresh callback
     useEffect(() => {
@@ -526,6 +537,19 @@ export default function OverviewPage() {
                         {euriborDue.lastResetDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })} — enter the new rate so your payments stay accurate.
                     </span>
                     <Button label="Update rate" size="small" severity="warning" className="ml-auto" onClick={() => router.push('/mortgage')} />
+                </div>
+            )}
+
+            {/* Bank consent expiry — PSD2 requires a fresh SCA every ~180 days. */}
+            {bankAttention.length > 0 && (
+                <div className={`flex items-center gap-3 p-4 rounded-lg border ${isDark ? 'bg-yellow-900/20 border-yellow-800 text-yellow-400' : 'bg-yellow-50 border-yellow-200 text-yellow-700'}`}>
+                    <MdAccountBalance size={20} />
+                    <span>
+                        {bankAttention.some((c) => c.expired)
+                            ? <>Your bank connection to <b>{bankAttention.filter((c) => c.expired).map((c) => c.aspspName).join(', ')}</b> has expired. Reconnect to keep your balances syncing.</>
+                            : <>Your bank consent for <b>{bankAttention.map((c) => c.aspspName).join(', ')}</b> expires soon{bankAttention[0].daysUntilExpiry != null ? ` (in ${bankAttention[0].daysUntilExpiry} days)` : ''}. Reconnect now to avoid a gap.</>}
+                    </span>
+                    <Button label="Reconnect" size="small" severity="warning" className="ml-auto" onClick={() => router.push('/settings')} />
                 </div>
             )}
 

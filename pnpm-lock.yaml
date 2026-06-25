@@ -29,6 +29,9 @@ importers:
       echarts-for-react:
         specifier: ^3.0.6
         version: 3.0.6(echarts@6.1.0)(react@19.2.7)
+      jose:
+        specifier: ^6.2.3
+        version: 6.2.3
       lucide-react:
         specifier: ^1.17.0
         version: 1.17.0(react@19.2.7)
