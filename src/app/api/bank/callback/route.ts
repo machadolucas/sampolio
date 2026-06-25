@@ -14,8 +14,22 @@ import { auth } from '@/lib/auth';
 import { completeConnection } from '@/lib/bank/connect';
 import { redactBankError } from '@/lib/bank/client';
 
+/**
+ * The canonical external origin to build redirects against. Behind Caddy /
+ * Cloudflare the raw `request.url` is the internal bind address (0.0.0.0:3999),
+ * which isn't reachable by the user's browser — so prefer AUTH_URL (the app's
+ * public URL), then the forwarded host, then the raw request as a last resort.
+ */
+function externalBase(request: NextRequest): string {
+  const fromEnv = process.env.AUTH_URL?.trim().replace(/\/$/, '');
+  if (fromEnv) return fromEnv;
+  const proto = request.headers.get('x-forwarded-proto') ?? 'https';
+  const host = request.headers.get('x-forwarded-host') ?? request.headers.get('host');
+  return host ? `${proto}://${host}` : request.nextUrl.origin;
+}
+
 function redirect(request: NextRequest, path: string): NextResponse {
-  return NextResponse.redirect(new URL(path, request.url));
+  return NextResponse.redirect(new URL(path, externalBase(request)));
 }
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
