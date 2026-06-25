@@ -328,7 +328,7 @@ The data directory carries its own secrets as dot-files (the app reads them from
 - `data/.auth_secret` — `AUTH_SECRET` (NextAuth)
 - `data/.auth_url` — the prod `AUTH_URL` (use `http://localhost:4999` locally instead)
 
-**Port 3999 is taken by production**: the launchd service `com.sampolio.app` (`~/Library/LaunchAgents/com.sampolio.app.plist`, KeepAlive) runs `next start -p 3999` from this very repo against the live `~/.sampolio/data` — do not kill it (launchd restarts it) and never point a dev server at its port or data. The dev preview therefore runs on **port 4999**.
+**Port 3999 is taken by production**: the launchd service `com.sampolio.app` (`~/Library/LaunchAgents/com.sampolio.app.plist`, KeepAlive) runs `next start -p 3999` from this very repo against the live `~/.sampolio/data` — do not kill it (launchd restarts it) and never point a dev server at its port or data. The dev preview therefore runs on **port 4999**. Prod and dev share this one clone but **not the Next.js build dir**: prod sets `NEXT_DIST_DIR=.next-prod` (in the plist + deploy scripts) while the dev preview leaves it unset (→ `.next`), so `next dev` can't clobber the build `next start` serves (`distDir` in `next.config.ts`). The dev preview writing `.next/` therefore never endangers prod.
 
 **Run the dev server on the copy** via the `sampolio-preview` config in `.claude/launch.json`, which exports those env vars from the dot-files, points `DATA_DIR` at `./data`, and enables the dev auth bypass:
 
@@ -345,3 +345,5 @@ exec ./node_modules/.bin/next dev -p 4999
 - **`DEV_AUTH_BYPASS`** + visiting **`/dev-login`** signs you in as that user with no password (dev only). The bypass user must already exist in the data — it does in a prod copy; for an empty `./data` you'd have to create it first.
 - Verify in the browser with the `preview_*` tools (`preview_start sampolio-preview`, then `preview_eval`/`preview_screenshot`). The preview page can drift back to `/` between calls — re-navigate inside a single eval and rely on screenshots as the source of truth.
 - To re-seed mortgage actuals from the spreadsheet, regenerate `actuals.csv` from `Mortgage.numbers` (a Python `numbers-parser` venv) and re-import via the "Import actual history" dialog with *Replace all* checked. Keep the original six columns byte-identical; only the `subsidy` column is new.
+
+**Deploying to prod** (same machine, from this repo): use the **`/deploy-prod` skill** (`.claude/skills/deploy-prod/`). It snapshots `~/.sampolio/data`, runs `pnpm lint`/`pnpm test`, builds into `.next-prod`, asks for explicit confirmation, then restarts `com.sampolio.app` and health-checks (localhost:3999 + `https://sampolio.machadolucas.me`). It never auto-runs and never restarts prod before you confirm. See `~/claude/docs/sampolio.md` for the full runbook.

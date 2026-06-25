@@ -59,6 +59,13 @@ const nextConfig: NextConfig = {
   // We intentionally do NOT use `output: 'standalone'` — its dependency tracing
   // dropped @swc/helpers for this Next + pnpm combo, breaking the packaged server.
 
+  // Isolate prod from dev builds. Prod (the launchd plist + deploy scripts) sets
+  // NEXT_DIST_DIR=.next-prod, so `next build`/`next start` use `.next-prod`, while
+  // the dev preview (`next dev`, no env) keeps `.next`. This stops a dev session
+  // from clobbering the build that `next start` serves — without it, a reboot
+  // after `next dev` would start prod against a dev build and fail (KeepAlive loop).
+  distDir: process.env.NEXT_DIST_DIR || '.next',
+
   // Enable Next.js 16 Cache Components ("use cache" directive)
   cacheComponents: true,
 

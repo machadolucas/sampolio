@@ -20,6 +20,8 @@ cd "$REPO_ROOT"
 PORT="${SAMPOLIO_PORT:-3999}"
 HOST="${SAMPOLIO_HOST:-0.0.0.0}"
 DATA_DIR="${SAMPOLIO_DATA_DIR:-$HOME/.sampolio/data}"
+# Serve the prod-isolated build dir (matches the launchd plist + server-deploy.sh)
+export NEXT_DIST_DIR="${NEXT_DIST_DIR:-.next-prod}"
 
 # --- Node.js version (from .nvmrc) -------------------------------------------
 # shellcheck source=lib-node.sh
@@ -31,8 +33,8 @@ if [ ! -f "$REPO_ROOT/node_modules/next/dist/bin/next" ]; then
     echo -e "${RED}Error: Next.js isn't installed. Run ./scripts/server-deploy.sh first.${NC}"
     exit 1
 fi
-if [ ! -f "$REPO_ROOT/.next/BUILD_ID" ]; then
-    echo -e "${RED}Error: no production build found (.next/BUILD_ID missing). Run ./scripts/server-deploy.sh first.${NC}"
+if [ ! -f "$REPO_ROOT/$NEXT_DIST_DIR/BUILD_ID" ]; then
+    echo -e "${RED}Error: no production build found ($NEXT_DIST_DIR/BUILD_ID missing). Run ./scripts/server-deploy.sh first.${NC}"
     exit 1
 fi
 

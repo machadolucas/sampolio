@@ -26,6 +26,9 @@ LOG_DIR="$HOME/.sampolio/logs"
 DATA_DIR="$HOME/.sampolio/data"
 PORT="${SAMPOLIO_PORT:-3999}"
 HOST="${SAMPOLIO_HOST:-0.0.0.0}"
+# Build dir prod serves — isolated from dev's `.next` (see next.config.ts). Baked
+# into the plist below so `next start` reads the same dir server-deploy.sh built.
+NEXT_DIST_DIR="${NEXT_DIST_DIR:-.next-prod}"
 
 echo -e "${YELLOW}=== Sampolio Auto-Start Installation ===${NC}"
 echo ""
@@ -48,7 +51,7 @@ echo "Installation directory: $REPO_ROOT"
 echo ""
 
 # Make sure the app is installed and built
-if [ ! -f "$REPO_ROOT/node_modules/next/dist/bin/next" ] || [ ! -f "$REPO_ROOT/.next/BUILD_ID" ]; then
+if [ ! -f "$REPO_ROOT/node_modules/next/dist/bin/next" ] || [ ! -f "$REPO_ROOT/$NEXT_DIST_DIR/BUILD_ID" ]; then
     echo -e "${RED}Error: app isn't installed/built. Run ./scripts/server-deploy.sh first.${NC}"
     exit 1
 fi
@@ -143,6 +146,8 @@ cat > "$PLIST_FILE" << EOF
         <string>production</string>
         <key>DATA_DIR</key>
         <string>${DATA_DIR}</string>
+        <key>NEXT_DIST_DIR</key>
+        <string>${NEXT_DIST_DIR}</string>
         <key>AUTH_SECRET</key>
         <string>${AUTH_SECRET}</string>
         <key>ENCRYPTION_KEY</key>

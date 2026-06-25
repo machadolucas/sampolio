@@ -21,6 +21,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(dirname "$SCRIPT_DIR")"
 cd "$REPO_ROOT"
 
+# Build into the prod-isolated dir so a parallel `next dev` (which uses .next)
+# can never clobber what `next start` serves. The launchd plist sets the same
+# value at runtime; override by exporting NEXT_DIST_DIR before invoking.
+export NEXT_DIST_DIR="${NEXT_DIST_DIR:-.next-prod}"
+
 DO_PULL=0
 DO_RUN=0
 for arg in "$@"; do
