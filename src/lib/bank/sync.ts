@@ -92,6 +92,30 @@ function subDaysYmd(ymd: string, days: number): string {
 }
 
 /**
+ * Earliest date needed to refresh a configured card's latest closed statement
+ * as well as its current cycle. This is intentionally bounded to 90 days: it
+ * repairs a missed month-end booking without turning each scheduled sync into
+ * an unbounded historical backfill, and is never applied to cash accounts.
+ */
+export function creditCardRefreshFloor(today: string, statementDay?: number): string | undefined {
+  if (!statementDay || statementDay < 1 || statementDay > 31) return undefined;
+  const asOf = new Date(`${today.slice(0, 10)}T00:00:00.000Z`);
+  if (Number.isNaN(asOf.getTime())) return undefined;
+  const daysInMonth = (year: number, month: number) => new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+  const close = (year: number, month: number) =>
+    new Date(Date.UTC(year, month, Math.min(statementDay, daysInMonth(year, month))));
+  const thisClose = close(asOf.getUTCFullYear(), asOf.getUTCMonth());
+  const latestClose = asOf >= thisClose
+    ? thisClose
+    : close(asOf.getUTCFullYear(), asOf.getUTCMonth() - 1);
+  // The latest closed cycle starts immediately after the previous close.
+  const previousClose = close(latestClose.getUTCFullYear(), latestClose.getUTCMonth() - 1);
+  const cycleFloor = previousClose.toISOString().slice(0, 10);
+  const boundedFloor = subDaysYmd(today, 90);
+  return cycleFloor < boundedFloor ? boundedFloor : cycleFloor;
+}
+
+/**
  * Whether this run should spend an extra transactions call on the PDNG set.
  * Attended runs (a PSU IP is present, so the bank's rate limit does not apply)
  * always do. Unattended runs only on the first sync of the UTC day, keeping
@@ -504,6 +528,14 @@ async function doRunSync(
             fromDate = t.bookingDate;
           }
         }
+      }
+      // Credit-card statement cycles are longer than the normal overlap. A
+      // late booked row (especially one first seen on the last day of a month)
+      // must still be visible when the latest closed invoice is calculated.
+      // Keep cash/savings windows unchanged and cap the extension at 90 days.
+      if (link.accountRole === 'credit-card') {
+        const cardFloor = creditCardRefreshFloor(today, link.statementDay);
+        if (cardFloor && cardFloor < fromDate) fromDate = cardFloor;
       }
       result.fromDate = fromDate;
       result.toDate = today;

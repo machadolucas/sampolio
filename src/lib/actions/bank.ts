@@ -574,9 +574,9 @@ export async function getCardStatementBreakdownForAccount(
         if (link.linkedFinancialAccountId !== accountId) continue;
         const txs = await cachedGetBankTransactions(userId, link.id);
         const cardName = link.customName || link.name || `${conn.aspspName} card`;
-        const cycleTransactions = (closeYmd: string) =>
-          transactionsForCycle(txs, closeYmd)
-            .filter((t) => t.amount < 0)
+        const cycleTransactions = (closeYmd: string, includePending = false) =>
+          transactionsForCycle(txs, closeYmd, link.statementDay)
+            .filter((t) => t.amount < 0 && (t.status === 'booked' || (includePending && t.status === 'pending')))
             .map((t) => ({
               name: t.counterpartyName || t.remittanceInfo?.split('\n')[0] || 'Transaction',
               amount: Math.abs(t.amount),
@@ -602,7 +602,7 @@ export async function getCardStatementBreakdownForAccount(
             // For the open cycle the drill-down lists actual purchases only, so
             // its total is the actual spend so far (not the blended forecast).
             total: bill.basis === 'open-cycle' ? (bill.actualToDate ?? bill.amount) : bill.amount,
-            transactions: cycleTransactions(bill.statementCloseDate),
+            transactions: cycleTransactions(bill.statementCloseDate, bill.basis === 'open-cycle'),
           });
         }
 

@@ -24,10 +24,11 @@
  * `isCardPayment`.
  */
 
-import type { YearMonth } from '@/types';
+import type { BankTransactionStatus, YearMonth } from '@/types';
 
 export interface CardTxn {
   bookingDate: string; // 'YYYY-MM-DD'
+  status?: BankTransactionStatus; // omitted by legacy callers = booked
   amount: number; // signed: spend negative, payment/refund positive
   // Optional signals used only to tell a card PAYMENT (bill settlement) apart
   // from a merchant REFUND — both are credits (positive amount). See isCardPayment.
@@ -70,6 +71,7 @@ export function isCardPayment(t: CardTxn): boolean {
 /** Project any stored bank transaction onto the billing engine's CardTxn shape. */
 export function toCardTxn(t: {
   bookingDate: string;
+  status?: BankTransactionStatus;
   amount: number;
   bankTransactionCode?: string;
   counterpartyName?: string;
@@ -77,6 +79,7 @@ export function toCardTxn(t: {
 }): CardTxn {
   return {
     bookingDate: t.bookingDate,
+    status: t.status,
     amount: t.amount,
     bankTransactionCode: t.bankTransactionCode,
     counterpartyName: t.counterpartyName,
@@ -182,14 +185,17 @@ function nextDueAfter(after: Date, day: number): Date {
  * settlements) are skipped — they reduce the outstanding balance, not spend, and
  * would otherwise cancel the cycle's purchases when booked inside the window.
  */
-function cycleSpend(transactions: CardTxn[], start: Date, end: Date): number {
-  let sum = 0;
+function cycleSpend(transactions: CardTxn[], start: Date, end: Date, includePending = false): number {
+  let cents = 0;
+  const startDay = ymd(start);
+  const endDay = ymd(end);
   for (const t of transactions) {
     if (isCardPayment(t)) continue;
-    const d = new Date(`${t.bookingDate}T00:00:00`);
-    if (d > start && d <= end) sum += t.amount;
+    if (t.status === 'other' || (!includePending && t.status === 'pending')) continue;
+    const day = t.bookingDate.slice(0, 10);
+    if (day > startDay && day <= endDay) cents += Math.round(t.amount * 100);
   }
-  return Math.max(0, -sum);
+  return Math.max(0, -cents) / 100;
 }
 
 /**
@@ -200,15 +206,18 @@ function cycleSpend(transactions: CardTxn[], start: Date, end: Date): number {
  */
 export function transactionsForCycle<T extends { bookingDate: string }>(
   transactions: T[],
-  closeYmd: string
+  closeYmd: string,
+  statementDay?: number,
 ): T[] {
-  const close = new Date(`${closeYmd}T23:59:59`);
+  const close = new Date(`${closeYmd.slice(0, 10)}T00:00:00`);
   if (Number.isNaN(close.getTime())) return [];
-  const prev = new Date(close);
-  prev.setMonth(prev.getMonth() - 1);
+  // Retain the configured day after February clamps a 29th–31st close.
+  const prev = dateAt(close.getFullYear(), close.getMonth(), statementDay ?? close.getDate());
+  const startDay = ymd(prev);
+  const endDay = ymd(close);
   return transactions.filter((t) => {
-    const d = new Date(`${t.bookingDate.slice(0, 10)}T12:00:00`);
-    return !Number.isNaN(d.getTime()) && d > prev && d <= close;
+    const day = t.bookingDate.slice(0, 10);
+    return day > startDay && day <= endDay;
   });
 }
 
@@ -301,7 +310,7 @@ export function computeCardBilling(input: CardBillingInput): CardBillingResult {
   // expected total, nothing extra is piled on top. This also subsumes the
   // tagged-item dedup: a tagged item already booked has raised `actualToDate`,
   // shrinking the gap it would otherwise be double-counted into.
-  const actualToDate = cycleSpend(input.transactions, close, now);
+  const actualToDate = cycleSpend(input.transactions, close, now, true);
   const cycleMs = nextClose.getTime() - close.getTime();
   const remainingFraction =
     cycleMs > 0 ? Math.min(1, Math.max(0, (nextClose.getTime() - now.getTime()) / cycleMs)) : 0;
@@ -322,7 +331,7 @@ export function computeCardBilling(input: CardBillingInput): CardBillingResult {
 
   const outstanding = Math.max(
     0,
-    input.outstanding ?? closedBalance + cycleSpend(input.transactions, close, now)
+    input.outstanding ?? closedBalance + cycleSpend(input.transactions, close, now, true)
   );
 
   return {

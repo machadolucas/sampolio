@@ -71,7 +71,7 @@ function matchesQuery(t: BankTransaction, q: string): boolean {
  * from this exact transaction ("Split this"), dashed/outlined when it's only a
  * same-amount/nearby-date heuristic guess. Tapping deep-links into the split
  * group, landing on the matched expense's month. */
-function SplitFlag({ match, txDate }: { match: BankSplitMatch; txDate: string }) {
+function SplitFlag({ match, txDate, onReview }: { match: BankSplitMatch; txDate: string; onReview?: () => void }) {
   const router = useRouter();
   const isLinked = match.kind === 'linked';
   return (
@@ -79,18 +79,22 @@ function SplitFlag({ match, txDate }: { match: BankSplitMatch; txDate: string })
       type="button"
       onClick={(e) => {
         e.stopPropagation();
-        const month = txDate.slice(0, 7);
+        if ((match.kind !== 'linked' || (match.related?.length ?? 0) > 0) && onReview) {
+          onReview();
+          return;
+        }
+        const month = match.date.slice(0, 7) || txDate.slice(0, 7);
         router.push(`/split/${match.groupId}?expense=${match.expenseId}&month=${month}`);
       }}
       title={isLinked ? `Split in ${match.groupName}` : `Possibly already split in ${match.groupName}`}
-      className={`inline-flex items-center gap-0.5 shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium leading-none ${
+      className={`inline-flex min-h-[44px] min-w-[44px] justify-center items-center gap-0.5 shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium leading-none ${
         isLinked
           ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
           : 'border border-dashed border-gray-400 dark:border-gray-500 text-gray-500 dark:text-gray-400'
       }`}
     >
       <MdCallSplit className="text-[11px]" />
-      {isLinked ? 'split' : 'split?'}
+      {isLinked ? 'split' : 'split?'}{match.related?.length ? ` · ${match.related.length + 1}` : ''}
     </button>
   );
 }
@@ -117,6 +121,7 @@ export function BankLedgerTable({
   bankName,
   splitMatches,
   onSplitSaved,
+  onConfirmSplitSuggestion,
   highlightTxId,
 }: {
   transactions: BankTransaction[];
@@ -125,6 +130,7 @@ export function BankLedgerTable({
   bankName: string;
   splitMatches?: Map<string, BankSplitMatch>;
   onSplitSaved?: () => void;
+  onConfirmSplitSuggestion?: (tx: BankTransaction, match: BankSplitMatch) => Promise<void> | void;
   highlightTxId?: string;
 }) {
   const router = useRouter();
@@ -136,6 +142,7 @@ export function BankLedgerTable({
   const [visibleRows, setVisibleRows] = useState(INITIAL_ROWS);
   // "Split this" — quick-add split dialog prefilled from a spend transaction.
   const [splitInitial, setSplitInitial] = useState<QuickAddSplitInitial | null>(null);
+  const [reviewConfirm, setReviewConfirm] = useState<((match: BankSplitMatch) => Promise<void> | void) | undefined>();
 
   const openSplitFor = (t: BankTransaction) => {
     const title = t.counterpartyName ?? t.remittanceInfo?.split('\n')[0] ?? '';
@@ -144,6 +151,23 @@ export function BankLedgerTable({
       amount: Math.abs(t.amount),
       date: txDisplayDate(t), // prefill with the purchase date, not the booking date
       category: guessCategory(title),
+      bankLink: {
+        txId: t.id,
+        linkedAccountId,
+        bookingDate: t.bookingDate.slice(0, 10),
+        amount: t.amount,
+        currency: t.currency,
+        counterpartyName: t.counterpartyName,
+        bankName,
+      },
+    });
+  };
+
+  const openReviewFor = (t: BankTransaction, match: BankSplitMatch) => {
+    setReviewConfirm(() => onConfirmSplitSuggestion ? (candidate: BankSplitMatch) => onConfirmSplitSuggestion(t, candidate) : undefined);
+    setSplitInitial({
+      reviewMatch: match,
+      date: txDisplayDate(t),
       bankLink: {
         txId: t.id,
         linkedAccountId,
@@ -353,7 +377,7 @@ export function BankLedgerTable({
 
   const splitFlagBody = (t: BankTransaction & { _splitMatch?: BankSplitMatch }) => {
     const match = t._splitMatch ?? splitMatches?.get(t.id);
-    return match ? <SplitFlag match={match} txDate={txDisplayDate(t)} /> : null;
+    return match ? <SplitFlag match={match} txDate={txDisplayDate(t)} onReview={() => openReviewFor(t, match)} /> : null;
   };
 
   const detailRow = (label: string, value: string | null | undefined) =>
@@ -552,7 +576,7 @@ export function BankLedgerTable({
                       </div>
                       {/* Variable-width extras stay BETWEEN the text and the amount so the
                           amount + chevron remain a constant-width right rail (aligned amounts). */}
-                      {match && <SplitFlag match={match} txDate={txDisplayDate(t)} />}
+                      {match && <SplitFlag match={match} txDate={txDisplayDate(t)} onReview={() => openReviewFor(t, match)} />}
                       {t.amount < 0 && (
                         <Button
                           icon={<MdCallSplit />}
@@ -598,9 +622,10 @@ export function BankLedgerTable({
       {/* "Split this" — self-contained quick-add dialog, prefilled from the row */}
       <QuickAddSplitModal
         visible={!!splitInitial}
-        onHide={() => setSplitInitial(null)}
+        onHide={() => { setSplitInitial(null); setReviewConfirm(undefined); }}
         onSaved={onSplitSaved}
         initial={splitInitial ?? undefined}
+        onConfirmLink={reviewConfirm}
       />
     </>
   );

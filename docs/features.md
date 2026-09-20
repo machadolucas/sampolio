@@ -152,26 +152,48 @@ pointer to the bank transaction an expense was created from: `txId`,
 `linkedAccountId`, `ownerUserId` (whose bank connection), `bookingDate`, `amount`,
 `currency`, and optional `counterpartyName`/`bankName` — denormalized so other
 group members can see basic details without access to the owner's bank data, and
-deliberately **never carries an IBAN**. It is created one way: the bank ledger's
-"Split this" action passes it through `QuickAddSplitInitial.bankLink` into
-`createSplitExpense`, which stamps `ownerUserId` server-side from the session (never
-client-supplied). `updateSplitExpenseSchema` omits `bankLink` entirely, so editing an
-expense can never add, forge, or drop the link; `updateSplitExpense` carries
-`existing.bankLink` through its row rebuild unchanged.
+deliberately **never carries an IBAN**. It is created by the bank ledger's
+"Split this" action or by confirming a detected suggestion. Both paths use
+authenticated server validation, which stamps `ownerUserId` and builds the
+stored metadata from the owned bank transaction. `updateSplitExpenseSchema`
+omits `bankLink` entirely, so ordinary editing can never add, forge, or drop the
+link; `updateSplitExpense` carries `existing.bankLink` through its row rebuild
+unchanged.
 
 Bank ledger rows show an **"already split" flag** (filled pill = linked, dashed
 pill = heuristic) computed by the pure `matchTransactionsToSplits`
-(`src/lib/bank-split-match.ts`, unit-tested): an explicit `bankLink.txId` match
-always wins regardless of amount/date drift; otherwise a greedy one-to-one
-heuristic pairs unlinked candidates by same currency + exact cents + booking date
-within ±3 calendar days (spend rows only), closest date first, so a recurring
-same-amount expense doesn't over-match. Candidates come from the read-only action
-`getMySplitLinkCandidates(months)` (months validated `YYYY-MM`, deduped, capped at
-36; per non-archived group it intersects the requested months with
-`summary.monthsWithData` before reading any chunk).
+(`src/lib/bank-split-match.ts`, unit-tested). Matching runs in three passes:
+all exact `bankLink.txId` links first (including every row linked to the same
+transaction, exposed as related matches), then strict pending→booked recovery,
+then greedy one-to-one heuristic matching. Recovery is a **suggestion** when a
+booked row has a new id: it requires the same linked account, currency, signed
+cents, a strong non-generic merchant match, and a purchase date within ±3 days;
+if the old pending row is still present it must be pending. It remains
+unconfirmed until the user chooses to confirm it.
 
-Clicking the flag on `/bank` navigates to `/split/{groupId}?expense={id}&month={YYYY-MM}`
-(scroll + flash-highlight on the split group page). On the split group detail page,
+Unlinked heuristic candidates use the same currency, exact cents, and purchase
+date within ±3 calendar days, with merchant affinity preferred before distance.
+The duplicate warning also considers amounts within the greater of 100 cents
+or 2% when merchant identity strongly matches. Candidates come from the read-only action
+`getMySplitLinkCandidates(months)`, which validates and deduplicates `YYYY-MM`
+inputs, preserves all requested months, pads each with adjacent months (up to
+the 36-month cap), and intersects those reads with each group's
+`summary.monthsWithData` before opening chunks.
+
+The bank ledger warns before creating a possible duplicate and shows the
+existing split title, group, date, and amount. The user can cancel or explicitly
+acknowledge the listed expense ids to add another row. The server repeats the
+check inside the per-group mutex, so concurrent saves cannot bypass the warning;
+the bank link is built from the authenticated user's server-loaded transaction
+and canonical date, amount, currency, merchant, and bank name. A dedicated
+`confirmSplitBankLink` action verifies ownership and group membership, confirms
+an eligible suggestion or pending manual match, preserves the financial split,
+and only emits `expense.updated` when a link actually changes.
+
+A single confirmed flag on `/bank` navigates to
+`/split/{groupId}?expense={id}&month={YYYY-MM}` (scroll + flash-highlight).
+Suggestions open a review dialog with both records and **Confirm link**; multiple
+confirmed matches open a list of linked expenses. On the split group detail page,
 a `bankLink` marks the row with a small inline bank glyph in the subtitle and adds a
 "View bank transaction" item to the row menu: the owner's own transaction navigates to
 `/bank?account=…&tx=…`; another member's opens `BankLinkDetailsDialog`
@@ -937,8 +959,10 @@ current-vs-modified delta view on top, plus:
   HTML) — that opens `QuickAddSplitModal` prefilled (`initial` prop: title =
   counterparty, amount, date, `guessCategory`, plus `bankLink` so the created
   expense is linked back to the transaction — see §1 "Bank-transaction linking")
-  — hosted inside `bank-ledger-table.tsx`, no drawer plumbing. Already-linked or
-  heuristically-matched rows show an "already split" flag pill instead.
+  — hosted inside `bank-ledger-table.tsx`, no drawer plumbing. Duplicate
+  warnings, recovered pending→booked suggestions, and confirmation behavior
+  are defined in §1 "Bank-transaction linking" above; the ledger shows the
+  corresponding flag pill.
 - **Plan check card** (Overview): `PlanCheckCard`
   (`src/components/overview/forecast-vs-actual-card.tsx`, purely presentational — the
   page passes the primary account's `monthly` + `retrospective` from its existing

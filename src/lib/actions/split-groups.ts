@@ -17,6 +17,7 @@ import {
   updateExpense as dbUpdateExpense,
   deleteExpense as dbDeleteExpense,
   getExpenseById as dbGetExpenseById,
+  getAllExpenses as dbGetAllExpenses,
   upsertExpenseByOccurrence as dbUpsertOccurrence,
   bulkImportExpenses as dbBulkImport,
   addRecurrenceRule as dbAddRule,
@@ -30,7 +31,9 @@ import {
   cachedGetSplitGroupSummary,
   cachedGetSplitExpensesForMonths,
   cachedGetUserPreferences,
+  cachedGetBankConnections,
 } from '@/lib/db/cached';
+import { getBankTransactions } from '@/lib/db/bank-transactions';
 import {
   resolveSplit,
   paymentNet,
@@ -42,6 +45,7 @@ import {
 import { monthsWindow, computeSplitInsights, type SplitInsights, type SplitInsightsGroupInput } from '@/lib/split-insights';
 import { notifySplitActivity } from '@/lib/split-notify';
 import { buildNetByUserId, paymentParties } from '@/lib/split-csv';
+import { findSplitDuplicateCandidates } from '@/lib/bank-split-match';
 import {
   createSplitGroupSchema,
   updateSplitGroupSchema,
@@ -55,6 +59,7 @@ import {
   updateSplitRecurrenceRuleSchema,
   markSplitGroupSeenSchema,
   importSplitwiseSchema,
+  confirmSplitBankLinkSchema,
 } from '@/lib/schemas/split.schema';
 import type {
   ApiResponse,
@@ -71,6 +76,8 @@ import type {
   SplitSpec,
   SplitExpenseBankLink,
   SplitLinkCandidate,
+  SplitCreateResponse,
+  BankTransaction,
 } from '@/types';
 
 const todayISO = (): string => new Date().toISOString().slice(0, 10);
@@ -279,6 +286,12 @@ export async function getMySplitNetBalance(): Promise<ApiResponse<{ netCents: nu
 
 const yearMonthRe = /^\d{4}-\d{2}$/;
 
+function shiftYearMonth(value: string, delta: number): string {
+  const [year, month] = value.split('-').map(Number);
+  const date = new Date(Date.UTC(year, month - 1 + delta, 1));
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
+}
+
 /** Lightweight cross-group projection for the bank ledger's "already split"
  * matching (see `matchTransactionsToSplits` in `src/lib/bank-split-match.ts`).
  * Read-only; skips groups whose summary has no overlap with the requested
@@ -288,7 +301,15 @@ export async function getMySplitLinkCandidates(months: string[]): Promise<ApiRes
     if (!Array.isArray(months) || months.some((m) => typeof m !== 'string' || !yearMonthRe.test(m))) {
       return { success: false, error: 'Invalid months (expected YYYY-MM)' };
     }
-    const requested = [...new Set(months)].sort().reverse().slice(0, 36);
+    const original = [...new Set(months)];
+    const padded = new Set(original);
+    for (const month of original) {
+      padded.add(shiftYearMonth(month, -1));
+      padded.add(shiftYearMonth(month, 1));
+    }
+    // Preserve every caller-requested month first; only trim padded neighbors.
+    const requested = [...original, ...[...padded].filter((month) => !original.includes(month)).sort().reverse()]
+      .slice(0, 36);
     if (requested.length === 0) return { success: true, data: [] };
 
     const session = await auth();
@@ -313,7 +334,14 @@ export async function getMySplitLinkCandidates(months: string[]): Promise<ApiRes
           amountCents: r.amountCents,
           currency: r.currency,
           bankLink: r.bankLink
-            ? { txId: r.bankLink.txId, linkedAccountId: r.bankLink.linkedAccountId, ownerUserId: r.bankLink.ownerUserId }
+            ? {
+                txId: r.bankLink.txId,
+                linkedAccountId: r.bankLink.linkedAccountId,
+                ownerUserId: r.bankLink.ownerUserId,
+                bookingDate: r.bankLink.bookingDate,
+                amount: r.bankLink.amount,
+                counterpartyName: r.bankLink.counterpartyName,
+              }
             : undefined,
         });
       }
@@ -544,24 +572,76 @@ export async function markSplitGroupSeen(groupId: string, seenAt: string): Promi
 // EXPENSE MUTATIONS
 // ============================================================
 
+async function resolveOwnedBankLink(userId: string, group: SplitGroup, link: SplitExpenseBankLink): Promise<{ link: SplitExpenseBankLink; transaction: BankTransaction; transactions: BankTransaction[] } | { error: string }> {
+  const connections = await cachedGetBankConnections(userId);
+  const owned = connections.some((connection) => connection.linkedAccounts.some((account) => account.id === link.linkedAccountId));
+  if (!owned) return { error: 'Bank account is not owned by the current user' };
+  const transactions = await getBankTransactions(userId, link.linkedAccountId);
+  const transaction = transactions.find((candidate) => candidate.id === link.txId);
+  if (!transaction) return { error: 'Bank transaction not found' };
+  if (transaction.amount >= 0 || transaction.status === 'other') return { error: 'Only booked or pending bank debits can be linked to split expenses' };
+  if (transaction.currency !== group.currency) return { error: 'Bank transaction currency does not match the split group' };
+  const connection = connections.find((candidate) => candidate.linkedAccounts.some((account) => account.id === link.linkedAccountId));
+  return {
+    link: {
+      txId: transaction.id,
+      linkedAccountId: link.linkedAccountId,
+      ownerUserId: userId,
+      bookingDate: transaction.bookingDate.slice(0, 10),
+      amount: transaction.amount,
+      currency: transaction.currency,
+      counterpartyName: transaction.counterpartyName,
+      bankName: connection?.aspspName,
+    },
+    transaction,
+    transactions,
+  };
+}
+
+function duplicateCandidatesFor(group: SplitGroup, rows: SplitExpense[], link: SplitExpenseBankLink, transaction?: BankTransaction): ReturnType<typeof findSplitDuplicateCandidates> {
+  const tx = { id: link.txId, linkedAccountId: link.linkedAccountId, ownerUserId: link.ownerUserId, amount: transaction?.amount ?? link.amount, currency: transaction?.currency ?? link.currency, bookingDate: transaction?.bookingDate ?? link.bookingDate, transactionDate: transaction?.transactionDate, counterpartyName: transaction?.counterpartyName ?? link.counterpartyName, status: transaction?.status };
+  return findSplitDuplicateCandidates(tx, rows.filter((row): row is SplitExpenseItem => row.kind === 'expense').map((row) => ({
+    expenseId: row.id, groupId: group.id, groupName: group.name, title: row.title, date: row.date, amountCents: row.amountCents, currency: row.currency,
+    bankLink: row.bankLink,
+  })), group.id);
+}
+
 export async function createSplitExpense(
   groupId: string,
   data: z.infer<typeof createSplitExpenseSchema>,
-): Promise<ApiResponse<SplitExpense>> {
+): Promise<SplitCreateResponse<SplitExpense>> {
   const loaded = await loadGroupForMember(groupId);
   if (!loaded.ok) return { success: false, error: loaded.error };
   try {
     const validated = createSplitExpenseSchema.parse(data);
     // The owner is stamped from the authenticated member — never trust a
     // client-supplied ownerUserId (the schema doesn't even accept one).
-    const bankLink: SplitExpenseBankLink | undefined = validated.bankLink
-      ? { ...validated.bankLink, ownerUserId: loaded.userId }
-      : undefined;
+    let bankLink: SplitExpenseBankLink | undefined;
+    let bankTransaction: BankTransaction | undefined;
+    if (validated.bankLink) {
+      const resolved = await resolveOwnedBankLink(loaded.userId, loaded.group, validated.bankLink as SplitExpenseBankLink);
+      if ('error' in resolved) return { success: false, error: resolved.error };
+      bankLink = resolved.link;
+      bankTransaction = resolved.transaction;
+    }
     const row = buildExpenseRow(loaded.group, validated, loaded.userId, 'manual', { bankLink });
-    await withGroupLock(groupId, () => dbAddExpense(groupId, row));
+    const saved = await withGroupLock(groupId, async () => {
+      if (bankLink) {
+        const existing = await dbGetAllExpenses(groupId);
+        const duplicates = duplicateCandidatesFor(loaded.group, existing, bankLink, bankTransaction);
+        const acknowledged = new Set(validated.acknowledgedDuplicateExpenseIds ?? []);
+        const unacknowledged = duplicates.filter((candidate) => !acknowledged.has(candidate.expenseId));
+        if (unacknowledged.length) return { duplicates: unacknowledged } as const;
+      }
+      await dbAddExpense(groupId, row);
+      return { row } as const;
+    });
+    if ('duplicates' in saved) {
+      return { success: false, error: 'This transaction may already be split', duplicate: saved.duplicates };
+    }
     invalidateGroup(loaded.group);
     notifySplitActivity({ event: 'expense.created', group: loaded.group, authorUserId: loaded.userId, expense: row });
-    return { success: true, data: row };
+    return { success: true, data: saved.row };
   } catch (error) {
     if (error instanceof z.ZodError) return { success: false, error: error.issues[0]?.message ?? 'Validation error' };
     console.error('Create split expense error:', error);
@@ -600,6 +680,93 @@ export async function quickAddSplitExpense(
   }
 }
 
+/** Confirm a bank-ledger heuristic by attaching the current user's verified
+ * transaction to the existing expense. Financial split fields are preserved. */
+export async function confirmSplitBankLink(
+  groupId: string,
+  data: z.infer<typeof confirmSplitBankLinkSchema>,
+): Promise<ApiResponse<SplitExpense>> {
+  const loaded = await loadGroupForMember(groupId);
+  if (!loaded.ok) return { success: false, error: loaded.error };
+  try {
+    const parsed = confirmSplitBankLinkSchema.parse(data);
+    const supplied: SplitExpenseBankLink = { ...parsed, ownerUserId: loaded.userId };
+    const resolved = await resolveOwnedBankLink(loaded.userId, loaded.group, supplied);
+    if ('error' in resolved) return { success: false, error: resolved.error };
+    const bankLink: SplitExpenseBankLink = resolved.link;
+    const saved = await withGroupLock(groupId, async () => {
+      const current = await dbGetExpenseById(groupId, parsed.expenseId);
+      if (!current || current.kind !== 'expense') return null;
+      if (current.bankLink?.txId === bankLink.txId && current.bankLink.linkedAccountId === bankLink.linkedAccountId && current.bankLink.ownerUserId === loaded.userId) return { row: current, changed: false };
+      if (!current.bankLink) {
+        const eligible = findSplitDuplicateCandidates(
+          {
+            id: bankLink.txId,
+            linkedAccountId: bankLink.linkedAccountId,
+            ownerUserId: loaded.userId,
+            amount: bankLink.amount,
+            currency: bankLink.currency,
+            bookingDate: bankLink.bookingDate,
+            transactionDate: resolved.transaction.transactionDate,
+            counterpartyName: bankLink.counterpartyName,
+            status: 'booked',
+          },
+          [{ expenseId: current.id, groupId, groupName: loaded.group.name, title: current.title, date: current.date, amountCents: current.amountCents, currency: current.currency }],
+          groupId,
+        ).length > 0;
+        if (!eligible) throw new Error('The suggested expense no longer matches this bank transaction');
+      }
+      if (current.bankLink) {
+        if (resolved.transaction.status !== 'booked') throw new Error('Only a booked transaction can replace a pending link');
+        if (current.bankLink.ownerUserId !== loaded.userId || current.bankLink.linkedAccountId !== bankLink.linkedAccountId) {
+          throw new Error('Expense is already linked to another bank transaction');
+        }
+        const sourceRows = await getBankTransactions(loaded.userId, current.bankLink.linkedAccountId);
+        const source = sourceRows.find((transaction) => transaction.id === current.bankLink?.txId);
+        if (source && source.status !== 'pending') throw new Error('Existing bank link is not a pending transaction');
+        const eligible = findSplitDuplicateCandidates(
+          {
+            id: bankLink.txId,
+            linkedAccountId: bankLink.linkedAccountId,
+            ownerUserId: loaded.userId,
+            amount: bankLink.amount,
+            currency: bankLink.currency,
+            bookingDate: bankLink.bookingDate,
+            transactionDate: resolved.transaction.transactionDate,
+            counterpartyName: bankLink.counterpartyName,
+            status: 'booked',
+          },
+          [{
+            expenseId: current.id,
+            groupId,
+            groupName: loaded.group.name,
+            title: current.title,
+            date: current.date,
+            amountCents: current.amountCents,
+            currency: current.currency,
+            bankLink: current.bankLink,
+          }],
+          groupId,
+        ).some((candidate) => candidate.kind === 'recovered');
+        if (!eligible) {
+          throw new Error('Expense is already linked to another bank transaction');
+        }
+      }
+      const row = await dbUpdateExpense(groupId, parsed.expenseId, { ...current, bankLink, updatedAt: new Date().toISOString() });
+      return row ? { row, changed: true } : null;
+    });
+    if (!saved) return { success: false, error: 'Expense not found' };
+    if (saved.row.kind !== 'expense') return { success: false, error: 'Expense not found' };
+    if (!saved.changed) return { success: true, data: saved.row };
+    invalidateGroup(loaded.group);
+    notifySplitActivity({ event: 'expense.updated', group: loaded.group, authorUserId: loaded.userId, expense: saved.row });
+    return { success: true, data: saved.row };
+  } catch (error) {
+    if (error instanceof z.ZodError) return { success: false, error: error.issues[0]?.message ?? 'Validation error' };
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to confirm bank link' };
+  }
+}
+
 export async function updateSplitExpense(
   groupId: string,
   expenseId: string,
@@ -609,27 +776,28 @@ export async function updateSplitExpense(
   if (!loaded.ok) return { success: false, error: loaded.error };
   try {
     const validated = updateSplitExpenseSchema.parse(data);
-    const existing = await dbGetExpenseById(groupId, expenseId);
-    if (!existing || existing.kind !== 'expense') return { success: false, error: 'Expense not found' };
-    const next = buildExpenseRow(loaded.group, validated, existing.createdByUserId, existing.source, {
-      id: existing.id,
-      createdAt: existing.createdAt,
-      generatedFromRuleId: existing.generatedFromRuleId,
-      occurrenceKey: existing.occurrenceKey,
-      // The link is never editable via the edit dialog (the update schema
-      // omits it) — always carry the existing one through, or editing an
-      // expense would silently erase it.
-      bankLink: existing.bankLink,
+    const saved = await withGroupLock(groupId, async () => {
+      // Read and rebuild inside the same lock as the write. Otherwise a
+      // concurrent bank-link confirmation can be silently overwritten.
+      const existing = await dbGetExpenseById(groupId, expenseId);
+      if (!existing || existing.kind !== 'expense') return null;
+      const next = buildExpenseRow(loaded.group, validated, existing.createdByUserId, existing.source, {
+        id: existing.id,
+        createdAt: existing.createdAt,
+        generatedFromRuleId: existing.generatedFromRuleId,
+        occurrenceKey: existing.occurrenceKey,
+        bankLink: existing.bankLink,
+      });
+      return dbUpdateExpense(groupId, expenseId, next);
     });
-    const saved = await withGroupLock(groupId, () => dbUpdateExpense(groupId, expenseId, next));
     if (!saved) return { success: false, error: 'Expense not found' };
+    if (saved.kind !== 'expense') return { success: false, error: 'Expense not found' };
     invalidateGroup(loaded.group);
     notifySplitActivity({
       event: 'expense.updated',
       group: loaded.group,
       authorUserId: loaded.userId,
-      // `saved` is the row we just wrote (`next`), so it is always an expense.
-      expense: saved.kind === 'expense' ? saved : next,
+      expense: saved,
     });
     return { success: true, data: saved };
   } catch (error) {

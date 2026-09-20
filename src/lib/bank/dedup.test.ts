@@ -54,6 +54,83 @@ describe('mergeTransactions', () => {
     expect(res.merged[0].lastSeenAt).toBe(now);
   });
 
+  it('preserves repeated bank rows with the same reference and is idempotent', () => {
+    const first = tx({ dedupKey: 'same-ref', entryReference: 'same-ref', id: 'first' });
+    const second = tx({ dedupKey: 'same-ref', entryReference: 'same-ref', id: 'incoming-second' });
+
+    const initial = mergeTransactions([], [first, second], now);
+    expect(initial.added).toBe(2);
+    expect(initial.merged.map((row) => row.dedupKey).sort()).toEqual(['same-ref', 'same-ref#occ2']);
+
+    const repeated = mergeTransactions(initial.merged, [first, second], now);
+    expect(repeated.added).toBe(0);
+    expect(repeated.merged).toHaveLength(2);
+    expect(repeated.merged.find((row) => row.dedupKey === 'same-ref')?.id).toBe('first');
+    expect(repeated.merged.find((row) => row.dedupKey === 'same-ref#occ2')?.id).toBe(
+      'incoming-second'
+    );
+  });
+
+  it('keeps occurrence slots stable when repeated references arrive reordered', () => {
+    const low = tx({ dedupKey: 'same-ref', entryReference: 'same-ref', id: 'low', amount: -10 });
+    const high = tx({ dedupKey: 'same-ref', entryReference: 'same-ref', id: 'high', amount: -20 });
+    const initial = mergeTransactions([], [low, high], now);
+    const repeated = mergeTransactions(initial.merged, [high, low], now);
+    expect(repeated.merged).toHaveLength(2);
+    expect(repeated.merged.find((row) => row.dedupKey === 'same-ref')?.id).toBe('low');
+    expect(repeated.merged.find((row) => row.dedupKey === 'same-ref#occ2')?.id).toBe('high');
+  });
+
+  it('matches a partial repeated-reference snapshot to its stored slot by payload and date', () => {
+    const earlier = tx({ dedupKey: 'same-ref', entryReference: 'same-ref', id: 'earlier', bookingDate: '2026-06-01' });
+    const later = tx({ dedupKey: 'same-ref', entryReference: 'same-ref', id: 'later', bookingDate: '2026-06-02' });
+    const initial = mergeTransactions([], [earlier, later], now);
+    const partial = mergeTransactions(initial.merged, [{ ...later, id: 'fresh-later' }], now);
+    expect(partial.merged).toHaveLength(2);
+    expect(partial.merged.find((row) => row.bookingDate === '2026-06-01')?.id).toBe('earlier');
+    expect(partial.merged.find((row) => row.bookingDate === '2026-06-02')?.id).toBe('later');
+  });
+
+  it('collapses a same-reference BOOK and PDNG pair regardless of response order', () => {
+    const booked = tx({ dedupKey: 'same-ref', entryReference: 'same-ref', status: 'booked' });
+    const pending = tx({ dedupKey: 'same-ref', entryReference: 'same-ref', status: 'pending' });
+    const result = mergeTransactions([], [pending, booked], now);
+    expect(result.merged).toHaveLength(1);
+    expect(result.merged[0].status).toBe('booked');
+  });
+
+  it('keeps an unmatched second pending occurrence when one booked twin exists', () => {
+    const booked = tx({ dedupKey: 'same-ref', entryReference: 'same-ref', status: 'booked', id: 'booked' });
+    const pendingA = tx({ dedupKey: 'same-ref', entryReference: 'same-ref', status: 'pending', id: 'pending-a' });
+    const pendingB = tx({ dedupKey: 'same-ref', entryReference: 'same-ref', status: 'pending', id: 'pending-b' });
+    const result = mergeTransactions([], [pendingA, booked, pendingB], now);
+    expect(result.merged).toHaveLength(2);
+    expect(result.merged.filter((row) => row.status === 'booked')).toHaveLength(1);
+    expect(result.merged.filter((row) => row.status === 'pending')).toHaveLength(1);
+    const repeated = mergeTransactions(result.merged, [pendingA, booked, pendingB], now);
+    expect(repeated.merged).toHaveLength(2);
+    expect(repeated.merged.map((row) => row.dedupKey).sort()).toEqual(['same-ref', 'same-ref#occ2']);
+  });
+
+
+  it('promotes the second of two synthetic pending occurrences independently', () => {
+    const p1 = tx({
+      id: 'p1', dedupKey: syntheticDedupKey({ amount: -10, currency: 'EUR', counterpartyName: 'Cafe A', remittanceInfo: '', valueDate: '2026-06-01' }),
+      entryReference: undefined, status: 'pending', amount: -10, counterpartyName: 'Cafe A', valueDate: '2026-06-01', bookingDate: '2026-06-01',
+    });
+    const p2 = tx({
+      id: 'p2', dedupKey: syntheticDedupKey({ amount: -10, currency: 'EUR', counterpartyName: 'Cafe A', remittanceInfo: '', valueDate: '2026-06-01' }),
+      entryReference: undefined, status: 'pending', amount: -10, counterpartyName: 'Cafe A', valueDate: '2026-06-01', bookingDate: '2026-06-01',
+    });
+    const b1 = tx({ ...p1, id: 'b1', dedupKey: 'book-1', entryReference: 'book-1', status: 'booked', bookingDate: '2026-06-02' });
+    const b2 = tx({ ...p2, id: 'b2', dedupKey: 'book-2', entryReference: 'book-2', status: 'booked', bookingDate: '2026-06-02' });
+    const result = mergeTransactions([p1, p2], [b1, b2], now);
+    expect(result.merged).toHaveLength(2);
+    expect(result.merged.map((row) => row.id).sort()).toEqual(['p1', 'p2']);
+    expect(result.merged.map((row) => row.dedupKey).sort()).toEqual(['book-1', 'book-2']);
+  });
+
+
   it('promotes a pending row to its booked counterpart', () => {
     const pendingKey = syntheticDedupKey({ amount: -25, currency: 'EUR', counterpartyName: 'Cafe', remittanceInfo: 'coffee', valueDate: '2026-06-05' });
     const pending = tx({
@@ -504,5 +581,33 @@ describe('mergeTransactions — stale pending pruning (window given)', () => {
     expect(res.removed).toBe(2); // stale1 + stale2
     const keys = res.merged.map((t) => t.dedupKey).sort();
     expect(keys).toEqual(['ref-booked', 'syn:oldpending', confirmedKey].sort());
+  });
+});
+
+
+describe('single reference refresh compatibility', () => {
+  it('refreshes corrected booking dates and merchant text without duplicating a unique reference', () => {
+    const before = tx({ id: 'stable-id', dedupKey: 'unique-ref', entryReference: 'unique-ref', status: 'booked', bookingDate: '2026-05-08', counterpartyName: 'Cafe' });
+    const after = tx({ id: 'new-id', dedupKey: 'unique-ref', entryReference: 'unique-ref', status: 'booked', bookingDate: '2026-05-09', counterpartyName: 'Cafe Oy' });
+    const result = mergeTransactions([before], [after], '2026-05-10T00:00:00Z');
+    expect(result.merged).toHaveLength(1);
+    expect(result.merged[0]).toMatchObject({ id: 'stable-id', bookingDate: '2026-05-09', counterpartyName: 'Cafe Oy' });
+  });
+});
+
+
+describe('repeated purchases during pending promotion', () => {
+  it('consumes a promoted pending only once when two identical booked rows arrive', () => {
+    const pending = tx({ id: 'pending-original', status: 'pending', entryReference: undefined, amount: -8, counterpartyName: 'Corner Cafe', valueDate: '2026-05-08', bookingDate: '2026-05-08' });
+    pending.dedupKey = syntheticDedupKey(pending);
+    const booked = tx({ id: 'booked-one', dedupKey: 'shared-book-ref', entryReference: 'shared-book-ref', status: 'booked', amount: -8, counterpartyName: 'Corner Cafe', valueDate: '2026-05-08', bookingDate: '2026-05-09' });
+    const incoming = [booked, { ...booked, id: 'booked-two' }];
+    const first = mergeTransactions([pending], incoming, '2026-05-10T00:00:00Z');
+    expect(first.merged).toHaveLength(2);
+    expect(new Set(first.merged.map(row => row.id)).size).toBe(2);
+    expect(first.merged.some(row => row.id === 'pending-original')).toBe(true);
+    const again = mergeTransactions(first.merged, incoming, '2026-05-11T00:00:00Z');
+    expect(again.merged).toHaveLength(2);
+    expect(again.merged.map(row => row.id).sort()).toEqual(first.merged.map(row => row.id).sort());
   });
 });

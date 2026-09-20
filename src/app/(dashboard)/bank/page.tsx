@@ -18,7 +18,7 @@ import {
 import { getUserPreferences } from '@/lib/actions/user-preferences';
 import { useToast } from '@/components/providers/toast-provider';
 import { useAppContext } from '@/components/layout/app-layout';
-import { getMySplitLinkCandidates } from '@/lib/actions/split-groups';
+import { getMySplitLinkCandidates, confirmSplitBankLink } from '@/lib/actions/split-groups';
 import { matchTransactionsToSplits } from '@/lib/bank-split-match';
 import {
   maskIban,
@@ -145,6 +145,7 @@ function BankPageInner() {
       // stay hidden until a full page reload). Existing rows stay on screen
       // while the refetch runs — no skeleton flash.
       loadedLedgersRef.current.clear();
+      setCandidatesByLink({});
       setLedgerVersion((v) => v + 1);
     } finally {
       setRefreshingAll(false);
@@ -304,6 +305,26 @@ function BankPageInner() {
     if (txs) loadCandidatesFor(selectedLinkId, txs);
   }, [selectedLinkId, ledgers, loadCandidatesFor]);
 
+  const handleConfirmSplitSuggestion = useCallback(async (tx: BankTransaction, match: import('@/lib/bank-split-match').BankSplitMatch) => {
+    if (!selectedLinkId) throw new Error('Select a bank account first');
+    const res = await confirmSplitBankLink(match.groupId, {
+      expenseId: match.expenseId,
+      txId: tx.id,
+      linkedAccountId: selectedLinkId,
+      bookingDate: tx.bookingDate.slice(0, 10),
+      amount: tx.amount,
+      currency: tx.currency,
+      counterpartyName: tx.counterpartyName,
+    });
+    if (!res.success) {
+      throw new Error(res.error ?? 'Could not confirm split link');
+    }
+    if (selectedLinkId) {
+      const txs = ledgers[selectedLinkId];
+      if (txs) await loadCandidatesFor(selectedLinkId, txs);
+    }
+  }, [selectedLinkId, ledgers, loadCandidatesFor]);
+
   const splitMatches = useMemo(() => {
     if (!selectedLinkId) return undefined;
     const txs = ledgers[selectedLinkId] ?? [];
@@ -460,6 +481,7 @@ function BankPageInner() {
                   bankName={selected.conn.aspspName}
                   splitMatches={splitMatches}
                   onSplitSaved={handleSplitSaved}
+                  onConfirmSplitSuggestion={handleConfirmSplitSuggestion}
                   highlightTxId={highlightTxId}
                 />
               )}

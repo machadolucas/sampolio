@@ -58,11 +58,17 @@ export const createSplitExpenseSchema = z.object({
   note: z.string().optional(),
   split: splitSpecSchema,
   bankLink: splitExpenseBankLinkSchema.optional(),
+  /** Expense ids the user explicitly chose to duplicate after a warning. */
+  acknowledgedDuplicateExpenseIds: z.array(z.string().min(1)).max(20).optional(),
 });
 
 // The link is never editable via the edit dialog and always preserved
 // server-side (prevents a member forging/clearing it) — see updateSplitExpense.
-export const updateSplitExpenseSchema = createSplitExpenseSchema.omit({ bankLink: true });
+export const updateSplitExpenseSchema = createSplitExpenseSchema.omit({ bankLink: true, acknowledgedDuplicateExpenseIds: true });
+
+export const confirmSplitBankLinkSchema = splitExpenseBankLinkSchema.extend({
+  expenseId: z.string().min(1),
+});
 
 export const quickAddSplitExpenseSchema = z.object({
   title: z.string().min(1, 'Description is required'),

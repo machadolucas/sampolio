@@ -84,6 +84,42 @@ function nameAffinity(a: string | undefined, b: string | undefined): boolean {
   return x.split(' ')[0] === y.split(' ')[0];
 }
 
+/** Keep legitimate repeated bank rows in deterministic occurrence slots. */
+function occurrenceKey(baseKey: string, occurrence: number): string {
+  return occurrence === 0 ? baseKey : `${baseKey}#occ${occurrence + 1}`;
+}
+
+function occurrenceSortKey(t: BankTransaction): string {
+  // A canonical order keeps occurrence slots stable if a paginated response is
+  // reordered. Exact ties are intentionally left equivalent: indistinguishable
+  // rows have no bank-provided identity to preserve.
+  const status = t.status === 'booked' ? '0' : t.status === 'pending' ? '1' : '2';
+  return [
+    status,
+    t.bookingDate,
+    t.valueDate ?? '',
+    t.transactionDate ?? '',
+    t.amount.toFixed(2),
+    norm(t.counterpartyName),
+    norm(t.remittanceInfo),
+  ].join('|');
+}
+
+function sameReferencePayload(a: BankTransaction, b: BankTransaction): boolean {
+  return (
+    a.amount.toFixed(2) === b.amount.toFixed(2) &&
+    a.currency === b.currency &&
+    norm(a.counterpartyName) === norm(b.counterpartyName) &&
+    norm(a.remittanceInfo) === norm(b.remittanceInfo) &&
+    (!a.valueDate || !b.valueDate || a.valueDate.slice(0, 10) === b.valueDate.slice(0, 10))
+  );
+}
+
+function sameReferenceCore(a: BankTransaction, b: BankTransaction): boolean {
+  return a.amount.toFixed(2) === b.amount.toFixed(2) && a.currency === b.currency &&
+    norm(a.counterpartyName) === norm(b.counterpartyName) && norm(a.remittanceInfo) === norm(b.remittanceInfo);
+}
+
 /**
  * Deterministic synthetic dedup key for a pending / reference-less transaction.
  * Excludes booking date (pending rows often lack it) so a later booked row with
@@ -106,6 +142,7 @@ export function syntheticDedupKey(t: TxContent): string {
   }
   return `syn:${(h >>> 0).toString(16)}`;
 }
+
 
 export interface MergeResult {
   merged: BankTransaction[];
@@ -172,7 +209,20 @@ export function mergeTransactions(
   window?: FetchWindow
 ): MergeResult {
   const byKey = new Map<string, BankTransaction>();
-  for (const t of existing) byKey.set(t.dedupKey, t);
+  const storedOccurrences = new Map<string, number>();
+  for (const t of existing) {
+    const occurrence = storedOccurrences.get(t.dedupKey) ?? 0;
+    let key = occurrenceKey(t.dedupKey, occurrence);
+    let nextOccurrence = occurrence;
+    while (byKey.has(key)) {
+      nextOccurrence++;
+      key = occurrenceKey(t.dedupKey, nextOccurrence);
+    }
+    storedOccurrences.set(t.dedupKey, occurrence + 1);
+    // Retain every legacy repeated row; old code silently overwrote these in a
+    // Map. Only later occurrences need a persisted, stable slot suffix.
+    byKey.set(key, key === t.dedupKey ? t : { ...t, dedupKey: key });
+  }
 
   let added = 0;
   let updated = 0;
@@ -181,25 +231,76 @@ export function mergeTransactions(
   // dedupKeys currently in `byKey` that this fetch corroborated (added, updated,
   // or promoted-into). Everything else that's pending + in-window is stale.
   const confirmed = new Set<string>();
-  const incomingKeys = new Set(incoming.map((t) => t.dedupKey));
+  const incomingGroups = new Map<string, BankTransaction[]>();
+  for (const t of incoming) {
+    const group = incomingGroups.get(t.dedupKey) ?? [];
+    group.push(t);
+    incomingGroups.set(t.dedupKey, group);
+  }
+  const incomingWithKeys = [...incomingGroups.entries()].flatMap(([baseKey, group]) => {
+    const statusOccurrences = new Map<BankTransaction['status'], number>();
+    return [...group]
+      .sort((a, b) => occurrenceSortKey(a).localeCompare(occurrenceSortKey(b)))
+      .map((transaction) => {
+        const occurrence = statusOccurrences.get(transaction.status) ?? 0;
+        statusOccurrences.set(transaction.status, occurrence + 1);
+        return { transaction, key: occurrenceKey(baseKey, occurrence) };
+      });
+  });
+  const incomingKeys = new Set(incomingWithKeys.map(({ key }) => key));
+  const pendingTwinMatches = new Map<string, number>();
+  const claimedStoredKeys = new Set<string>();
 
-  for (const inc of incoming) {
-    const prior = byKey.get(inc.dedupKey);
+  for (const { transaction: rawInc, key: incomingKey } of incomingWithKeys) {
+    let effectiveKey = incomingKey;
+    const storedMatch = [...byKey.entries()].find(([key, candidate]) => {
+      if (
+        claimedStoredKeys.has(key) ||
+        (candidate.dedupKey !== rawInc.dedupKey && !candidate.dedupKey.startsWith(`${rawInc.dedupKey}#occ`))
+      ) return false;
+      return candidate.status === rawInc.status &&
+        candidate.bookingDate.slice(0, 10) === rawInc.bookingDate.slice(0, 10) &&
+        sameReferenceCore(candidate, rawInc);
+    });
+    if (storedMatch) {
+      effectiveKey = storedMatch[0];
+      claimedStoredKeys.add(effectiveKey);
+    } else if (byKey.has(effectiveKey)) {
+      const priorAtSlot = byKey.get(effectiveKey)!;
+      const knownMultiplicity = [...byKey.keys()].some((key) => key.startsWith(`${rawInc.dedupKey}#occ`)) ||
+        (incomingGroups.get(rawInc.dedupKey)?.filter((row) => row.status === rawInc.status).length ?? 0) > 1;
+      if (
+        knownMultiplicity && priorAtSlot.status === rawInc.status &&
+        (claimedStoredKeys.has(effectiveKey) || priorAtSlot.bookingDate.slice(0, 10) !== rawInc.bookingDate.slice(0, 10) || !sameReferenceCore(priorAtSlot, rawInc))
+      ) {
+        let occurrence = 1;
+        while (byKey.has(occurrenceKey(rawInc.dedupKey, occurrence))) occurrence++;
+        effectiveKey = occurrenceKey(rawInc.dedupKey, occurrence);
+      }
+    }
+    const inc = rawInc.dedupKey === effectiveKey ? rawInc : { ...rawInc, dedupKey: effectiveKey };
+    const prior = byKey.get(effectiveKey);
     if (prior) {
+      claimedStoredKeys.add(effectiveKey);
       // Never downgrade booked → pending: while a booking is in flight the bank
       // can report the same reference in BOTH the booked and the PDNG response
       // of one run, and the booked pages precede the appended PDNG rows, so
       // without this the status and bookingDate would regress every other run.
       if (prior.status === 'booked' && inc.status === 'pending') {
-        byKey.set(inc.dedupKey, { ...prior, lastSeenAt: nowIso });
-        confirmed.add(inc.dedupKey);
+        pendingTwinMatches.set(
+          rawInc.dedupKey,
+          (pendingTwinMatches.get(rawInc.dedupKey) ?? 0) + 1
+        );
+        byKey.set(effectiveKey, { ...prior, lastSeenAt: nowIso });
+        claimedStoredKeys.add(effectiveKey);
+        confirmed.add(effectiveKey);
         updated++;
         continue;
       }
       // Same identity → refresh fields, preserving the stored id/firstSeenAt and
       // any date or reference the incoming row omits (the mapper always sets those
       // keys, so a bare spread would wipe them with undefined).
-      byKey.set(inc.dedupKey, {
+      byKey.set(effectiveKey, {
         ...prior,
         ...inc,
         id: prior.id,
@@ -210,19 +311,43 @@ export function mergeTransactions(
         referenceNumber: inc.referenceNumber ?? prior.referenceNumber,
         referenceNumberSchema: inc.referenceNumberSchema ?? prior.referenceNumberSchema,
       });
-      confirmed.add(inc.dedupKey);
+      confirmed.add(effectiveKey);
       updated++;
       continue;
+    }
+
+    // A single transaction may be present in both BOOK and PDNG result sets of
+    // this run. Treat the pending copy as the same identity even when it lands
+    // in a later occurrence slot; repeated rows within one status still retain
+    // their separate slots below.
+    if (inc.status === 'pending') {
+      const bookedTwins = [...byKey.entries()].filter(
+        ([key, candidate]) =>
+          candidate.status === 'booked' &&
+          sameReferencePayload(candidate, rawInc) &&
+          (key === rawInc.dedupKey || key.startsWith(`${rawInc.dedupKey}#occ`))
+      );
+      const alreadyMatched = pendingTwinMatches.get(rawInc.dedupKey) ?? 0;
+      const bookedTwin = bookedTwins[alreadyMatched];
+      if (bookedTwin) {
+        pendingTwinMatches.set(rawInc.dedupKey, alreadyMatched + 1);
+        byKey.set(bookedTwin[0], { ...bookedTwin[1], lastSeenAt: nowIso });
+        confirmed.add(bookedTwin[0]);
+        updated++;
+        continue;
+      }
     }
 
     // pending → booked promotion: a booked row carrying a real entry_reference
     // supersedes an earlier synthetic-keyed pending row with the same content.
     if (inc.status === 'booked' && inc.entryReference) {
-      const sig = syntheticDedupKey(inc);
-      const priorPending = byKey.get(sig);
+      const sig = syntheticDedupKey(rawInc);
+      const priorPending = byKey.get(sig) ?? [...byKey.values()].find(
+        (candidate) => candidate.dedupKey.startsWith(`${sig}#occ`) && candidate.status === 'pending'
+      );
       if (priorPending && priorPending.status === 'pending') {
-        byKey.delete(sig);
-        byKey.set(inc.dedupKey, {
+        byKey.delete(priorPending.dedupKey);
+        byKey.set(effectiveKey, {
           ...inc,
           id: priorPending.id,
           firstSeenAt: priorPending.firstSeenAt,
@@ -233,7 +358,8 @@ export function mergeTransactions(
           referenceNumber: inc.referenceNumber ?? priorPending.referenceNumber,
           referenceNumberSchema: inc.referenceNumberSchema ?? priorPending.referenceNumberSchema,
         });
-        confirmed.add(inc.dedupKey);
+        claimedStoredKeys.add(effectiveKey);
+        confirmed.add(effectiveKey);
         updated++;
         continue;
       }
@@ -246,7 +372,7 @@ export function mergeTransactions(
       const match = bestFuzzyPendingMatch(byKey, inc, incomingKeys);
       if (match) {
         byKey.delete(match.dedupKey);
-        byKey.set(inc.dedupKey, {
+        byKey.set(effectiveKey, {
           ...inc,
           id: match.id,
           firstSeenAt: match.firstSeenAt,
@@ -255,18 +381,20 @@ export function mergeTransactions(
           referenceNumber: inc.referenceNumber ?? match.referenceNumber,
           referenceNumberSchema: inc.referenceNumberSchema ?? match.referenceNumberSchema,
         });
-        confirmed.add(inc.dedupKey);
+        claimedStoredKeys.add(effectiveKey);
+        confirmed.add(effectiveKey);
         updated++;
         continue;
       }
     }
 
-    byKey.set(inc.dedupKey, {
+    byKey.set(effectiveKey, {
       ...inc,
       firstSeenAt: inc.firstSeenAt || nowIso,
       lastSeenAt: nowIso,
     });
-    confirmed.add(inc.dedupKey);
+    claimedStoredKeys.add(effectiveKey);
+    confirmed.add(effectiveKey);
     added++;
   }
 

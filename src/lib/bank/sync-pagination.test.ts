@@ -1,6 +1,6 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import type { BankAccountLink, BankConnection, BankTransaction } from '@/types';
-import { runSync } from './sync';
+import { creditCardRefreshFloor, runSync } from './sync';
 import { BankApiError, getAccountTransactions, getAccountBalances } from './client';
 import { getBankConnectionById, getBankConnections, getBankSessionSecret, updateBankConnection } from '@/lib/db/bank-connections';
 import { getBankTransactions, writeBankTransactions } from '@/lib/db/bank-transactions';
@@ -29,9 +29,9 @@ vi.mock('@/lib/db/reconciliation', () => ({ getLatestSnapshot: vi.fn(), createBa
 
 const nowIso = '2026-09-09T10:00:00.000Z';
 const now = Date.parse(nowIso);
-function link(id: string, connectionId: string): BankAccountLink {
+function link(id: string, connectionId: string, role: BankAccountLink['accountRole'] = 'cash'): BankAccountLink {
   return {
-    id, connectionId, accountUid: `uid-${id}`, currency: 'EUR', accountRole: 'cash',
+    id, connectionId, accountUid: `uid-${id}`, currency: 'EUR', accountRole: role,
     identificationHash: 'shared-hash', identificationHashes: ['shared-hash'],
     syncCursor: { lastBookingDate: '2026-09-07' },
   };
@@ -76,6 +76,30 @@ function writtenRows(accountId: string) {
 }
 
 describe('runSync pagination persistence', () => {
+  it('extends only credit-card refreshes through the latest closed cycle', () => {
+    expect(creditCardRefreshFloor('2026-09-20', 13)).toBe('2026-08-13');
+    expect(creditCardRefreshFloor('2026-09-10', 13)).toBe('2026-07-13');
+    expect(creditCardRefreshFloor('2026-09-20')).toBeUndefined();
+  });
+
+  it('uses the extended cycle window for cards while leaving cash on its overlap', async () => {
+    primary = connection('primary', 'alex', link('card-a', 'primary', 'credit-card'));
+    primary.linkedAccounts[0].statementDay = 13;
+    primary.linkedAccounts[0].syncCursor = { lastBookingDate: '2026-09-07', backfilledThrough: '2026-09-08' };
+    vi.mocked(getBankConnectionById).mockResolvedValue(primary);
+    vi.mocked(getAccountTransactions).mockResolvedValue({ transactions: [rawTx('card-row')] });
+    await runSync('alex', 'primary', 'manual', {}, now);
+    expect(vi.mocked(getAccountTransactions).mock.calls[0][1]).toMatchObject({ dateFrom: '2026-07-13' });
+
+    vi.clearAllMocks();
+    primary = connection('primary', 'alex', link('cash-a', 'primary'));
+    primary.linkedAccounts[0].syncCursor = { lastBookingDate: '2026-09-07', backfilledThrough: '2026-09-08' };
+    vi.mocked(getBankConnectionById).mockResolvedValue(primary);
+    vi.mocked(getAccountTransactions).mockResolvedValue({ transactions: [rawTx('cash-row')] });
+    await runSync('alex', 'primary', 'manual', {}, now);
+    expect(vi.mocked(getAccountTransactions).mock.calls[0][1]).toMatchObject({ dateFrom: '2026-09-04' });
+  });
+
   it.each(['network', 'cycle', 'limit', 'malformed'] as const)(
     'does not persist or fan out an incomplete booked fetch (%s)', async (failure) => {
       enableSibling();

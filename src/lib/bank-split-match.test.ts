@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { matchTransactionsToSplits, type BankTxForMatch } from './bank-split-match';
+import { findSplitDuplicateCandidates, matchTransactionsToSplits, type BankTxForMatch } from './bank-split-match';
 import type { SplitLinkCandidate } from '@/types';
 
 function tx(overrides: Partial<BankTxForMatch> & { id: string }): BankTxForMatch {
@@ -17,6 +17,59 @@ function candidate(overrides: Partial<SplitLinkCandidate> & { expenseId: string 
     ...overrides,
   };
 }
+
+describe('duplicate candidate detection', () => {
+  it('returns all exact linked rows instead of hiding a duplicate', () => {
+    const t = tx({ id: 'tx1', counterpartyName: 'Corner Cafe' });
+    const a = candidate({ expenseId: 'e1', title: 'Corner Cafe', bankLink: { txId: 'tx1', linkedAccountId: 'l1', ownerUserId: 'u1' } });
+    const b = candidate({ expenseId: 'e2', title: 'Corner Cafe', bankLink: { txId: 'tx1', linkedAccountId: 'l1', ownerUserId: 'u1' } });
+    const out = findSplitDuplicateCandidates(t, [a, b], 'g1');
+    expect(out.map((x) => x.expenseId).sort()).toEqual(['e1', 'e2']);
+    const match = matchTransactionsToSplits([t], [a, b]).get('tx1');
+    expect(match?.related?.map((x) => x.expenseId)).toEqual(['e2']);
+  });
+
+  it('warns for an exact link even after bank amount/date drift', () => {
+    const t = tx({ id: 'tx1', amount: -99, bookingDate: '2026-12-31', counterpartyName: 'Changed name' });
+    const c = candidate({ expenseId: 'e1', amountCents: 1, date: '2020-01-01', bankLink: { txId: 'tx1', linkedAccountId: 'l1', ownerUserId: 'u1' } });
+    expect(findSplitDuplicateCandidates(t, [c], 'g1')).toMatchObject([{ expenseId: 'e1', kind: 'linked' }]);
+  });
+
+  it('recovers a pending link when booking gives the transaction a new id', () => {
+    const t = tx({ id: 'booked-id', linkedAccountId: 'l1', counterpartyName: 'UNKNOWN*CORNER CAFE', transactionDate: '2026-07-01' });
+    const c = candidate({
+      expenseId: 'e1', title: 'Corner Cafe', date: '2026-07-01',
+      bankLink: { txId: 'pending-id', linkedAccountId: 'l1', ownerUserId: 'u1', amount: -10, counterpartyName: 'Corner Cafe' },
+    });
+    expect(matchTransactionsToSplits([t], [c]).get('booked-id')).toMatchObject({ kind: 'recovered', expenseId: 'e1' });
+  });
+
+  it('shows the booked twin as recovered while retaining the pending exact link', () => {
+    const pending = tx({ id: 'pending-id', linkedAccountId: 'l1', status: 'pending', counterpartyName: 'Corner Cafe' });
+    const booked = tx({ id: 'booked-id', linkedAccountId: 'l1', status: 'booked', counterpartyName: 'UNKNOWN*CORNER CAFE' });
+    const c = candidate({
+      expenseId: 'e1', title: 'Corner Cafe', date: '2026-07-01',
+      bankLink: { txId: 'pending-id', linkedAccountId: 'l1', ownerUserId: 'u1', amount: -10, counterpartyName: 'Corner Cafe' },
+    });
+    const out = matchTransactionsToSplits([pending, booked], [c]);
+    expect(out.get('pending-id')).toMatchObject({ kind: 'linked', expenseId: 'e1' });
+    expect(out.get('booked-id')).toMatchObject({ kind: 'recovered', expenseId: 'e1' });
+  });
+
+  it('does not recover a link belonging to another account', () => {
+    const t = tx({ id: 'booked-id', linkedAccountId: 'other', counterpartyName: 'Shop' });
+    const c = candidate({ expenseId: 'e1', bankLink: { txId: 'pending-id', linkedAccountId: 'l1', ownerUserId: 'u1', amount: -10, counterpartyName: 'Shop' } });
+    expect(matchTransactionsToSplits([t], [c]).size).toBe(0);
+  });
+
+  it('allows a near amount only with strong merchant affinity', () => {
+    const t = tx({ id: 'tx1', amount: -10.2, counterpartyName: 'Cafe Roma' });
+    const close = candidate({ expenseId: 'e1', amountCents: 1000, title: 'Cafe Roma' });
+    const unrelated = candidate({ expenseId: 'e2', amountCents: 1000, title: 'Other shop' });
+    expect(findSplitDuplicateCandidates(t, [close], 'g1')).toHaveLength(1);
+    expect(findSplitDuplicateCandidates(t, [unrelated], 'g1')).toHaveLength(0);
+  });
+});
 
 describe('matchTransactionsToSplits', () => {
   it('matches an explicit link by txId even with different amount/date', () => {

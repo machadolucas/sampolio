@@ -407,6 +407,22 @@ export interface ApiResponse<T> {
   error?: string;
 }
 
+/** A possible duplicate returned by a bank-backed split create attempt. */
+export interface SplitDuplicateCandidate {
+  expenseId: string;
+  groupId: string;
+  groupName: string;
+  title: string;
+  date: string;
+  amountCents: number;
+  currency: Currency;
+  kind: 'linked' | 'heuristic' | 'recovered';
+}
+
+export type SplitCreateResponse<T> = ApiResponse<T> & {
+  duplicate?: SplitDuplicateCandidate[];
+};
+
 // ============================================================
 // WEALTH MANAGEMENT TYPES
 // ============================================================
@@ -1814,7 +1830,14 @@ export interface SplitLinkCandidate {
   date: string; // YYYY-MM-DD
   amountCents: number;
   currency: Currency;
-  bankLink?: { txId: string; linkedAccountId: string; ownerUserId: string };
+  bankLink?: {
+    txId: string;
+    linkedAccountId: string;
+    ownerUserId: string;
+    bookingDate?: string;
+    amount?: number;
+    counterpartyName?: string;
+  };
 }
 
 // ---------- Split request types ----------

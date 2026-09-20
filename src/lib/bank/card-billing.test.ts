@@ -5,12 +5,55 @@ import {
   isCardPayment,
   suggestStatementDay,
   transactionsForCycle,
+  toCardTxn,
   type CardTxn,
 } from './card-billing';
 
 const now = new Date('2026-06-24T12:00:00');
 
 describe('computeCardBilling', () => {
+  it('excludes unbooked holds from closed statements and keeps pending spend in the open forecast', () => {
+    const transactions: CardTxn[] = [
+      { bookingDate: '2026-06-05T15:30:00Z', amount: -12.34, status: 'booked' },
+      { bookingDate: '2026-06-05', amount: -12.34, status: 'pending' },
+      { bookingDate: '2026-06-06', amount: -50, status: 'other' },
+      { bookingDate: '2026-06-23', amount: -7.89, status: 'pending' },
+    ];
+    const result = computeCardBilling({ statementDay: 20, paymentDueDay: 10, transactions, now });
+    expect(result.bills.find(b => b.basis === 'statement')?.amount).toBe(12.34);
+    expect(result.bills.find(b => b.basis === 'open-cycle')?.actualToDate).toBe(7.89);
+    expect(toCardTxn(transactions[1]).status).toBe('pending');
+  });
+
+  it('sums whole cents without collapsing identical purchases', () => {
+    const result = computeCardBilling({
+      statementDay: 20, paymentDueDay: 10, now,
+      transactions: [
+        { bookingDate: '2026-06-05', amount: -0.1 },
+        { bookingDate: '2026-06-05', amount: -0.1 },
+        { bookingDate: '2026-06-05', amount: -0.1 },
+      ],
+    });
+    expect(result.bills[0].amount).toBe(0.3);
+  });
+
+  it('uses the same clamped month-end boundaries for bills and their transaction breakdown', () => {
+    const transactions = [
+      { bookingDate: '2026-01-31', amount: -999 },
+      { bookingDate: '2026-02-01T12:00:00Z', amount: -20 },
+      { bookingDate: '2026-02-28', amount: -30 },
+      { bookingDate: '2026-03-01', amount: -40 },
+      { bookingDate: '2026-03-31', amount: -50 },
+    ];
+    for (const date of ['2026-03-10', '2026-04-02']) {
+      const result = computeCardBilling({ statementDay: 31, paymentDueDay: 10, transactions, now: new Date(`${date}T12:00:00`) });
+      for (const bill of result.bills.filter(b => b.basis === 'statement')) {
+        const rows = transactionsForCycle(transactions, bill.statementCloseDate, 31);
+        expect(-rows.reduce((sum, t) => sum + t.amount, 0)).toBe(bill.amount);
+      }
+    }
+  });
+
   it('returns only the outstanding when no cycle is configured', () => {
     const res = computeCardBilling({ transactions: [], outstanding: 250, now });
     expect(res.bills).toEqual([]);
