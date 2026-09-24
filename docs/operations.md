@@ -49,11 +49,28 @@ through a Cloudflare Tunnel gated by Cloudflare Access (Zero Trust).
   SQLCipher `sampolio.db` holding users/sessions/passkeys and its verified
   snapshot `snapshots/sampolio.db`; see the DB layer docs). The app reads its
   secrets from the environment, not from disk.
-- **Boot log lines** (`sampolio.log`): `[db] opened encrypted database …`,
-  on the first 4.x boot `[db] imported N legacy users (M soft-deleted) from .enc
-  files`, then `[db] snapshot (startup) written …`. `[db] startup FAILED` means a
-  wrong/missing `ENCRYPTION_KEY` or an unreadable `DATA_DIR`; every sign-in fails
-  until it is fixed.
+- **Boot log lines** (`sampolio.log`, from `src/lib/db/sqlite/bootstrap.ts`):
+  `[db] opened encrypted database … (migrations applied)`; on the first 4.x boot
+  `[db] imported N legacy users (M soft-deleted) from .enc files`, afterwards
+  `[db] legacy users already imported`; then `[db] snapshot (startup) written …
+  (encrypted, verified)`. On failure `sampolio-error.log` gets a `====` banner
+  starting `[db] STARTUP FAILED — sign-in and sign-up are DISABLED` plus the cause.
+- **Fail-closed boot.** The legacy import aborts (one transaction, marker never
+  written) on: an unreadable/corrupt `users-index.enc` or `user.enc` (usually a
+  wrong `ENCRYPTION_KEY`), `users/*` dirs without `users-index.enc`, an index
+  entry without its dir, a `user.enc` whose id differs from its dir, an indexed
+  user without email, duplicate emails, or an email already owned by another DB
+  row. The app keeps serving pages, but sign-up and every session creation
+  (password, passkey, dev bypass) are refused, `auth()` returns null and
+  `/api/auth/*` answers **503 `SETUP_INCOMPLETE`**. The same gate applies without
+  the in-process flag whenever `.enc` user data exists but the `_meta` import
+  marker is missing. If this boot had just **created** `sampolio.db` (first boot)
+  it is closed and deleted, so a DB keyed with a wrong key never survives to a
+  later "working" boot; a pre-existing DB is never deleted (and is still
+  snapshotted). Fix the key/files, then restart (`launchctl kickstart -k …`).
+- **First-user rule** (sign-up bypasses the self-signup setting and becomes
+  admin) applies only to a truly fresh install: setup complete, no user rows at
+  all (soft-deleted included) and no `users-index.enc` / `users/*` on disk.
 - **Logs:** `~/.sampolio/logs/sampolio.log` and `sampolio-error.log`.
 - **Env:** baked into the plist from `~/sampolio/.env` by
   `scripts/install-launchd.sh` (see §5). The plist embeds the resolved Node path

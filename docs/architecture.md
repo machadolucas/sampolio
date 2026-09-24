@@ -272,8 +272,14 @@ on the SQLCipher DB via the drizzle adapter; tables in `src/lib/db/sqlite/schema
 - **User fields** (`user.additionalFields`, all `input: false`): `role`, `isActive`,
   `deletedAt`, `avatarVersion`. No admin plugin — no `/admin/*` HTTP surface, no impersonation;
   admin actions go through `src/lib/actions/admin.ts` → `src/lib/db/users.ts`.
+- **Fail closed**: `src/lib/db/sqlite/bootstrap.ts` (boot) records any open/import failure in
+  `setup-state.ts`; while set, or while `.enc` user data exists without the import marker
+  (`isAuthSetupComplete` in `legacy-import.ts`), sign-up and session creation throw **503
+  `SETUP_INCOMPLETE`**, `/api/auth/*` returns 503 and `auth()` returns null. A DB file created
+  by the failed boot is deleted. Details: [`operations.md`](operations.md) §1.
 - **Hooks**: `databaseHooks.session.create.before` refuses inactive/deleted users for every
-  sign-in method (403 `ACCOUNT_INACTIVE`); `user.create.before` makes the first user admin.
+  sign-in method (403 `ACCOUNT_INACTIVE`); `user.create.before` makes the first user admin —
+  only on a truly fresh install (`isFirstUserSetup`: no user rows, no legacy `.enc` users).
   `hooks.before`: `/sign-up/email` enforces `selfSignupEnabled` (unless first user), the name
   rule and `passwordPolicySchema` (`src/lib/schemas/auth.schema.ts`; `disableSignUp` stays
   false because it would also block the server-side `auth.api.signUpEmail`); `/change-password`
@@ -283,6 +289,11 @@ on the SQLCipher DB via the drizzle adapter; tables in `src/lib/db/sqlite/schema
   session is older than `PASSKEY_REGISTRATION_MAX_SESSION_AGE_MS` (10 min,
   `src/lib/auth/constants.ts`). `hooks.after` on `/sign-in/email` records failures (401 only,
   also for unknown emails) / successes and performs the bcrypt → scrypt rehash.
+  `disabledPaths: ['/update-user']` (profile edits go through our own actions).
+- **Action-level limits** (Better Auth's rate limiter only runs on its HTTP router, not for
+  `auth.api.*`): `changeMyPassword` uses the lockout map keyed `pw:<userId>` (10 wrong
+  current passwords / 15 min → refused with a retry time); `signUp` allows 5 per client IP per
+  10 min and 30 globally per hour (`src/lib/rate-limit.ts`).
 - **Passkeys** (`@better-auth/passkey`): `rpID` = hostname of `AUTH_URL`, `rpName` "Sampolio",
   `origin` = `AUTH_URL` origin. Passkeys sit alongside passwords (never passkey-only). The
   default name comes from the AAGUID (`getAuthenticatorName`, else "Passkey");
@@ -297,6 +308,9 @@ on the SQLCipher DB via the drizzle adapter; tables in `src/lib/db/sqlite/schema
   router) registered only when `NODE_ENV !== 'production'` **and** `DEV_AUTH_BYPASS` is set;
   `/dev-login` calls it and forwards the session cookie. `src/proxy.ts` additionally redirects
   cookie-less dev requests for `/` and the auth pages straight to `/dev-login`.
+
+Post-sign-in `?callbackUrl=` goes through `safeCallbackPath` (`src/lib/safe-redirect.ts`):
+WHATWG-parsed against the page origin, same origin only, never a `//`/`/\` path — else `/`.
 
 Client: `src/lib/auth-client.ts` — `authClient` (`createAuthClient` + `passkeyClient()`) and a
 provider-less `useSession()` shim returning `{ data: session }` in the old shape (memoized, so

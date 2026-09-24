@@ -35,7 +35,8 @@ deleteFile(filePath: string): Promise<void>
 | `sqlite/schema/` | Hand-written drizzle tables: `auth.ts` (Better Auth `user`/`session`/`account`/`verification`/`passkey`/`rateLimit` — export and property names are load-bearing for the adapter), `meta.ts` (`_meta` key/value), `index.ts` barrel. |
 | `sqlite/migrate.ts` + `/drizzle` | Committed SQL from `pnpm db:generate` (drizzle-kit **generate only** — it cannot open the keyed DB; no push/migrate/studio). Applied by the runtime migrator on first connection; idempotent. |
 | `sqlite/snapshot.ts` | `createSnapshot()`: `VACUUM INTO '<plain path>'` (SQLite3MultipleCiphers encrypts the copy with the source key; the `file:…?hexkey=` URI form is unusable because better-sqlite3 does not enable URI filenames), verify (no plaintext header, opens with key, fails without), atomic rename to `snapshots/sampolio.db`. Never `db.backup()` (unkeyed ⇒ plaintext). `startSnapshotScheduler()`: boot + every 6 h + daily 04:55. CLI twin: `scripts/db-snapshot.mjs`. |
-| `sqlite/legacy-import.ts` | One-shot `.enc` → DB user import (see `users.ts` below), guarded by `_meta` `legacy-users-imported`, one transaction. |
+| `sqlite/legacy-import.ts` | One-shot `.enc` → DB user import (see `users.ts` below), guarded by `_meta` `legacy-users-imported`, one transaction; throws `LegacyImportError` on any inconsistency (missing index, unreadable file, missing email, duplicate email, id mismatch). Also `isAuthSetupComplete()` / `isFirstUserSetup()` / `hasLegacyUserData()`. |
+| `sqlite/bootstrap.ts` + `setup-state.ts` | Boot sequence (open → import) that **fails closed**: records the failure, deletes a DB file this boot created, and blocks auth (503 `SETUP_INCOMPLETE`). |
 
 Driver: `better-sqlite3` is a **pnpm alias** for `better-sqlite3-multiple-ciphers` (N-API prebuilds, `allowBuilds: false` in `pnpm-workspace.yaml`), so drizzle's `drizzle-orm/better-sqlite3` gets the cipher build. It is in `serverExternalPackages`.
 
