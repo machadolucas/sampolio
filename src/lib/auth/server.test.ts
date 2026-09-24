@@ -19,13 +19,16 @@ import { closeDb, getDb } from '@/lib/db/sqlite/client';
 import { account, passkey, session, user } from '@/lib/db/sqlite/schema';
 import { changePassword, createUser, deleteUser, findUserByEmail, hardDeleteUser, updateUser } from '@/lib/db/users';
 import { updateAppSettings } from '@/lib/db/app-settings';
+import { bootstrapDatabase } from '@/lib/db/sqlite/bootstrap';
 
 let tmp: ReturnType<typeof useTempDataDir>;
 
-beforeAll(() => {
+beforeAll(async () => {
   tmp = useTempDataDir('sampolio-auth-test-');
   closeDb();
   resetAuthForTests();
+  // As at boot (src/instrumentation.ts): open + migrate + import marker.
+  expect((await bootstrapDatabase()).ok).toBe(true);
 });
 
 afterAll(() => {

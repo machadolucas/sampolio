@@ -3,10 +3,11 @@
 import { headers } from 'next/headers';
 import { z } from 'zod';
 import { isAPIError } from 'better-auth/api';
-import { countUsers } from '@/lib/db/users';
+import { isAuthSetupComplete, isFirstUserSetup } from '@/lib/db/sqlite/legacy-import';
 import { isSelfSignupEnabled } from '@/lib/db/app-settings';
 import { getAuth } from '@/lib/auth/server';
 import { passwordPolicySchema, signUpNameSchema } from '@/lib/schemas/auth.schema';
+import { clientIpFrom, consumeRateLimit } from '@/lib/rate-limit';
 import type { ApiResponse } from '@/types';
 
 const signUpSchema = z.object({
@@ -14,6 +15,11 @@ const signUpSchema = z.object({
   password: passwordPolicySchema,
   name: signUpNameSchema,
 });
+
+// auth.api.signUpEmail bypasses Better Auth's HTTP rate limiter, so the
+// action enforces its own: per client IP, plus a global ceiling.
+const SIGNUP_LIMIT_PER_IP = { max: 5, windowMs: 10 * 60 * 1000 };
+const SIGNUP_LIMIT_GLOBAL = { max: 30, windowMs: 60 * 60 * 1000 };
 
 interface SignUpResponse {
   id: string;
@@ -34,9 +40,20 @@ export async function signUp(
 ): Promise<ApiResponse<SignUpResponse>> {
   try {
     const { email, password, name } = signUpSchema.parse(data);
+    const requestHeaders = await headers();
+    const perIp = consumeRateLimit(`signup:ip:${clientIpFrom(requestHeaders)}`, SIGNUP_LIMIT_PER_IP.max, SIGNUP_LIMIT_PER_IP.windowMs);
+    const global = perIp.allowed
+      ? consumeRateLimit('signup:global', SIGNUP_LIMIT_GLOBAL.max, SIGNUP_LIMIT_GLOBAL.windowMs)
+      : perIp;
+    if (!global.allowed) {
+      return {
+        success: false,
+        error: `Too many sign-up attempts. Try again in ${Math.ceil(global.retryAfter / 60)} min.`,
+      };
+    }
     const result = await getAuth().api.signUpEmail({
       body: { email, password, name },
-      headers: await headers(),
+      headers: requestHeaders,
     });
     const user = result.user as typeof result.user & { role?: string };
 
@@ -66,7 +83,10 @@ export async function signUp(
 
 export async function checkSignupEnabled(): Promise<ApiResponse<{ enabled: boolean; isFirstUser: boolean }>> {
   try {
-    const isFirstUser = countUsers() === 0;
+    if (!isAuthSetupComplete()) {
+      return { success: true, data: { enabled: false, isFirstUser: false } };
+    }
+    const isFirstUser = isFirstUserSetup();
 
     if (isFirstUser) {
       return { success: true, data: { enabled: true, isFirstUser: true } };

@@ -1,6 +1,7 @@
 import { cache } from 'react';
 import { headers } from 'next/headers';
 import { getAuth } from '@/lib/auth/server';
+import { getSetupFailure } from '@/lib/db/sqlite/setup-state';
 import type { UserRole } from '@/types';
 
 /**
@@ -39,6 +40,7 @@ const getRequestSession = cache(async () => {
 });
 
 export async function auth(): Promise<AppSession | null> {
+  if (getSetupFailure()) return null; // fail closed (src/lib/db/sqlite/bootstrap.ts)
   const result = await getRequestSession();
   if (!result?.user) return null;
   const user = result.user as SessionUser;

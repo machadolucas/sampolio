@@ -8,7 +8,14 @@ import { isAPIError } from 'better-auth/api';
 import { auth } from '@/lib/auth';
 import { getAuth } from '@/lib/auth/server';
 import type { ApiResponse, AccountDeletionBlocker, AccountDeletionPreflight, PasskeySummary } from '@/types';
-import { setUserAvatar, hardDeleteUser } from '@/lib/db/users';
+import {
+  setUserAvatar,
+  hardDeleteUser,
+  getLockoutRetryAfterSeconds,
+  isAccountLocked,
+  recordFailedLogin,
+  recordSuccessfulLogin,
+} from '@/lib/db/users';
 import { getUserPasskeys } from '@/lib/db/passkeys';
 import { getUserDir } from '@/lib/db/encryption';
 import { changePasswordSchema, type ChangePasswordFormData } from '@/lib/schemas/auth.schema';
@@ -45,6 +52,15 @@ export async function changeMyPassword(input: ChangePasswordFormData): Promise<A
   const parsed = changePasswordSchema.safeParse(input);
   if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message ?? 'Validation error' };
 
+  // Per-user lockout on the current-password check: this action calls
+  // auth.api directly (no Better Auth HTTP rate limit) and cookie-bearing
+  // requests are exempt from the proxy limiter, so a stolen session cookie
+  // could otherwise brute-force the password. Same map/limits as sign-in.
+  const lockKey = passwordLockKey(session.user.id);
+  if (await isAccountLocked(lockKey)) {
+    return { success: false, error: lockedMessage(getLockoutRetryAfterSeconds(lockKey)) };
+  }
+
   try {
     await getAuth().api.changePassword({
       body: {
@@ -56,13 +72,26 @@ export async function changeMyPassword(input: ChangePasswordFormData): Promise<A
     });
   } catch (error) {
     if (isAPIError(error) && error.body?.code === 'INVALID_PASSWORD') {
+      await recordFailedLogin(lockKey);
+      if (await isAccountLocked(lockKey)) {
+        return { success: false, error: lockedMessage(getLockoutRetryAfterSeconds(lockKey)) };
+      }
       return { success: false, error: 'Current password is incorrect' };
     }
     if (isAPIError(error)) return { success: false, error: error.body?.message ?? 'Could not change password' };
     console.error('[account] change password failed:', error);
     return { success: false, error: 'Could not change password' };
   }
+  await recordSuccessfulLogin(lockKey);
   return { success: true };
+}
+
+function passwordLockKey(userId: string): string {
+  return `pw:${userId}`;
+}
+
+function lockedMessage(retryAfterSeconds: number): string {
+  return `Too many incorrect passwords. Try again in ${Math.max(1, Math.ceil(retryAfterSeconds / 60))} min.`;
 }
 
 /** The current user's registered passkeys (for Settings › Account). Rename,

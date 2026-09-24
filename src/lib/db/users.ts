@@ -1,13 +1,13 @@
 import * as path from 'path';
 import * as fs from 'fs/promises';
 import { v4 as uuidv4 } from 'uuid';
-import { and, eq, isNull, sql } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import { hashPassword } from 'better-auth/crypto';
 import type { User, UserRole, PublicUser } from '@/types';
 import { ensureDir, getUserDir } from './encryption';
 import { getDb } from './sqlite/client';
 import { account, session, user as userTable } from './sqlite/schema';
-import { tombstoneEmail } from './sqlite/legacy-import';
+import { isFirstUserSetup, tombstoneEmail } from './sqlite/legacy-import';
 
 // Users live in the SQLCipher DB (`src/lib/db/sqlite/`), managed by Better
 // Auth (`src/lib/auth/server.ts`). These functions keep the pre-4.0 file-DB
@@ -101,16 +101,6 @@ export async function setUserAvatar(userId: string, image: Buffer | null): Promi
   return row ? toUser(row) : null;
 }
 
-/** Number of non-deleted users (the first-user-becomes-admin rule). */
-export function countUsers(): number {
-  const row = getDb()
-    .select({ n: sql<number>`count(*)` })
-    .from(userTable)
-    .where(isNull(userTable.deletedAt))
-    .get();
-  return row?.n ?? 0;
-}
-
 /** Admin-side user creation (no session). Self sign-up goes through Better
  * Auth's /sign-up/email instead (src/lib/actions/auth.ts). */
 export async function createUser(
@@ -130,7 +120,7 @@ export async function createUser(
   const passwordHash = await hashPassword(password);
   const db = getDb();
   const row = db.transaction((tx) => {
-    const isFirstUser = countUsers() === 0;
+    const isFirstUser = isFirstUserSetup();
     const created = tx
       .insert(userTable)
       .values({

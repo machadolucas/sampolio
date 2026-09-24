@@ -12,24 +12,19 @@ export async function register(): Promise<void> {
     const { installTimestampedConsole } = await import('@/lib/server-logger');
     installTimestampedConsole();
 
-    try {
-      const { getDb, getDbPath } = await import('@/lib/db/sqlite/client');
-      getDb();
-      console.log(`[db] opened encrypted database ${getDbPath()} (migrations applied)`);
-      const { importLegacyUsers } = await import('@/lib/db/sqlite/legacy-import');
-      const result = await importLegacyUsers();
-      if (result.status === 'imported') {
-        console.log(`[db] imported ${result.imported} legacy users (${result.softDeleted} soft-deleted) from .enc files`);
-      }
+    // Fails closed: on error auth is disabled (see bootstrap.ts), but the
+    // encrypted snapshot still runs whenever the DB itself opened correctly.
+    const { bootstrapDatabase } = await import('@/lib/db/sqlite/bootstrap');
+    const result = await bootstrapDatabase();
+    if (result.dbUsable) {
       const { startSnapshotScheduler } = await import('@/lib/db/sqlite/snapshot');
       startSnapshotScheduler();
-    } catch (error) {
-      // Leave the server up so the error is visible in the log; every auth
-      // request will fail loudly until the DB/key problem is fixed.
-      console.error('[db] startup FAILED (check ENCRYPTION_KEY / DATA_DIR):', error);
     }
 
-    const { startBankScheduler } = await import('@/lib/bank/scheduler');
-    startBankScheduler();
+    // The bank scheduler reads the users table; skip it when the DB is unusable.
+    if (result.dbUsable) {
+      const { startBankScheduler } = await import('@/lib/bank/scheduler');
+      startBankScheduler();
+    }
   }
 }

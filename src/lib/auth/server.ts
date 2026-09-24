@@ -11,8 +11,9 @@ import { getDb } from '@/lib/db/sqlite/client';
 import * as schema from '@/lib/db/sqlite/schema';
 import { getUserDir, ensureDir } from '@/lib/db/encryption';
 import { isSelfSignupEnabled } from '@/lib/db/app-settings';
+import { isAuthSetupComplete, isFirstUserSetup } from '@/lib/db/sqlite/legacy-import';
+import { SETUP_INCOMPLETE_CODE, SETUP_INCOMPLETE_MESSAGE } from '@/lib/db/sqlite/setup-state';
 import {
-  countUsers,
   getLockoutRetryAfterSeconds,
   isAccountLocked,
   recordFailedLogin,
@@ -67,6 +68,13 @@ function isLegacyBcryptHash(hash: string | null | undefined): hash is string {
   return !!hash && hash.startsWith('$2');
 }
 
+/** Fail-closed guard (see src/lib/db/sqlite/bootstrap.ts). */
+function assertAuthSetupComplete(): void {
+  if (!isAuthSetupComplete()) {
+    throw new APIError('SERVICE_UNAVAILABLE', { code: SETUP_INCOMPLETE_CODE, message: SETUP_INCOMPLETE_MESSAGE });
+  }
+}
+
 function isUserAllowedToSignIn(userId: string): boolean {
   const row = getDb()
     .select({ isActive: schema.user.isActive, deletedAt: schema.user.deletedAt })
@@ -115,6 +123,9 @@ function buildAuthOptions() {
     secret: process.env.AUTH_SECRET,
     telemetry: { enabled: false },
     onAPIError: { errorURL: '/auth/error' },
+    // No HTTP self-service profile edit: name/avatar changes go through our
+    // own server actions (validation + the 'users' cache tag).
+    disabledPaths: ['/update-user'],
     database: drizzleAdapter(getDb(), { provider: 'sqlite', schema }),
 
     emailAndPassword: {
@@ -176,7 +187,8 @@ function buildAuthOptions() {
       user: {
         create: {
           before: async (data) => {
-            const isFirstUser = countUsers() === 0;
+            assertAuthSetupComplete();
+            const isFirstUser = isFirstUserSetup();
             return { data: { ...data, role: isFirstUser ? 'admin' : 'user', isActive: true, deletedAt: null } };
           },
           after: async (created) => {
@@ -188,6 +200,7 @@ function buildAuthOptions() {
         create: {
           // Covers every sign-in method (password, passkey, dev bypass).
           before: async (data) => {
+            assertAuthSetupComplete();
             if (!isUserAllowedToSignIn(data.userId)) {
               throw new APIError('FORBIDDEN', { code: 'ACCOUNT_INACTIVE', message: INACTIVE_MESSAGE });
             }
@@ -200,7 +213,8 @@ function buildAuthOptions() {
     hooks: {
       before: createAuthMiddleware(async (ctx) => {
         if (ctx.path === '/sign-up/email') {
-          const isFirstUser = countUsers() === 0;
+          assertAuthSetupComplete();
+          const isFirstUser = isFirstUserSetup();
           if (!isFirstUser && !(await isSelfSignupEnabled())) {
             throw new APIError('FORBIDDEN', {
               code: 'SIGNUP_DISABLED',
