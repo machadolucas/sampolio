@@ -41,8 +41,11 @@ through a Cloudflare Tunnel gated by Cloudflare Access (Zero Trust).
 - **Service:** launchd agent `com.sampolio.app`
   (`~/Library/LaunchAgents/com.sampolio.app.plist`, `KeepAlive` → auto-restarts on
   crash, starts at login).
-- **Command:** `next start -p 3999` with **`NEXT_DIST_DIR=.next-prod`** so prod
-  serves its own build dir, isolated from the dev preview's `.next`.
+- **Command:** `next start -p 3999 -H 127.0.0.1` with **`NEXT_DIST_DIR=.next-prod`**
+  so prod serves its own build dir, isolated from the dev preview's `.next`. The
+  app binds **loopback only** (`SAMPOLIO_HOST`, default `127.0.0.1`, in
+  `scripts/install-launchd.sh` / `run-sampolio.sh`): its only clients are Caddy and
+  cloudflared on the same host, so LAN devices cannot bypass the proxy.
 - **Working copy:** there is **one** git clone at `~/sampolio`. Deploying =
   rebuild `.next-prod` in place + restart the agent (no separate prod checkout).
 - **Data:** `~/.sampolio/data` (per-user encrypted `.enc` files, plus the
@@ -81,7 +84,10 @@ The Node version is pinned in `.nvmrc`; run prod tooling under that version (nvm
 ## 2. Reverse proxy + DNS
 
 - **Caddy** (on the LAN host) terminates TLS and reverse-proxies
-  `https://<your-domain>` → `http://localhost:3999`.
+  `https://<your-domain>` → `http://127.0.0.1:3999` (loopback — the app is not
+  reachable on the LAN address). Caddy strips any client-sent `Cf-Connecting-Ip`
+  (`header_up -Cf-Connecting-Ip`), because Better Auth and the sign-up limiter
+  key rate limits on it first (`src/lib/auth/server.ts`, `src/lib/rate-limit.ts`).
 - **Split-horizon DNS:** the LAN resolver points `<your-domain>` at the internal
   Caddy host; public DNS points it at Cloudflare (proxied). Same URL works at home
   (direct → Caddy) and away (→ Cloudflare Access → tunnel), which is why a login
@@ -92,7 +98,8 @@ The Node version is pinned in `.nvmrc`; run prod tooling under that version (nvm
 - A single **cloudflared tunnel named `home`** serves several hostnames; Sampolio
   reuses it (one tunnel can serve many hostnames — no need for a per-app tunnel).
 - Config: `~/.cloudflared/config.yml`. The Sampolio ingress rule maps
-  `<your-domain>` → `http://localhost:3999`. Other hostnames on the same tunnel
+  `<your-domain>` → `http://localhost:3999` (resolves to `::1` first, which is
+  refused, then `127.0.0.1`). Other hostnames on the same tunnel
   (e.g. Home Assistant, photos) are **not** gated by Access — gating is per-app
   in Cloudflare, see §4.
 
@@ -161,8 +168,8 @@ the scripted form of this sequence.
   `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.sampolio.app.plist`.
   Until that reload the new variable is absent, so the feature it gates (bank
   sync, split notifications) stays hard-disabled and silently does nothing.
-- **Health checks:** `curl -sS -o /dev/null -w '%{http_code}' http://localhost:3999/`
-  (expect `307`); `launchctl list | grep com.sampolio.app`;
+- **Health checks:** `curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:3999/`
+  (expect `307`); `lsof -nP -iTCP:3999 -sTCP:LISTEN` (expect `127.0.0.1:3999`); `launchctl list | grep com.sampolio.app`;
   `curl -skI https://<your-domain>/ | head -1` (expect `307`).
 
 **Backups** — a daily snapshot runs via a launchd agent

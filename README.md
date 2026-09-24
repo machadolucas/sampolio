@@ -356,7 +356,7 @@ If you don't provide a `.env` file, secrets are auto-generated on first run:
 **Optional Environment Variables** (in .env or as exports):
 ```bash
 SAMPOLIO_PORT=3999                    # Server port (default: 3999)
-SAMPOLIO_HOST=0.0.0.0                # Server host (default: 0.0.0.0)
+SAMPOLIO_HOST=127.0.0.1              # Server host (default: 127.0.0.1, loopback only)
 SAMPOLIO_DATA_DIR=~/.sampolio/data   # Data directory
 ```
 
@@ -491,7 +491,7 @@ docker run -p 3999:3999 \
 | `AUTH_URL` | Public URL (`https://…`); its hostname is the passkey RP ID | Yes in production | `http://localhost:4999` in dev |
 | `DATA_DIR` / `SAMPOLIO_DATA_DIR` | Custom data directory path | No | `~/.sampolio/data` |
 | `PORT` / `SAMPOLIO_PORT` | Server port | No | `3999` |
-| `HOSTNAME` / `SAMPOLIO_HOST` | Server hostname | No | `0.0.0.0` |
+| `HOSTNAME` / `SAMPOLIO_HOST` | Bind address (`0.0.0.0` exposes the app on the LAN) | No | `127.0.0.1` |
 | `ENABLE_BANKING_APP_ID` | Enable Banking application ID (bank sync) | No | - |
 | `ENABLE_BANKING_REDIRECT_URL` | Consent callback URL (`<public-url>/api/bank/callback`) | No | - |
 | `ENABLE_BANKING_PRIVATE_KEY_FILE` | Path to the RS256 private key PEM (0600, outside the repo) | No | - |

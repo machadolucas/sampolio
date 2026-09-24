@@ -25,7 +25,9 @@ PLIST_FILE="$HOME/Library/LaunchAgents/${PLIST_NAME}.plist"
 LOG_DIR="$HOME/.sampolio/logs"
 DATA_DIR="$HOME/.sampolio/data"
 PORT="${SAMPOLIO_PORT:-3999}"
-HOST="${SAMPOLIO_HOST:-0.0.0.0}"
+# Loopback only: the sole clients are the local reverse proxy (Caddy) and
+# cloudflared. Set SAMPOLIO_HOST=0.0.0.0 to expose the app on the LAN.
+HOST="${SAMPOLIO_HOST:-127.0.0.1}"
 # Build dir prod serves — isolated from dev's `.next` (see next.config.ts). Baked
 # into the plist below so `next start` reads the same dir server-deploy.sh built.
 NEXT_DIST_DIR="${NEXT_DIST_DIR:-.next-prod}"
@@ -199,7 +201,7 @@ echo -e "${GREEN}=== Installation Complete! ===${NC}"
 echo ""
 echo "Sampolio has been installed and is now running!"
 echo ""
-echo "  Web Interface: http://localhost:${PORT}"
+echo "  Web Interface: http://${HOST}:${PORT}"
 echo "  Logs:          $LOG_DIR/sampolio.log"
 echo "  Data:          $DATA_DIR"
 echo ""

@@ -17,7 +17,7 @@ import { redactBankError } from '@/lib/bank/client';
 
 /**
  * The canonical external origin to build redirects against. Behind Caddy /
- * Cloudflare the raw `request.url` is the internal bind address (0.0.0.0:3999),
+ * Cloudflare the raw `request.url` is the internal bind address (127.0.0.1:3999),
  * which isn't reachable by the user's browser — so prefer AUTH_URL (the app's
  * public URL), then the forwarded host, then the raw request as a last resort.
  */

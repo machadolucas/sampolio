@@ -18,7 +18,9 @@ cd "$REPO_ROOT"
 
 # Configuration
 PORT="${SAMPOLIO_PORT:-3999}"
-HOST="${SAMPOLIO_HOST:-0.0.0.0}"
+# Loopback only: the sole clients are the local reverse proxy (Caddy) and
+# cloudflared. Set SAMPOLIO_HOST=0.0.0.0 to expose the app on the LAN.
+HOST="${SAMPOLIO_HOST:-127.0.0.1}"
 DATA_DIR="${SAMPOLIO_DATA_DIR:-$HOME/.sampolio/data}"
 # Serve the prod-isolated build dir (matches the launchd plist + server-deploy.sh)
 export NEXT_DIST_DIR="${NEXT_DIST_DIR:-.next-prod}"
@@ -88,10 +90,11 @@ fi
 echo -e "${GREEN}=== Starting Sampolio ===${NC}"
 echo ""
 echo "  Node: $(node -v)"
+echo "  Host: $HOST"
 echo "  Port: $PORT"
 echo "  Data: $DATA_DIR"
 echo ""
-echo -e "${GREEN}Open your browser at: http://localhost:$PORT${NC}"
+echo -e "${GREEN}Open your browser at: http://$HOST:$PORT${NC}"
 echo ""
 echo "Press Ctrl+C to stop the server"
 echo ""

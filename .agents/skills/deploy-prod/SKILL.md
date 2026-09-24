@@ -23,7 +23,7 @@ URL from the host configuration before running health checks.
 
 This deploys the **current working tree** of `$HOME/sampolio` to the
 live service running on this same machine: launchd agent `com.sampolio.app` runs
-`next start -p 3999` against the `.next-prod/` build and the real data at
+`next start -p 3999 -H 127.0.0.1` (loopback only) against the `.next-prod/` build and the real data at
 `~/.sampolio/data`. Caddy reverse-proxies `https://sampolio.example.com` → it.
 
 There is no separate prod checkout — **deploying = rebuild `.next-prod` in place,
@@ -148,12 +148,13 @@ Do **not** use `sleep` (the Bash tool blocks foreground sleep). Poll with curl r
 which also waits out the Next.js boot:
 ```sh
 # Readiness (waits for the new process to come up): expect 307 (-> /auth/signin) or 200
-curl -sS --retry 15 --retry-delay 1 --retry-all-errors -o /dev/null -w '%{http_code}\n' http://localhost:3999/
+curl -sS --retry 15 --retry-delay 1 --retry-all-errors -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3999/
 
 # Service health: 2nd column is the last exit code; 0 = healthy
 launchctl list | grep com.sampolio.app
 
-# Listening on 3999
+# Listening on 3999, loopback only: expect 127.0.0.1:3999 (a *:3999 line means
+# the plist still binds every interface)
 lsof -nP -iTCP:3999 -sTCP:LISTEN
 
 # End-to-end through Caddy: 307 is the healthy unauthenticated response
