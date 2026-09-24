@@ -62,6 +62,17 @@ const nextConfig: NextConfig = {
   // after `next dev` would start prod against a dev build and fail (KeepAlive loop).
   distDir: process.env.NEXT_DIST_DIR || '.next',
 
+  // The prod build type-checks with tsconfig.prod.json, whose `include` names
+  // only `.next-prod/types` — never `.next/dev/types`, which a `next dev` run
+  // leaves behind in the same clone. A stale file there (e.g. a validator for
+  // a deleted route) used to fail the prod build's type check. The file
+  // `extends` tsconfig.json, which also stops Next from rewriting it (Next
+  // skips its tsconfig auto-edits for configs with `extends`). Dev keeps
+  // tsconfig.json, where Next adds its `.next` patterns itself.
+  typescript: {
+    tsconfigPath: process.env.NEXT_DIST_DIR === '.next-prod' ? 'tsconfig.prod.json' : 'tsconfig.json',
+  },
+
   // Enable Next.js 16 Cache Components ("use cache" directive)
   cacheComponents: true,
 
