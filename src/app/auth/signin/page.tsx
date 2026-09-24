@@ -87,9 +87,8 @@ function SignInForm() {
 
     const [isPasskeyLoading, setIsPasskeyLoading] = useState(false);
 
-    // No router.refresh() here: it would re-request /auth/signin (the current
-    // route) WITH the fresh session cookie, and the proxy's stale-cookie sweep
-    // on auth pages would then expire that brand-new cookie.
+    // Navigate straight to the callback. (A reload of /auth/signin with the
+    // fresh cookie would also land there: the proxy sends valid sessions on.)
     const onSignedIn = () => {
         setAttemptCount(0);
         router.replace(resolveCallbackUrl());

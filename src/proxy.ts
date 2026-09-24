@@ -1,12 +1,17 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getSessionCookie } from 'better-auth/cookies';
+import { getProxySession } from '@/lib/auth/server';
+import { clientIpFrom } from '@/lib/rate-limit';
+import { safeCallbackPath } from '@/lib/safe-redirect';
 
 // Next.js 16 proxy (runs on the Node.js runtime, before every matched route).
-// It only checks for the PRESENCE of a Better Auth session cookie — it never
-// touches the database. The real session validation (DB row, isActive,
-// deletedAt) happens server-side in auth() (src/lib/auth.ts), which the
-// (dashboard) layout and src/app/page.tsx call before rendering.
+// For app pages it only checks for the PRESENCE of a Better Auth session
+// cookie. The real session validation (DB row, isActive, deletedAt) happens
+// server-side in auth() (src/lib/auth.ts), which the (dashboard) layout and
+// src/app/page.tsx call before rendering. The one exception is a request for
+// /auth/signin or /auth/signup that carries a session cookie: there the proxy
+// looks the session up (see handleAuthPage below).
 
 const SESSION_COOKIE_PREFIX = 'sampolio'; // = AUTH_COOKIE_PREFIX in src/lib/auth/server.ts
 
@@ -19,20 +24,11 @@ const RATE_LIMIT_WINDOW = 60 * 1000; // 1 minute
 const RATE_LIMIT_MAX_AUTH_UNAUTHENTICATED = 20; // 20 requests per minute for unauthenticated auth endpoints (login/signup)
 const RATE_LIMIT_MAX_GENERAL = 300; // 300 requests per minute for general endpoints
 
+// Same precedence as Better Auth's `ipAddressHeaders`: Cf-Connecting-Ip (set by
+// Cloudflare's edge on the tunnel path; Caddy strips any client-sent value on
+// the LAN path), then the first X-Forwarded-For hop (Caddy overwrites it).
 function getClientIp(request: NextRequest): string {
-  // Check various headers that proxies might set
-  const forwardedFor = request.headers.get('x-forwarded-for');
-  if (forwardedFor) {
-    return forwardedFor.split(',')[0].trim();
-  }
-
-  const realIp = request.headers.get('x-real-ip');
-  if (realIp) {
-    return realIp;
-  }
-
-  // Fallback to a generic identifier
-  return 'unknown';
+  return clientIpFrom(request.headers);
 }
 
 function checkRateLimit(key: string, maxRequests: number): { allowed: boolean; remaining: number; resetIn: number } {
@@ -70,8 +66,9 @@ function hasAuthSession(request: NextRequest): boolean {
   return !!getSessionCookie(request, { cookiePrefix: SESSION_COOKIE_PREFIX });
 }
 
-// Cookies cleared when a signed-in-looking browser lands on an auth page: the
-// Better Auth session cookie plus the pre-4.0 Auth.js/NextAuth ones.
+// Cookies cleared when a browser whose session the proxy rejected lands on an
+// auth page: the Better Auth session cookie plus the pre-4.0 Auth.js/NextAuth
+// ones.
 const STALE_SESSION_COOKIES = [
   `${SESSION_COOKIE_PREFIX}.session_token`,
   `__Secure-${SESSION_COOKIE_PREFIX}.session_token`,
@@ -110,7 +107,60 @@ const PROTECTED_PREFIXES = [
   '/settings',
 ];
 
-export function proxy(request: NextRequest) {
+const AUTH_PAGES = ['/auth/signin', '/auth/signup'];
+
+function isAuthPage(pathname: string): boolean {
+  return AUTH_PAGES.some((page) => pathname === page || pathname.startsWith(`${page}/`));
+}
+
+/** Where a signed-in visitor of an auth page goes: its ?callbackUrl= when that
+ * is a same-origin app path, else Home. Never back to an auth page. */
+function signedInDestination(request: NextRequest): string {
+  const target = safeCallbackPath(request.nextUrl.searchParams.get('callbackUrl'), request.nextUrl.origin);
+  return target === '/auth' || target.startsWith('/auth/') ? '/' : target;
+}
+
+function clearStaleCookies(request: NextRequest): NextResponse {
+  const response = NextResponse.next();
+  for (const name of STALE_SESSION_COOKIES) {
+    if (request.cookies.get(name)) expireCookie(response, name);
+  }
+  return response;
+}
+
+/**
+ * /auth/signin and /auth/signup. A browser with a VALID session is sent on to
+ * the app (visiting the sign-in page must not sign you out). A session cookie
+ * that the shared validity rule rejects (expired/revoked session, deactivated
+ * user, failed bootstrap) is cleared and the page renders.
+ *
+ * Why the clearing matters: a protected page whose auth() rejects the cookie
+ * redirects here, while the cookie-presence check above would send a browser
+ * with that cookie back to the protected page — a loop. getProxySession and
+ * auth() share `toAppSession`, so they agree: "valid" leaves the auth page,
+ * "invalid" loses the cookie and stays. A failed lookup (DB unavailable)
+ * renders the page without touching cookies — no redirect, so no loop.
+ * The pre-4.0 Auth.js cookies are swept whenever present.
+ */
+async function handleAuthPage(request: NextRequest): Promise<NextResponse> {
+  if (hasAuthSession(request)) {
+    let session;
+    try {
+      session = await getProxySession(request.headers);
+    } catch (error) {
+      console.error('[proxy] session lookup on an auth page failed:', error);
+      return NextResponse.next();
+    }
+    if (session) {
+      // Only page loads move on; a POST (server action) keeps its cookie and runs.
+      const isPageLoad = request.method === 'GET' || request.method === 'HEAD';
+      return isPageLoad ? NextResponse.redirect(new URL(signedInDestination(request), request.url)) : NextResponse.next();
+    }
+  }
+  return hasAnyStaleCookie(request) ? clearStaleCookies(request) : NextResponse.next();
+}
+
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const clientIp = getClientIp(request);
 
@@ -204,19 +254,8 @@ export function proxy(request: NextRequest) {
     return NextResponse.redirect(signInUrl);
   }
 
-  // If a browser with a session cookie reaches an auth page, its server-side
-  // auth() check failed (expired/revoked session, deactivated user) and it was
-  // redirected here. Clear the cookie so it can re-authenticate without a
-  // redirect loop (proxy sees cookie → redirects away → auth() fails →
-  // redirects back → loop). Also sweeps the pre-4.0 Auth.js cookies.
-  if (pathname.startsWith('/auth/signin') || pathname.startsWith('/auth/signup')) {
-    if (hasAnyStaleCookie(request)) {
-      const response = NextResponse.next();
-      for (const name of STALE_SESSION_COOKIES) {
-        if (request.cookies.get(name)) expireCookie(response, name);
-      }
-      return response;
-    }
+  if (isAuthPage(pathname)) {
+    return handleAuthPage(request);
   }
 
   // Add security headers to the response

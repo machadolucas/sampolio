@@ -4,7 +4,7 @@ import { APIError, createAuthEndpoint, createAuthMiddleware, getSessionFromCtx, 
 import { setSessionCookie } from 'better-auth/cookies';
 import { hashPassword, verifyPassword } from 'better-auth/crypto';
 import { nextCookies } from 'better-auth/next-js';
-import { passkey, getAuthenticatorName } from '@better-auth/passkey';
+import { passkey } from '@better-auth/passkey';
 import bcrypt from 'bcryptjs';
 import { eq } from 'drizzle-orm';
 import { getDb } from '@/lib/db/sqlite/client';
@@ -12,16 +12,18 @@ import * as schema from '@/lib/db/sqlite/schema';
 import { getUserDir, ensureDir } from '@/lib/db/encryption';
 import { isSelfSignupEnabled } from '@/lib/db/app-settings';
 import { isAuthSetupComplete, isFirstUserSetup } from '@/lib/db/sqlite/legacy-import';
-import { SETUP_INCOMPLETE_CODE, SETUP_INCOMPLETE_MESSAGE } from '@/lib/db/sqlite/setup-state';
+import { getSetupFailure, SETUP_INCOMPLETE_CODE, SETUP_INCOMPLETE_MESSAGE } from '@/lib/db/sqlite/setup-state';
 import {
   getLockoutRetryAfterSeconds,
   isAccountLocked,
   recordFailedLogin,
   recordSuccessfulLogin,
 } from '@/lib/db/users';
-import { DEFAULT_PASSKEY_NAME, touchPasskeyByCredentialId } from '@/lib/db/passkeys';
+import { touchPasskeyByCredentialId } from '@/lib/db/passkeys';
+import { defaultPasskeyName } from '@/lib/passkey-name';
 import { passwordPolicySchema, signUpNameSchema } from '@/lib/schemas/auth.schema';
 import { PASSKEY_REAUTH_REQUIRED, PASSKEY_REGISTRATION_MAX_SESSION_AGE_MS } from './constants';
+import { toAppSession, type AppSession } from './session';
 
 export { PASSKEY_REAUTH_REQUIRED, PASSKEY_REGISTRATION_MAX_SESSION_AGE_MS };
 
@@ -112,7 +114,7 @@ export function isDevBypassEnabled(): boolean {
   return process.env.NODE_ENV !== 'production' && !!process.env.DEV_AUTH_BYPASS;
 }
 
-function buildAuthOptions() {
+function buildAuthOptions({ withNextCookies = true }: { withNextCookies?: boolean } = {}) {
   const baseURL = resolveBaseURL();
   const origin = new URL(baseURL).origin;
 
@@ -301,10 +303,11 @@ function buildAuthOptions() {
         rpName: 'Sampolio',
         origin,
         registration: {
-          // Default label from the authenticator model (AAGUID); a name the
-          // client sends always wins.
-          afterVerification: async ({ verification }) => ({
-            name: getAuthenticatorName(verification.registrationInfo?.aaguid) ?? DEFAULT_PASSKEY_NAME,
+          // Default label: the authenticator model (AAGUID) when known, else
+          // the registering browser ("Safari on iPhone" — Apple reports an
+          // all-zero AAGUID), else "Passkey". A name the client sends wins.
+          afterVerification: async ({ ctx, verification }) => ({
+            name: defaultPasskeyName(verification.registrationInfo?.aaguid, ctx.headers?.get('user-agent')),
           }),
         },
         authentication: {
@@ -314,18 +317,21 @@ function buildAuthOptions() {
         },
       }),
       ...(isDevBypassEnabled() ? [devBypassPlugin()] : []),
-      nextCookies(), // must stay last
+      ...(withNextCookies ? [nextCookies()] : []), // must stay last
     ],
   } satisfies BetterAuthOptions;
 }
 
-function createAuth() {
-  return betterAuth(buildAuthOptions());
+function createAuth(options?: { withNextCookies?: boolean }) {
+  return betterAuth(buildAuthOptions(options));
 }
 
 export type SampolioAuth = ReturnType<typeof createAuth>;
 
-const globalForAuth = globalThis as typeof globalThis & { __sampolioAuth?: SampolioAuth };
+const globalForAuth = globalThis as typeof globalThis & {
+  __sampolioAuth?: SampolioAuth;
+  __sampolioHeadlessAuth?: SampolioAuth;
+};
 
 /** The process-wide Better Auth instance. */
 export function getAuth(): SampolioAuth {
@@ -333,9 +339,31 @@ export function getAuth(): SampolioAuth {
   return globalForAuth.__sampolioAuth;
 }
 
-/** Drop the cached instance (tests that switch DATA_DIR / env). */
+/** Same configuration without the nextCookies plugin, for code that builds
+ * its own response outside a Next request scope (the proxy): Better Auth's
+ * Set-Cookie headers must not be forwarded to `next/headers` there. */
+function getHeadlessAuth(): SampolioAuth {
+  if (!globalForAuth.__sampolioHeadlessAuth) globalForAuth.__sampolioHeadlessAuth = createAuth({ withNextCookies: false });
+  return globalForAuth.__sampolioHeadlessAuth;
+}
+
+/**
+ * The session a request's cookies carry, validated exactly like `auth()`
+ * (shared `toAppSession`), for src/proxy.ts. Read-only: `disableRefresh`
+ * skips the daily expiry extension (the next `auth()` call does it). Throws
+ * when the lookup itself fails (DB unavailable), so the caller can tell
+ * "invalid session" from "could not check".
+ */
+export async function getProxySession(requestHeaders: Headers): Promise<AppSession | null> {
+  if (getSetupFailure()) return null;
+  const result = await getHeadlessAuth().api.getSession({ headers: requestHeaders, query: { disableRefresh: true } });
+  return toAppSession(result);
+}
+
+/** Drop the cached instances (tests that switch DATA_DIR / env). */
 export function resetAuthForTests(): void {
   globalForAuth.__sampolioAuth = undefined;
+  globalForAuth.__sampolioHeadlessAuth = undefined;
 }
 
 /** Server-only dev bypass sign-in (see devBypassPlugin). Returns the

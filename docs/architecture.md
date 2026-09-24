@@ -74,7 +74,7 @@ runbook: [`operations.md`](operations.md).
 - `src/proxy.ts` redirects cookie-less requests to `/auth/signin` for `/` and every app-page
   prefix in its `PROTECTED_PREFIXES` list (`/overview`, `/cashflow`, `/mortgage`, `/budgets`,
   `/trips`, `/split`, `/bank`, `/goals`, `/playground`, `/settings`) — a lightweight cookie-presence
-  check (Node.js runtime, never touches the DB); add new pages to that list.
+  check (Node.js runtime, no DB access for app pages); add new pages to that list.
 - `/` guards itself server-side (`auth()` + `redirect`).
 - The `(dashboard)` group layout (`src/app/(dashboard)/layout.tsx`) validates the session
   server-side (`auth()` + `redirect('/auth/signin')`) before wrapping children in
@@ -266,6 +266,9 @@ on the SQLCipher DB via the drizzle adapter; tables in `src/lib/db/sqlite/schema
   outlive a revocation. `auth()` (`src/lib/auth.ts`) wraps `getSession` in React `cache()` and
   keeps the old `{ user: { id, email, name, role } } | null` shape for every call site; it
   re-checks `isActive`/`deletedAt`, so a deactivated user loses access on the next request.
+  That validity rule is `toAppSession` (`src/lib/auth/session.ts`), shared with the proxy's
+  auth-page lookup `getProxySession` (`src/lib/auth/server.ts`: a second Better Auth instance
+  without `nextCookies`, `getSession` with `disableRefresh`).
 - **Passwords**: new hashes are Better Auth scrypt. Legacy bcrypt hashes (imported from the
   `.enc` users) verify through `bcryptjs` (`password.verify` branches on `$2`) and are rehashed
   to scrypt by the `/sign-in/email` after-hook.
@@ -296,7 +299,11 @@ on the SQLCipher DB via the drizzle adapter; tables in `src/lib/db/sqlite/schema
   10 min and 30 globally per hour (`src/lib/rate-limit.ts`).
 - **Passkeys** (`@better-auth/passkey`): `rpID` = hostname of `AUTH_URL`, `rpName` "Sampolio",
   `origin` = `AUTH_URL` origin. Passkeys sit alongside passwords (never passkey-only). The
-  default name comes from the AAGUID (`getAuthenticatorName`, else "Passkey");
+  default name (`defaultPasskeyName`, `src/lib/passkey-name.ts`, set in
+  `registration.afterVerification`) is the AAGUID provider (`getAuthenticatorName`, e.g.
+  "Apple Passwords", "1Password"); for an unknown or all-zero AAGUID — Apple platforms send
+  all zeros under `attestation: "none"` — the registering request's user agent
+  ("Safari on iPhone", "Chrome on Mac"); else "Passkey". A client-sent name wins;
   `passkey.lastUsedAt` (Sampolio column) is stamped after each verified sign-in.
   `session.freshAge` is **0** because Better Auth's `freshSessionMiddleware` also gates
   `/list-sessions`, `/unlink-account` and `/delete-user`; the narrower 10-minute guard above
@@ -315,9 +322,8 @@ WHATWG-parsed against the page origin, same origin only, never a `//`/`/\` path 
 Client: `src/lib/auth-client.ts` — `authClient` (`createAuthClient` + `passkeyClient()`) and a
 provider-less `useSession()` shim returning `{ data: session }` in the old shape (memoized, so
 `session` is safe in effect deps). Sign-in uses `authClient.signIn.email` / `.signIn.passkey`
-(`{ error }` results, never throws); after success it `router.replace`s **without**
-`router.refresh()` — refreshing `/auth/signin` with the new cookie would trigger the proxy's
-stale-cookie sweep. Sign-up is the `signUp` server action (`auth.api.signUpEmail`; `nextCookies`
+(`{ error }` results, never throws); after success it `router.replace`s to the callback.
+Sign-up is the `signUp` server action (`auth.api.signUpEmail`; `nextCookies`
 sets the cookie). Settings › Account hosts the Passkeys panel
 (`src/components/settings/passkeys-panel.tsx`); on `PASSKEY_REAUTH_REQUIRED` it offers
 "Sign in again" (sign out → `/auth/signin?callbackUrl=/settings?tab=account`).
@@ -333,20 +339,27 @@ the app — see [`operations.md`](operations.md).
 
 ## 10. Middleware & security
 
-`src/proxy.ts` (Next.js 16 proxy, **Node.js runtime**; cookie-presence checks only, never the DB). Matcher: everything **except** `_next/static`, `_next/image`,
+`src/proxy.ts` (Next.js 16 proxy, **Node.js runtime**; cookie-presence checks, plus one session
+lookup on the auth pages). Matcher: everything **except** `_next/static`, `_next/image`,
 `favicon.ico`, `manifest.webmanifest`, `sw.js`, `offline.html`, `icons`, `themes`, and
 `*.png|jpg|svg` (PWA/install assets must load without auth). Behavior:
 
-- **Rate limiting** (in-memory `Map` per IP, 1-minute window, resets on restart):
+- **Rate limiting** (in-memory `Map` per client IP — `clientIpFrom`: `cf-connecting-ip`, then
+  the first `x-forwarded-for` hop — 1-minute window, resets on restart):
   unauthenticated requests to `/api/auth*` or `/auth/*` → **20/min**; all other
   unauthenticated requests → **300/min**. Requests bearing a session cookie are exempt
   (server actions burst hundreds of POSTs per page load). 429 with `Retry-After`.
 - **Auth redirect** for cookie-less `/` and every path in `PROTECTED_PREFIXES` (see §3).
 - **Session cookie** detection: `getSessionCookie(req, { cookiePrefix: 'sampolio' })` from
   `better-auth/cookies`.
-- **Stale-cookie recovery**: a session cookie on `/auth/signin|signup` means the server-side
-  `auth()` rejected the session — the proxy expires it (and any pre-4.0 `authjs.*` /
-  `next-auth.*` cookies) to break the redirect loop.
+- **Auth pages** (`/auth/signin`, `/auth/signup`) with a session cookie: the proxy looks the
+  session up (`getProxySession`, same `toAppSession` rule as `auth()`). **Valid** → a GET is
+  redirected to its `?callbackUrl=` (`safeCallbackPath`, never back to `/auth/*`) or `/`, so
+  visiting the sign-in page never signs you out; a POST (server action) passes through.
+  **Rejected** (no row, expired, deactivated, setup failed) → the cookie is expired and the
+  page renders; that is what breaks the protected page → sign-in → protected page loop, and it
+  cannot loop because both sides use the same rule. **Lookup failed** (DB error) → the page
+  renders, cookies untouched. Pre-4.0 `authjs.*` / `next-auth.*` cookies are always expired.
 
 Security headers are set for every route in `next.config.ts` (`headers()`):
 `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`,
@@ -363,7 +376,10 @@ worker; `frame-ancestors 'none'`; plus `img-src`/`font-src`/`connect-src`/`base-
 
 `src/instrumentation.ts` `register()` (Node runtime only): installs
 `installTimestampedConsole()` (`src/lib/server-logger.ts` — ISO-timestamp prefix on every
-`console.*`), then `startBankScheduler()` (`src/lib/bank/scheduler.ts`, 30-min tick,
+`console.*`), opens the SQLCipher DB (`bootstrapDatabase`), then — when the DB is usable —
+`startMaintenanceScheduler()` (`src/lib/db/sqlite/maintenance.ts`: deletes `verification` rows
+past `expiresAt` at boot and hourly, logging `[db] pruned N expired verification row(s)`),
+`startSnapshotScheduler()` (boot, every 6 h, daily 04:55) and `startBankScheduler()` (`src/lib/bank/scheduler.ts`, 30-min tick,
 per-account daily rate limits from `src/lib/bank/constants.ts`). No other daemons, queues, or
 cron exist. Bank-sync mechanics: [`bank-sync.md`](bank-sync.md).
 
@@ -475,7 +491,10 @@ wraps components in ThemeProvider). ~50 test files:
 
 **No coverage exists for**: most pages, server actions (auth/validation/cache-tag
 behavior — except a representative goals/trips/user-preferences slice), the bank client/connect/sync
-modules, `proxy.ts`, and there are no e2e/browser tests. Manual
+modules, and there are no e2e/browser tests. `src/proxy.test.ts` covers the auth-page session
+handling (redirect / clear / render, plus a redirect-following loop check) against a real temp
+DB; `src/lib/auth/passkey-registration.test.ts` runs a full passkey registration with a
+software authenticator. Manual
 verification uses the `sampolio-preview` launch config + `preview_*` tools.
 
 ## 16. Tooling

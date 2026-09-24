@@ -61,9 +61,8 @@ export default function SignUpPage() {
             }
 
             // The sign-up action already signed the new user in (session
-            // cookie set server-side by Better Auth's nextCookies plugin). No
-            // router.refresh(): refreshing /auth/signup with the new cookie
-            // would make the proxy's stale-cookie sweep expire it.
+            // cookie set server-side by Better Auth's nextCookies plugin), so
+            // go straight to Home.
             router.replace('/');
         } catch {
             setError('An error occurred. Please try again.');

@@ -1,8 +1,10 @@
 import { cache } from 'react';
 import { headers } from 'next/headers';
 import { getAuth } from '@/lib/auth/server';
+import { toAppSession, type AppSession } from '@/lib/auth/session';
 import { getSetupFailure } from '@/lib/db/sqlite/setup-state';
-import type { UserRole } from '@/types';
+
+export type { AppSession };
 
 /**
  * Server-side session accessor used by every server action, route handler and
@@ -13,26 +15,9 @@ import type { UserRole } from '@/types';
  * Backed by Better Auth DB sessions (src/lib/auth/server.ts). Because there is
  * no cookie cache, every call reads the session + user rows, so an admin
  * deactivation or soft delete takes effect on the user's very next request.
- * React `cache()` dedupes the lookup within one request.
+ * React `cache()` dedupes the lookup within one request. The validity rule
+ * itself is `toAppSession` (src/lib/auth/session.ts), shared with the proxy.
  */
-
-export interface AppSession {
-  user: {
-    id: string;
-    email: string;
-    name: string;
-    role: UserRole;
-  };
-}
-
-type SessionUser = {
-  id: string;
-  email: string;
-  name: string;
-  role?: string | null;
-  isActive?: boolean | null;
-  deletedAt?: Date | string | null;
-};
 
 const getRequestSession = cache(async () => {
   const requestHeaders = await headers();
@@ -40,17 +25,6 @@ const getRequestSession = cache(async () => {
 });
 
 export async function auth(): Promise<AppSession | null> {
-  if (getSetupFailure()) return null; // fail closed (src/lib/db/sqlite/bootstrap.ts)
-  const result = await getRequestSession();
-  if (!result?.user) return null;
-  const user = result.user as SessionUser;
-  if (user.isActive === false || user.deletedAt) return null;
-  return {
-    user: {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      role: user.role === 'admin' ? 'admin' : 'user',
-    },
-  };
+  if (getSetupFailure()) return null; // fail closed without touching the DB (bootstrap.ts)
+  return toAppSession(await getRequestSession());
 }
