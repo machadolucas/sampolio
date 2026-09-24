@@ -1,6 +1,7 @@
 import { desc, eq, sql } from 'drizzle-orm';
 import { getAuthenticatorName } from '@better-auth/passkey';
 import type { PasskeySummary } from '@/types';
+import { DEFAULT_PASSKEY_NAME } from '@/lib/passkey-name';
 import { getDb } from './sqlite/client';
 import { passkey } from './sqlite/schema';
 
@@ -11,7 +12,7 @@ import { passkey } from './sqlite/schema';
 
 type PasskeyRow = typeof passkey.$inferSelect;
 
-export const DEFAULT_PASSKEY_NAME = 'Passkey';
+export { DEFAULT_PASSKEY_NAME };
 
 /** Label for a passkey: stored name, else AAGUID provider, else "Passkey". */
 export function passkeyLabel(row: Pick<PasskeyRow, 'name' | 'aaguid'>): string {
