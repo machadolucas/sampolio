@@ -92,8 +92,11 @@ const nextConfig: NextConfig = {
     unoptimized: true,
   },
 
-  // Server external packages for file system operations
-  serverExternalPackages: ['bcryptjs'],
+  // Server external packages: bcryptjs (legacy hash verify) and the native
+  // SQLCipher driver (`better-sqlite3` is a pnpm alias for
+  // better-sqlite3-multiple-ciphers; its .node prebuild must be required from
+  // node_modules at runtime, never bundled).
+  serverExternalPackages: ['bcryptjs', 'better-sqlite3'],
 
   experimental: {
     serverActions: {

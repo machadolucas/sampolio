@@ -1,6 +1,9 @@
 // Key rotation: decrypt every *.enc file with the OLD key and re-encrypt it
-// with the NEW key (HKDF format). Complements scripts/reencrypt-data.mjs,
-// which re-encrypts with the SAME key (format migration only).
+// with the NEW key (HKDF format), then `PRAGMA hexrekey` the SQLCipher DB
+// (<DATA_DIR>/sampolio.db, key derived from ENCRYPTION_KEY — see
+// src/lib/db/sqlite/key.ts) and rewrite its snapshot under the new key.
+// Complements scripts/reencrypt-data.mjs, which re-encrypts with the SAME key
+// (format migration only).
 //
 //   OLD_ENCRYPTION_KEY=<old> ENCRYPTION_KEY=<new> node scripts/rotate-encryption-key.mjs [--dry-run]
 //
@@ -16,12 +19,17 @@
 //   - Old-key decryption is backward-compatible (tries HKDF, then legacy PBKDF2).
 //   - Never deletes data — but a crash mid-run leaves the tree MIXED between
 //     keys, so TAKE A BACKUP FIRST (`cp -a data data.bak`) and, on prod data,
-//     stop the app while rotating. Re-running with the same env is safe: files
-//     already rotated fail old-key decryption and are counted, not corrupted.
+//     STOP THE APP while rotating (the DB rekey needs exclusive access).
+//     Re-running with the same env is safe: files already rotated fail
+//     old-key decryption and are counted, not corrupted; a DB that already
+//     opens with the new key is reported and left alone.
+//   - --dry-run only checks which key opens the DB; it does not rekey.
 
 import * as crypto from 'node:crypto';
 import * as fs from 'node:fs/promises';
+import * as fsSync from 'node:fs';
 import * as path from 'node:path';
+import { DB_FILE_NAME, deriveSqliteKeyHex, openEncrypted, writeSnapshot } from './sqlcipher-lib.mjs';
 
 const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 16;
@@ -149,12 +157,59 @@ async function main() {
     }
   }
 
+  const dbStatus = rotateSqliteDb(dataDir, oldKey, newKey);
+
   console.log('\nDone.');
   console.log(`  total .enc files   : ${total}`);
   console.log(`  rotated old → new  : ${rotated}${DRY_RUN ? ' (would rotate)' : ''}`);
   console.log(`  already on new key : ${alreadyNewKey}`);
   console.log(`  failed             : ${failed}`);
-  if (failed > 0) process.exitCode = 1;
+  console.log(`  sampolio.db        : ${dbStatus}`);
+  if (failed > 0 || dbStatus.startsWith('FAILED')) process.exitCode = 1;
+}
+
+/** Rekey <DATA_DIR>/sampolio.db from the old derived key to the new one and
+ * rewrite the snapshot (the old snapshot is only readable with the OLD key). */
+function rotateSqliteDb(dataDir, oldKey, newKey) {
+  const dbFile = path.join(dataDir, DB_FILE_NAME);
+  if (!fsSync.existsSync(dbFile)) return 'absent (nothing to rekey)';
+  const oldHex = deriveSqliteKeyHex(oldKey);
+  const newHex = deriveSqliteKeyHex(newKey);
+
+  let db;
+  try {
+    db = openEncrypted(dbFile, oldHex);
+  } catch {
+    try {
+      db = openEncrypted(dbFile, newHex);
+    } catch (e) {
+      return `FAILED — opens with neither key (${e.message})`;
+    }
+    try {
+      if (!DRY_RUN) writeSnapshot(db, dataDir, newHex);
+      return 'already on new key' + (DRY_RUN ? '' : ' (snapshot rewritten)');
+    } catch (e) {
+      return `FAILED — snapshot: ${e.message}`;
+    } finally {
+      db.close();
+    }
+  }
+
+  try {
+    if (DRY_RUN) return 'opens with old key (would rekey)';
+    // SQLite3MultipleCiphers rekeys in rollback-journal mode; restore WAL after.
+    db.pragma('journal_mode = DELETE');
+    db.pragma(`hexrekey='${newHex}'`);
+    db.pragma('journal_mode = WAL');
+    db.close();
+    db = openEncrypted(dbFile, newHex);
+    const snap = writeSnapshot(db, dataDir, newHex);
+    return `rekeyed old → new (snapshot rewritten: ${snap.bytes} bytes)`;
+  } catch (e) {
+    return `FAILED — ${e.message}`;
+  } finally {
+    db?.close();
+  }
 }
 
 main().catch((e) => {

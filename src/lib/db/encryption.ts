@@ -16,7 +16,7 @@ const HKDF_INFO = Buffer.from('sampolio-file-encryption-v1');
 // a hard failure: falling back to the publicly known default would silently
 // encrypt real data with a compromised key. Called lazily at request time, so
 // `next build` never needs the key.
-function getEncryptionKey(): string {
+export function getEncryptionKey(): string {
   const key = process.env.ENCRYPTION_KEY;
   if (!key) {
     if (process.env.NODE_ENV === 'production') {

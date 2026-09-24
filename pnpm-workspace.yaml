@@ -1,4 +1,9 @@
 allowBuilds:
+  # better-sqlite3 is a pnpm alias for better-sqlite3-multiple-ciphers (the
+  # SQLCipher build). It ships prebuilt N-API binaries (prebuilds/darwin-arm64),
+  # which are Node-ABI independent, so its implicit node-gyp build is disabled.
+  better-sqlite3-multiple-ciphers: false
+  esbuild: true
   sharp: true
   unrs-resolver: true
 ignoredBuiltDependencies:
