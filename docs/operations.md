@@ -26,7 +26,8 @@ through a Cloudflare Tunnel gated by Cloudflare Access (Zero Trust).
                                                             next start -p 3999  (launchd: com.sampolio.app)
                                                                             │  serves .next-prod
                                                                             ▼
-                                                            ~/.sampolio/data  (encrypted JSON, AES-256-GCM)
+                                                            ~/.sampolio/data  (encrypted JSON, AES-256-GCM
+                                                                               + SQLCipher sampolio.db for auth)
 ```
 
 - **From the LAN**, split-horizon DNS resolves `<your-domain>` to the Caddy host,
@@ -44,8 +45,15 @@ through a Cloudflare Tunnel gated by Cloudflare Access (Zero Trust).
   serves its own build dir, isolated from the dev preview's `.next`.
 - **Working copy:** there is **one** git clone at `~/sampolio`. Deploying =
   rebuild `.next-prod` in place + restart the agent (no separate prod checkout).
-- **Data:** `~/.sampolio/data` (per-user encrypted `.enc` files; see the DB layer
-  docs). The app reads its secrets from the environment, not from disk.
+- **Data:** `~/.sampolio/data` (per-user encrypted `.enc` files, plus the
+  SQLCipher `sampolio.db` holding users/sessions/passkeys and its verified
+  snapshot `snapshots/sampolio.db`; see the DB layer docs). The app reads its
+  secrets from the environment, not from disk.
+- **Boot log lines** (`sampolio.log`): `[db] opened encrypted database …`,
+  on the first 4.x boot `[db] imported N legacy users (M soft-deleted) from .enc
+  files`, then `[db] snapshot (startup) written …`. `[db] startup FAILED` means a
+  wrong/missing `ENCRYPTION_KEY` or an unreadable `DATA_DIR`; every sign-in fails
+  until it is fixed.
 - **Logs:** `~/.sampolio/logs/sampolio.log` and `sampolio-error.log`.
 - **Env:** baked into the plist from `~/sampolio/.env` by
   `scripts/install-launchd.sh` (see §5). The plist embeds the resolved Node path
@@ -75,14 +83,14 @@ The Node version is pinned in `.nvmrc`; run prod tooling under that version (nvm
 
 The whole app is internet-reachable but **gated at the Cloudflare edge** by Access.
 Auth happens before any request reaches the tunnel/host, in addition to the app's
-own NextAuth login.
+own Better Auth login (password or passkey).
 
 Two Access applications cover the one hostname:
 
 | Application | Scope | Policy | Why |
 |---|---|---|---|
 | **Sampolio** | `<your-domain>` (whole app) | `allow` — the household's email addresses only | Gate the app to a small allow-list |
-| **Sampolio bank callback (bypass)** | `<your-domain>/api/bank/callback` | `bypass` — everyone | The bank's PSD2/SCA consent redirect must land without an Access login. Still protected by the NextAuth session + a single-use CSRF `state` |
+| **Sampolio bank callback (bypass)** | `<your-domain>/api/bank/callback` | `bypass` — everyone | The bank's PSD2/SCA consent redirect must land without an Access login. Still protected by the app session + a single-use CSRF `state` |
 
 **Identity provider (login method):** **One-time PIN** (email code). The visitor
 enters their email, Cloudflare emails a 6-digit code; the `allow` policy means
@@ -144,8 +152,27 @@ the scripted form of this sequence.
 (`com.example.sampolio_backup`) pointed at a backup script kept outside this repo:
 a `tar.gz` of `~/.sampolio` (top-level `data/`), integrity-checked locally, then
 copied to each backup target. Tarball the data dir before each deploy too
-(`~/sampolio-data-backup-<timestamp>.tar.gz`). Never write to `~/.sampolio/data`
-except read-only snapshots.
+(`~/sampolio-data-backup-<timestamp>.tar.gz`). Every tar **excludes**
+`data/.encryption_key`, `data/.auth_secret`, `data/.auth_url` (a backup must not
+carry the key that decrypts it — keep `ENCRYPTION_KEY` in a password manager)
+and the live `data/sampolio.db`, `-wal`, `-shm` (a hot copy can be torn); it
+**includes** `data/snapshots/sampolio.db`, the consistent encrypted copy the app
+writes on boot, every 6 h and daily at 04:55 (before the 05:10 backup) —
+refresh it on demand with `DATA_DIR=$HOME/.sampolio/data node scripts/db-snapshot.mjs`
+(safe while the app runs). Never write to `~/.sampolio/data` except those
+snapshots.
+
+**Restore the auth DB from a snapshot** — stop the app, move the live
+`sampolio.db`, `sampolio.db-wal`, `sampolio.db-shm` aside (never delete them),
+`cp data/snapshots/sampolio.db data/sampolio.db`, `chmod 600` it, start the app.
+The snapshot opens with the same `ENCRYPTION_KEY`; sessions/passkeys added after
+the snapshot are lost (users sign in again).
+
+**Rollback to a pre-4.0 build** — check out the previous tag, rebuild, kickstart.
+The legacy `users-index.enc` / `users/*/user.enc` are never modified by 4.x, so the
+old build signs users in as before; move `sampolio.db*` aside (don't delete).
+Password changes, passkeys and users created after the cutover are not in the
+`.enc` files and are lost on rollback.
 
 **Cloudflare Access changes** (login methods, allow-list, session length) are made
 in the Cloudflare Zero Trust dashboard or via the API:
@@ -168,7 +195,9 @@ reconnect banner before expiry (Overview) and a Reconnect button in
 | `uninstall-launchd.sh` | Removes the launchd agent. |
 | `run-sampolio.sh` | Starts the app in the foreground from the in-place build (dev/diagnostic use). |
 | `reencrypt-data.mjs` | One-shot re-encryption of every `.enc` file into the fast **HKDF** key-derivation format (see §8). `--dry-run` supported. |
-| `rotate-encryption-key.mjs` | Rotates the data set to a **new** `ENCRYPTION_KEY`: decrypts every `.enc` with `OLD_ENCRYPTION_KEY`, re-encrypts with the new key (see §8). `--dry-run` supported. |
+| `rotate-encryption-key.mjs` | Rotates the data set to a **new** `ENCRYPTION_KEY`: decrypts every `.enc` with `OLD_ENCRYPTION_KEY`, re-encrypts with the new key, then `PRAGMA hexrekey`s `sampolio.db` and rewrites its snapshot (see §8). `--dry-run` supported. |
+| `db-snapshot.mjs` | `pnpm db:snapshot`: verified encrypted `VACUUM INTO` copy of `sampolio.db` → `<DATA_DIR>/snapshots/sampolio.db` (key from `ENCRYPTION_KEY` or `<DATA_DIR>/.encryption_key`). Safe while running. |
+| `sqlcipher-lib.mjs` | Shared SQLCipher helpers for the two scripts above; mirrors `src/lib/db/sqlite/{key,client,snapshot}.ts`. |
 | `generate-icons.mjs` | Regenerates the committed PWA PNG icon set from the master SVGs in `public/icons/` (uses `sharp`). Run after editing the SVGs. |
 | `lib-node.sh` | Shared shell helpers (Node/nvm resolution) sourced by the other scripts. |
 
@@ -193,8 +222,13 @@ with the old key (HKDF with PBKDF2 fallback) and re-encrypts it with the new key
 `reencrypt-data.mjs`'s job). Atomic per file, but a crash mid-run leaves the
 tree mixed between keys — **stop the app and take a backup first**; re-running
 with the same env resumes safely (already-rotated files are detected via the
-new key and skipped). Afterwards update `<DATA_DIR>/.encryption_key` and reload
-the launchd plist env (see §6 for the full-reload nuance).
+new key and skipped). The same run rekeys the SQLCipher DB: `sampolio.db` is keyed
+with HKDF(`ENCRYPTION_KEY`, `sampolio-sqlite-v1`), so it opens with the old derived
+key → `PRAGMA hexrekey` to the new one (in rollback-journal mode, then back to WAL)
+→ a fresh snapshot under the new key; a DB that already opens with the new key is
+reported and left alone. Old backups keep their old key. Afterwards update
+`<DATA_DIR>/.encryption_key` and reload the launchd plist env (see §6 for the
+full-reload nuance).
 
 **Missing `ENCRYPTION_KEY` is a hard failure in production**: the app throws on
 the first data read/write instead of falling back to the publicly known dev
@@ -206,13 +240,13 @@ Every variable the code reads (`grep -r "process.env" src scripts next.config.ts
 
 | Variable | Required | Read in | Meaning |
 |---|---|---|---|
-| `ENCRYPTION_KEY` | yes | `db/encryption.ts`, `reencrypt-data.mjs`, `rotate-encryption-key.mjs` | AES-256-GCM master key for all `.enc` files. Prod value in `~/.sampolio/data/.encryption_key` (injected into the env by the plist/launch config — the app itself reads only the env). |
-| `AUTH_SECRET` | yes | NextAuth (via env convention) | NextAuth session secret. |
-| `AUTH_URL` | yes | NextAuth (env convention), `api/bank/callback/route.ts` | Canonical app URL (prod domain; `http://localhost:4999` for the dev preview). The bank-callback route reads it explicitly to build the external redirect base. |
+| `ENCRYPTION_KEY` | yes | `db/encryption.ts`, `db/sqlite/key.ts`, `reencrypt-data.mjs`, `rotate-encryption-key.mjs`, `db-snapshot.mjs` | AES-256-GCM master key for all `.enc` files; the SQLCipher key for `sampolio.db` is derived from it (HKDF, `sampolio-sqlite-v1`). Prod value in `~/.sampolio/data/.encryption_key` (injected into the env by the plist/launch config — the app itself reads only the env). |
+| `AUTH_SECRET` | yes | `lib/auth/server.ts` | Better Auth secret (signs session cookies). Changing it signs everyone out. |
+| `AUTH_URL` | yes (throws in prod if unset) | `lib/auth/server.ts`, `api/bank/callback/route.ts` | Canonical app URL (prod domain; `http://localhost:4999` for the dev preview). Better Auth `baseURL`; its **hostname is the passkey RP ID**, so changing the domain orphans every registered passkey. The bank-callback route reads it to build the external redirect base. |
 | `DATA_DIR` | no (default `./data`) | `db/encryption.ts`, scripts | Root of the encrypted data tree. Prod: `~/.sampolio/data`. |
 | `OLD_ENCRYPTION_KEY` | rotation only | `rotate-encryption-key.mjs` | The previous master key when rotating to a new `ENCRYPTION_KEY` (§8). Never read by the app. |
 | `NEXT_DIST_DIR` | no (default `.next`) | `next.config.ts` | Build output dir; prod sets `.next-prod` to isolate from dev. |
-| `DEV_AUTH_BYPASS` | dev only | `lib/auth.ts`, `app/dev-login/` | Email of an existing user; visiting `/dev-login` signs in as them without a password. Never set in prod. |
+| `DEV_AUTH_BYPASS` | dev only | `lib/auth/server.ts`, `app/dev-login/` | Email of an existing user; visiting `/dev-login` signs in as them without a password. Never set in prod. |
 | `ENABLE_BANKING_APP_ID` | bank sync only | `lib/bank/*` | Enable Banking application id (JWT `kid`). All three `ENABLE_BANKING_*` must be present or the feature hard-disables. |
 | `ENABLE_BANKING_REDIRECT_URL` | bank sync only | `lib/bank/*` | Consent callback URL (`https://<your-domain>/api/bank/callback`). |
 | `ENABLE_BANKING_PRIVATE_KEY_FILE` | bank sync only | `lib/bank/jwt.ts` | Path to the 0600 RS256 PKCS#8 PEM (outside the repo). |

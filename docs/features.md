@@ -1081,7 +1081,7 @@ Account "Profile picture" block).
   It is **excluded from the JSON backup** (`data-transfer.ts` never touches it). `User.avatarVersion?: number`
   is the only encrypted-record field; `setUserAvatar(userId, Buffer | null)` (`src/lib/db/users.ts`)
   writes/removes the file and bumps the version.
-- **Served by `src/app/api/avatars/[userId]/route.ts`** (the SECOND non-NextAuth API route,
+- **Served by `src/app/api/avatars/[userId]/route.ts`** (the SECOND non-auth API route,
   alongside the bank callback): session-gated, a `^[A-Za-z0-9-]+$` userId guard (blocks path
   traversal), `Cache-Control: private, max-age=31536000, immutable`, and a `?v={avatarVersion}`
   cache-buster from `avatarUrlFor`. Node runtime (needs `fs`). In `proxy.ts`, cookie-bearing requests are exempt

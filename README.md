@@ -95,11 +95,13 @@ A self-hosted personal finance planning tool that replaces budgeting spreadsheet
 
 ### Security & Privacy
 - **File-Based Encrypted Storage**: AES-256-GCM encryption with HKDF-SHA256 key derivation — your data stays on your server
-- **Password Security**: bcrypt hashing (12 rounds), strong password requirements (8+ chars, mixed case, numbers, special chars)
+- **Passkeys**: sign in with Face ID / Touch ID / a password manager (WebAuthn, alongside the password); each passkey is bound to the app's own hostname, so autofill never mixes it with sibling sites
+- **Password Security**: scrypt hashing (legacy bcrypt hashes upgraded on first sign-in), strong password requirements (8+ chars, mixed case, numbers, special chars)
+- **Encrypted auth database**: users, sessions and passkeys in a SQLCipher-encrypted SQLite file keyed from `ENCRYPTION_KEY`
 - **Brute Force Protection**: Account lockout after 10 failed attempts within 15 minutes
-- **Rate Limiting**: Edge middleware caps unauthenticated auth requests (20/min) and general requests (300/min) per IP
+- **Rate Limiting**: the proxy caps unauthenticated auth requests (20/min) and general requests (300/min) per IP; Better Auth adds DB-backed per-endpoint limits
 - **Security Headers**: XSS protection, frame options, CSP, HSTS, restricted permissions policy
-- **Self-Hosted**: Deploy by cloning and building on your own server — no external database needed
+- **Self-Hosted**: Deploy by cloning and building on your own server — no external database server needed
 
 ## Getting Started
 
@@ -148,7 +150,7 @@ pnpm dev
 
 ### Server Actions (No REST API)
 
-The application uses Next.js Server Actions exclusively for all backend operations — there are no traditional REST API routes (except the NextAuth handler at `/api/auth/[...nextauth]`). All server actions are located in `src/lib/actions/` and follow a consistent pattern:
+The application uses Next.js Server Actions exclusively for all backend operations — there are no traditional REST API routes (except the Better Auth handler at `/api/auth/[...all]`). All server actions are located in `src/lib/actions/` and follow a consistent pattern:
 
 - `'use server'` directive at the top
 - Input validation with Zod schemas
@@ -158,11 +160,13 @@ The application uses Next.js Server Actions exclusively for all backend operatio
 
 ### File-Based Encrypted Database
 
-All data is stored as individually encrypted JSON files in `~/.sampolio/data/` (configurable):
+Financial data is stored as individually encrypted JSON files in `~/.sampolio/data/` (configurable); users, sessions and passkeys live in the SQLCipher database `sampolio.db` next to them:
 
 ```
 ~/.sampolio/data/
-├── users-index.enc              # User ID/email lookup
+├── sampolio.db                  # SQLCipher: users, sessions, passkeys (Better Auth)
+├── snapshots/sampolio.db        # verified encrypted snapshot (back this up, not the live file)
+├── users-index.enc              # legacy user index (pre-4.0; imported once)
 ├── app-settings.enc             # Global settings (self-signup, etc.)
 ├── shared/                      # Shared (non-user-scoped) entities
 │   ├── mortgages/
@@ -172,7 +176,7 @@ All data is stored as individually encrypted JSON files in `~/.sampolio/data/` (
 │       └── {userId}.enc         # Reverse index: userId → mortgageIds
 └── users/
     └── {userId}/
-        ├── user.enc             # Profile, password hash, role
+        ├── user.enc             # legacy profile (pre-4.0; imported once)
         ├── preferences.enc      # Onboarding state, categories, tax defaults
         ├── accounts/
         │   └── {accountId}.enc  # Cash accounts
@@ -358,7 +362,10 @@ SAMPOLIO_DATA_DIR=~/.sampolio/data   # Data directory
 
 **Migrating Data Between Servers**:
 
-**Important**: Use the same `ENCRYPTION_KEY` to decrypt existing data.
+**Important**: Use the same `ENCRYPTION_KEY` to decrypt existing data — it also
+unlocks the SQLCipher `sampolio.db`. Stop the app before copying (a live
+`sampolio.db` + `-wal` can be torn), or copy `data/snapshots/sampolio.db` over
+`data/sampolio.db` on the new server.
 
 **Method 1: Copy .env file and data** (simplest):
 ```bash
@@ -479,10 +486,9 @@ docker run -p 3999:3999 \
 
 | Variable | Description | Required | Default |
 |----------|-------------|----------|---------|
-| `AUTH_SECRET` | NextAuth.js secret key | Yes* | Auto-generated |
-| `ENCRYPTION_KEY` | 64-character hex key for file encryption | Yes* | Auto-generated |
-| `AUTH_TRUST_HOST` | Set to `true` behind reverse proxy | No | - |
-| `AUTH_URL` | Public URL for auth (behind reverse proxy) | No | - |
+| `AUTH_SECRET` | Better Auth secret (signs session cookies) | Yes* | Auto-generated |
+| `ENCRYPTION_KEY` | 64-character hex key for file encryption (the SQLite key is derived from it) | Yes* | Auto-generated |
+| `AUTH_URL` | Public URL (`https://…`); its hostname is the passkey RP ID | Yes in production | `http://localhost:4999` in dev |
 | `DATA_DIR` / `SAMPOLIO_DATA_DIR` | Custom data directory path | No | `~/.sampolio/data` |
 | `PORT` / `SAMPOLIO_PORT` | Server port | No | `3999` |
 | `HOSTNAME` / `SAMPOLIO_HOST` | Server hostname | No | `0.0.0.0` |
@@ -498,7 +504,7 @@ docker run -p 3999:3999 \
 
 - **Framework**: Next.js 16 (App Router, Server Actions)
 - **Language**: TypeScript (strict mode)
-- **Authentication**: NextAuth.js v5 (JWT sessions, credentials provider)
+- **Authentication**: Better Auth 1.7.5 (DB sessions, email + password, passkeys via `@better-auth/passkey`) on SQLCipher (`better-sqlite3-multiple-ciphers` + Drizzle ORM)
 - **UI Components**: PrimeReact with PrimeIcons
 - **Styling**: Tailwind CSS v4
 - **Icons**: PrimeIcons, Lucide React, React Icons
@@ -506,7 +512,7 @@ docker run -p 3999:3999 \
 - **Charts**: ECharts (via echarts-for-react), Chart.js
 - **Date Handling**: date-fns
 - **Encryption**: Node.js crypto (AES-256-GCM, HKDF-SHA256 with a legacy PBKDF2 read fallback)
-- **Password Hashing**: bcryptjs
+- **Password Hashing**: scrypt (Better Auth); bcryptjs only verifies legacy hashes
 - **Bank Sync**: Enable Banking (PSD2 AIS) via `jose` (RS256 JWT) — optional, read-only
 - **IDs**: uuid v14
 

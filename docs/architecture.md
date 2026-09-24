@@ -14,7 +14,8 @@ mechanics live in [`features.md`](features.md), [`projections-and-reconciliation
 | Language | `typescript` | ^6.0.3 (strict) |
 | Components | `primereact` | ^10.9.9 (+ `primeicons` ^7.0.0, `react-icons` ^5.7.0, `lucide-react` 1.42.0) |
 | Styling | `tailwindcss` | ^4.3.3 (via `@tailwindcss/postcss`) |
-| Auth | `next-auth` | 5.0.0-beta.32 (+ `bcryptjs` ^3.0.3 for password hashing) |
+| Auth | `better-auth` + `@better-auth/passkey` | 1.7.5 exact (scrypt hashes; `bcryptjs` ^3.0.3 only verifies legacy imported hashes) |
+| Auth DB | `drizzle-orm` 0.45.3 + `better-sqlite3` → `npm:better-sqlite3-multiple-ciphers@13.0.3` | SQLCipher-encrypted SQLite (`drizzle-kit` 0.31.11 generates migrations only) |
 | Validation | `zod` | ^4.5.4 |
 | Forms | `react-hook-form` ^7.87.0 + `@hookform/resolvers` ^5.9.1 |
 | Charts | `echarts` ^6.1.0 (+ `echarts-for-react` ^3.0.6), `chart.js` ^4.5.1 |
@@ -25,7 +26,9 @@ mechanics live in [`features.md`](features.md), [`projections-and-reconciliation
 | Tests | `vitest` ^5.0.0, `@testing-library/react` ^16.3.3, `jsdom` ^30.0.1 |
 
 Package manager: **pnpm 12.3.4** (`packageManager` field). Node: **>= 26** (`engines`; `.nvmrc` = `v26`).
-There is no external database and no ORM — persistence is encrypted JSON files on disk.
+Persistence is encrypted JSON files on disk, plus one SQLCipher-encrypted SQLite file
+(`${DATA_DIR}/sampolio.db`) that currently holds only the auth tables (§6, §9). No external
+database server.
 
 Compatibility bounds: PrimeReact 10 preserves the resource-based themes used by
 `scripts/copy-themes.mjs`; PrimeIcons 7 retains its MIT license. ESLint 9 and
@@ -35,7 +38,7 @@ pinned to 1.42.0 to satisfy pnpm's minimum release-age policy.
 ## 2. Runtime topology
 
 A single Node process (`next start`) serves everything: pages, server actions, the API
-routes (NextAuth, the bank consent callback, and the avatar image endpoint), and an
+routes (Better Auth, the bank consent callback, and the avatar image endpoint), and an
 in-process background bank-sync scheduler. Production runs as the launchd
 service `com.sampolio.app` on port **3999** against `~/.sampolio/data`, built into `.next-prod`
 (`NEXT_DIST_DIR`); the dev preview runs `next dev -p 4999` against a repo-local `./data` copy
@@ -58,10 +61,11 @@ runbook: [`operations.md`](operations.md).
 | `/bank` | `src/app/(dashboard)/bank/page.tsx` | Connected bank accounts + imported transaction ledger. |
 | `/playground` | `src/app/(dashboard)/playground/page.tsx` | Ephemeral "What If?" scenario explorer. |
 | `/settings` | `src/app/(dashboard)/settings/page.tsx` | Preferences, banking, JSON export/import, admin panel, data maintenance, account self-service (password change, start fresh, delete account) (TabView; deep-link `?tab=banking`). |
-| `/auth/signin`, `/auth/signup` | `src/app/auth/…` | Credential sign-in / sign-up (pass-through `auth/layout.tsx`). |
+| `/auth/signin`, `/auth/signup` | `src/app/auth/…` | Password + passkey sign-in (button and conditional-UI autofill) / sign-up (pass-through `auth/layout.tsx`). |
+| `/auth/error` | `src/app/auth/error/page.tsx` | Better Auth redirect-error target (`onAPIError.errorURL`); fixed messages only. |
 | `/dev-login` | `src/app/dev-login/route.ts` | GET handler: dev-only password-less sign-in as `DEV_AUTH_BYPASS`; returns 404 in production or when the flag is unset. |
-| `/api/auth/[...nextauth]` | `src/app/api/auth/[...nextauth]/route.ts` | NextAuth handlers. |
-| `/api/bank/callback` | `src/app/api/bank/callback/route.ts` | Enable Banking consent callback (one of two non-NextAuth API routes). |
+| `/api/auth/[...all]` | `src/app/api/auth/[...all]/route.ts` | Better Auth HTTP handler (`getAuth().handler`). |
+| `/api/bank/callback` | `src/app/api/bank/callback/route.ts` | Enable Banking consent callback (one of two non-auth API routes). |
 | `/api/avatars/[userId]` | `src/app/api/avatars/[userId]/route.ts` | User avatar image (session-gated; serves the plain-binary `avatar.webp`; `Cache-Control: private, max-age=31536000, immutable` with a `?v={avatarVersion}` buster). Node runtime. |
 | `/manifest.webmanifest` | `src/app/manifest.ts` | Static PWA manifest. |
 
@@ -70,11 +74,11 @@ runbook: [`operations.md`](operations.md).
 - `src/proxy.ts` redirects cookie-less requests to `/auth/signin` for `/` and every app-page
   prefix in its `PROTECTED_PREFIXES` list (`/overview`, `/cashflow`, `/mortgage`, `/budgets`,
   `/trips`, `/split`, `/bank`, `/goals`, `/playground`, `/settings`) — a lightweight cookie-presence
-  check on the Edge; add new pages to that list.
+  check (Node.js runtime, never touches the DB); add new pages to that list.
 - `/` guards itself server-side (`auth()` + `redirect`).
 - The `(dashboard)` group layout (`src/app/(dashboard)/layout.tsx`) validates the session
   server-side (`auth()` + `redirect('/auth/signin')`) before wrapping children in
-  `AppLayout`, so page shells never render unauthenticated even if the edge check is
+  `AppLayout`, so page shells never render unauthenticated even if the proxy check is
   bypassed. Independently, **every server action verifies `auth()`** — data is guarded
   regardless of either layer. The group also has a `template.tsx` that re-mounts per
   navigation and wraps children in `PageEntrance` (250ms `rise-in`, restarted on pathname
@@ -93,7 +97,7 @@ client page ('use client')
 ```
 
 Every action returns `ApiResponse<T> = { success: boolean; data?: T; error?: string }`
-(`src/types/index.ts`). There are **no REST endpoints** besides the NextAuth handler and the
+(`src/types/index.ts`). There are **no REST endpoints** besides the Better Auth handler and the
 bank consent callback — all reads and mutations are server actions invoked from client
 components.
 
@@ -101,11 +105,11 @@ components.
 
 | Module | Exported actions |
 |---|---|
-| `account.ts` | `changeMyPassword`, `getAccountDeletionPreflight`, `deleteMyAccount`, `resetMyData`, `updateMyAvatar` (self-service; Settings → Account) |
+| `account.ts` | `changeMyPassword` (Better Auth `changePassword`, revokes other sessions), `listMyPasskeys`, `getAccountDeletionPreflight`, `deleteMyAccount`, `resetMyData`, `updateMyAvatar` (self-service; Settings → Account) |
 | `accounts.ts` | `getAccounts`, `getAccountById`, `createAccount`, `updateAccount`, `deleteAccount` |
-| `admin.ts` | `getUsers`, `getUserById`, `createUser`, `updateUser` (incl. optional `avatarDataUri`), `deleteUser`, `getSettings`, `updateSettings`, `revalidateAllCaches` |
+| `admin.ts` | `getUsers` (rows carry `passkeyCount`), `getUserById`, `createUser`, `updateUser` (incl. optional `avatarDataUri`; deactivation and password reset revoke sessions, keep passkeys), `deleteUser` (soft delete), `listUserPasskeys`, `removeUserPasskeys`, `getSettings`, `updateSettings`, `revalidateAllCaches` |
 | `app-info.ts` | `getAppVersion` |
-| `auth.ts` | `signUp`, `checkSignupEnabled` |
+| `auth.ts` | `signUp` (`auth.api.signUpEmail`; signs the user in), `checkSignupEnabled` |
 | `bank.ts` | `getBankFeatureStatus`, `getBankConnections`, `listBankAspsps`, `startBankConnection`, `reconnectBankConnection`, `refreshBankConnection`, `disconnectBankConnection`, `updateBankAccountLink`, `getBankConnectionsNeedingAttention`, `getCardLiabilities`, `getHomeBankGlance`, `getCreditCardOptions`, `getCardStatementBreakdownForAccount`, `getBankSyncRuns`, `getBankTransactionsForLink`, `getBankConnection` |
 | `budgets.ts` | `getBudgets`, `getBudgetById`, `createBudget`, `updateBudget`, `deleteBudget`, `confirmBudget`, `unconfirmBudget`, `addBudgetLine`, `updateBudgetLine`, `deleteBudgetLine`, `addBudgetFundingSource`, `updateBudgetFundingSource`, `deleteBudgetFundingSource`, `addBudgetExpenseEntry`, `updateBudgetExpenseEntry`, `deleteBudgetExpenseEntry` |
 | `debts.ts` | `getDebts`, `getDebtById`, `createDebt`, `updateDebt`, `deleteDebt`, `getReferenceRates`, `setReferenceRate`, `deleteReferenceRate`, `getExtraPayments`, `createExtraPayment`, `deleteExtraPayment` |
@@ -140,16 +144,21 @@ concrete module path (e.g. `import { getBankConnections } from '@/lib/actions/ba
 ## 6. DB layer & on-disk storage
 
 Each entity has a module in `src/lib/db/` doing read-modify-write of `.enc` files
-(no barrel — import the concrete module).
+(no barrel — import the concrete module). The exception is **users**: `src/lib/db/users.ts`
+keeps its file-era signatures but queries the SQLCipher DB (`src/lib/db/sqlite/`, pattern in
+[`src/lib/db/AGENTS.md`](../src/lib/db/AGENTS.md)); `src/lib/db/passkeys.ts` reads the
+`passkey` table.
 Root is `getDataDir()` = `$DATA_DIR` or `<cwd>/data`. Exact layout (file names from code):
 
 ```
 data/
 ├── .encryption_key  .auth_secret  .auth_url    # secrets as dot-files; injected as env by launch config / prod plist
+├── sampolio.db (+ -wal, -shm)                  # SQLCipher DB: Better Auth tables + _meta (db/sqlite/); never tar'd live
+├── snapshots/sampolio.db                       # verified encrypted VACUUM INTO copy — what backups archive
 ├── app-settings.enc                            # AppSettings (db/app-settings.ts)
-├── users-index.enc                             # email → userId index (db/users.ts)
+├── users-index.enc                             # LEGACY (pre-4.0) email → userId index; read once by the importer, never written
 ├── users/{userId}/
-│   ├── user.enc                                # User record (incl. avatarVersion)
+│   ├── user.enc                                # LEGACY (pre-4.0) user record; imported once, kept as the rollback path
 │   ├── preferences.enc                         # UserPreferences (single file)
 │   ├── avatar.webp                             # profile picture — PLAIN binary (unencrypted, deliberate); excluded from JSON backup
 │   │                                           #   ↑ the only unencrypted file in the tree; low-sensitivity, enables zero-decrypt streaming + HTTP caching
@@ -201,6 +210,19 @@ a warning and falls back to a hardcoded default key
 (`'sampolio-default-encryption-key-change-in-prod'`) as a dev convenience.
 Details and migration notes: `src/lib/db/AGENTS.md` (one-shot migrator: `scripts/reencrypt-data.mjs`).
 
+**SQLCipher DB** (`src/lib/db/sqlite/`): `sampolio.db` is encrypted with a raw 256-bit
+key = HKDF-SHA256(`ENCRYPTION_KEY`, info `sampolio-sqlite-v1`) (`key.ts`; mirrored by
+`scripts/sqlcipher-lib.mjs`). `client.ts` opens it lazily (never at import time — `next build`
+evaluates modules) as a `globalThis` singleton; the PRAGMAs `cipher='sqlcipher'`,
+`legacy=4`, `hexkey` come first and the key is verified by reading `sqlite_master` (a wrong
+key only fails there), then `journal_mode=WAL`, `foreign_keys=ON`, `busy_timeout=5000`, then
+the committed `drizzle/` migrations run (`migrate.ts`). `snapshot.ts` writes
+`snapshots/sampolio.db` with `VACUUM INTO '<plain path>'` — SQLite3MultipleCiphers encrypts
+the target with the source connection's key (the `file:…?hexkey=` URI form does not work:
+better-sqlite3 does not enable URI filenames) — and verifies every copy (not a plaintext
+header, opens with the key, fails without) before an atomic rename. Never `db.backup()`:
+its destination connection is unkeyed, so the copy would be plaintext.
+
 ## 8. Caching
 
 All cached reads live in `src/lib/db/cached.ts` (`cachedGet*` wrappers using the Next.js 16
@@ -231,28 +253,73 @@ batch) fetch a page's whole dataset in one cached call with the union of tags.
 
 ## 9. Auth
 
-`src/lib/auth.ts` — NextAuth v5, two Credentials providers:
+**Better Auth 1.7.5** (`src/lib/auth/server.ts`, lazy `getAuth()` singleton on `globalThis`)
+on the SQLCipher DB via the drizzle adapter; tables in `src/lib/db/sqlite/schema/auth.ts`
+(`user`, `session`, `account`, `verification`, `passkey`, `rateLimit`). Config:
 
-- **`credentials`**: Zod-validated email+password, `bcryptjs` verification via
-  `verifyPassword` (`src/lib/db/users.ts`), account lockout (`isAccountLocked`,
-  `recordFailedLogin` — also recorded for nonexistent emails to block enumeration),
-  `isActive` check.
-- **`dev-bypass`**: only registered when `NODE_ENV !== 'production'` **and**
-  `DEV_AUTH_BYPASS` is set; signs in as that email with no password. Driven by the
-  `/dev-login` GET route; `src/proxy.ts` additionally redirects cookie-less dev requests for
-  `/` and the auth pages straight to `/dev-login`.
+- `baseURL` = `AUTH_URL` (required in production; dev falls back to `http://localhost:4999`),
+  `secret` = `AUTH_SECRET`, cookie prefix `sampolio` (`__Secure-sampolio.session_token` over
+  https), `advanced.database.generateId: 'uuid'` (user ids stay UUIDs for `getUserDir` and
+  shared-member references), IP from `cf-connecting-ip` / `x-forwarded-for`, database-backed
+  rate limits (tighter `customRules` on sign-in/up, change-password and the passkey routes).
+- **DB sessions**, 30 days, refreshed daily. **No cookie cache**: a signed cache cookie would
+  outlive a revocation. `auth()` (`src/lib/auth.ts`) wraps `getSession` in React `cache()` and
+  keeps the old `{ user: { id, email, name, role } } | null` shape for every call site; it
+  re-checks `isActive`/`deletedAt`, so a deactivated user loses access on the next request.
+- **Passwords**: new hashes are Better Auth scrypt. Legacy bcrypt hashes (imported from the
+  `.enc` users) verify through `bcryptjs` (`password.verify` branches on `$2`) and are rehashed
+  to scrypt by the `/sign-in/email` after-hook.
+- **User fields** (`user.additionalFields`, all `input: false`): `role`, `isActive`,
+  `deletedAt`, `avatarVersion`. No admin plugin — no `/admin/*` HTTP surface, no impersonation;
+  admin actions go through `src/lib/actions/admin.ts` → `src/lib/db/users.ts`.
+- **Hooks**: `databaseHooks.session.create.before` refuses inactive/deleted users for every
+  sign-in method (403 `ACCOUNT_INACTIVE`); `user.create.before` makes the first user admin.
+  `hooks.before`: `/sign-up/email` enforces `selfSignupEnabled` (unless first user), the name
+  rule and `passwordPolicySchema` (`src/lib/schemas/auth.schema.ts`; `disableSignUp` stays
+  false because it would also block the server-side `auth.api.signUpEmail`); `/change-password`
+  enforces the same policy; `/sign-in/email` returns **429 `ACCOUNT_LOCKED` + `retryAfter`**
+  from the in-memory lockout (`isAccountLocked` in `src/lib/db/users.ts`, 10 failures / 15 min);
+  `/passkey/generate-register-options` returns **403 `PASSKEY_REAUTH_REQUIRED`** when the
+  session is older than `PASSKEY_REGISTRATION_MAX_SESSION_AGE_MS` (10 min,
+  `src/lib/auth/constants.ts`). `hooks.after` on `/sign-in/email` records failures (401 only,
+  also for unknown emails) / successes and performs the bcrypt → scrypt rehash.
+- **Passkeys** (`@better-auth/passkey`): `rpID` = hostname of `AUTH_URL`, `rpName` "Sampolio",
+  `origin` = `AUTH_URL` origin. Passkeys sit alongside passwords (never passkey-only). The
+  default name comes from the AAGUID (`getAuthenticatorName`, else "Passkey");
+  `passkey.lastUsedAt` (Sampolio column) is stamped after each verified sign-in.
+  `session.freshAge` is **0** because Better Auth's `freshSessionMiddleware` also gates
+  `/list-sessions`, `/unlink-account` and `/delete-user`; the narrower 10-minute guard above
+  stops a stolen, older session cookie from enrolling a passkey that would survive a password
+  change. A session from any sign-in method (password or passkey) counts as fresh. Password
+  reset and deactivation keep passkeys; removal is the explicit admin **Remove passkeys**
+  (`removeUserPasskeys`) or self-service delete.
+- **Dev bypass**: a server-only endpoint (`createAuthEndpoint.serverOnly`, never on the HTTP
+  router) registered only when `NODE_ENV !== 'production'` **and** `DEV_AUTH_BYPASS` is set;
+  `/dev-login` calls it and forwards the session cookie. `src/proxy.ts` additionally redirects
+  cookie-less dev requests for `/` and the auth pages straight to `/dev-login`.
 
-Session strategy is **JWT** (`maxAge` 30 days, `updateAge` 1h); the token carries
-`id`/`email`/`name`/`role` (`UserRole`), surfaced via `src/types/next-auth.d.ts`. Cookie name
-is `__Secure-authjs.session-token` in production, `authjs.session-token` otherwise. Sign-up is
-gated by app settings (`checkSignupEnabled` in `src/lib/actions/auth.ts` reads
-`cachedGetAppSettings`; toggled from the admin panel). In production an outer
-**Cloudflare Access** layer authenticates before requests ever reach the app — see
-[`operations.md`](operations.md).
+Client: `src/lib/auth-client.ts` — `authClient` (`createAuthClient` + `passkeyClient()`) and a
+provider-less `useSession()` shim returning `{ data: session }` in the old shape (memoized, so
+`session` is safe in effect deps). Sign-in uses `authClient.signIn.email` / `.signIn.passkey`
+(`{ error }` results, never throws); after success it `router.replace`s **without**
+`router.refresh()` — refreshing `/auth/signin` with the new cookie would trigger the proxy's
+stale-cookie sweep. Sign-up is the `signUp` server action (`auth.api.signUpEmail`; `nextCookies`
+sets the cookie). Settings › Account hosts the Passkeys panel
+(`src/components/settings/passkeys-panel.tsx`); on `PASSKEY_REAUTH_REQUIRED` it offers
+"Sign in again" (sign out → `/auth/signin?callbackUrl=/settings?tab=account`).
+
+Users were imported once from the `.enc` files by `src/lib/db/sqlite/legacy-import.ts`
+(boot, `_meta` row `legacy-users-imported`, one transaction): same UUIDs, role, active flag,
+timestamps and `avatarVersion`; the bcrypt hash becomes the `credential` account row; a
+`users/*/user.enc` not in `users-index.enc` is imported soft-deleted with the tombstone email
+`deleted+<id>@invalid`. The `.enc` files are never modified.
+
+In production an outer **Cloudflare Access** layer authenticates before requests ever reach
+the app — see [`operations.md`](operations.md).
 
 ## 10. Middleware & security
 
-`src/proxy.ts` (Edge runtime). Matcher: everything **except** `_next/static`, `_next/image`,
+`src/proxy.ts` (Next.js 16 proxy, **Node.js runtime**; cookie-presence checks only, never the DB). Matcher: everything **except** `_next/static`, `_next/image`,
 `favicon.ico`, `manifest.webmanifest`, `sw.js`, `offline.html`, `icons`, `themes`, and
 `*.png|jpg|svg` (PWA/install assets must load without auth). Behavior:
 
@@ -261,8 +328,11 @@ gated by app settings (`checkSignupEnabled` in `src/lib/actions/auth.ts` reads
   unauthenticated requests → **300/min**. Requests bearing a session cookie are exempt
   (server actions burst hundreds of POSTs per page load). 429 with `Retry-After`.
 - **Auth redirect** for cookie-less `/` and every path in `PROTECTED_PREFIXES` (see §3).
+- **Session cookie** detection: `getSessionCookie(req, { cookiePrefix: 'sampolio' })` from
+  `better-auth/cookies`.
 - **Stale-cookie recovery**: a session cookie on `/auth/signin|signup` means the server-side
-  `auth()` rejected the JWT — the middleware deletes the cookie to break the redirect loop.
+  `auth()` rejected the session — the proxy expires it (and any pre-4.0 `authjs.*` /
+  `next-auth.*` cookies) to break the redirect loop.
 
 Security headers are set for every route in `next.config.ts` (`headers()`):
 `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`,
@@ -307,7 +377,7 @@ and [`src/components/AGENTS.md`](../src/components/AGENTS.md).
 
 | Directory | Contents |
 |---|---|
-| `layout/` | `AppLayout` (AppContext + SessionProvider + ToastProvider host), `SidebarNav`, `MobileTopBar`, `BottomNav` (1–4 user-chosen tabs + fixed "More"; resolved by `src/lib/bottom-nav-prefs.ts` from `UserPreferences.bottomNavIds`, customizable in Settings → General), `MobileNavDrawer`, shared `nav-config.tsx` (single source for all four nav surfaces) |
+| `layout/` | `AppLayout` (AppContext + ToastProvider host; no session provider — `useSession` is the Better Auth store), `SidebarNav`, `MobileTopBar`, `BottomNav` (1–4 user-chosen tabs + fixed "More"; resolved by `src/lib/bottom-nav-prefs.ts` from `UserPreferences.bottomNavIds`, customizable in Settings → General), `MobileNavDrawer`, shared `nav-config.tsx` (single source for all four nav surfaces) |
 | `providers/` | `PrimeProvider`, `ThemeProvider`, `ToastProvider`, `CelebrationProvider`, `ServiceWorkerRegister` |
 | `charts/` | ECharts/Chart.js components (cashflow waterfall, treemap, monthly flow, net-worth, wealth, scenario comparison) |
 | `modals/` | Cashflow item modal, occurrence-override dialog, users (admin) modal |
@@ -339,11 +409,11 @@ see [`projections-and-reconciliation.md`](projections-and-reconciliation.md) and
 ## 14. Types & schemas
 
 All domain types (entities, `Create*`/`Update*Request`, `ApiResponse<T>`, projection shapes)
-are centralized in the single file `src/types/index.ts`; `src/types/next-auth.d.ts` augments
-the NextAuth session. Zod form/action schemas live one-per-feature in `src/lib/schemas/`
+are centralized in the single file `src/types/index.ts` (the `auth()` session shape is
+`AppSession` in `src/lib/auth.ts`). Zod form/action schemas live one-per-feature in `src/lib/schemas/`
 (`auth`, `bank`, `budget`, `cashflow-item`, `data-transfer`, `goal`, `mortgage`,
 `occurrence-override`, `planned-item`, `recurring-item`, `salary-config`, `split`, `trip`).
-Entity IDs are `uuid` v4 strings.
+Entity IDs are `uuid` v4 strings (Better Auth rows too, via `generateId: 'uuid'`).
 
 ## 15. Testing
 
@@ -365,7 +435,14 @@ wraps components in ThemeProvider). ~50 test files:
   `reconcile-links`, `link-identity`, `apply-link-balances`, `scheduler`,
   `card-payment-match`, `repair-booking-dates`
 - **DB layer** (`src/lib/db/*.test.ts`): `encryption`, `budgets`, `planned-items`,
-  `reconciliation`, `data-transfer`, `taxed-income`
+  `reconciliation`, `data-transfer`, `taxed-income`; `src/lib/db/sqlite/sqlite.test.ts`
+  (temp SQLCipher DB: plaintext header absent, wrong/no key fails, idempotent migrations,
+  legacy `.enc` import incl. soft-deleted user, verified encrypted snapshot)
+- **Auth** (`src/lib/auth/server.test.ts`, temp DB via `src/test/temp-data-dir.ts`): sign-up
+  gating + first-user admin, weak-password/`input:false` rejection, bcrypt sign-in + scrypt
+  rehash, deactivation (sign-in 403 and `auth()` → null), soft/hard delete, lockout 429,
+  passkey-registration re-auth window, UUID ids; `src/components/settings/passkeys-panel.test.tsx`
+  (list, add, cancel, `PASSKEY_REAUTH_REQUIRED` prompt)
 - **Schemas** (`src/lib/schemas/*.test.ts`): `auth.schema`, `cashflow-schemas`,
   `occurrence-override.schema`
 - **Convenience engines** (`src/lib/*.test.ts`): `category-utils`,

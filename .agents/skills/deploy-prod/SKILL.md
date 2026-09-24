@@ -68,12 +68,25 @@ Report the branch, last commit, and the uncommitted changes — this is exactly 
 will go live (deploy tree as-is; do not commit or push).
 
 ### 2. Snapshot the production data (safety net)
-Read-only on prod; takes a timestamped tarball:
+First refresh the encrypted SQLite snapshot (skip if `~/.sampolio/data/sampolio.db`
+does not exist yet — the first 4.x boot creates it). It is safe while the app runs:
 ```sh
-tar -czf "$HOME/sampolio-data-backup-$(date +%Y%m%d-%H%M%S).tar.gz" -C "$HOME/.sampolio" data
+export NVM_DIR="$HOME/.nvm"; . "$NVM_DIR/nvm.sh"; nvm use 26 \
+  && cd $HOME/sampolio && DATA_DIR="$HOME/.sampolio/data" node scripts/db-snapshot.mjs
+```
+Then take a timestamped tarball. It **excludes** the key/secret dot-files (a backup
+must never carry the key that decrypts it) and the live SQLite files (a hot copy of
+`sampolio.db` + `-wal`/`-shm` can be torn); `snapshots/sampolio.db` is the
+consistent, still-encrypted copy that goes in instead:
+```sh
+tar -czf "$HOME/sampolio-data-backup-$(date +%Y%m%d-%H%M%S).tar.gz" -C "$HOME/.sampolio" \
+  --exclude='data/.encryption_key' --exclude='data/.auth_secret' --exclude='data/.auth_url' \
+  --exclude='data/sampolio.db' --exclude='data/sampolio.db-wal' --exclude='data/sampolio.db-shm' \
+  data
 ```
 Confirm the tarball exists and report its path + size. (A daily backup already runs
-at 05:10; this is extra insurance for the deploy. A code deploy does not touch data.)
+at 05:10; this is extra insurance for the deploy. A code deploy does not touch data,
+except that the first 4.x boot creates `sampolio.db` and imports the `.enc` users.)
 
 ### 3. Preflight + build into the prod dir
 
@@ -148,6 +161,14 @@ curl -skI https://sampolio.example.com/ | head -1
 
 # Fresh startup errors
 tail -n 30 "$HOME/.sampolio/logs/sampolio-error.log"
+
+# DB boot lines: "[db] opened encrypted database …", on the first 4.x boot
+# "[db] imported N legacy users (M soft-deleted) …", then "[db] snapshot (startup) written …"
+grep -h '\[db\]' "$HOME/.sampolio/logs/"*.log | tail -n 5
+```
+Then refresh the snapshot so the post-deploy state is captured:
+```sh
+cd $HOME/sampolio && DATA_DIR="$HOME/.sampolio/data" node scripts/db-snapshot.mjs
 ```
 
 ### 7. Report
@@ -171,7 +192,8 @@ tail -n 30 "$HOME/.sampolio/logs/sampolio-error.log"
   a *stale* `~/.sampolio/data/.encryption_key`, permanently orphaning all encrypted
   data. It's only for **Node-version changes** (re-baking the node path) or the
   one-time `NEXT_DIST_DIR` setup.
-- **Do not write to `~/.sampolio/data`** except the read-only tar snapshot in step 2.
+- **Do not write to `~/.sampolio/data`** except the tar snapshot and
+  `scripts/db-snapshot.mjs` (which only rewrites `snapshots/sampolio.db`).
 - **Do not build without `NEXT_DIST_DIR=.next-prod`** — that would write `.next`
   (the dev dir), and the restart would serve a stale build.
 - **Do not point a dev server at port 3999 or at `~/.sampolio/data`.** Dev runs on

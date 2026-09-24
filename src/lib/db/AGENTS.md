@@ -1,6 +1,6 @@
 # Database Layer (`src/lib/db/`)
 
-File-based encrypted storage layer. No external database — all data is stored as individually encrypted JSON files on disk.
+Encrypted storage layer. Financial data is individually encrypted JSON files on disk; **users and auth** (Better Auth tables) live in one SQLCipher-encrypted SQLite file, `${DATA_DIR}/sampolio.db` (`sqlite/` below) — the foundation for moving the remaining entities off `.enc` files one module at a time.
 
 ## Encryption (`encryption.ts`)
 
@@ -26,11 +26,35 @@ listFiles(dir: string): Promise<string[]>
 deleteFile(filePath: string): Promise<void>
 ```
 
+## SQLCipher database (`sqlite/`)
+
+| File | Role |
+|---|---|
+| `sqlite/key.ts` | `getSqliteKeyHex()` = HKDF-SHA256(`ENCRYPTION_KEY`, info `sampolio-sqlite-v1`) → 64-hex raw key. Reuses `getEncryptionKey()` (same production guard). Never change the label. |
+| `sqlite/client.ts` | `getDb()` (drizzle) / `getSqlite()` (raw better-sqlite3) — lazy `globalThis` singleton, **never opened at import time** (`next build` evaluates modules). PRAGMA order: `cipher='sqlcipher'`, `legacy=4`, `hexkey`, verify via `SELECT count(*) FROM sqlite_master` (a wrong key only fails here), then WAL / `foreign_keys=ON` / `busy_timeout=5000`, then migrations. `openEncryptedDatabase()` for other files; `closeDb()` for tests. |
+| `sqlite/schema/` | Hand-written drizzle tables: `auth.ts` (Better Auth `user`/`session`/`account`/`verification`/`passkey`/`rateLimit` — export and property names are load-bearing for the adapter), `meta.ts` (`_meta` key/value), `index.ts` barrel. |
+| `sqlite/migrate.ts` + `/drizzle` | Committed SQL from `pnpm db:generate` (drizzle-kit **generate only** — it cannot open the keyed DB; no push/migrate/studio). Applied by the runtime migrator on first connection; idempotent. |
+| `sqlite/snapshot.ts` | `createSnapshot()`: `VACUUM INTO '<plain path>'` (SQLite3MultipleCiphers encrypts the copy with the source key; the `file:…?hexkey=` URI form is unusable because better-sqlite3 does not enable URI filenames), verify (no plaintext header, opens with key, fails without), atomic rename to `snapshots/sampolio.db`. Never `db.backup()` (unkeyed ⇒ plaintext). `startSnapshotScheduler()`: boot + every 6 h + daily 04:55. CLI twin: `scripts/db-snapshot.mjs`. |
+| `sqlite/legacy-import.ts` | One-shot `.enc` → DB user import (see `users.ts` below), guarded by `_meta` `legacy-users-imported`, one transaction. |
+
+Driver: `better-sqlite3` is a **pnpm alias** for `better-sqlite3-multiple-ciphers` (N-API prebuilds, `allowBuilds: false` in `pnpm-workspace.yaml`), so drizzle's `drizzle-orm/better-sqlite3` gets the cipher build. It is in `serverExternalPackages`.
+
+**`users.ts` / `passkeys.ts`** are the first DB-backed modules: `users.ts` keeps its file-era exports (`findUserByEmail`, `findUserById`, `getAllUsers`, `createUser`, `updateUser`, `changePassword`, `deleteUser`, `hardDeleteUser`, `setUserAvatar`, `toPublicUser`, `avatarUrlFor`, lockout helpers) over drizzle queries. `getAllUsers`/`findUserByEmail` exclude soft-deleted users (as the old index did); `findUserById` does not. Soft delete = `deletedAt` + `isActive=false` + tombstone email `deleted+<id>@invalid` + sessions deleted; hard delete = `DELETE user` (FK cascade: sessions, accounts, passkeys) + `rm -rf` of the user dir. Deactivation and admin password reset revoke sessions but keep passkeys. `passkeys.ts` lists/counts/removes passkeys (labels via the plugin's AAGUID map) and stamps `lastUsedAt`.
+
+### Moving another entity to SQLite (the pattern)
+
+1. Add its tables to `sqlite/schema/<entity>.ts` (export from `index.ts`), run `pnpm db:generate`, read the SQL (additive only), commit `drizzle/`.
+2. Re-implement the entity's `src/lib/db/<entity>.ts` **behind its existing function signatures** (same inputs/outputs, ISO-string dates at the boundary, `uuid` v4 ids), so actions and `cached.ts` do not change. `cached.ts` stays on top with the same tags.
+3. Add a one-shot importer next to `legacy-import.ts` with its own `_meta` guard, reading the `.enc` files with `readEncryptedFile` and writing in one transaction; leave the `.enc` files in place until a later cleanup.
+4. Tests on a temp encrypted DB (`src/test/temp-data-dir.ts`), including importer idempotency.
+
 ## Data Directory Structure
 
 ```
 {dataDir}/
-├── users-index.enc           # { users: [{ id, email }] }
+├── sampolio.db (+ -wal/-shm) # SQLCipher: Better Auth tables + _meta (see above)
+├── snapshots/sampolio.db     # verified encrypted snapshot (what backups archive)
+├── users-index.enc           # LEGACY { users: [{ id, email }] } — imported once, never written
 ├── app-settings.enc          # { selfSignupEnabled, updatedAt, updatedBy }
 ├── shared/                   # Shared (non-user-scoped) entities — access control in the action layer
 │   ├── mortgages/{id}.enc    # SharedMortgage (loans + members embedded)
@@ -41,7 +65,7 @@ deleteFile(filePath: string): Promise<void>
 │   ├── split-groups/{id}/summary.enc   # Maintained running balances (netByUserId) + month index
 │   └── split-group-members/{userId}.enc  # Reverse index: userId → groupIds
 └── users/{userId}/
-    ├── user.enc              # User profile with passwordHash (+ avatarVersion)
+    ├── user.enc              # LEGACY profile + bcrypt hash — imported once, kept for rollback, never written
     ├── preferences.enc       # Onboarding, categories, tax defaults
     ├── avatar.webp           # Profile picture — PLAIN binary (NOT encrypted); optional; excluded from JSON backup
     ├── accounts/{id}.enc     # One file per cash account
@@ -70,7 +94,7 @@ deleteFile(filePath: string): Promise<void>
 >
 > **Split-group storage is monthly-chunked, not one-file-per-row**: at ~2,500 expenses/group, one file per row would mean thousands of separate decrypts (and, pre-HKDF, thousands of PBKDF2 runs) on every cache miss. Even with fast HKDF derivation, chunking keeps file counts and I/O bounded. Each `{YYYY-MM}.enc` holds a month's array, and a `summary.enc` (delta-maintained on add, rebuilt on edit/delete/import) holds running balances so the hot paths never decrypt full history. The per-group in-process mutex lives in the action layer.
 >
-> **Avatars are the one unencrypted file** (`users/{id}/avatar.webp`, 256×256 WebP). `users.ts` owns them: `setUserAvatar(userId, Buffer | null)` writes/removes the file and bumps `User.avatarVersion`; `getAvatarPath(userId)` resolves the path (used by the `/api/avatars/[userId]` route); `avatarUrlFor(user)` / `toPublicUser(user)` produce the versioned URL (`?v={avatarVersion}` cache-buster). Deliberately plaintext — it's low-sensitivity and this enables zero-decrypt streaming + immutable HTTP caching — and deliberately outside the JSON backup (`data-transfer.ts` never touches it).
+> **Avatars are the one unencrypted file** (`users/{id}/avatar.webp`, 256×256 WebP). `users.ts` owns them: `setUserAvatar(userId, Buffer | null)` writes/removes the file and bumps `user.avatarVersion` (DB column); `getAvatarPath(userId)` resolves the path (used by the `/api/avatars/[userId]` route); `avatarUrlFor(user)` / `toPublicUser(user)` produce the versioned URL (`?v={avatarVersion}` cache-buster). Deliberately plaintext — it's low-sensitivity and this enables zero-decrypt streaming + immutable HTTP caching — and deliberately outside the JSON backup (`data-transfer.ts` never touches it).
 
 ## DB File Pattern
 
@@ -134,5 +158,5 @@ After mutations, server actions call `updateTag(tagName)` to invalidate.
 
 ## Known Limitations
 
-- **No file locking**: Concurrent read-modify-write operations can cause data loss. Acceptable for single-user scenarios.
-- **No transactions**: Operations are not atomic — a crash mid-write could corrupt a file.
+- **No file locking**: Concurrent read-modify-write operations on `.enc` files can cause data loss. Acceptable for single-user scenarios.
+- **No transactions for `.enc` files**: Operations are not atomic — a crash mid-write could corrupt a file. The SQLite side (users/auth) is transactional (WAL).

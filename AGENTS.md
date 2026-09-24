@@ -1,9 +1,11 @@
 # Sampolio — AI Agent Instructions
 
 This is a self-hosted personal-finance app: Next.js 16 App Router, TypeScript
-strict, PrimeReact, Tailwind v4, NextAuth v5, Zod/RHF, ECharts/Chart.js, and
-`date-fns`. Use `pnpm`. The app stores encrypted JSON files; Enable Banking is
-optional, read-only, and documented in [`docs/bank-sync.md`](docs/bank-sync.md).
+strict, PrimeReact, Tailwind v4, Better Auth 1.7.5 (password + passkeys),
+Zod/RHF, ECharts/Chart.js, and `date-fns`. Use `pnpm`. Financial data is
+encrypted JSON files; users/auth live in a SQLCipher SQLite DB
+(`src/lib/db/sqlite/`). Enable Banking is optional, read-only, and documented in
+[`docs/bank-sync.md`](docs/bank-sync.md).
 
 ## Working rules
 
@@ -20,8 +22,8 @@ optional, read-only, and documented in [`docs/bank-sync.md`](docs/bank-sync.md).
 - All mutations need authentication, Zod validation, the DB layer, the correct
   `updateTag`, an `ApiResponse<T>`, and a global success/error toast. Use the
   one global `ConfirmDialog`; never mount another. Server actions are the
-  backend boundary; the only API routes are NextAuth, the bank callback, and
-  the session-gated avatar route.
+  backend boundary; the only API routes are Better Auth (`/api/auth/[...all]`),
+  the bank callback, and the session-gated avatar route.
 - File DB writes are read-modify-write and have no cross-process locking.
   Shared mortgages and split groups are action-layer access-controlled because
   their files live under `data/shared/`; split writes use the single-node group
@@ -33,7 +35,8 @@ Read the nearest nested `AGENTS.md` for `src/app/**`, `src/components`,
 `src/lib/actions`, or `src/lib/db`. Long-form mechanics live here:
 
 - [`docs/architecture.md`](docs/architecture.md): routes, actions, storage,
-  encryption, cache tags, auth, middleware, PWA, testing, and tooling.
+  encryption, cache tags, auth (Better Auth, passkeys, SQLCipher), proxy, PWA,
+  testing, and tooling.
 - [`docs/projections-and-reconciliation.md`](docs/projections-and-reconciliation.md):
   projection, anchoring, actuals, wealth, reconciliation, compaction, scenarios.
 - [`docs/mortgage.md`](docs/mortgage.md): shared mortgage data, math, actuals,
@@ -60,9 +63,15 @@ wrappers where appropriate. Use tags such as
 full inventory is in `src/lib/actions/AGENTS.md` and `docs/architecture.md`.
 
 DB files use `getDataDir`, `getUserDir`, `ensureDir`, encrypted per-entity files,
-and read-modify-write CRUD. Encryption is AES-256-GCM with HKDF-SHA256 for new
-writes and a PBKDF2 compatibility read fallback. Use the migration and rotation
-scripts only as documented in [`docs/operations.md`](docs/operations.md).
+and read-modify-write CRUD. Users are the exception: `src/lib/db/users.ts` keeps
+its signatures over the SQLCipher DB; move further entities with the pattern in
+`src/lib/db/AGENTS.md`. Server code reads the session only through `auth()`
+(`src/lib/auth.ts`, old `{ user: { id, email, name, role } }` shape); clients use
+`useSession`/`authClient` from `src/lib/auth-client.ts`. Keep Better Auth's
+`cookieCache` off and `freshAge: 0`; passkey registration is instead gated to
+sessions younger than 10 minutes (`src/lib/auth/constants.ts`). Encryption is
+AES-256-GCM with HKDF-SHA256 for new writes and a PBKDF2 compatibility read
+fallback. Use the migration and rotation scripts only as documented in [`docs/operations.md`](docs/operations.md).
 
 The UI uses PrimeReact plus Tailwind and AppContext from
 `src/components/layout/app-layout.tsx`; do not add Redux/Zustand. Use the
@@ -119,9 +128,9 @@ the nested action/component/DB guides. Do not duplicate their mechanics here.
 
 Known limitations include file-write races, no cross-currency conversion,
 Finnish locale, bounded bank retrospective depth, bank-specific transaction
-gaps, in-memory cookie-based rate limiting, plaintext avatar files excluded
-from JSON backups, and local-only real-data parity. Keep the root limitations
-and [`docs/known-gaps.md`](docs/known-gaps.md) honest.
+gaps, in-memory cookie-based rate limiting and login lockout, plaintext avatar
+files excluded from JSON backups, and local-only real-data parity. Keep the root
+limitations and [`docs/known-gaps.md`](docs/known-gaps.md) honest.
 
 Commands: `pnpm dev` (preview port 4999), `pnpm build`, `pnpm lint`,
 `pnpm test`, `pnpm test:watch`, `pnpm test:coverage`. Source the preview

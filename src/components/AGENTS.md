@@ -47,7 +47,7 @@ Charts mix ECharts (`echarts-for-react`, preferred for Sankey/waterfall/treemap)
 Entity create/edit forms:
 - `cashflow-item-modal.tsx` — Unified modal for income/expense items (RHF + `zodResolver(cashflowItemSchema)`, `src/lib/schemas/cashflow-item.schema.ts`). Handles recurring, one-off (incl. reimbursement tracking: expect-reimbursement checkbox + expected month + pending/received status on edit), salary, and Gross income (taxed income: salary-tax-settings toggle or custom rates, live net preview, skip-occurrence chips) types; its list view is two sections — Regular items (monthly-equivalent summary cards + "≈ / month" column) and One-time items (upcoming strip + month-sorted table). Largest and most complex modal.
 - `occurrence-override-dialog.tsx` — Edit/skip a single occurrence of a recurring item.
-- `users-modal.tsx` — Admin user management
+- `users-modal.tsx` — Admin user management (incl. a Passkeys count column and a per-user **Remove passkeys** action in the edit dialog)
 - `index.ts` — Barrel exports for all modals
 
 Investment / debt / receivable create-edit forms are no longer standalone modal files — they are rendered from `ui/entity-list-drawer.tsx` (routed via `ui/entity-modal-router.tsx`).
@@ -92,7 +92,8 @@ Context providers wrapped around the app:
 - `celebration-provider.tsx` — `useCelebration().celebrate('checkmark' | 'confetti')`: the celebration overlays (split-expense create / settle-up; see `docs/architecture.md` §17 Motion guidance). The checkmark is a ~900ms badge-pop with an expanding ring + 6-dot burst + check draw (every keyframe uses `forwards` since the overlay unmounts). Mounted inside `ToastProvider` in `AppLayout`; returns `false` under reduced motion so callers fall back to flash-highlight + toast.
 
 ### `settings/`
-- `account-panel.tsx` — Settings → Account: change-password form + danger zone (start fresh / delete account); dynamic-imported by the settings page.
+- `account-panel.tsx` — Settings → Account: profile picture, change-password form, `PasskeysPanel`, danger zone (start fresh / delete account); dynamic-imported by the settings page.
+- `passkeys-panel.tsx` — add/rename/delete passkeys (Better Auth passkey client) + the `PASSKEY_REAUTH_REQUIRED` "sign in again" prompt.
 - `mobile-nav-card.tsx` — Settings → General "Mobile navigation" card: pick 1–4 bottom-nav tabs (chip grid over all `navItems`) and drag-reorder them in a preview row driven by `useJiggleReorder`; the greyed trailing "More" cell is never registered with the hook. Persists via `updateBottomNavIds` with optimistic `AppContext.setBottomNavIds` + rollback/toast; "Reset to default" sends `null`.
 
 ### `overview/`
