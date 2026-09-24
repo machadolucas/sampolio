@@ -14,6 +14,7 @@ import { Message } from 'primereact/message';
 import { BrandLogo } from '@/components/layout/brand-logo';
 import { MdLogin, MdSync, MdFingerprint } from 'react-icons/md';
 import { signInSchema, type SignInFormData } from '@/lib/schemas/auth.schema';
+import { safeCallbackPath } from '@/lib/safe-redirect';
 
 // Constants for rate limiting feedback.
 // Keep MAX_FAILED_ATTEMPTS in sync with the server-side value in src/lib/db/users.ts.
@@ -21,18 +22,14 @@ const MAX_FAILED_ATTEMPTS = 10;
 const MAX_ATTEMPTS_BEFORE_WARNING = 7;
 const LOCKOUT_WARNING_THRESHOLD = 9;
 
-/** Only same-origin relative paths are allowed as a post-sign-in target. */
-function safeCallbackUrl(raw: string | null): string {
-    if (!raw || !raw.startsWith('/') || raw.startsWith('//') || raw.startsWith('/\\')) return '/';
-    return raw;
-}
-
 type AuthError = { status?: number; code?: string; message?: string; retryAfter?: number } | null | undefined;
 
 function SignInForm() {
     const router = useRouter();
     const searchParams = useSearchParams();
-    const callbackUrl = safeCallbackUrl(searchParams.get('callbackUrl'));
+    const rawCallbackUrl = searchParams.get('callbackUrl');
+    // Resolved against the page's own origin at navigation time (open-redirect guard).
+    const resolveCallbackUrl = () => safeCallbackPath(rawCallbackUrl, window.location.origin);
 
     const {
         register,
@@ -95,7 +92,7 @@ function SignInForm() {
     // on auth pages would then expire that brand-new cookie.
     const onSignedIn = () => {
         setAttemptCount(0);
-        router.replace(callbackUrl);
+        router.replace(resolveCallbackUrl());
     };
 
     const applyLockout = (err: NonNullable<AuthError>) => {
@@ -138,7 +135,7 @@ function SignInForm() {
             }
             if (err?.status === 429) {
                 applyLockout(err);
-            } else if (err?.code === 'ACCOUNT_INACTIVE') {
+            } else if (err?.code === 'ACCOUNT_INACTIVE' || err?.code === 'SETUP_INCOMPLETE') {
                 setError(err.message ?? 'This account is deactivated.');
             } else if (err?.code === 'AUTH_CANCELLED' || err?.code === 'ERROR_CEREMONY_ABORTED') {
                 // User dismissed the browser prompt — no error banner.
@@ -174,7 +171,7 @@ function SignInForm() {
 
             if (err.status === 429) {
                 applyLockout(err);
-            } else if (err.code === 'ACCOUNT_INACTIVE') {
+            } else if (err.code === 'ACCOUNT_INACTIVE' || err.code === 'SETUP_INCOMPLETE') {
                 setError(err.message ?? 'This account is deactivated.');
             } else if (err.status === 401) {
                 const newAttemptCount = attemptCount + 1;
