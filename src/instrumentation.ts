@@ -3,7 +3,8 @@
  * (Node runtime only). Order matters:
  *  1. open the SQLCipher DB + apply migrations (src/lib/db/sqlite/),
  *  2. one-shot import of the legacy `.enc` users (guarded by a _meta row),
- *  3. encrypted snapshot now, then every 6 h and daily at 04:55,
+ *  3. prune expired `verification` rows (abandoned WebAuthn challenges) now
+ *     and hourly, then an encrypted snapshot now, every 6 h and daily at 04:55,
  *  4. the Enable Banking background sync scheduler (reads the users table).
  */
 
@@ -17,6 +18,9 @@ export async function register(): Promise<void> {
     const { bootstrapDatabase } = await import('@/lib/db/sqlite/bootstrap');
     const result = await bootstrapDatabase();
     if (result.dbUsable) {
+      // Expired WebAuthn challenges first, so the startup snapshot omits them.
+      const { startMaintenanceScheduler } = await import('@/lib/db/sqlite/maintenance');
+      startMaintenanceScheduler();
       const { startSnapshotScheduler } = await import('@/lib/db/sqlite/snapshot');
       startSnapshotScheduler();
     }
