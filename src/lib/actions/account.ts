@@ -3,15 +3,13 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { updateTag } from 'next/cache';
+import { headers } from 'next/headers';
+import { isAPIError } from 'better-auth/api';
 import { auth } from '@/lib/auth';
-import type { ApiResponse, AccountDeletionBlocker, AccountDeletionPreflight } from '@/types';
-import {
-  findUserById,
-  verifyPassword,
-  changePassword as dbChangePassword,
-  setUserAvatar,
-  hardDeleteUser,
-} from '@/lib/db/users';
+import { getAuth } from '@/lib/auth/server';
+import type { ApiResponse, AccountDeletionBlocker, AccountDeletionPreflight, PasskeySummary } from '@/types';
+import { setUserAvatar, hardDeleteUser } from '@/lib/db/users';
+import { getUserPasskeys } from '@/lib/db/passkeys';
 import { getUserDir } from '@/lib/db/encryption';
 import { changePasswordSchema, type ChangePasswordFormData } from '@/lib/schemas/auth.schema';
 import { avatarDataUriSchema, avatarDataUriToBuffer } from '@/lib/schemas/user.schema';
@@ -36,7 +34,10 @@ import {
 } from '@/lib/db/shared-mortgages';
 import { teardownBankConnection } from '@/lib/bank/teardown';
 
-/** Change the current user's password after re-verifying the current one. */
+/** Change the current user's password after re-verifying the current one.
+ * Better Auth's /change-password verifies the current password (bcrypt or
+ * scrypt), stores a scrypt hash and revokes every other session; the fresh
+ * session cookie for this browser is set by `nextCookies`. Passkeys are kept. */
 export async function changeMyPassword(input: ChangePasswordFormData): Promise<ApiResponse<null>> {
   const session = await auth();
   if (!session?.user?.id) return { success: false, error: 'Not authenticated' };
@@ -44,14 +45,32 @@ export async function changeMyPassword(input: ChangePasswordFormData): Promise<A
   const parsed = changePasswordSchema.safeParse(input);
   if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message ?? 'Validation error' };
 
-  const user = await findUserById(session.user.id);
-  if (!user) return { success: false, error: 'User not found' };
-
-  const isValid = await verifyPassword(user, parsed.data.currentPassword);
-  if (!isValid) return { success: false, error: 'Current password is incorrect' };
-
-  await dbChangePassword(session.user.id, parsed.data.newPassword);
+  try {
+    await getAuth().api.changePassword({
+      body: {
+        currentPassword: parsed.data.currentPassword,
+        newPassword: parsed.data.newPassword,
+        revokeOtherSessions: true,
+      },
+      headers: await headers(),
+    });
+  } catch (error) {
+    if (isAPIError(error) && error.body?.code === 'INVALID_PASSWORD') {
+      return { success: false, error: 'Current password is incorrect' };
+    }
+    if (isAPIError(error)) return { success: false, error: error.body?.message ?? 'Could not change password' };
+    console.error('[account] change password failed:', error);
+    return { success: false, error: 'Could not change password' };
+  }
   return { success: true };
+}
+
+/** The current user's registered passkeys (for Settings › Account). Rename,
+ * delete and add go through the Better Auth passkey client. */
+export async function listMyPasskeys(): Promise<ApiResponse<PasskeySummary[]>> {
+  const session = await auth();
+  if (!session?.user?.id) return { success: false, error: 'Not authenticated' };
+  return { success: true, data: getUserPasskeys(session.user.id) };
 }
 
 /** Set (data URI) or remove (null) the current user's own avatar. */

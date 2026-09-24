@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useSession } from 'next-auth/react';
+import { useSession } from '@/lib/auth-client';
 import { Dialog } from 'primereact/dialog';
 import { MdAccountBalance, MdChevronRight, MdCreditCard, MdSavings } from 'react-icons/md';
 import { useAppContext } from '@/components/layout/app-layout';

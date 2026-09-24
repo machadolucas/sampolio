@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import dynamic from 'next/dynamic';
-import { useSession } from 'next-auth/react';
+import { useSession } from '@/lib/auth-client';
 import { Card } from 'primereact/card';
 import { Button } from 'primereact/button';
 import { Menu } from 'primereact/menu';

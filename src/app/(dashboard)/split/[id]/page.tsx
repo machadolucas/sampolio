@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { useSession } from 'next-auth/react';
+import { useSession } from '@/lib/auth-client';
 import { format, parseISO } from 'date-fns';
 import { Button } from 'primereact/button';
 import { Menu } from 'primereact/menu';

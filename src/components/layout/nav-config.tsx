@@ -2,7 +2,7 @@
 
 import type { ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
-import { signOut, useSession } from 'next-auth/react';
+import { authClient, useSession } from '@/lib/auth-client';
 import type { MenuItem } from 'primereact/menuitem';
 import { useTheme } from '@/components/providers/theme-provider';
 import { useAppContext } from '@/components/layout/app-layout';
@@ -159,7 +159,11 @@ export function useUserMenuItems(onNavigate?: () => void): MenuItem[] {
     {
       label: 'Sign Out',
       icon: <MdLogout />,
-      command: () => signOut({ callbackUrl: '/auth/signin' }),
+      command: async () => {
+        await authClient.signOut();
+        router.push('/auth/signin');
+        router.refresh();
+      },
       template: actionItemTemplate(<MdLogout />),
     },
   ];

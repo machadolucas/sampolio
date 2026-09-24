@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { useSession } from 'next-auth/react';
+import { useSession } from '@/lib/auth-client';
 import { Card } from 'primereact/card';
 import { Button } from 'primereact/button';
 import { InputSwitch } from 'primereact/inputswitch';

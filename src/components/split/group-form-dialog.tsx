@@ -2,7 +2,7 @@
 /* eslint-disable react-hooks/set-state-in-effect -- the form intentionally resets its fields when the dialog opens */
 
 import { useEffect, useState } from 'react';
-import { useSession } from 'next-auth/react';
+import { useSession } from '@/lib/auth-client';
 import { Dialog } from 'primereact/dialog';
 import { InputText } from 'primereact/inputtext';
 import { Dropdown } from 'primereact/dropdown';

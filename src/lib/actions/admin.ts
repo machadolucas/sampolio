@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { auth } from '@/lib/auth';
 import {
   findUserById,
+  findUserByEmail,
   createUser as dbCreateUser,
   updateUser as dbUpdateUser,
   changePassword,
@@ -11,11 +12,12 @@ import {
   setUserAvatar,
   toPublicUser,
 } from '@/lib/db/users';
+import { countPasskeysByUser, deleteUserPasskeys, getUserPasskeys } from '@/lib/db/passkeys';
 import { avatarDataUriSchema, avatarDataUriToBuffer } from '@/lib/schemas/user.schema';
 import { updateAppSettings as dbUpdateAppSettings } from '@/lib/db/app-settings';
 import { cachedGetAllUsers, cachedGetAppSettings } from '@/lib/db/cached';
 import { updateTag } from 'next/cache';
-import type { ApiResponse, PublicUser, AppSettings } from '@/types';
+import type { ApiResponse, PublicUser, AppSettings, AdminUserRow, PasskeySummary } from '@/types';
 
 const createUserSchema = z.object({
   email: z.string().email('Invalid email address'),
@@ -40,7 +42,7 @@ const updateSettingsSchema = z.object({
 
 // ==================== USER MANAGEMENT ====================
 
-export async function getUsers(): Promise<ApiResponse<PublicUser[]>> {
+export async function getUsers(): Promise<ApiResponse<AdminUserRow[]>> {
   try {
     const session = await auth();
     if (!session?.user?.id) {
@@ -53,8 +55,9 @@ export async function getUsers(): Promise<ApiResponse<PublicUser[]>> {
     }
 
     const users = await cachedGetAllUsers();
-    const publicUsers = users.map(toPublicUser);
-    return { success: true, data: publicUsers };
+    const passkeyCounts = countPasskeysByUser();
+    const rows = users.map((u) => ({ ...toPublicUser(u), passkeyCount: passkeyCounts[u.id] ?? 0 }));
+    return { success: true, data: rows };
   } catch (error) {
     console.error('Get users error:', error);
     return { success: false, error: 'Failed to fetch users' };
@@ -143,7 +146,15 @@ export async function updateUser(
       return { success: false, error: 'You cannot deactivate your own account' };
     }
 
-    // Handle password change separately
+    if (parsedData.email) {
+      const owner = await findUserByEmail(parsedData.email);
+      if (owner && owner.id !== userId) {
+        return { success: false, error: 'A user with this email already exists' };
+      }
+    }
+
+    // Handle password change separately (scrypt hash; signs the user out
+    // everywhere; passkeys are kept — "Remove passkeys" is its own action).
     if (parsedData.password) {
       await changePassword(userId, parsedData.password);
     }
@@ -204,6 +215,57 @@ export async function deleteUser(userId: string): Promise<ApiResponse<null>> {
   } catch (error) {
     console.error('Delete user error:', error);
     return { success: false, error: 'Failed to delete user' };
+  }
+}
+
+// ==================== PASSKEYS ====================
+
+/** A user's passkeys (admin view: names and dates only). */
+export async function listUserPasskeys(userId: string): Promise<ApiResponse<PasskeySummary[]>> {
+  try {
+    const session = await auth();
+    if (!session?.user?.id) {
+      return { success: false, error: 'Unauthorized' };
+    }
+
+    const currentUser = await findUserById(session.user.id);
+    if (!currentUser || currentUser.role !== 'admin') {
+      return { success: false, error: 'Admin access required' };
+    }
+
+    return { success: true, data: getUserPasskeys(userId) };
+  } catch (error) {
+    console.error('List user passkeys error:', error);
+    return { success: false, error: 'Failed to list passkeys' };
+  }
+}
+
+/** Explicit "Remove passkeys": deletes every passkey of a user (e.g. a lost
+ * device). Password reset and deactivation deliberately keep passkeys. */
+export async function removeUserPasskeys(userId: string): Promise<ApiResponse<{ removed: number }>> {
+  try {
+    const session = await auth();
+    if (!session?.user?.id) {
+      return { success: false, error: 'Unauthorized' };
+    }
+
+    const currentUser = await findUserById(session.user.id);
+    if (!currentUser || currentUser.role !== 'admin') {
+      return { success: false, error: 'Admin access required' };
+    }
+
+    const target = await findUserById(userId);
+    if (!target) {
+      return { success: false, error: 'User not found' };
+    }
+
+    const removed = deleteUserPasskeys(userId);
+    console.log(`[admin] ${session.user.id} removed ${removed} passkey(s) of user ${userId}`);
+    updateTag('users');
+    return { success: true, data: { removed } };
+  } catch (error) {
+    console.error('Remove user passkeys error:', error);
+    return { success: false, error: 'Failed to remove passkeys' };
   }
 }
 

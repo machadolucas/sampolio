@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useSession, signOut } from 'next-auth/react';
+import { authClient, useSession } from '@/lib/auth-client';
 import { useRouter } from 'next/navigation';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -20,6 +20,7 @@ import { changeMyPassword, getAccountDeletionPreflight, deleteMyAccount, resetMy
 import { changePasswordSchema, type ChangePasswordFormData } from '@/lib/schemas/auth.schema';
 import { UserAvatar } from '@/components/ui/user-avatar';
 import { AvatarEditorDialog } from '@/components/ui/avatar-editor-dialog';
+import { PasskeysPanel } from '@/components/settings/passkeys-panel';
 import { useUserProfiles, invalidateUserProfiles } from '@/lib/hooks/use-user-profiles';
 import type { AccountDeletionPreflight } from '@/types';
 
@@ -156,7 +157,9 @@ export function AccountPanel({ isDark }: AccountPanelProps) {
                     const result = await deleteMyAccount({ confirmationText });
                     if (result.success) {
                         toast.success('Account deleted', 'Signing you out…');
-                        await signOut({ callbackUrl: '/auth/signin' });
+                        await authClient.signOut();
+                        router.push('/auth/signin');
+                        router.refresh();
                     } else {
                         toast.error('Could not delete your account', result.error);
                         setIsDeleting(false);
@@ -271,6 +274,8 @@ export function AccountPanel({ isDark }: AccountPanelProps) {
                     </div>
                 </form>
             </Card>
+
+            <PasskeysPanel isDark={isDark} />
 
             <Card className="border-2 border-red-300 dark:border-red-800">
                 <h2 className={`${heading} text-red-600 dark:text-red-400`}>Danger zone</h2>

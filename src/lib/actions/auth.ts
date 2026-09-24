@@ -1,23 +1,18 @@
 'use server';
 
+import { headers } from 'next/headers';
 import { z } from 'zod';
-import { createUser, findUserByEmail, getAllUsers } from '@/lib/db/users';
+import { isAPIError } from 'better-auth/api';
+import { countUsers } from '@/lib/db/users';
 import { isSelfSignupEnabled } from '@/lib/db/app-settings';
+import { getAuth } from '@/lib/auth/server';
+import { passwordPolicySchema, signUpNameSchema } from '@/lib/schemas/auth.schema';
 import type { ApiResponse } from '@/types';
 
-// Strong password requirements for production security
-const passwordSchema = z
-  .string()
-  .min(8, 'Password must be at least 8 characters')
-  .regex(/[a-z]/, 'Password must contain at least one lowercase letter')
-  .regex(/[A-Z]/, 'Password must contain at least one uppercase letter')
-  .regex(/[0-9]/, 'Password must contain at least one number')
-  .regex(/[^a-zA-Z0-9]/, 'Password must contain at least one special character');
-
 const signUpSchema = z.object({
-  email: z.string().email('Invalid email address').transform(e => e.toLowerCase().trim()),
-  password: passwordSchema,
-  name: z.string().min(2, 'Name must be at least 2 characters').max(100, 'Name is too long'),
+  email: z.email('Invalid email address').transform(e => e.toLowerCase().trim()),
+  password: passwordPolicySchema,
+  name: signUpNameSchema,
 });
 
 interface SignUpResponse {
@@ -27,35 +22,23 @@ interface SignUpResponse {
   role: string;
 }
 
+/**
+ * Self sign-up through Better Auth's /sign-up/email. The self-signup setting,
+ * first-user-becomes-admin rule and password policy are enforced server-side
+ * in the auth hooks (src/lib/auth/server.ts), so a direct POST to the API is
+ * gated identically. `nextCookies` sets the session cookie on this action's
+ * response, so the new user is signed in when it returns.
+ */
 export async function signUp(
   data: z.infer<typeof signUpSchema>
 ): Promise<ApiResponse<SignUpResponse>> {
   try {
     const { email, password, name } = signUpSchema.parse(data);
-
-    // Check if this is the first user (always allow first user signup)
-    const allUsers = await getAllUsers();
-    const isFirstUser = allUsers.length === 0;
-
-    // Check if self-signup is enabled (unless first user)
-    if (!isFirstUser) {
-      const selfSignupEnabled = await isSelfSignupEnabled();
-      if (!selfSignupEnabled) {
-        return {
-          success: false,
-          error: 'Self-signup is currently disabled. Please contact an administrator.',
-        };
-      }
-    }
-
-    // Check if user already exists
-    const existingUser = await findUserByEmail(email);
-    if (existingUser) {
-      return { success: false, error: 'An account with this email already exists' };
-    }
-
-    // Create the user
-    const user = await createUser(email, password, name);
+    const result = await getAuth().api.signUpEmail({
+      body: { email, password, name },
+      headers: await headers(),
+    });
+    const user = result.user as typeof result.user & { role?: string };
 
     return {
       success: true,
@@ -63,12 +46,18 @@ export async function signUp(
         id: user.id,
         email: user.email,
         name: user.name,
-        role: user.role,
+        role: user.role ?? 'user',
       },
     };
   } catch (error) {
     if (error instanceof z.ZodError) {
       return { success: false, error: error.issues[0]?.message ?? 'Validation error' };
+    }
+    if (isAPIError(error)) {
+      if (error.body?.code === 'USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL') {
+        return { success: false, error: 'An account with this email already exists' };
+      }
+      return { success: false, error: error.body?.message ?? 'Failed to create account' };
     }
     console.error('Sign up error:', error);
     return { success: false, error: 'Failed to create account' };
@@ -77,13 +66,12 @@ export async function signUp(
 
 export async function checkSignupEnabled(): Promise<ApiResponse<{ enabled: boolean; isFirstUser: boolean }>> {
   try {
-    const allUsers = await getAllUsers();
-    const isFirstUser = allUsers.length === 0;
-    
+    const isFirstUser = countUsers() === 0;
+
     if (isFirstUser) {
       return { success: true, data: { enabled: true, isFirstUser: true } };
     }
-    
+
     const selfSignupEnabled = await isSelfSignupEnabled();
     return { success: true, data: { enabled: selfSignupEnabled, isFirstUser: false } };
   } catch (error) {

@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
-import { useSession } from 'next-auth/react';
+import { useSession } from '@/lib/auth-client';
 import { Button } from 'primereact/button';
 import { SelectButton } from 'primereact/selectbutton';
 import { ListPageSkeleton } from '@/components/ui/skeletons';

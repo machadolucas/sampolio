@@ -5,11 +5,12 @@ import { renderWithProviders } from '@/test/render';
 import { formatCurrency } from '@/lib/constants';
 
 // The component pulls the shared WEALTH_COLORS map from wealth-chart.tsx, which
-// transitively imports AppLayout (and therefore next-auth) — stub it out, the
-// same way the other component suites do.
+// transitively imports AppLayout (and therefore the Better Auth client) — stub
+// both out, the same way the other component suites do.
 vi.mock('@/components/layout/app-layout', () => ({
   useAppContext: () => null,
 }));
+vi.mock('@/lib/auth-client', () => ({ useSession: () => ({ data: { user: { id: 'u1' } } }) }));
 
 import { WealthDistribution } from './wealth-distribution';
 

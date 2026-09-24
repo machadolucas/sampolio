@@ -68,7 +68,7 @@ afterEach(() => { vi.restoreAllMocks(); });
 function enableSibling() {
   // Only the user id is read by fan-out; return complete synthetic user records.
   vi.mocked(getAllUsers).mockResolvedValue([{ id: 'sam', name: 'Sam', email: 'sam@example.com',
-    passwordHash: 'unused', role: 'user', isActive: true, createdAt: nowIso, updatedAt: nowIso }]);
+    role: 'user', isActive: true, createdAt: nowIso, updatedAt: nowIso }]);
   vi.mocked(getBankConnections).mockResolvedValue([sibling]);
 }
 function writtenRows(accountId: string) {

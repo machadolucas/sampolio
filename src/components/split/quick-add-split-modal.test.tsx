@@ -17,7 +17,7 @@ const mocks = vi.hoisted(() => ({
   toastError: vi.fn(),
 }));
 
-vi.mock('next-auth/react', () => ({ useSession: () => ({ data: { user: { id: 'u1' } } }) }));
+vi.mock('@/lib/auth-client', () => ({ useSession: () => ({ data: { user: { id: 'u1' } } }) }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn(), replace: vi.fn() }) }));
 vi.mock('@/lib/hooks/use-media-query', () => ({ useIsMobile: () => false }));
 vi.mock('@/components/providers/toast-provider', () => ({ useToast: () => ({ success: mocks.toastSuccess, error: mocks.toastError, info: vi.fn(), show: vi.fn() }) }));

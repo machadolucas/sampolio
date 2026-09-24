@@ -20,14 +20,16 @@ export interface User {
   id: string;
   email: string;
   name: string;
-  passwordHash: string;
   role: UserRole;
   isActive: boolean;
   // Avatar image lives as a plain (unencrypted) binary file at
   // data/users/{id}/avatar.webp, served by /api/avatars/[userId]. This version
   // counter busts the browser HTTP cache (?v=) and is bumped on every change;
-  // undefined ⇒ no avatar. Never carried in the JWT.
+  // undefined ⇒ no avatar. Never carried in the session.
   avatarVersion?: number;
+  /** Set by the admin soft delete (users.ts deleteUser); such users are
+   * excluded from getAllUsers/findUserByEmail and can never sign in. */
+  deletedAt?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -398,6 +400,25 @@ export interface PublicUser {
   avatarUrl?: string;
   createdAt: string;
   updatedAt: string;
+}
+
+/** Admin user-table row: PublicUser plus the number of registered passkeys. */
+export interface AdminUserRow extends PublicUser {
+  passkeyCount: number;
+}
+
+/** A registered WebAuthn passkey as shown in management UIs (never carries
+ * the public key or credential id). */
+export interface PasskeySummary {
+  id: string;
+  /** Stored label, else the AAGUID provider name, else "Passkey". */
+  name: string;
+  /** Provider resolved from the AAGUID (e.g. "Google Password Manager"). */
+  providerName?: string;
+  deviceType: string;
+  backedUp: boolean;
+  createdAt?: string;
+  lastUsedAt?: string;
 }
 
 // Utility types

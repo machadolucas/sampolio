@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, Suspense, useEffect, useRef } from 'react';
-import { signIn } from 'next-auth/react';
+import { authClient } from '@/lib/auth-client';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useForm, Controller } from 'react-hook-form';
@@ -12,7 +12,7 @@ import { Button } from 'primereact/button';
 import { Card } from 'primereact/card';
 import { Message } from 'primereact/message';
 import { BrandLogo } from '@/components/layout/brand-logo';
-import { MdLogin, MdSync } from 'react-icons/md';
+import { MdLogin, MdSync, MdFingerprint } from 'react-icons/md';
 import { signInSchema, type SignInFormData } from '@/lib/schemas/auth.schema';
 
 // Constants for rate limiting feedback.
@@ -21,10 +21,18 @@ const MAX_FAILED_ATTEMPTS = 10;
 const MAX_ATTEMPTS_BEFORE_WARNING = 7;
 const LOCKOUT_WARNING_THRESHOLD = 9;
 
+/** Only same-origin relative paths are allowed as a post-sign-in target. */
+function safeCallbackUrl(raw: string | null): string {
+    if (!raw || !raw.startsWith('/') || raw.startsWith('//') || raw.startsWith('/\\')) return '/';
+    return raw;
+}
+
+type AuthError = { status?: number; code?: string; message?: string; retryAfter?: number } | null | undefined;
+
 function SignInForm() {
     const router = useRouter();
     const searchParams = useSearchParams();
-    const callbackUrl = searchParams.get('callbackUrl') || '/';
+    const callbackUrl = safeCallbackUrl(searchParams.get('callbackUrl'));
 
     const {
         register,
@@ -80,6 +88,70 @@ function SignInForm() {
         };
     }, [lockoutTimeRemaining]);
 
+    const [isPasskeyLoading, setIsPasskeyLoading] = useState(false);
+
+    // No router.refresh() here: it would re-request /auth/signin (the current
+    // route) WITH the fresh session cookie, and the proxy's stale-cookie sweep
+    // on auth pages would then expire that brand-new cookie.
+    const onSignedIn = () => {
+        setAttemptCount(0);
+        router.replace(callbackUrl);
+    };
+
+    const applyLockout = (err: NonNullable<AuthError>) => {
+        setIsLocked(true);
+        setLockoutTimeRemaining(err.retryAfter && err.retryAfter > 0 ? Math.ceil(err.retryAfter) : 60);
+        setError('Too many login attempts. Please wait before trying again.');
+    };
+
+    // Conditional UI: offer saved passkeys in the email field's autofill.
+    // Runs once; the pending request is aborted automatically when the user
+    // clicks "Sign in with passkey" (a new WebAuthn ceremony supersedes it).
+    useEffect(() => {
+        let cancelled = false;
+        (async () => {
+            if (typeof window === 'undefined' || !window.PublicKeyCredential?.isConditionalMediationAvailable) return;
+            if (!(await window.PublicKeyCredential.isConditionalMediationAvailable())) return;
+            const result = await authClient.signIn.passkey({ autoFill: true });
+            if (cancelled) return;
+            if (result?.data) {
+                onSignedIn();
+            } else if ((result?.error as AuthError)?.code === 'ACCOUNT_INACTIVE') {
+                setError(result.error?.message ?? 'This account is deactivated.');
+            }
+        })().catch(() => { /* autofill aborted or unsupported */ });
+        return () => {
+            cancelled = true;
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    const onPasskeySignIn = async () => {
+        setError('');
+        setIsPasskeyLoading(true);
+        try {
+            const result = await authClient.signIn.passkey();
+            const err = result?.error as AuthError;
+            if (!err && result?.data) {
+                onSignedIn();
+                return;
+            }
+            if (err?.status === 429) {
+                applyLockout(err);
+            } else if (err?.code === 'ACCOUNT_INACTIVE') {
+                setError(err.message ?? 'This account is deactivated.');
+            } else if (err?.code === 'AUTH_CANCELLED' || err?.code === 'ERROR_CEREMONY_ABORTED') {
+                // User dismissed the browser prompt — no error banner.
+            } else {
+                setError('Passkey sign-in failed. Try again or use your password.');
+            }
+        } catch {
+            setError('Passkey sign-in failed. Try again or use your password.');
+        } finally {
+            setIsPasskeyLoading(false);
+        }
+    };
+
     const onSubmit = async (data: SignInFormData) => {
         if (isLocked) {
             return;
@@ -89,13 +161,22 @@ function SignInForm() {
         setIsLoading(true);
 
         try {
-            const result = await signIn('credentials', {
+            const { error: signInError } = await authClient.signIn.email({
                 email: data.email.trim().toLowerCase(),
                 password: data.password,
-                redirect: false,
             });
+            const err = signInError as AuthError;
 
-            if (result?.error) {
+            if (!err) {
+                onSignedIn();
+                return;
+            }
+
+            if (err.status === 429) {
+                applyLockout(err);
+            } else if (err.code === 'ACCOUNT_INACTIVE') {
+                setError(err.message ?? 'This account is deactivated.');
+            } else if (err.status === 401) {
                 const newAttemptCount = attemptCount + 1;
                 setAttemptCount(newAttemptCount);
 
@@ -107,21 +188,10 @@ function SignInForm() {
                     setError('Invalid email or password');
                 }
             } else {
-                // Clear attempt count on success
-                setAttemptCount(0);
-                router.push(callbackUrl);
-                router.refresh();
-            }
-        } catch (err) {
-            // Check if it's a rate limit error
-            if (err instanceof Response && err.status === 429) {
-                const data = await err.json();
-                setIsLocked(true);
-                setLockoutTimeRemaining(data.retryAfter || 60);
-                setError('Too many login attempts. Please wait before trying again.');
-            } else {
                 setError('An error occurred. Please try again.');
             }
+        } catch {
+            setError('An error occurred. Please try again.');
         } finally {
             setIsLoading(false);
         }
@@ -167,7 +237,7 @@ function SignInForm() {
                             placeholder="you@example.com"
                             disabled={isLocked}
                             className="w-full"
-                            autoComplete="email"
+                            autoComplete="username webauthn"
                         />
                         {errors.email && (
                             <small className="text-red-500">{errors.email.message}</small>
@@ -210,6 +280,23 @@ function SignInForm() {
                         className="w-full mt-2"
                     />
                 </form>
+
+                <div className="flex items-center gap-3 my-4" aria-hidden="true">
+                    <span className="h-px flex-1 bg-gray-200 dark:bg-gray-700" />
+                    <span className="text-xs text-gray-500">or</span>
+                    <span className="h-px flex-1 bg-gray-200 dark:bg-gray-700" />
+                </div>
+
+                <Button
+                    type="button"
+                    label="Sign in with passkey"
+                    icon={<MdFingerprint />}
+                    outlined
+                    loading={isPasskeyLoading}
+                    disabled={isLocked}
+                    onClick={onPasskeySignIn}
+                    className="w-full"
+                />
 
                 <p className="mt-6 text-center text-sm text-gray-600">
                     Don&apos;t have an account?{' '}

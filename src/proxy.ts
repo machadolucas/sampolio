@@ -1,9 +1,14 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+import { getSessionCookie } from 'better-auth/cookies';
 
-// This middleware runs on the Edge runtime, so it cannot import Node.js modules
-// For auth checks, we rely on the auth token being present
-// The actual auth validation happens in the auth library when accessed
+// Next.js 16 proxy (runs on the Node.js runtime, before every matched route).
+// It only checks for the PRESENCE of a Better Auth session cookie — it never
+// touches the database. The real session validation (DB row, isActive,
+// deletedAt) happens server-side in auth() (src/lib/auth.ts), which the
+// (dashboard) layout and src/app/page.tsx call before rendering.
+
+const SESSION_COOKIE_PREFIX = 'sampolio'; // = AUTH_COOKIE_PREFIX in src/lib/auth/server.ts
 
 // Rate limiting store (in-memory, resets on server restart)
 // For production with multiple instances, use Redis
@@ -59,24 +64,35 @@ if (typeof setInterval !== 'undefined') {
   }, 60 * 1000); // Clean up every minute
 }
 
-// Check if user has a valid auth session cookie
+// Whether the request carries a Better Auth session cookie (either the
+// `__Secure-` variant used over https or the plain one on http://localhost).
 function hasAuthSession(request: NextRequest): boolean {
-  // NextAuth session cookies - check for both secure and non-secure variants
-  const sessionCookies = [
-    'authjs.session-token',
-    '__Secure-authjs.session-token',
-    'next-auth.session-token',
-    '__Secure-next-auth.session-token',
-  ];
+  return !!getSessionCookie(request, { cookiePrefix: SESSION_COOKIE_PREFIX });
+}
 
-  for (const cookieName of sessionCookies) {
-    const cookie = request.cookies.get(cookieName);
-    if (cookie?.value) {
-      return true;
-    }
-  }
+// Cookies cleared when a signed-in-looking browser lands on an auth page: the
+// Better Auth session cookie plus the pre-4.0 Auth.js/NextAuth ones.
+const STALE_SESSION_COOKIES = [
+  `${SESSION_COOKIE_PREFIX}.session_token`,
+  `__Secure-${SESSION_COOKIE_PREFIX}.session_token`,
+  'authjs.session-token',
+  '__Secure-authjs.session-token',
+  'authjs.csrf-token',
+  '__Host-authjs.csrf-token',
+  'authjs.callback-url',
+  '__Secure-authjs.callback-url',
+  'next-auth.session-token',
+  '__Secure-next-auth.session-token',
+];
 
-  return false;
+function expireCookie(response: NextResponse, name: string) {
+  // __Secure-/__Host- cookies can only be overwritten with the Secure flag.
+  const secure = name.startsWith('__Secure-') || name.startsWith('__Host-');
+  response.cookies.set(name, '', { path: '/', maxAge: 0, secure, httpOnly: true, sameSite: 'lax' });
+}
+
+function hasAnyStaleCookie(request: NextRequest): boolean {
+  return STALE_SESSION_COOKIES.some((name) => !!request.cookies.get(name)?.value);
 }
 
 // URL prefixes of the authenticated app pages (the (dashboard) route group
@@ -177,7 +193,7 @@ export function proxy(request: NextRequest) {
   // Protect app pages - require authentication
   // Note: This is a lightweight check based on cookie presence; the actual
   // session validation happens server-side in auth() (the (dashboard) layout
-  // and src/app/page.tsx redirect on an invalid session). This edge check just
+  // and src/app/page.tsx redirect on an invalid session). This check just
   // avoids rendering page shells for obviously unauthenticated visitors.
   const isProtectedPath =
     pathname === '/' ||
@@ -188,18 +204,17 @@ export function proxy(request: NextRequest) {
     return NextResponse.redirect(signInUrl);
   }
 
-  // If a user with a session cookie reaches an auth page, it means their
-  // server-side auth() check failed (stale/invalid JWT) and they were
-  // redirected here.  Clear the invalid cookie so they can re-authenticate
-  // without a redirect loop (proxy sees cookie → redirects away → auth()
-  // fails → redirects back → loop).
+  // If a browser with a session cookie reaches an auth page, its server-side
+  // auth() check failed (expired/revoked session, deactivated user) and it was
+  // redirected here. Clear the cookie so it can re-authenticate without a
+  // redirect loop (proxy sees cookie → redirects away → auth() fails →
+  // redirects back → loop). Also sweeps the pre-4.0 Auth.js cookies.
   if (pathname.startsWith('/auth/signin') || pathname.startsWith('/auth/signup')) {
-    if (hasAuthSession(request)) {
+    if (hasAnyStaleCookie(request)) {
       const response = NextResponse.next();
-      response.cookies.delete('authjs.session-token');
-      response.cookies.delete('__Secure-authjs.session-token');
-      response.cookies.delete('next-auth.session-token');
-      response.cookies.delete('__Secure-next-auth.session-token');
+      for (const name of STALE_SESSION_COOKIES) {
+        if (request.cookies.get(name)) expireCookie(response, name);
+      }
       return response;
     }
   }

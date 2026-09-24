@@ -1,72 +1,50 @@
 import * as path from 'path';
 import * as fs from 'fs/promises';
 import { v4 as uuidv4 } from 'uuid';
-import bcrypt from 'bcryptjs';
+import { and, eq, isNull, sql } from 'drizzle-orm';
+import { hashPassword } from 'better-auth/crypto';
 import type { User, UserRole, PublicUser } from '@/types';
-import {
-  getDataDir,
-  ensureDir,
-  readEncryptedFile,
-  writeEncryptedFile,
-  getUserDir,
-} from './encryption';
+import { ensureDir, getUserDir } from './encryption';
+import { getDb } from './sqlite/client';
+import { account, session, user as userTable } from './sqlite/schema';
+import { tombstoneEmail } from './sqlite/legacy-import';
 
-const USERS_INDEX_FILE = 'users-index.enc';
+// Users live in the SQLCipher DB (`src/lib/db/sqlite/`), managed by Better
+// Auth (`src/lib/auth/server.ts`). These functions keep the pre-4.0 file-DB
+// signatures so every caller (actions, bank scheduler, cached.ts) is
+// unchanged. Password hashes live in the `credential` account row, never on
+// the User type.
 
-interface UsersIndex {
-  users: { id: string; email: string }[];
+type UserRow = typeof userTable.$inferSelect;
+
+function toUser(row: UserRow): User {
+  return {
+    id: row.id,
+    email: row.email,
+    name: row.name,
+    role: row.role,
+    isActive: row.isActive,
+    avatarVersion: row.avatarVersion ?? undefined,
+    deletedAt: row.deletedAt ? row.deletedAt.toISOString() : undefined,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  };
 }
 
-async function getUsersIndexPath(): Promise<string> {
-  const dataDir = getDataDir();
-  await ensureDir(dataDir);
-  return path.join(dataDir, USERS_INDEX_FILE);
-}
-
-async function getUsersIndex(): Promise<UsersIndex> {
-  const indexPath = await getUsersIndexPath();
-  const index = await readEncryptedFile<UsersIndex>(indexPath);
-  return index || { users: [] };
-}
-
-async function saveUsersIndex(index: UsersIndex): Promise<void> {
-  const indexPath = await getUsersIndexPath();
-  await writeEncryptedFile(indexPath, index);
-}
-
+/** Active-or-inactive, NOT deleted user by email (case-insensitive). */
 export async function findUserByEmail(email: string): Promise<User | null> {
-  const index = await getUsersIndex();
-  const userEntry = index.users.find(u => u.email.toLowerCase() === email.toLowerCase());
-
-  if (!userEntry) {
-    return null;
-  }
-
-  const userDir = getUserDir(userEntry.id);
-  const userFile = path.join(userDir, 'user.enc');
-  const user = await readEncryptedFile<User>(userFile);
-
-  // Migration: add default values for new fields if missing
-  if (user && !user.role) {
-    user.role = 'user';
-    user.isActive = true;
-  }
-
-  return user;
+  const row = getDb()
+    .select()
+    .from(userTable)
+    .where(and(eq(userTable.email, email.trim().toLowerCase()), isNull(userTable.deletedAt)))
+    .get();
+  return row ? toUser(row) : null;
 }
 
+/** Any user by id, including soft-deleted ones (matches the old file read). */
 export async function findUserById(id: string): Promise<User | null> {
-  const userDir = getUserDir(id);
-  const userFile = path.join(userDir, 'user.enc');
-  const user = await readEncryptedFile<User>(userFile);
-
-  // Migration: add default values for new fields if missing
-  if (user && !user.role) {
-    user.role = 'user';
-    user.isActive = true;
-  }
-
-  return user;
+  const row = getDb().select().from(userTable).where(eq(userTable.id, id)).get();
+  return row ? toUser(row) : null;
 }
 
 export function toPublicUser(user: User): PublicUser {
@@ -98,8 +76,8 @@ export function getAvatarPath(userId: string): string {
   return path.join(getUserDir(userId), AVATAR_FILE);
 }
 
-/** Write (or, with null, delete) a user's avatar image and bump avatarVersion
- * on user.enc. Returns the updated user, or null if the user doesn't exist. */
+/** Write (or, with null, delete) a user's avatar image and bump
+ * avatarVersion. Returns the updated user, or null if the user doesn't exist. */
 export async function setUserAvatar(userId: string, image: Buffer | null): Promise<User | null> {
   const user = await findUserById(userId);
   if (!user) {
@@ -114,176 +92,158 @@ export async function setUserAvatar(userId: string, image: Buffer | null): Promi
     await fs.rm(avatarPath, { force: true });
   }
 
-  const updatedUser: User = {
-    ...user,
-    avatarVersion: image ? (user.avatarVersion ?? 0) + 1 : undefined,
-    updatedAt: new Date().toISOString(),
-  };
-  // JSON-stringify drops undefined fields, so clearing the avatar also removes
-  // the field from the stored doc.
-  const userFile = path.join(getUserDir(userId), 'user.enc');
-  await writeEncryptedFile(userFile, updatedUser);
-
-  return updatedUser;
+  const row = getDb()
+    .update(userTable)
+    .set({ avatarVersion: image ? (user.avatarVersion ?? 0) + 1 : null, updatedAt: new Date() })
+    .where(eq(userTable.id, userId))
+    .returning()
+    .get();
+  return row ? toUser(row) : null;
 }
 
+/** Number of non-deleted users (the first-user-becomes-admin rule). */
+export function countUsers(): number {
+  const row = getDb()
+    .select({ n: sql<number>`count(*)` })
+    .from(userTable)
+    .where(isNull(userTable.deletedAt))
+    .get();
+  return row?.n ?? 0;
+}
+
+/** Admin-side user creation (no session). Self sign-up goes through Better
+ * Auth's /sign-up/email instead (src/lib/actions/auth.ts). */
 export async function createUser(
   email: string,
   password: string,
   name: string,
   role: UserRole = 'user'
 ): Promise<User> {
-  // Check if user already exists
-  const existingUser = await findUserByEmail(email);
-  if (existingUser) {
+  const normalizedEmail = email.trim().toLowerCase();
+  const existing = getDb().select({ id: userTable.id }).from(userTable).where(eq(userTable.email, normalizedEmail)).get();
+  if (existing) {
     throw new Error('User with this email already exists');
   }
 
   const id = uuidv4();
-  const now = new Date().toISOString();
-  const passwordHash = await bcrypt.hash(password, 12);
+  const now = new Date();
+  const passwordHash = await hashPassword(password);
+  const db = getDb();
+  const row = db.transaction((tx) => {
+    const isFirstUser = countUsers() === 0;
+    const created = tx
+      .insert(userTable)
+      .values({
+        id,
+        email: normalizedEmail,
+        name,
+        emailVerified: false,
+        role: isFirstUser ? 'admin' : role,
+        isActive: true,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .returning()
+      .get();
+    tx.insert(account)
+      .values({ id: uuidv4(), accountId: id, providerId: 'credential', userId: id, password: passwordHash, createdAt: now, updatedAt: now })
+      .run();
+    return created;
+  });
 
-  // Check if this is the first user - make them admin
-  const index = await getUsersIndex();
-  const isFirstUser = index.users.length === 0;
-
-  const user: User = {
-    id,
-    email: email.toLowerCase(),
-    name,
-    passwordHash,
-    role: isFirstUser ? 'admin' : role,
-    isActive: true,
-    createdAt: now,
-    updatedAt: now,
-  };
-
-  // Create user directory and save user data
-  const userDir = getUserDir(id);
-  await ensureDir(userDir);
-
-  const userFile = path.join(userDir, 'user.enc');
-  await writeEncryptedFile(userFile, user);
-
-  // Update users index
-  index.users.push({ id, email: user.email });
-  await saveUsersIndex(index);
-
-  return user;
+  await ensureDir(getUserDir(id));
+  return toUser(row);
 }
 
-export async function verifyPassword(user: User, password: string): Promise<boolean> {
-  return bcrypt.compare(password, user.passwordHash);
+/** Delete every session of a user (they are signed out on their next request). */
+export function revokeUserSessions(userId: string): number {
+  return getDb().delete(session).where(eq(session.userId, userId)).run().changes;
 }
 
 export async function updateUser(
   userId: string,
   updates: Partial<Pick<User, 'name' | 'email' | 'role' | 'isActive'>>
 ): Promise<User | null> {
-  const user = await findUserById(userId);
-  if (!user) {
+  const set: Partial<typeof userTable.$inferInsert> = { updatedAt: new Date() };
+  if (updates.name !== undefined) set.name = updates.name;
+  if (updates.email !== undefined) set.email = updates.email.trim().toLowerCase();
+  if (updates.role !== undefined) set.role = updates.role;
+  if (updates.isActive !== undefined) set.isActive = updates.isActive;
+
+  const row = getDb().update(userTable).set(set).where(eq(userTable.id, userId)).returning().get();
+  if (!row) {
     return null;
   }
-
-  const updatedUser: User = {
-    ...user,
-    ...updates,
-    email: updates.email ? updates.email.toLowerCase() : user.email,
-    updatedAt: new Date().toISOString(),
-  };
-
-  const userDir = getUserDir(userId);
-  const userFile = path.join(userDir, 'user.enc');
-  await writeEncryptedFile(userFile, updatedUser);
-
-  // Update index if email changed
-  if (updates.email && updates.email.toLowerCase() !== user.email.toLowerCase()) {
-    const index = await getUsersIndex();
-    const userEntry = index.users.find(u => u.id === userId);
-    if (userEntry) {
-      userEntry.email = updates.email.toLowerCase();
-      await saveUsersIndex(index);
-    }
+  // Deactivation takes effect immediately: auth() re-checks isActive on every
+  // request, and dropping the sessions also stops the cookie at the proxy.
+  if (updates.isActive === false) {
+    revokeUserSessions(userId);
   }
-
-  return updatedUser;
+  return toUser(row);
 }
 
+/** Set a new password (admin reset). Upserts the credential account and
+ * signs the user out everywhere. Passkeys are kept. */
 export async function changePassword(userId: string, newPassword: string): Promise<boolean> {
   const user = await findUserById(userId);
   if (!user) {
     return false;
   }
 
-  const passwordHash = await bcrypt.hash(newPassword, 12);
-  const updatedUser: User = {
-    ...user,
-    passwordHash,
-    updatedAt: new Date().toISOString(),
-  };
-
-  const userDir = getUserDir(userId);
-  const userFile = path.join(userDir, 'user.enc');
-  await writeEncryptedFile(userFile, updatedUser);
-
+  const passwordHash = await hashPassword(newPassword);
+  const now = new Date();
+  const db = getDb();
+  db.transaction((tx) => {
+    const updated = tx
+      .update(account)
+      .set({ password: passwordHash, updatedAt: now })
+      .where(and(eq(account.userId, userId), eq(account.providerId, 'credential')))
+      .run();
+    if (updated.changes === 0) {
+      tx.insert(account)
+        .values({ id: uuidv4(), accountId: userId, providerId: 'credential', userId, password: passwordHash, createdAt: now, updatedAt: now })
+        .run();
+    }
+    tx.delete(session).where(eq(session.userId, userId)).run();
+  });
   return true;
 }
 
+/** All non-deleted users (active and inactive) — what the old users index held. */
 export async function getAllUsers(): Promise<User[]> {
-  const index = await getUsersIndex();
-
-  const results = await Promise.all(
-    index.users.map(entry => findUserById(entry.id))
-  );
-
-  return results.filter((u): u is User => u !== null);
+  const rows = getDb().select().from(userTable).where(isNull(userTable.deletedAt)).orderBy(userTable.createdAt).all();
+  return rows.map(toUser);
 }
 
+/** Admin soft delete: keeps the row and the data dir, marks the user deleted
+ * + inactive, frees the email (tombstone) and signs them out. */
 export async function deleteUser(userId: string): Promise<boolean> {
-  const user = await findUserById(userId);
-  if (!user) {
+  const now = new Date();
+  const row = getDb()
+    .update(userTable)
+    .set({ deletedAt: now, isActive: false, email: tombstoneEmail(userId), updatedAt: now })
+    .where(and(eq(userTable.id, userId), isNull(userTable.deletedAt)))
+    .returning()
+    .get();
+  if (!row) {
     return false;
   }
-
-  // Remove from index
-  const index = await getUsersIndex();
-  index.users = index.users.filter(u => u.id !== userId);
-  await saveUsersIndex(index);
-
-  // Note: We don't delete the user directory to preserve data
-  // Instead we just deactivate them
-  const updatedUser: User = {
-    ...user,
-    isActive: false,
-    updatedAt: new Date().toISOString(),
-  };
-
-  const userDir = getUserDir(userId);
-  const userFile = path.join(userDir, 'user.enc');
-  await writeEncryptedFile(userFile, updatedUser);
-
+  revokeUserSessions(userId);
   return true;
 }
 
-/** Permanent, irreversible deletion: removes the user from the index AND
- * recursively deletes their entire data directory. Unlike `deleteUser` (a soft
- * deactivate that preserves files for admin purposes), this is for account
- * self-deletion — the caller must have already torn down any shared entities
- * (split groups / mortgages) the user belongs to. */
+/** Permanent, irreversible deletion: removes the user row (FK cascade drops
+ * sessions, accounts and passkeys) AND recursively deletes their entire data
+ * directory. Unlike `deleteUser` (a soft delete that preserves files for admin
+ * purposes), this is for account self-deletion — the caller must have already
+ * torn down any shared entities (split groups / mortgages) the user belongs to. */
 export async function hardDeleteUser(userId: string): Promise<boolean> {
-  const index = await getUsersIndex();
-  index.users = index.users.filter(u => u.id !== userId);
-  await saveUsersIndex(index);
+  getDb().delete(userTable).where(eq(userTable.id, userId)).run();
 
   const userDir = getUserDir(userId);
   await fs.rm(userDir, { recursive: true, force: true });
 
   return true;
-}
-
-export async function getAllUserIds(): Promise<string[]> {
-  const index = await getUsersIndex();
-  return index.users.map(u => u.id);
 }
 
 // ==================== Account Lockout for Brute Force Protection ====================
@@ -311,6 +271,14 @@ export async function isAccountLocked(email: string): Promise<boolean> {
   }
 
   return record.lockedUntil !== null;
+}
+
+/** Seconds until the lockout for `email` expires; 0 when not locked. */
+export function getLockoutRetryAfterSeconds(email: string): number {
+  const record = failedLoginAttempts.get(email.toLowerCase());
+  if (!record?.lockedUntil) return 0;
+  const remaining = record.lockedUntil - Date.now();
+  return remaining > 0 ? Math.ceil(remaining / 1000) : 0;
 }
 
 export async function recordFailedLogin(email: string): Promise<void> {
@@ -353,7 +321,8 @@ export async function recordSuccessfulLogin(email: string): Promise<void> {
   failedLoginAttempts.delete(normalizedEmail);
 }
 
-// Clean up old entries periodically
+// Clean up old entries periodically (unref'd so it never keeps a script or
+// test process alive).
 setInterval(() => {
   const now = Date.now();
   for (const [email, record] of failedLoginAttempts.entries()) {
@@ -366,4 +335,4 @@ setInterval(() => {
       failedLoginAttempts.delete(email);
     }
   }
-}, 5 * 60 * 1000); // Clean up every 5 minutes
+}, 5 * 60 * 1000).unref(); // Clean up every 5 minutes

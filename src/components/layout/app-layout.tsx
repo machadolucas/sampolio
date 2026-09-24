@@ -1,6 +1,5 @@
 'use client';
 
-import { SessionProvider } from 'next-auth/react';
 import { useState, useEffect, useCallback, useMemo, useRef, createContext, useContext, startTransition } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { SidebarNav } from './sidebar-nav';
@@ -312,7 +311,6 @@ export function AppLayout({ children }: AppLayoutProps) {
     ]);
 
     return (
-        <SessionProvider>
             <AppContext.Provider value={contextValue}>
                 <ToastProvider>
                 <CelebrationProvider>
@@ -428,6 +426,5 @@ export function AppLayout({ children }: AppLayoutProps) {
                 </CelebrationProvider>
                 </ToastProvider>
             </AppContext.Provider>
-        </SessionProvider>
     );
 }

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { useSession } from 'next-auth/react';
+import { useSession } from '@/lib/auth-client';
 import { Card } from 'primereact/card';
 import { Tag } from 'primereact/tag';
 import { Message } from 'primereact/message';

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useSession } from 'next-auth/react';
+import { useSession } from '@/lib/auth-client';
 import { Dialog } from 'primereact/dialog';
 import { DataTable } from 'primereact/datatable';
 import { Column } from 'primereact/column';
@@ -14,18 +14,19 @@ import { Tag } from 'primereact/tag';
 import { Card } from 'primereact/card';
 import { Message } from 'primereact/message';
 import { confirmDialog } from 'primereact/confirmdialog';
-import { MdWarning, MdEdit, MdDelete, MdLock, MdAdd, MdCheck, MdPhotoCamera } from 'react-icons/md';
+import { MdWarning, MdEdit, MdDelete, MdLock, MdAdd, MdCheck, MdPhotoCamera, MdFingerprint } from 'react-icons/md';
 import { useToast } from '@/components/providers/toast-provider';
 import {
     getUsers,
     createUser,
     updateUser,
     deleteUser,
+    removeUserPasskeys,
 } from '@/lib/actions/admin';
 import { UserAvatar } from '@/components/ui/user-avatar';
 import { AvatarEditorDialog } from '@/components/ui/avatar-editor-dialog';
 import { invalidateUserProfiles } from '@/lib/hooks/use-user-profiles';
-import type { PublicUser, UserRole } from '@/types';
+import type { AdminUserRow, PublicUser, UserRole } from '@/types';
 
 interface UsersModalProps {
     visible: boolean;
@@ -36,12 +37,13 @@ export function UsersModal({ visible, onHide }: UsersModalProps) {
     const { data: session } = useSession();
     const toast = useToast();
 
-    const [users, setUsers] = useState<PublicUser[]>([]);
+    const [users, setUsers] = useState<AdminUserRow[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState('');
 
     const [dialogVisible, setDialogVisible] = useState(false);
     const [editingUser, setEditingUser] = useState<PublicUser | null>(null);
+    const [isRemovingPasskeys, setIsRemovingPasskeys] = useState(false);
     const [formData, setFormData] = useState({
         name: '',
         email: '',
@@ -183,6 +185,39 @@ export function UsersModal({ visible, onHide }: UsersModalProps) {
         });
     };
 
+    const editingPasskeyCount = editingUser ? users.find((u) => u.id === editingUser.id)?.passkeyCount ?? 0 : 0;
+
+    const handleRemovePasskeys = (user: PublicUser) => {
+        confirmDialog({
+            message: `Remove all passkeys of ${user.name}? They can still sign in with their password and add new passkeys afterwards.`,
+            header: 'Remove passkeys',
+            icon: <MdWarning />,
+            acceptClassName: 'p-button-danger',
+            acceptLabel: 'Remove passkeys',
+            accept: async () => {
+                setIsRemovingPasskeys(true);
+                try {
+                    const result = await removeUserPasskeys(user.id);
+                    if (result.success) {
+                        toast.success('Passkeys removed', `${result.data?.removed ?? 0} passkey(s) removed for ${user.name}.`);
+                        fetchUsers();
+                    } else {
+                        toast.error('Error', result.error);
+                    }
+                } finally {
+                    setIsRemovingPasskeys(false);
+                }
+            },
+        });
+    };
+
+    const passkeyBodyTemplate = (user: AdminUserRow) => (
+        <span className="inline-flex items-center gap-1" title={`${user.passkeyCount} passkey(s)`}>
+            <MdFingerprint aria-hidden="true" />
+            {user.passkeyCount}
+        </span>
+    );
+
     const roleBodyTemplate = (user: PublicUser) => (
         <Tag value={user.role} severity={user.role === 'admin' ? 'info' : 'secondary'} />
     );
@@ -248,6 +283,7 @@ export function UsersModal({ visible, onHide }: UsersModalProps) {
                             <Column field="email" header="Email" sortable />
                             <Column field="role" header="Role" body={roleBodyTemplate} sortable />
                             <Column field="isActive" header="Status" body={statusBodyTemplate} sortable />
+                            <Column field="passkeyCount" header="Passkeys" body={passkeyBodyTemplate} sortable />
                             <Column field="createdAt" header="Created" sortable body={(user) => new Date(user.createdAt).toLocaleDateString()} />
                             <Column body={actionsBodyTemplate} header="Actions" style={{ width: '120px' }} />
                         </DataTable>
@@ -296,6 +332,22 @@ export function UsersModal({ visible, onHide }: UsersModalProps) {
                         <div className="flex items-center gap-3">
                             <InputSwitch checked={formData.isActive} onChange={(e) => setFormData({ ...formData, isActive: e.value })} disabled={editingUser?.id === session?.user?.id} />
                             <label className="font-medium">Active</label>
+                        </div>
+                    )}
+                    {editingUser && (
+                        <div className="flex items-center justify-between gap-3">
+                            <span className="font-medium inline-flex items-center gap-2">
+                                <MdFingerprint aria-hidden="true" /> Passkeys: {editingPasskeyCount}
+                            </span>
+                            <Button
+                                type="button"
+                                label="Remove passkeys"
+                                severity="danger"
+                                outlined
+                                disabled={editingPasskeyCount === 0}
+                                loading={isRemovingPasskeys}
+                                onClick={() => handleRemovePasskeys(editingUser)}
+                            />
                         </div>
                     )}
                     <div className="flex justify-end gap-2 mt-4">
