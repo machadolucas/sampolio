@@ -215,7 +215,7 @@ reconnect banner before expiry (Overview) and a Reconnect button in
 | Script | Purpose |
 |---|---|
 | `server-deploy.sh` | Build in place from the git clone: pins Node from `.nvmrc`, `pnpm install`, builds into **`.next-prod`** (`NEXT_DIST_DIR`), so a parallel `next dev` (which uses `.next`) can never clobber what `next start` serves. Flags: `--pull` (ff-only pull first), `--run` (start foreground after build). This is the normal deploy path. |
-| `install-launchd.sh` | Installs `com.sampolio.app` (`~/Library/LaunchAgents/`): resolves the Node binary from `.nvmrc` at install time and bakes it + the env from `~/sampolio/.env` into the plist, so boot doesn't depend on an interactive shell. Build with `server-deploy.sh` first. |
+| `install-launchd.sh` | Installs `com.sampolio.app` (`~/Library/LaunchAgents/`): resolves the Node binary from `.nvmrc` at install time and bakes it + the env from `~/sampolio/.env` into the plist, so boot doesn't depend on an interactive shell. The plist holds `AUTH_SECRET` and `ENCRYPTION_KEY`, so it is written owner-only (mode `0600`; launchd loads it fine). Build with `server-deploy.sh` first. |
 | `uninstall-launchd.sh` | Removes the launchd agent. |
 | `run-sampolio.sh` | Starts the app in the foreground from the in-place build (dev/diagnostic use). |
 | `reencrypt-data.mjs` | One-shot re-encryption of every `.enc` file into the fast **HKDF** key-derivation format (see §8). `--dry-run` supported. |

@@ -113,8 +113,10 @@ fi
 # Create the LaunchAgents directory if it doesn't exist
 mkdir -p "$HOME/Library/LaunchAgents"
 
-# Create the plist file
-cat > "$PLIST_FILE" << EOF
+# Create the plist file. It embeds AUTH_SECRET and ENCRYPTION_KEY, so it is
+# written under umask 077 and kept owner-only (0600); launchd loads 0600 user
+# LaunchAgents fine (it only refuses group/world-WRITABLE plists).
+( umask 077; cat > "$PLIST_FILE" ) << EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -191,8 +193,8 @@ cat > "$PLIST_FILE" << EOF
 </plist>
 EOF
 
-# Set proper permissions
-chmod 644 "$PLIST_FILE"
+# Owner-only: covers a pre-existing plist that `cat >` kept at its old mode.
+chmod 600 "$PLIST_FILE"
 
 # Load the launch agent
 launchctl load "$PLIST_FILE"
