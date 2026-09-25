@@ -1,9 +1,12 @@
 import { lt } from 'drizzle-orm';
+import { rateLimitRowRetentionMs } from '@/lib/auth/rate-limit-rules';
 import { getDb } from './client';
-import { verification } from './schema';
+import { rateLimit, verification } from './schema';
 
 /**
- * Housekeeping for Better Auth's `verification` table.
+ * Housekeeping for Better Auth's `verification` and `rateLimit` tables.
+ *
+ * ## verification
  *
  * Every `/passkey/generate-authenticate-options` call (the sign-in page's
  * conditional-UI autofill runs it on each load) and every
@@ -24,6 +27,25 @@ export function pruneExpiredVerifications(now: Date = new Date()): number {
   return getDb().delete(verification).where(lt(verification.expiresAt, now)).run().changes;
 }
 
+/*
+ * ## rateLimit
+ *
+ * One row per client IP + path (`storage: 'database'`). Better Auth 1.7.5
+ * deletes rows older than its longest window only when some bucket rolls
+ * over, so a key that is never hit again (a one-off IP, a probed path) can
+ * stay forever. Rows whose `lastRequest` is older than
+ * `rateLimitRowRetentionMs()` (2 × the longest configured window, at least
+ * 24 h) are dead: the next request to that key starts a fresh window in any
+ * case. Live buckets (inside their window) are never touched, so pruning
+ * cannot reset a count.
+ */
+
+/** Delete rateLimit rows idle for longer than the retention. Returns the count. */
+export function pruneStaleRateLimits(now: Date = new Date()): number {
+  const cutoff = now.getTime() - rateLimitRowRetentionMs();
+  return getDb().delete(rateLimit).where(lt(rateLimit.lastRequest, cutoff)).run().changes;
+}
+
 const ONE_HOUR = 60 * 60 * 1000;
 const globalForMaintenance = globalThis as typeof globalThis & { __sampolioMaintenanceTimer?: NodeJS.Timeout };
 
@@ -41,15 +63,35 @@ export function runVerificationPruneLogged(reason: string, now: Date = new Date(
   }
 }
 
+/** Same for rateLimit rows. */
+export function runRateLimitPruneLogged(reason: string, now: Date = new Date()): number {
+  try {
+    const deleted = pruneStaleRateLimits(now);
+    if (deleted > 0 || reason === 'startup') {
+      console.log(`[db] pruned ${deleted} stale rate-limit row(s) (${reason})`);
+    }
+    return deleted;
+  } catch (error) {
+    console.error(`[db] rate-limit prune (${reason}) FAILED:`, error);
+    return 0;
+  }
+}
+
+/** Every prune, each logged and failing on its own. */
+export function runMaintenanceLogged(reason: string, now: Date = new Date()): void {
+  runVerificationPruneLogged(reason, now);
+  runRateLimitPruneLogged(reason, now);
+}
+
 /**
  * Prune now, then hourly. Idempotent per process. Called from
  * `src/instrumentation.ts` just before the snapshot scheduler, so the startup
- * snapshot does not carry dead challenge rows.
+ * snapshot does not carry dead challenge or rate-limit rows.
  */
 export function startMaintenanceScheduler(): void {
   if (globalForMaintenance.__sampolioMaintenanceTimer) return;
-  runVerificationPruneLogged('startup');
-  const timer = setInterval(() => runVerificationPruneLogged('hourly'), ONE_HOUR);
+  runMaintenanceLogged('startup');
+  const timer = setInterval(() => runMaintenanceLogged('hourly'), ONE_HOUR);
   timer.unref();
   globalForMaintenance.__sampolioMaintenanceTimer = timer;
 }

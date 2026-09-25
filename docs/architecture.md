@@ -261,7 +261,8 @@ on the SQLCipher DB via the drizzle adapter; tables in `src/lib/db/sqlite/schema
   `secret` = `AUTH_SECRET`, cookie prefix `sampolio` (`__Secure-sampolio.session_token` over
   https), `advanced.database.generateId: 'uuid'` (user ids stay UUIDs for `getUserDir` and
   shared-member references), IP from `cf-connecting-ip` / `x-forwarded-for`, database-backed
-  rate limits (tighter `customRules` on sign-in/up, change-password and the passkey routes).
+  rate limits (tighter `customRules` on sign-in/up, change-password and the passkey routes;
+  windows and limits in `src/lib/auth/rate-limit-rules.ts`).
 - **DB sessions**, 30 days, refreshed daily. **No cookie cache**: a signed cache cookie would
   outlive a revocation. `auth()` (`src/lib/auth.ts`) wraps `getSession` in React `cache()` and
   keeps the old `{ user: { id, email, name, role } } | null` shape for every call site; it
@@ -377,8 +378,11 @@ worker; `frame-ancestors 'none'`; plus `img-src`/`font-src`/`connect-src`/`base-
 `src/instrumentation.ts` `register()` (Node runtime only): installs
 `installTimestampedConsole()` (`src/lib/server-logger.ts` — ISO-timestamp prefix on every
 `console.*`), opens the SQLCipher DB (`bootstrapDatabase`), then — when the DB is usable —
-`startMaintenanceScheduler()` (`src/lib/db/sqlite/maintenance.ts`: deletes `verification` rows
-past `expiresAt` at boot and hourly, logging `[db] pruned N expired verification row(s)`),
+`startMaintenanceScheduler()` (`src/lib/db/sqlite/maintenance.ts`, at boot and hourly: deletes
+`verification` rows past `expiresAt`, logging `[db] pruned N expired verification row(s)`, and
+`rateLimit` rows whose `lastRequest` is older than `rateLimitRowRetentionMs()` — 2 × the longest
+rate-limit window, at least 24 h, so live buckets are never reset — logging
+`[db] pruned N stale rate-limit row(s)`; both lines always at boot, hourly only when N > 0),
 `startSnapshotScheduler()` (boot, every 6 h, daily 04:55) and `startBankScheduler()` (`src/lib/bank/scheduler.ts`, 30-min tick,
 per-account daily rate limits from `src/lib/bank/constants.ts`). No other daemons, queues, or
 cron exist. Bank-sync mechanics: [`bank-sync.md`](bank-sync.md).

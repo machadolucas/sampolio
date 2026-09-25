@@ -23,6 +23,7 @@ import { touchPasskeyByCredentialId } from '@/lib/db/passkeys';
 import { defaultPasskeyName } from '@/lib/passkey-name';
 import { passwordPolicySchema, signUpNameSchema } from '@/lib/schemas/auth.schema';
 import { PASSKEY_REAUTH_REQUIRED, PASSKEY_REGISTRATION_MAX_SESSION_AGE_MS } from './constants';
+import { AUTH_RATE_LIMIT } from './rate-limit-rules';
 import { toAppSession, type AppSession } from './session';
 
 export { PASSKEY_REAUTH_REQUIRED, PASSKEY_REGISTRATION_MAX_SESSION_AGE_MS };
@@ -164,16 +165,9 @@ function buildAuthOptions({ withNextCookies = true }: { withNextCookies?: boolea
       enabled: true,
       storage: 'database',
       modelName: 'rateLimit',
-      window: 60,
-      max: 120,
-      customRules: {
-        '/sign-in/email': { window: 60, max: 10 },
-        '/sign-up/email': { window: 60, max: 5 },
-        '/change-password': { window: 60, max: 5 },
-        '/passkey/verify-authentication': { window: 60, max: 10 },
-        '/passkey/generate-authenticate-options': { window: 60, max: 30 },
-        '/passkey/verify-registration': { window: 60, max: 10 },
-      },
+      // Windows and limits live in ./rate-limit-rules so the DB maintenance
+      // prune (src/lib/db/sqlite/maintenance.ts) sizes its cutoff from them.
+      ...AUTH_RATE_LIMIT,
     },
 
     advanced: {
