@@ -55,7 +55,10 @@ through a Cloudflare Tunnel gated by Cloudflare Access (Zero Trust).
 - **Boot log lines** (`sampolio.log`, from `src/lib/db/sqlite/bootstrap.ts`):
   `[db] opened encrypted database … (migrations applied)`; on the first 4.x boot
   `[db] imported N legacy users (M soft-deleted) from .enc files`, afterwards
-  `[db] legacy users already imported`; then `[db] snapshot (startup) written …
+  `[db] legacy users already imported`; then, from `src/lib/db/sqlite/maintenance.ts`,
+  `[db] pruned N expired verification row(s) (startup)` and
+  `[db] pruned N stale rate-limit row(s) (startup)` (the same lines with `(hourly)`
+  whenever an hourly prune deletes something); then `[db] snapshot (startup) written …
   (encrypted, verified)`. On failure `sampolio-error.log` gets a `====` banner
   starting `[db] STARTUP FAILED — sign-in and sign-up are DISABLED` plus the cause.
 - **Fail-closed boot.** The legacy import aborts (one transaction, marker never
