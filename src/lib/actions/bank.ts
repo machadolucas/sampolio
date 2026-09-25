@@ -34,6 +34,7 @@ import { matchCardPaymentsWithFingerprints } from '@/lib/bank/card-payment-match
 import { beginConnection, beginReconnect } from '@/lib/bank/connect';
 import { runSync } from '@/lib/bank/sync';
 import { redactBankError } from '@/lib/bank/client';
+import { psuContextFrom } from '@/lib/bank/psu-context';
 import { getAspspDetailsCached } from '@/lib/bank/aspsp-info';
 import { computeCardBilling, transactionsForCycle, toCardTxn, isCardPayment } from '@/lib/bank/card-billing';
 import { isBankFeatureConfigured, MIN_MANUAL_REFRESH_INTERVAL_MS } from '@/lib/bank/constants';
@@ -138,11 +139,7 @@ export async function reconnectBankConnection(
  * allowance) + user agent (paired with the IP — never sent alone, see client.ts). */
 async function getPsuContext(): Promise<{ psuIp?: string; psuUserAgent?: string }> {
   try {
-    const h = await headers();
-    const fwd = h.get('x-forwarded-for');
-    const psuIp = fwd ? fwd.split(',')[0].trim() : h.get('x-real-ip') ?? undefined;
-    const psuUserAgent = h.get('user-agent') ?? undefined;
-    return { psuIp, psuUserAgent };
+    return psuContextFrom(await headers());
   } catch {
     return {};
   }

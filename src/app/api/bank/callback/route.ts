@@ -14,6 +14,7 @@ import type { NextRequest } from 'next/server';
 import { auth } from '@/lib/auth';
 import { completeConnection } from '@/lib/bank/connect';
 import { redactBankError } from '@/lib/bank/client';
+import { psuContextFrom } from '@/lib/bank/psu-context';
 
 /**
  * The canonical external origin to build redirects against. Behind Caddy /
@@ -52,11 +53,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     return redirect(request, '/settings?bankError=missing_params');
   }
 
-  const psuIp =
-    request.headers.get('x-forwarded-for')?.split(',')[0].trim() ??
-    request.headers.get('x-real-ip') ??
-    undefined;
-  const psuUserAgent = request.headers.get('user-agent') ?? undefined;
+  const { psuIp, psuUserAgent } = psuContextFrom(request.headers);
 
   try {
     const result = await completeConnection(session.user.id, code, state, { psuIp, psuUserAgent });

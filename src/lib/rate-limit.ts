@@ -38,11 +38,22 @@ export function resetRateLimits(): void {
   windows.clear();
 }
 
-/** Best-effort client IP for rate-limit keys (same headers as Better Auth's config). */
+/** What `clientIpFrom` returns when no header names the client. */
+export const UNKNOWN_CLIENT_IP = 'unknown';
+
+/**
+ * Best-effort client IP (same header order as Better Auth's
+ * `advanced.ipAddress.ipAddressHeaders`). `cf-connecting-ip` comes first
+ * because Cloudflare's edge overwrites it on the tunnel path, whereas it
+ * *appends* to `x-forwarded-for`, so the first XFF hop there is whatever the
+ * client sent. On the LAN path Caddy strips `cf-connecting-ip` and replaces
+ * `x-forwarded-for` with the peer address, so its first hop is trustworthy.
+ * Used for rate-limit keys and the Enable Banking PSU IP.
+ */
 export function clientIpFrom(headers: Headers): string {
-  const cf = headers.get('cf-connecting-ip');
-  if (cf) return cf.trim();
-  const xff = headers.get('x-forwarded-for');
-  if (xff) return xff.split(',')[0].trim();
-  return 'unknown';
+  const cf = headers.get('cf-connecting-ip')?.trim();
+  if (cf) return cf;
+  const xff = headers.get('x-forwarded-for')?.split(',')[0].trim();
+  if (xff) return xff;
+  return UNKNOWN_CLIENT_IP;
 }
