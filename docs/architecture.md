@@ -292,7 +292,8 @@ on the SQLCipher DB via the drizzle adapter; tables in `src/lib/db/sqlite/schema
   `/passkey/generate-register-options` returns **403 `PASSKEY_REAUTH_REQUIRED`** when the
   session is older than `PASSKEY_REGISTRATION_MAX_SESSION_AGE_MS` (10 min,
   `src/lib/auth/constants.ts`). `hooks.after` on `/sign-in/email` records failures (401 only,
-  also for unknown emails) / successes and performs the bcrypt → scrypt rehash.
+  also for unknown emails) / successes and performs the bcrypt → scrypt rehash; on
+  `/passkey/verify-authentication` it stamps `passkey.lastUsedAt` (see Passkeys).
   `disabledPaths: ['/update-user']` (profile edits go through our own actions).
 - **Action-level limits** (Better Auth's rate limiter only runs on its HTTP router, not for
   `auth.api.*`): `changeMyPassword` uses the lockout map keyed `pw:<userId>` (10 wrong
@@ -305,7 +306,11 @@ on the SQLCipher DB via the drizzle adapter; tables in `src/lib/db/sqlite/schema
   "Apple Passwords", "1Password"); for an unknown or all-zero AAGUID — Apple platforms send
   all zeros under `attestation: "none"` — the registering request's user agent
   ("Safari on iPhone", "Chrome on Mac"); else "Passkey". A client-sent name wins;
-  `passkey.lastUsedAt` (Sampolio column) is stamped after each verified sign-in.
+  `passkey.lastUsedAt` (Sampolio column) is stamped by the `hooks.after` on
+  `/passkey/verify-authentication` (`stampPasskeyLastUsed`) only once a session was created,
+  scoped to the asserted credential id and that session's user, so a refused sign-in (a
+  deactivated user, a failed assertion) is not a use. Not in the plugin's
+  `authentication.afterVerification`, which runs before the session exists.
   `session.freshAge` is **0** because Better Auth's `freshSessionMiddleware` also gates
   `/list-sessions`, `/unlink-account` and `/delete-user`; the narrower 10-minute guard above
   stops a stolen, older session cookie from enrolling a passkey that would survive a password
@@ -497,8 +502,10 @@ wraps components in ThemeProvider). ~50 test files:
 behavior — except a representative goals/trips/user-preferences slice), the bank client/connect/sync
 modules, and there are no e2e/browser tests. `src/proxy.test.ts` covers the auth-page session
 handling (redirect / clear / render, plus a redirect-following loop check) against a real temp
-DB; `src/lib/auth/passkey-registration.test.ts` runs a full passkey registration with a
-software authenticator. Manual
+DB; `src/lib/auth/passkey-registration.test.ts` and `passkey-sign-in.test.ts` run full passkey
+registrations and sign-ins with a software authenticator (`src/test/soft-authenticator.ts`);
+`src/app/api/bank/callback/route.test.ts` and `src/lib/actions/bank-psu.test.ts` check the PSU
+IP the bank callback and "Refresh now" pass on. Manual
 verification uses the `sampolio-preview` launch config + `preview_*` tools.
 
 ## 16. Tooling

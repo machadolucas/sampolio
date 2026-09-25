@@ -19,7 +19,7 @@ import {
   recordFailedLogin,
   recordSuccessfulLogin,
 } from '@/lib/db/users';
-import { touchPasskeyByCredentialId } from '@/lib/db/passkeys';
+import { recordPasskeySignIn } from '@/lib/db/passkeys';
 import { defaultPasskeyName } from '@/lib/passkey-name';
 import { passwordPolicySchema, signUpNameSchema } from '@/lib/schemas/auth.schema';
 import { PASSKEY_REAUTH_REQUIRED, PASSKEY_REGISTRATION_MAX_SESSION_AGE_MS } from './constants';
@@ -75,6 +75,35 @@ function isLegacyBcryptHash(hash: string | null | undefined): hash is string {
 function assertAuthSetupComplete(): void {
   if (!isAuthSetupComplete()) {
     throw new APIError('SERVICE_UNAVAILABLE', { code: SETUP_INCOMPLETE_CODE, message: SETUP_INCOMPLETE_MESSAGE });
+  }
+}
+
+/** @better-auth/passkey 1.7.5: verifies the assertion and mints the session. */
+const PASSKEY_VERIFY_AUTHENTICATION_PATH = '/passkey/verify-authentication';
+
+type AuthHookContext = Parameters<Parameters<typeof createAuthMiddleware>[0]>[0];
+
+/**
+ * Stamp `passkey.lastUsedAt` (Sampolio's column) after a passkey sign-in.
+ * An after-hook rather than the plugin's `authentication.afterVerification`:
+ * that callback runs once the signature verifies but *before* the session is
+ * created, so a deactivated user's sign-in, which `session.create.before`
+ * then refuses, would still count as a use. Here the stamp needs
+ * `newSession`, which exists only once a session was actually minted, and it
+ * is scoped to that session's user as well as the asserted credential
+ * (`body.response.id`, the id the plugin looked the passkey up by;
+ * `credentialID` is indexed, not unique). Same approach as Virtual Home and
+ * Lumo. A failed stamp is logged and never fails the sign-in.
+ */
+function stampPasskeyLastUsed(ctx: AuthHookContext): void {
+  if (isAPIError(ctx.context.returned)) return;
+  const userId = ctx.context.newSession?.user.id;
+  const credentialId: unknown = (ctx.body as { response?: { id?: unknown } } | undefined)?.response?.id;
+  if (!userId || typeof credentialId !== 'string' || credentialId === '') return;
+  try {
+    recordPasskeySignIn({ userId, credentialId });
+  } catch (error) {
+    console.error(`[auth] could not record passkey last use for user ${userId}:`, error);
   }
 }
 
@@ -263,6 +292,10 @@ function buildAuthOptions({ withNextCookies = true }: { withNextCookies?: boolea
       }),
 
       after: createAuthMiddleware(async (ctx) => {
+        if (ctx.path === PASSKEY_VERIFY_AUTHENTICATION_PATH) {
+          stampPasskeyLastUsed(ctx);
+          return;
+        }
         if (ctx.path !== '/sign-in/email') return;
         const email = String(ctx.body?.email ?? '').trim().toLowerCase();
         const returned = ctx.context.returned;
@@ -296,6 +329,8 @@ function buildAuthOptions({ withNextCookies = true }: { withNextCookies?: boolea
         rpID: new URL(baseURL).hostname,
         rpName: 'Sampolio',
         origin,
+        // No `authentication.afterVerification`: lastUsedAt is stamped by
+        // the after-hook once a session exists (stampPasskeyLastUsed).
         registration: {
           // Default label: the authenticator model (AAGUID) when known, else
           // the registering browser ("Safari on iPhone" — Apple reports an
@@ -303,11 +338,6 @@ function buildAuthOptions({ withNextCookies = true }: { withNextCookies?: boolea
           afterVerification: async ({ ctx, verification }) => ({
             name: defaultPasskeyName(verification.registrationInfo?.aaguid, ctx.headers?.get('user-agent')),
           }),
-        },
-        authentication: {
-          afterVerification: async ({ clientData }) => {
-            touchPasskeyByCredentialId(clientData.id);
-          },
         },
       }),
       ...(isDevBypassEnabled() ? [devBypassPlugin()] : []),

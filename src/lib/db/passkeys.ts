@@ -1,4 +1,4 @@
-import { desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, sql } from 'drizzle-orm';
 import { getAuthenticatorName } from '@better-auth/passkey';
 import type { PasskeySummary } from '@/types';
 import { DEFAULT_PASSKEY_NAME } from '@/lib/passkey-name';
@@ -56,7 +56,16 @@ export function deleteUserPasskeys(userId: string): number {
   return getDb().delete(passkey).where(eq(passkey.userId, userId)).run().changes;
 }
 
-/** Stamp `lastUsedAt` after a verified passkey sign-in. */
-export function touchPasskeyByCredentialId(credentialId: string, at = new Date()): void {
-  getDb().update(passkey).set({ lastUsedAt: at }).where(eq(passkey.credentialID, credentialId)).run();
+/**
+ * Stamp `lastUsedAt` on the passkey a sign-in used. Called by the
+ * `/passkey/verify-authentication` after-hook (src/lib/auth/server.ts) only
+ * once a session was created; scoped to that user as well as the credential.
+ * Returns the number of rows stamped.
+ */
+export function recordPasskeySignIn({ userId, credentialId, at = new Date() }: { userId: string; credentialId: string; at?: Date }): number {
+  return getDb()
+    .update(passkey)
+    .set({ lastUsedAt: at })
+    .where(and(eq(passkey.credentialID, credentialId), eq(passkey.userId, userId)))
+    .run().changes;
 }
