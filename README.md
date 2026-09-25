@@ -319,6 +319,16 @@ The app starts automatically on login and restarts if it crashes. The resolved
 Node binary path (matching `.nvmrc`) is baked into the launchd plist at install
 time, so it doesn't depend on an interactive shell at boot.
 
+**3c. Or run it as a system daemon (starts at boot, no login needed):**
+```bash
+SAMPOLIO_LAUNCHD_DOMAIN=system ./scripts/install-launchd.sh
+```
+This prepares a root-installable LaunchDaemon that runs as your user: it writes
+the secrets to `~/.sampolio/launchd.env` (mode `0600`), renders a secret-free
+plist to `~/.sampolio/launchd/com.sampolio.app.system.plist`, and prints the
+`sudo` commands to install it. It never runs `sudo` itself. See
+[`docs/operations.md`](docs/operations.md) §1.
+
 #### Environment Variables on Deployment
 
 **Recommended: Using .env File** (ensures secrets stay consistent)
@@ -414,8 +424,8 @@ tar -czf ~/sampolio-data-backup-$(date +%Y%m%d).tar.gz -C ~/.sampolio data
 # Pull + install + build in one step
 ./scripts/server-deploy.sh --pull
 
-# Reload the service to pick up the new build
-./scripts/install-launchd.sh   # re-running it reloads the launchd agent
+# Restart the service to pick up the new build (gui agent or system daemon)
+./scripts/prod-service.sh restart
 ```
 
 If you run manually instead of via launchd, stop with `Ctrl+C` and start again
@@ -529,8 +539,9 @@ docker run -p 3999:3999 \
 | `pnpm test:coverage` | Run tests with coverage report |
 | `./scripts/server-deploy.sh` | Install deps + build in place on the server (`--pull` to git pull first, `--run` to start after) |
 | `./scripts/run-sampolio.sh` | Run the production server in the foreground |
-| `./scripts/install-launchd.sh` | Install/reload macOS auto-start (launchd) |
-| `./scripts/uninstall-launchd.sh` | Remove macOS auto-start |
+| `./scripts/install-launchd.sh` | Install/reload macOS auto-start (launchd LaunchAgent); `SAMPOLIO_LAUNCHD_DOMAIN=system` prepares a system LaunchDaemon instead |
+| `./scripts/prod-service.sh` | `status` / `restart` / `snapshot` for the launchd job, in either domain, without `sudo` |
+| `./scripts/uninstall-launchd.sh` | Remove macOS auto-start (LaunchAgent) |
 
 ## File Locations
 
@@ -538,7 +549,9 @@ docker run -p 3999:3999 \
 |------|-------------|
 | `~/.sampolio/data/` | User data and settings (encrypted) |
 | `~/.sampolio/logs/` | Application logs (when using launchd) |
-| `~/Library/LaunchAgents/com.sampolio.app.plist` | launchd configuration |
+| `~/Library/LaunchAgents/com.sampolio.app.plist` | launchd configuration (LaunchAgent) |
+| `/Library/LaunchDaemons/com.sampolio.app.plist` | launchd configuration (system daemon, no secrets) |
+| `~/.sampolio/launchd.env` | System daemon environment and secrets (mode `0600`) |
 
 ## License
 

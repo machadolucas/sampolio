@@ -18,6 +18,17 @@ PLIST_FILE="$HOME/Library/LaunchAgents/${PLIST_NAME}.plist"
 echo -e "${YELLOW}=== Sampolio Auto-Start Uninstallation ===${NC}"
 echo ""
 
+# The system daemon (SAMPOLIO_LAUNCHD_DOMAIN=system) is root-owned; removing it
+# needs sudo, which this script never runs.
+SYSTEM_PLIST="/Library/LaunchDaemons/${PLIST_NAME}.plist"
+if [ -f "$SYSTEM_PLIST" ] || launchctl print "system/${PLIST_NAME}" >/dev/null 2>&1; then
+    echo -e "${YELLOW}${PLIST_NAME} is installed as a system daemon. Remove it with:${NC}"
+    echo "  sudo launchctl bootout system/${PLIST_NAME}"
+    echo "  sudo rm $SYSTEM_PLIST"
+    echo "  rm ~/.sampolio/launchd.env   # holds the secrets; back up ENCRYPTION_KEY first"
+    echo ""
+fi
+
 # Check if installed
 if [ ! -f "$PLIST_FILE" ]; then
     echo -e "${YELLOW}Sampolio is not installed as a launch agent.${NC}"

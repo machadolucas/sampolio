@@ -22,12 +22,21 @@ description: >
 URL from the host configuration before running health checks.
 
 This deploys the **current working tree** of `$HOME/sampolio` to the
-live service running on this same machine: launchd agent `com.sampolio.app` runs
+live service running on this same machine: launchd job `com.sampolio.app` runs
 `next start -p 3999 -H 127.0.0.1` (loopback only) against the `.next-prod/` build and the real data at
 `~/.sampolio/data`. Caddy reverse-proxies `https://sampolio.example.com` → it.
 
+The job lives in one of two launchd domains, and every step below works in both
+(`./scripts/prod-service.sh domain` prints which):
+
+- **gui**: the LaunchAgent `~/Library/LaunchAgents/com.sampolio.app.plist`, env and
+  secrets baked into the plist.
+- **system**: the LaunchDaemon `/Library/LaunchDaemons/com.sampolio.app.plist`, which
+  runs as the app user through `scripts/launchd-run.sh`. The plist is root-owned and
+  secret-free; the env lives in `~/.sampolio/launchd.env` (0600).
+
 There is no separate prod checkout — **deploying = rebuild `.next-prod` in place,
-then restart the launchd agent** so the new build is loaded. Prod keeps serving its
+then restart the launchd job** so the new build is loaded. Prod keeps serving its
 old in-memory build until that restart, so all checks run *before* it.
 
 ## Two absolute rules
@@ -68,16 +77,18 @@ Report the branch, last commit, and the uncommitted changes — this is exactly 
 will go live (deploy tree as-is; do not commit or push).
 
 ### 2. Snapshot the production data (safety net)
-First refresh the encrypted SQLite snapshot (skip if `~/.sampolio/data/sampolio.db`
-does not exist yet — the first 4.x boot creates it). It is safe while the app runs:
+First refresh the encrypted SQLite snapshot. It is safe while the app runs, and it
+is a no-op if `~/.sampolio/data/sampolio.db` does not exist yet (the first 4.x boot
+creates it):
 ```sh
-export NVM_DIR="$HOME/.nvm"; . "$NVM_DIR/nvm.sh"; nvm use 26 \
-  && cd $HOME/sampolio && ENCRYPTION_KEY="$(/usr/bin/plutil -extract EnvironmentVariables.ENCRYPTION_KEY raw ~/Library/LaunchAgents/com.sampolio.app.plist)" \
-     DATA_DIR="$HOME/.sampolio/data" node scripts/db-snapshot.mjs
+cd $HOME/sampolio && ./scripts/prod-service.sh snapshot
 ```
-Pass the key prod actually runs with (from the plist). Without it the script falls back to
-`<DATA_DIR>/.encryption_key`, which is not guaranteed to match, and a snapshot under the
-wrong key would be a backup nobody can open. It must print no "ENCRYPTION_KEY not set" line.
+It passes `scripts/db-snapshot.mjs` the key prod actually runs with: `ENCRYPTION_KEY`
+and `DATA_DIR` from `~/.sampolio/launchd.env` when that file exists (system daemon),
+otherwise from the gui plist's `EnvironmentVariables`. Without an explicit key the
+snapshot script falls back to `<DATA_DIR>/.encryption_key`, which is not guaranteed
+to match, and a snapshot under the wrong key would be a backup nobody can open. It
+must print its `key from …` line and no "ENCRYPTION_KEY not set" line.
 Then take a timestamped tarball. It **excludes** the key/secret dot-files (a backup
 must never carry the key that decrypts it) and the live SQLite files (a hot copy of
 `sampolio.db` + `-wal`/`-shm` can be torn); `snapshots/sampolio.db` is the
@@ -138,14 +149,23 @@ step 5 is a **failed gate** in step 3 — if everything passed, continue automat
 
 ### 5. Restart production
 ```sh
-launchctl kickstart -k gui/$(id -u)/com.sampolio.app
+cd $HOME/sampolio && ./scripts/prod-service.sh restart
 ```
-If that errors or the job is parked in launchd's penalty box (repeated prior
-failures), do a full reload:
+It picks the domain itself. **gui** → `launchctl kickstart -k gui/$(id -u)/com.sampolio.app`.
+**system** → reads the pid from `launchctl print system/com.sampolio.app` (works
+without sudo), sends it `SIGTERM`, and launchd respawns it (`KeepAlive`). Either way
+it waits for a **new** pid and for `http://127.0.0.1:3999/` to answer 307/200, and
+exits non-zero if that doesn't happen within 90 s.
+
+If it fails and the job is parked in launchd's penalty box (repeated prior
+failures), do a full reload. **gui** (no sudo):
 ```sh
 launchctl bootout   gui/$(id -u)/com.sampolio.app 2>/dev/null
 launchctl bootstrap gui/$(id -u) "$HOME/Library/LaunchAgents/com.sampolio.app.plist"
 ```
+**system** needs sudo, which this skill never runs: report the failure and hand the
+user `sudo launchctl bootout system/com.sampolio.app` followed by
+`sudo launchctl bootstrap system /Library/LaunchDaemons/com.sampolio.app.plist`.
 
 ### 6. Verify health
 Do **not** use `sleep` (the Bash tool blocks foreground sleep). Poll with curl retry,
@@ -154,8 +174,8 @@ which also waits out the Next.js boot:
 # Readiness (waits for the new process to come up): expect 307 (-> /auth/signin) or 200
 curl -sS --retry 15 --retry-delay 1 --retry-all-errors -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3999/
 
-# Service health: 2nd column is the last exit code; 0 = healthy
-launchctl list | grep com.sampolio.app
+# Service health: domain, pid, last exit code, listener, HTTP code
+./scripts/prod-service.sh status
 
 # Listening on 3999, loopback only: expect 127.0.0.1:3999 (a *:3999 line means
 # the plist still binds every interface)
@@ -173,8 +193,7 @@ grep -h '\[db\]' "$HOME/.sampolio/logs/"*.log | tail -n 5
 ```
 Then refresh the snapshot so the post-deploy state is captured:
 ```sh
-cd $HOME/sampolio && ENCRYPTION_KEY="$(/usr/bin/plutil -extract EnvironmentVariables.ENCRYPTION_KEY raw ~/Library/LaunchAgents/com.sampolio.app.plist)" \
-  DATA_DIR="$HOME/.sampolio/data" node scripts/db-snapshot.mjs
+cd $HOME/sampolio && ./scripts/prod-service.sh snapshot
 ```
 
 ### 7. Report
@@ -187,7 +206,7 @@ cd $HOME/sampolio && ENCRYPTION_KEY="$(/usr/bin/plutil -extract EnvironmentVaria
   git -C $HOME/sampolio stash        # or: git checkout <prev-commit>
   export NVM_DIR="$HOME/.nvm"; . "$NVM_DIR/nvm.sh"; nvm use 26 \
     && NEXT_DIST_DIR=.next-prod pnpm -C $HOME/sampolio build
-  launchctl kickstart -k gui/$(id -u)/com.sampolio.app
+  $HOME/sampolio/scripts/prod-service.sh restart
   ```
   The step-2 snapshot is the data restore point if data ever needs it.
 
@@ -197,7 +216,9 @@ cd $HOME/sampolio && ENCRYPTION_KEY="$(/usr/bin/plutil -extract EnvironmentVaria
   re-bakes the plist and, if `~/sampolio/.env` is ever missing, silently substitutes
   a *stale* `~/.sampolio/data/.encryption_key`, permanently orphaning all encrypted
   data. It's only for **Node-version changes** (re-baking the node path) or the
-  one-time `NEXT_DIST_DIR` setup.
+  one-time `NEXT_DIST_DIR` setup. For the system daemon it is
+  `SAMPOLIO_LAUNCHD_DOMAIN=system ./scripts/install-launchd.sh`, which only stages
+  the plist and prints the sudo steps; installing them is the user's call.
 - **Do not write to `~/.sampolio/data`** except the tar snapshot and
   `scripts/db-snapshot.mjs` (which only rewrites `snapshots/sampolio.db`).
 - **Do not build without `NEXT_DIST_DIR=.next-prod`** — that would write `.next`
