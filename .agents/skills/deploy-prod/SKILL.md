@@ -72,8 +72,12 @@ First refresh the encrypted SQLite snapshot (skip if `~/.sampolio/data/sampolio.
 does not exist yet — the first 4.x boot creates it). It is safe while the app runs:
 ```sh
 export NVM_DIR="$HOME/.nvm"; . "$NVM_DIR/nvm.sh"; nvm use 26 \
-  && cd $HOME/sampolio && DATA_DIR="$HOME/.sampolio/data" node scripts/db-snapshot.mjs
+  && cd $HOME/sampolio && ENCRYPTION_KEY="$(/usr/bin/plutil -extract EnvironmentVariables.ENCRYPTION_KEY raw ~/Library/LaunchAgents/com.sampolio.app.plist)" \
+     DATA_DIR="$HOME/.sampolio/data" node scripts/db-snapshot.mjs
 ```
+Pass the key prod actually runs with (from the plist). Without it the script falls back to
+`<DATA_DIR>/.encryption_key`, which is not guaranteed to match, and a snapshot under the
+wrong key would be a backup nobody can open. It must print no "ENCRYPTION_KEY not set" line.
 Then take a timestamped tarball. It **excludes** the key/secret dot-files (a backup
 must never carry the key that decrypts it) and the live SQLite files (a hot copy of
 `sampolio.db` + `-wal`/`-shm` can be torn); `snapshots/sampolio.db` is the
@@ -169,7 +173,8 @@ grep -h '\[db\]' "$HOME/.sampolio/logs/"*.log | tail -n 5
 ```
 Then refresh the snapshot so the post-deploy state is captured:
 ```sh
-cd $HOME/sampolio && DATA_DIR="$HOME/.sampolio/data" node scripts/db-snapshot.mjs
+cd $HOME/sampolio && ENCRYPTION_KEY="$(/usr/bin/plutil -extract EnvironmentVariables.ENCRYPTION_KEY raw ~/Library/LaunchAgents/com.sampolio.app.plist)" \
+  DATA_DIR="$HOME/.sampolio/data" node scripts/db-snapshot.mjs
 ```
 
 ### 7. Report
