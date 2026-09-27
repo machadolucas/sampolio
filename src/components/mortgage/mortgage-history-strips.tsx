@@ -7,6 +7,8 @@ import { Dropdown } from 'primereact/dropdown';
 import { InputNumber } from 'primereact/inputnumber';
 import { Button } from 'primereact/button';
 import { Message } from 'primereact/message';
+import { confirmDialog } from 'primereact/confirmdialog';
+import { useToast } from '@/components/providers/toast-provider';
 import { SubEntityList, MonthPicker } from '@/components/ui/form-primitives';
 import { formatCurrency, formatYearMonthShort, formatRate } from '@/lib/constants';
 import { getCurrentYearMonth } from '@/lib/projection';
@@ -38,6 +40,46 @@ export function MortgageHistoryStrips({
   onChanged: (msg: string) => void;
 }) {
   const loanLabel = (id?: string) => mortgage.loans.find((l) => l.id === id)?.label ?? '';
+  const toast = useToast();
+
+  // Rates and fees drive every member's projection — confirm before deleting.
+  const confirmDeleteRate = (id: string) => {
+    const rate = rates.find((r) => r.id === id);
+    const what = rate ? `the ${formatRate(rate.euriborRate)} Euribor rate from ${formatYearMonthShort(rate.effectiveDate)}` : 'this Euribor rate';
+    confirmDialog({
+      header: 'Delete rate?',
+      message: `Delete ${what}? Every member's mortgage projection is recalculated without it.`,
+      icon: 'pi pi-exclamation-triangle',
+      acceptLabel: 'Delete',
+      rejectLabel: 'Cancel',
+      acceptClassName: 'p-button-danger',
+      accept: async () => {
+        const res = await deleteMortgageRate(mortgage.id, id);
+        if (res.success) onChanged('Rate removed.');
+        else toast.error('Could not delete the rate', res.error);
+      },
+    });
+  };
+
+  const confirmDeleteCost = (id: string) => {
+    const cost = costs.find((c) => c.id === id);
+    const what = cost
+      ? `the ${COST_LABELS[cost.type].toLowerCase()}${cost.loanId ? ` (${loanLabel(cost.loanId)})` : ''} entry from ${formatYearMonthShort(cost.effectiveDate)}`
+      : 'this fee entry';
+    confirmDialog({
+      header: 'Delete fee entry?',
+      message: `Delete ${what}? Every member's mortgage projection is recalculated without it.`,
+      icon: 'pi pi-exclamation-triangle',
+      acceptLabel: 'Delete',
+      rejectLabel: 'Cancel',
+      acceptClassName: 'p-button-danger',
+      accept: async () => {
+        const res = await deleteMortgageCost(mortgage.id, id);
+        if (res.success) onChanged('Fee entry removed.');
+        else toast.error('Could not delete the fee entry', res.error);
+      },
+    });
+  };
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -131,10 +173,7 @@ export function MortgageHistoryStrips({
           items={rates.map((r) => ({ id: r.id, label: formatRate(r.euriborRate), detail: `from ${formatYearMonthShort(r.effectiveDate)}` }))}
           onAdd={openAddRate}
           onEditItem={openEditRate}
-          onDeleteItem={async (id) => {
-            const res = await deleteMortgageRate(mortgage.id, id);
-            if (res.success) onChanged('Rate removed.');
-          }}
+          onDeleteItem={confirmDeleteRate}
         />
       </Card>
 
@@ -149,10 +188,7 @@ export function MortgageHistoryStrips({
           }))}
           onAdd={openAddCost}
           onEditItem={openEditCost}
-          onDeleteItem={async (id) => {
-            const res = await deleteMortgageCost(mortgage.id, id);
-            if (res.success) onChanged('Fee entry removed.');
-          }}
+          onDeleteItem={confirmDeleteCost}
         />
       </Card>
 

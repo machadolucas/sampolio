@@ -9,6 +9,7 @@ import { SelectButton } from 'primereact/selectbutton';
 import { Button } from 'primereact/button';
 import { Message } from 'primereact/message';
 import { Tag } from 'primereact/tag';
+import { confirmDialog } from 'primereact/confirmdialog';
 import { MonthPicker, HelpTip } from '@/components/ui/form-primitives';
 import { UserAvatar } from '@/components/ui/user-avatar';
 import { useUserProfiles } from '@/lib/hooks/use-user-profiles';
@@ -197,14 +198,30 @@ export function DriftAdjustmentDialog({
 }) {
   const [loanId, setLoanId] = useState(loans[0]?.id ?? '');
   const [yearMonth, setYearMonth] = useState(getCurrentYearMonth());
-  const [actualBalance, setActualBalance] = useState<number>(0);
+  // Starts empty: Save stays disabled until the user types the statement's
+  // balance, so a habitual tap can never record a €0 snapshot.
+  const [actualBalance, setActualBalance] = useState<number | null>(null);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
+  // The dialog stays mounted between openings — start every opening fresh
+  // (reset during render on the closed→open transition, no effect needed).
+  const [wasVisible, setWasVisible] = useState(visible);
+  if (visible !== wasVisible) {
+    setWasVisible(visible);
+    if (visible) {
+      setLoanId(loans[0]?.id ?? '');
+      setYearMonth(getCurrentYearMonth());
+      setActualBalance(null);
+      setError('');
+    }
+  }
+
   const expected = expectedByLoan[loanId] ?? 0;
-  const variance = actualBalance - expected;
+  const variance = actualBalance === null ? null : actualBalance - expected;
 
   const save = async () => {
+    if (actualBalance === null) { setError('Enter the balance from your statement'); return; }
     setSaving(true);
     setError('');
     const res = await recordMortgageBalanceSnapshot(mortgageId, { loanId, yearMonth, actualBalance });
@@ -229,19 +246,24 @@ export function DriftAdjustmentDialog({
         </div>
         <div>
           <label className="text-sm font-medium">Actual balance from your bank statement</label>
-          <InputNumber value={actualBalance} onValueChange={(e) => setActualBalance(e.value ?? 0)} mode="currency" currency={currency} locale="fi-FI" className="w-full" />
+          <InputNumber value={actualBalance} onValueChange={(e) => setActualBalance(e.value ?? null)} placeholder={formatCurrency(expected, currency)} mode="currency" currency={currency} locale="fi-FI" className="w-full" inputClassName="w-full" />
         </div>
         <div className="p-3 rounded-lg surface-ground text-sm">
-          We projected {formatCurrency(expected, currency)}. You entered {formatCurrency(actualBalance, currency)}.
-          <div className="mt-1">
-            <Tag value={`Difference: ${variance >= 0 ? '+' : ''}${formatCurrency(variance, currency)}`} severity={Math.abs(variance) < 1 ? 'info' : variance > 0 ? 'danger' : 'success'} />
-          </div>
+          We projected {formatCurrency(expected, currency)}.
+          {variance !== null && actualBalance !== null && (
+            <>
+              {' '}You entered {formatCurrency(actualBalance, currency)}.
+              <div className="mt-1">
+                <Tag value={`Difference: ${variance >= 0 ? '+' : ''}${formatCurrency(variance, currency)}`} severity={Math.abs(variance) < 1 ? 'info' : variance > 0 ? 'danger' : 'success'} />
+              </div>
+            </>
+          )}
         </div>
         {error && <Message severity="error" text={error} />}
       </div>
       <div className="flex justify-end gap-2 mt-4">
         <Button label="Cancel" text onClick={onClose} />
-        <Button label="Save correction" loading={saving} onClick={save} disabled={!loanId} />
+        <Button label="Save correction" loading={saving} onClick={save} disabled={!loanId || actualBalance === null} />
       </div>
     </Dialog>
   );
@@ -269,6 +291,21 @@ export function ExtraPaymentDialog({
   const [mode, setMode] = useState<'shorten-term' | 'lower-payment'>('shorten-term');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+
+  // The dialog stays mounted between openings — never pre-fill the previous
+  // payment (saving it again would record a duplicate). Reset during render on
+  // the closed→open transition.
+  const [wasVisible, setWasVisible] = useState(visible);
+  if (visible !== wasVisible) {
+    setWasVisible(visible);
+    if (visible) {
+      setLoanId(loans[0]?.id ?? '');
+      setDate(getCurrentYearMonth());
+      setAmount(0);
+      setMode('shorten-term');
+      setError('');
+    }
+  }
 
   const save = async () => {
     if (!amount || amount <= 0) { setError('Enter an amount'); return; }
@@ -317,7 +354,7 @@ export function ExtraPaymentDialog({
       </div>
       <div className="flex justify-end gap-2 mt-4">
         <Button label="Cancel" text onClick={onClose} />
-        <Button label="Add payment" loading={saving} onClick={save} disabled={!loanId} />
+        <Button label="Add payment" loading={saving} onClick={save} disabled={!loanId || !(amount > 0)} />
       </div>
     </Dialog>
   );
@@ -373,10 +410,21 @@ export function MortgageMembersDialog({
     } else setError(res.error ?? 'Failed to add member');
   };
 
-  const remove = async (userId: string) => {
-    const res = await removeMortgageMember(mortgage.id, userId);
-    if (res.success) onChanged('Member removed.');
-    else setError(res.error ?? 'Failed to remove member');
+  const remove = (userId: string, name: string) => {
+    confirmDialog({
+      header: 'Remove member?',
+      message: `Remove ${name} from this mortgage? They lose access to it, and adding them back means re-entering their down payment and loan share.`,
+      icon: 'pi pi-exclamation-triangle',
+      acceptLabel: 'Remove',
+      rejectLabel: 'Cancel',
+      acceptClassName: 'p-button-danger',
+      accept: async () => {
+        setError('');
+        const res = await removeMortgageMember(mortgage.id, userId);
+        if (res.success) onChanged('Member removed.');
+        else setError(res.error ?? 'Failed to remove member');
+      },
+    });
   };
 
   const changeRole = async (userId: string, role: 'owner' | 'member') => {
@@ -418,7 +466,17 @@ export function MortgageMembersDialog({
                   m.role === 'owner' && <Tag value="owner" severity="info" className="text-xs" />
                 )}
                 {isOwner && m.userId !== currentUserId && (
-                  <Button icon="pi pi-trash" text severity="danger" size="small" onClick={() => remove(m.userId)} />
+                  <Button
+                    icon="pi pi-trash"
+                    text
+                    severity="danger"
+                    size="small"
+                    aria-label={`Remove ${m.name}`}
+                    tooltip={`Remove ${m.name}`}
+                    tooltipOptions={{ position: 'top' }}
+                    className="min-w-[44px] min-h-[44px]"
+                    onClick={() => remove(m.userId, m.name)}
+                  />
                 )}
               </div>
             </div>

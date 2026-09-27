@@ -602,7 +602,21 @@ export function CashflowItemModal({
                     isActive: data.isActive,
                 };
                 if (editingItem?.sourceType === 'taxed-income') {
-                    res = await updateTaxedIncome(selectedAccountId, editingItem.id, body);
+                    // Cleared / no-longer-applicable fields go as `null` so the
+                    // stored values are actually removed (e.g. an end date,
+                    // custom rates after switching to salary tax settings, or
+                    // the other kind's schedule fields).
+                    res = await updateTaxedIncome(selectedAccountId, editingItem.id, {
+                        ...body,
+                        customTaxRate: useSalary ? null : (data.customTaxRate ?? null),
+                        customContributionsRate: useSalary ? null : (data.customContributionsRate ?? null),
+                        customOtherDeductions: useSalary ? null : (data.customOtherDeductions ?? null),
+                        scheduledDate: body.scheduledDate ?? null,
+                        frequency: body.frequency ?? null,
+                        customIntervalMonths: body.customIntervalMonths ?? null,
+                        startDate: body.startDate ?? null,
+                        endDate: kind === 'recurring' ? (data.endDate || null) : null,
+                    });
                 } else {
                     res = await createTaxedIncome(selectedAccountId, body);
                 }

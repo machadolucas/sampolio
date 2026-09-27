@@ -9,6 +9,7 @@ import {
   deleteTaxedIncome as dbDeleteTaxedIncome,
 } from '@/lib/db/taxed-income';
 import { updateTag } from 'next/cache';
+import { clearNullsInPatch } from '@/lib/patch-utils';
 import type { ApiResponse, TaxedIncome } from '@/types';
 
 const createTaxedIncomeSchema = z.object({
@@ -28,7 +29,29 @@ const createTaxedIncomeSchema = z.object({
   isActive: z.boolean().optional(),
 });
 
-const updateTaxedIncomeSchema = createTaxedIncomeSchema.partial();
+// Optional fields accept `null` as the explicit "clear" signal (an undefined
+// key is dropped in transit); an absent key keeps the stored value.
+const updateTaxedIncomeSchema = createTaxedIncomeSchema.partial().extend({
+  customTaxRate: z.number().min(0).max(100).optional().nullable(),
+  customContributionsRate: z.number().min(0).max(100).optional().nullable(),
+  customOtherDeductions: z.number().min(0).optional().nullable(),
+  scheduledDate: z.string().regex(/^\d{4}-\d{2}$/).optional().nullable(),
+  frequency: z.enum(['monthly', 'quarterly', 'yearly', 'custom']).optional().nullable(),
+  customIntervalMonths: z.number().positive().optional().nullable(),
+  startDate: z.string().regex(/^\d{4}-\d{2}$/).optional().nullable(),
+  endDate: z.string().regex(/^\d{4}-\d{2}$/).optional().nullable(),
+});
+
+const TAXED_INCOME_CLEARABLE_KEYS = [
+  'customTaxRate',
+  'customContributionsRate',
+  'customOtherDeductions',
+  'scheduledDate',
+  'frequency',
+  'customIntervalMonths',
+  'startDate',
+  'endDate',
+] as const;
 
 // ============================================================
 // TAXED INCOME ACTIONS
@@ -130,7 +153,9 @@ export async function updateTaxedIncome(
     }
 
     const validated = updateTaxedIncomeSchema.parse(data);
-    const income = await dbUpdateTaxedIncome(session.user.id, accountId, incomeId, validated);
+    // Only keys the caller sent are touched; `null` clears the field.
+    const updateData = clearNullsInPatch(validated, TAXED_INCOME_CLEARABLE_KEYS);
+    const income = await dbUpdateTaxedIncome(session.user.id, accountId, incomeId, updateData);
 
     if (!income) {
       return { success: false, error: 'Taxed income not found' };

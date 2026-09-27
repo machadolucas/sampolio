@@ -149,10 +149,14 @@ export async function updateTaxedIncome(
     return null;
   }
 
-  // Recalculate net amount if gross or tax settings changed
-  let taxRate = updates.customTaxRate ?? income.customTaxRate ?? 0;
-  let contributionsRate = updates.customContributionsRate ?? income.customContributionsRate ?? 0;
-  let otherDeductions = updates.customOtherDeductions ?? income.customOtherDeductions ?? 0;
+  // Recalculate net amount if gross or tax settings changed. A key present
+  // with `undefined` is a clear (the merge below drops it), so it must not fall
+  // back to the stored value; only an absent key keeps it.
+  const pick = (key: 'customTaxRate' | 'customContributionsRate' | 'customOtherDeductions'): number =>
+    (Object.prototype.hasOwnProperty.call(updates, key) ? updates[key] : income[key]) ?? 0;
+  let taxRate = pick('customTaxRate');
+  let contributionsRate = pick('customContributionsRate');
+  let otherDeductions = pick('customOtherDeductions');
   const grossAmount = updates.grossAmount ?? income.grossAmount;
   const useSalaryTaxSettings = updates.useSalaryTaxSettings ?? income.useSalaryTaxSettings;
 

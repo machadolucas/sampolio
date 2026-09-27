@@ -28,6 +28,8 @@ import { updateRecurringItem } from './recurring';
 import { updatePlannedItem } from './planned';
 import { createSalaryConfig, updateSalaryConfig, deleteSalaryConfig } from './salary';
 import { updateAccount } from './accounts';
+import { updateTaxedIncome } from './taxed-income';
+import { createTaxedIncome } from '@/lib/db/taxed-income';
 import { createAccount, getAccountById } from '@/lib/db/accounts';
 import { createRecurringItem, getRecurringItemById } from '@/lib/db/recurring-items';
 import { createPlannedItem } from '@/lib/db/planned-items';
@@ -176,5 +178,35 @@ describe('partial update actions preserve fields that were not sent', () => {
     const cleared = await updateAccount(accountId, { isArchived: false, customEndDate: null });
     expect(cleared.success).toBe(true);
     expect((await getAccountById(userId, accountId))?.customEndDate).toBeUndefined();
+  });
+
+  it('taxed income: a toggle keeps endDate/rates, null clears them and the net follows', async () => {
+    const income = await createTaxedIncome(userId, accountId, {
+      accountId,
+      name: 'Quarterly bonus',
+      grossAmount: 1000,
+      useSalaryTaxSettings: false,
+      customTaxRate: 30,
+      customContributionsRate: 10,
+      kind: 'recurring',
+      frequency: 'quarterly',
+      startDate: '2026-01',
+      endDate: '2026-12',
+      isActive: true,
+    });
+    expect(income.netAmount).toBeCloseTo(600, 6);
+
+    const off = await updateTaxedIncome(accountId, income.id, { isActive: false });
+    expect(off.success).toBe(true);
+    expect(off.data?.endDate).toBe('2026-12');
+    expect(off.data?.customTaxRate).toBe(30);
+
+    const cleared = await updateTaxedIncome(accountId, income.id, { endDate: null, customTaxRate: null });
+    expect(cleared.success).toBe(true);
+    expect(cleared.data?.endDate).toBeUndefined();
+    expect(cleared.data?.customTaxRate).toBeUndefined();
+    expect(cleared.data?.customContributionsRate).toBe(10);
+    // Net recomputed with the cleared tax rate (0 %), not the stored 30 %.
+    expect(cleared.data?.netAmount).toBeCloseTo(900, 6);
   });
 });
