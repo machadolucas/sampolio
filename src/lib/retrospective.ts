@@ -53,6 +53,14 @@ export interface RetrospectiveInput {
    * Null/omitted for a manual or genesis anchor (already start-of-month).
    */
   anchorLiveAsOf?: string | null;
+  /**
+   * A live bank-sync anchor's STORED start-of-month balance
+   * (`BalanceSnapshot.monthStartBalance`, computed at sync time from the
+   * ledger of that sync). Preferred over reconstructing it from
+   * `anchorLiveAsOf` and today's ledger; null/omitted for manual/genesis
+   * anchors and legacy bank-sync snapshots.
+   */
+  anchorMonthStartBalance?: number | null;
 }
 
 /** Pick a stable, human-readable group key for a transaction. Exported for
@@ -159,9 +167,10 @@ function buildBreakdown(
  * real bank history is valid regardless of when the account was created here, so the
  * only bounds are available data + `monthsBack`. Balances are chained backward from
  * the anchor's START-of-month balance: `anchor.startBalance` for a manual/genesis
- * anchor, or — for a live bank-sync anchor (`anchorLiveAsOf`) — the live balance minus
- * the anchor month's booked net through its as-of date. So the newest past month's
- * endingBalance is the balance the anchor month opened with.
+ * anchor; for a live bank-sync anchor its stored `anchorMonthStartBalance`, or — legacy
+ * snapshot without one (`anchorLiveAsOf` only) — the live balance minus the anchor
+ * month's booked net through its as-of date. So the newest past month's endingBalance
+ * is the balance the anchor month opened with.
  *
  * Returns [] when there is no usable history, so non-bank accounts are unaffected.
  */
@@ -212,9 +221,11 @@ export function calculateRetrospective(input: RetrospectiveInput): MonthlyProjec
   // contiguous run of months with data (up to monthsBack).
   const built: MonthlyProjection[] = [];
   // The anchor month's opening balance (= the month-before's endingBalance).
-  let nextStartingBalance = input.anchorLiveAsOf
-    ? startOfMonthFromLive(anchor.startBalance, transactions, anchor.startMonth, input.anchorLiveAsOf)
-    : anchor.startBalance;
+  let nextStartingBalance =
+    input.anchorMonthStartBalance ??
+    (input.anchorLiveAsOf
+      ? startOfMonthFromLive(anchor.startBalance, transactions, anchor.startMonth, input.anchorLiveAsOf)
+      : anchor.startBalance);
   let cursor = addMonths(anchor.startMonth, -1);
 
   for (let i = 0; i < monthsBack; i++) {

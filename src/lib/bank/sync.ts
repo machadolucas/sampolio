@@ -35,7 +35,7 @@ import { getTaxedIncomes } from '@/lib/db/taxed-income';
 import { getLatestSnapshot, createBalanceSnapshot } from '@/lib/db/reconciliation';
 import { format } from 'date-fns';
 import { getCurrentYearMonth } from '@/lib/projection';
-import { expectedLiveBalance } from '@/lib/live-anchor';
+import { bankSnapshotProvenance, expectedLiveBalance } from '@/lib/live-anchor';
 import {
   getAccountBalances,
   getSession,
@@ -448,7 +448,7 @@ async function doRunSync(
             const anchored = await autoAnchorAccount(
               siblingUserId,
               siblingLink.linkedFinancialAccountId,
-              applied.anchorBalanceAmount
+              applied.anchorBalance ?? { amount: applied.anchorBalanceAmount }
             );
             if (anchored) siblingTags.add(`user:${siblingUserId}:reconciliation`);
           }
@@ -662,7 +662,7 @@ async function doRunSync(
         const anchored = await autoAnchorAccount(
           userId,
           link.linkedFinancialAccountId,
-          applied.anchorBalanceAmount
+          applied.anchorBalance ?? { amount: applied.anchorBalanceAmount }
         );
         if (anchored) touchedTags.add(`user:${userId}:reconciliation`);
       }
@@ -782,23 +782,28 @@ async function getLinkedCashLedger(userId: string, financialAccountId: string): 
  * next sync). Only the CURRENT month is ever written, so historical manual
  * reconciliations are never touched. Returns true when a snapshot was written.
  *
- * The stored `actualBalance` is the LIVE balance (it already includes this
- * month's bookings through today — see src/lib/live-anchor.ts); consumers that
- * need the month's opening balance convert it. `expectedBalance` is the planned
- * opening balance plus this month's booked net so far (`expectedLiveBalance`),
- * so the variance is the start-of-month drift, not a mid-month vs end-of-month
- * comparison.
+ * The stored `actualBalance` is the LIVE balance the bank reported (it already
+ * includes this month's bookings through its as-of date — see
+ * src/lib/live-anchor.ts). Alongside it the snapshot records the balance type,
+ * the as-of date (the bank's reference date when given) and the booked-basis
+ * opening balance of the month, computed here from the ledger this sync just
+ * wrote (`bankSnapshotProvenance`) — consumers prefer that stored opening
+ * over reconstructing it from a later, mutated ledger. `expectedBalance` is the
+ * planned opening balance plus what the balance holds on top of its opening
+ * (`expectedLiveBalance`), so the variance is the start-of-month drift, not a
+ * mid-month vs end-of-month comparison.
  */
 async function autoAnchorAccount(
   userId: string,
   financialAccountId: string,
-  actualBalance: number
+  balance: { amount: number; type?: string; referenceDate?: string }
 ): Promise<boolean> {
   const account = await getAccountById(userId, financialAccountId);
   if (!account) return false;
 
   const currentMonth = getCurrentYearMonth();
-  const asOf = format(new Date(), 'yyyy-MM-dd');
+  const syncDate = format(new Date(), 'yyyy-MM-dd');
+  const actualBalance = balance.amount;
 
   const [recurringItems, plannedItems, taxedIncomes, priorSnapshot, transactions] = await Promise.all([
     getRecurringItems(userId, financialAccountId),
@@ -807,6 +812,12 @@ async function autoAnchorAccount(
     getLatestSnapshot(userId, 'cash-account', financialAccountId),
     getLinkedCashLedger(userId, financialAccountId),
   ]);
+  const provenance = bankSnapshotProvenance({
+    balance,
+    syncDate,
+    month: currentMonth,
+    transactions,
+  });
   const expected =
     expectedLiveBalance({
       account,
@@ -816,7 +827,8 @@ async function autoAnchorAccount(
       priorSnapshot,
       transactions,
       month: currentMonth,
-      asOf,
+      actualBalance,
+      monthStartBalance: provenance.monthStartBalance,
     }) ?? actualBalance; // no planned row for this month ⇒ record no variance
 
   const snapshot = await createBalanceSnapshot(
@@ -826,7 +838,8 @@ async function autoAnchorAccount(
     currentMonth,
     expected,
     actualBalance,
-    'bank-sync'
+    'bank-sync',
+    provenance
   );
   return snapshot.source === 'bank-sync';
 }

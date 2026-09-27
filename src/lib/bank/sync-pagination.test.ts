@@ -5,6 +5,12 @@ import { BankApiError, getAccountTransactions, getAccountBalances } from './clie
 import { getBankConnectionById, getBankConnections, getBankSessionSecret, updateBankConnection } from '@/lib/db/bank-connections';
 import { getBankTransactions, writeBankTransactions } from '@/lib/db/bank-transactions';
 import { getAllUsers } from '@/lib/db/users';
+import { getAccountById } from '@/lib/db/accounts';
+import { getRecurringItems } from '@/lib/db/recurring-items';
+import { getPlannedItems } from '@/lib/db/planned-items';
+import { getTaxedIncomes } from '@/lib/db/taxed-income';
+import { createBalanceSnapshot, getLatestSnapshot } from '@/lib/db/reconciliation';
+import { createMockAccount } from '@/test/mocks';
 import { TRANSIENT_BACKOFF_MS } from './constants';
 
 vi.mock('./client', async (importOriginal) => ({
@@ -231,5 +237,52 @@ describe('runSync repeated deliveries', () => {
     expect(run.perAccount[0]).toMatchObject({ txAdded: 0, txRemoved: 1 });
     const rows = writtenRows('account-a')!;
     expect(rows.map((t) => [t.id, t.dedupKey])).toEqual([['stored-p', 'p-1']]);
+  });
+});
+
+describe('runSync auto-anchor provenance (R2-1)', () => {
+  it('stores the balance type, the bank reference date and the write-time opening balance', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 8, 9, 13, 0, 0)); // Sept 9, local
+    try {
+      primary = connection('primary', 'alex', { ...link('cash-a', 'primary'), linkedFinancialAccountId: 'acc' });
+      primary.linkedAccounts[0].syncCursor = { lastBookingDate: '2026-09-07', backfilledThrough: '2026-09-08' };
+      vi.mocked(getBankConnectionById).mockResolvedValue(primary);
+      vi.mocked(getBankConnections).mockResolvedValue([primary]);
+      // A tiny in-memory ledger so the auto-anchor reads what this sync wrote.
+      const ledgers = new Map<string, BankTransaction[]>();
+      vi.mocked(getBankTransactions).mockImplementation(async (_user, id) => ledgers.get(id) ?? []);
+      vi.mocked(writeBankTransactions).mockImplementation(async (_user, id, rows) => {
+        ledgers.set(id, rows);
+      });
+      // Today's €42 debit is booked, but the bank serves YESTERDAY's close.
+      vi.mocked(getAccountTransactions).mockResolvedValue({ transactions: [rawTx('cash-row')] });
+      vi.mocked(getAccountBalances).mockResolvedValue({
+        balances: [{ balance_type: 'CLBD', reference_date: '2026-09-08', balance_amount: { amount: '958.00', currency: 'EUR' } }],
+      });
+      vi.mocked(getAccountById).mockResolvedValue(
+        createMockAccount({ id: 'acc', startingDate: '2026-01', startingBalance: 0, planningHorizonMonths: 12 })
+      );
+      vi.mocked(getRecurringItems).mockResolvedValue([]);
+      vi.mocked(getPlannedItems).mockResolvedValue([]);
+      vi.mocked(getTaxedIncomes).mockResolvedValue([]);
+      vi.mocked(getLatestSnapshot).mockResolvedValue(null);
+      vi.mocked(createBalanceSnapshot).mockImplementation(async (userId, entityType, entityId, yearMonth, expected, actual, source) => ({
+        id: 's1', userId, entityType, entityId, yearMonth, expectedBalance: expected, actualBalance: actual,
+        variance: actual - expected, source, createdAt: new Date().toISOString(),
+      }));
+
+      await runSync('alex', 'primary', 'manual', {}, now);
+
+      expect(createBalanceSnapshot).toHaveBeenCalledTimes(1);
+      const args = vi.mocked(createBalanceSnapshot).mock.calls[0];
+      expect(args.slice(1, 4)).toEqual(['cash-account', 'acc', '2026-09']);
+      expect(args[5]).toBe(958);
+      expect(args[6]).toBe('bank-sync');
+      // The Sept 9 debit is after the Sept 8 close, so it is not netted out.
+      expect(args[7]).toEqual({ balanceType: 'CLBD', balanceAsOf: '2026-09-08', monthStartBalance: 958 });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

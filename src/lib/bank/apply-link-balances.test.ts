@@ -111,6 +111,19 @@ describe('applyLinkBalances — deposit accounts (cash/savings/other)', () => {
     expect(result.anchorBalanceAmount).toBeUndefined();
   });
 
+  it('hands the picked balance (type + reference date) to auto-anchoring, incl. an ITAV-only fallback', () => {
+    const clbd = applyLinkBalances(
+      depositLink(),
+      [{ type: 'CLBD', amount: 900, currency: 'EUR', referenceDate: '2026-09-30' }],
+      nowIso
+    );
+    expect(clbd.anchorBalance).toEqual({ type: 'CLBD', amount: 900, currency: 'EUR', referenceDate: '2026-09-30' });
+    const itav = applyLinkBalances(depositLink(), [{ type: 'ITAV', amount: 850, currency: 'EUR' }], nowIso);
+    expect(itav.anchorBalance?.type).toBe('ITAV');
+    expect(itav.anchorBalanceAmount).toBe(850);
+    expect(applyLinkBalances(depositLink(), [], nowIso).anchorBalance).toBeUndefined();
+  });
+
   it('applies the same deposit logic to a savings-role link', () => {
     const balances: MappedBalance[] = [{ type: 'CLBD', amount: 5000, currency: 'EUR' }];
     const result = applyLinkBalances(depositLink({ accountRole: 'savings' }), balances, nowIso);

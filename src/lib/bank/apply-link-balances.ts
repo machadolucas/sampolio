@@ -35,6 +35,11 @@ export interface AppliedLinkBalances {
   creditLimit?: number;
   /** cash/savings only: the anchor balance, when found — feeds auto-anchoring. */
   anchorBalanceAmount?: number;
+  /**
+   * Deposit accounts only: the picked balance itself (type + bank reference
+   * date), so the auto-anchor snapshot can record its basis and as-of date.
+   */
+  anchorBalance?: MappedBalance;
 }
 
 /**
@@ -105,5 +110,6 @@ export function applyLinkBalances(
     lastBalanceType: anchorBalance?.type ?? link.lastBalanceType,
     lastBalanceAt: anchorBalance ? nowIso : link.lastBalanceAt,
     anchorBalanceAmount: anchorBalance?.amount,
+    anchorBalance: anchorBalance ?? undefined,
   };
 }

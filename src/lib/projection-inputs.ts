@@ -44,7 +44,7 @@ import { goalInjectsIntoCashflow } from '@/lib/goal-utils';
 import { calculatePerDiem } from '@/lib/per-diem-utils';
 import { computeCardBilling, getOpenCycleMonths, toCardTxn, isCardPayment } from '@/lib/bank/card-billing';
 import type { CardPaymentSource } from '@/lib/bank/card-payment-match';
-import { liveAnchorAsOf, bookedInMonthThrough } from '@/lib/live-anchor';
+import { liveAnchorAsOf, bookedInMonthThrough, effectiveLiveAnchor } from '@/lib/live-anchor';
 import type {
   BankConnection,
   FinancialAccount,
@@ -94,6 +94,14 @@ export interface ProjectionInputs {
   plannedItems: PlannedItem[];
   salaryConfigs: SalaryConfig[];
   taxedIncomes: TaxedIncome[];
+  /**
+   * The anchor snapshot to hand to `calculateProjection`: the latest stored
+   * snapshot, except that a live bank-sync snapshot carrying a stored
+   * `monthStartBalance` is re-based by `effectiveLiveAnchor` (its
+   * `actualBalance` becomes the booked-basis balance through its as-of date
+   * per the current ledger, matching `currentMonthActuals`). Manual and legacy
+   * bank-sync snapshots are passed through unchanged.
+   */
   latestSnapshot: BalanceSnapshot | null;
   mortgageTransfers: MortgageTransfer[];
   budgetTransfers: BudgetTransfer[];
@@ -111,6 +119,13 @@ export interface ProjectionInputs {
    * anchor month's opening balance.
    */
   anchorLiveAsOf: string | null;
+  /**
+   * A live bank-sync anchor's stored start-of-month balance
+   * (`BalanceSnapshot.monthStartBalance`), else null (manual/genesis anchor,
+   * or a legacy bank-sync snapshot — `calculateRetrospective` then
+   * reconstructs it from `anchorLiveAsOf`).
+   */
+  anchorMonthStartBalance: number | null;
   /** Memoized bank reads — reuse it for the card-bill and retrospective helpers. */
   bankData: BankDataLoader;
   /**
@@ -142,23 +157,33 @@ export async function gatherProjectionInputs(
   const account = await cachedGetAccountById(userId, accountId);
   if (!account) return null;
 
-  const [{ recurringItems, plannedItems, salaryConfigs, taxedIncomes }, latestSnapshot] = await Promise.all([
+  const [{ recurringItems, plannedItems, salaryConfigs, taxedIncomes }, storedSnapshot] = await Promise.all([
     cachedGetAccountProjectionData(userId, accountId),
     cachedGetLatestSnapshot(userId, 'cash-account', accountId),
   ]);
 
-  // The anchor's month only depends on `latestSnapshot` (already available),
-  // so the actuals fetch can run alongside the mortgage/budget transfers.
-  const anchor = resolveAnchor(account.startingDate, account.startingBalance, latestSnapshot);
-  const anchorLiveAsOf = liveAnchorAsOf(account.startingDate, latestSnapshot);
+  // The anchor's month only depends on the stored snapshot (already
+  // available), so the actuals fetch can run alongside the mortgage/budget
+  // transfers.
+  const anchor = resolveAnchor(account.startingDate, account.startingBalance, storedSnapshot);
+  const anchorLiveAsOf = liveAnchorAsOf(account.startingDate, storedSnapshot);
+  const anchorMonthStartBalance =
+    anchorLiveAsOf && storedSnapshot?.monthStartBalance !== undefined ? storedSnapshot.monthStartBalance : null;
   const bankData = createBankDataLoader(userId);
-  const [mortgageTransfers, budgetTransfers, goalTransfers, tripTransfers, currentMonthActuals] = await Promise.all([
-    getMortgageTransfersForAccount(userId, accountId),
-    getBudgetTransfersForAccount(userId, accountId),
-    getGoalTransfersForAccount(userId, accountId),
-    getTripTransfersForAccount(userId, accountId),
-    getCurrentMonthActualsForAccount(userId, accountId, anchor.startMonth, anchorLiveAsOf, bankData),
-  ]);
+  const [mortgageTransfers, budgetTransfers, goalTransfers, tripTransfers, currentMonthActuals, latestSnapshot] =
+    await Promise.all([
+      getMortgageTransfersForAccount(userId, accountId),
+      getBudgetTransfersForAccount(userId, accountId),
+      getGoalTransfersForAccount(userId, accountId),
+      getTripTransfersForAccount(userId, accountId),
+      getCurrentMonthActualsForAccount(userId, accountId, anchor.startMonth, anchorLiveAsOf, bankData),
+      // Same memoized ledger as the actuals — no extra decode.
+      anchorMonthStartBalance !== null
+        ? getLinkedCashBankTransactions(userId, accountId, bankData)
+            .catch(() => [] as BankTransaction[])
+            .then((txs) => effectiveLiveAnchor(account.startingDate, storedSnapshot, txs))
+        : Promise.resolve(storedSnapshot),
+    ]);
 
   // Expenses tagged "paid by card" don't hit cash directly — they roll into
   // the card's statement/forecast bill (injected separately), so exclude them
@@ -179,6 +204,7 @@ export async function gatherProjectionInputs(
     tripTransfers,
     currentMonthActuals,
     anchorLiveAsOf,
+    anchorMonthStartBalance,
     bankData,
     directRecurring,
     directPlanned,
@@ -403,7 +429,9 @@ export function taggedSpendForMonth(
  *    card" due that cycle + the expectedMonthlySpend buffer (basis 'forecast'),
  *    so long-term projections keep assuming ongoing card costs.
  * Pass the FULL (unfiltered) item lists — tagged card spend feeds the forecast.
- * Returns [] when no card is linked. A card problem must never break cashflow.
+ * `endDate` (optional) caps the forecast bills at the projection's own end
+ * month. Returns [] when no card is linked. A card problem must never break
+ * cashflow.
  */
 export async function computeCardBillTransfersForAccount(
   userId: string,
@@ -411,12 +439,17 @@ export async function computeCardBillTransfersForAccount(
   account: FinancialAccount,
   recurring: RecurringItem[],
   planned: PlannedItem[],
-  bankData: BankDataLoader = createBankDataLoader(userId)
+  bankData: BankDataLoader = createBankDataLoader(userId),
+  endDate?: YearMonth
 ): Promise<CardBillTransfer[]> {
   try {
     const connections = await bankData.connections();
     const currentYM = getCurrentYearMonth();
-    const horizonEnd = addMonths(currentYM, Math.max(account.planningHorizonMonths ?? 120, 1));
+    const planHorizonEnd = addMonths(currentYM, Math.max(account.planningHorizonMonths ?? 120, 1));
+    // A caller whose projection stops at `endDate` (e.g. the Home glance's
+    // current month) needs no forecast bills past it.
+    const horizonEnd =
+      endDate && compareYearMonths(endDate, planHorizonEnd) < 0 ? endDate : planHorizonEnd;
 
     const cardLinks = connections.flatMap((conn) =>
       conn.linkedAccounts

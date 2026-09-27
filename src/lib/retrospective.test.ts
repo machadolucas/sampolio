@@ -315,6 +315,23 @@ describe('calculateRetrospective with a live bank-sync anchor', () => {
     expect(aug.startingBalance).toBe(-1300);
   });
 
+  it('prefers the stored start-of-month balance over reconstructing it from today\'s ledger', () => {
+    const liveAnchor: ProjectionAnchor = { startMonth: '2026-09', startBalance: 1000 };
+    const transactions = [
+      tx({ bookingDate: '2026-08-10', amount: -200, counterpartyName: 'Shop' }),
+      // Booked on the as-of day AFTER that sync — reconstruction would count it.
+      tx({ bookingDate: '2026-09-27', amount: -100, counterpartyName: 'Later same day' }),
+    ];
+    const [aug] = calculateRetrospective({
+      accountId: 'acc-1',
+      transactions,
+      anchor: liveAnchor,
+      anchorLiveAsOf: '2026-09-27',
+      anchorMonthStartBalance: 1000,
+    });
+    expect(aug.endingBalance).toBe(1000);
+  });
+
   it('keeps seeding with the raw anchor balance for a manual anchor', () => {
     const manualAnchor: ProjectionAnchor = { startMonth: '2026-09', startBalance: 1000 };
     const transactions = [

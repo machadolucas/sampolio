@@ -1374,6 +1374,21 @@ export interface BalanceSnapshot {
   // Last write wins per entity/month; bank sync only writes the current month.
   source?: 'manual' | 'bank-sync';
   createdAt: string;
+  // Bank-sync provenance (optional, additive — only on `source: 'bank-sync'`
+  // snapshots written by `autoAnchorAccount`; see src/lib/live-anchor.ts).
+  // Legacy bank-sync snapshots lack all three: they are read as a live booked
+  // balance as of the server-local date of `createdAt`, reconstructed from the
+  // ledger.
+  /** ISO 20022 balance type the bank reported for `actualBalance` (CLBD, ITBD, ITAV, …). */
+  balanceType?: string;
+  /** 'yyyy-MM-dd' the balance is as of (bank reference date when given, else the sync date). */
+  balanceAsOf?: string;
+  /**
+   * Booked-basis balance at the START of `yearMonth`, computed at write time
+   * from the ledger as it was right after that sync (pending rows stripped for
+   * an available/expected balance type).
+   */
+  monthStartBalance?: number;
 }
 
 export interface ReconciliationAdjustment {

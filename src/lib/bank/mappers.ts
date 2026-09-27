@@ -41,6 +41,7 @@ export interface RawBalance {
   name?: string;
   balance_amount?: { amount?: string | number; currency?: string } | null;
   balance_type?: string; // ISO: CLBD, XPCD, ITAV, OPBD…
+  reference_date?: string | null; // date the balance refers to (e.g. a CLBD's closing day)
 }
 
 export interface RawTransaction {
@@ -91,6 +92,8 @@ export interface MappedBalance {
   type: string;
   amount: number;
   currency: Currency;
+  /** 'yyyy-MM-dd' the bank says the balance refers to, when it sent a valid one. */
+  referenceDate?: string;
 }
 
 // ---------- Helpers ----------
@@ -242,11 +245,17 @@ export function mapBalances(rawInput: unknown): MappedBalance[] {
   const list = raw?.balances ?? [];
   return list
     .filter((b): b is RawBalance => !!b && !!b.balance_amount)
-    .map((b) => ({
-      type: (b.balance_type ?? '').toUpperCase(),
-      amount: toNumber(b.balance_amount?.amount),
-      currency: toCurrency(b.balance_amount?.currency),
-    }));
+    .map((b) => {
+      const mapped: MappedBalance = {
+        type: (b.balance_type ?? '').toUpperCase(),
+        amount: toNumber(b.balance_amount?.amount),
+        currency: toCurrency(b.balance_amount?.currency),
+      };
+      // Keep only a well-formed calendar date (a datetime is cut to its date).
+      const ref = typeof b.reference_date === 'string' ? b.reference_date.slice(0, 10) : '';
+      if (/^\d{4}-\d{2}-\d{2}$/.test(ref)) mapped.referenceDate = ref;
+      return mapped;
+    });
 }
 
 /** Preference order for the "real" balance we anchor on / display (deposits):

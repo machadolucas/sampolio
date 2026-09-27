@@ -72,7 +72,10 @@ export async function createBalanceSnapshot(
   yearMonth: string,
   expectedBalance: number,
   actualBalance: number,
-  source: 'manual' | 'bank-sync' = 'manual'
+  source: 'manual' | 'bank-sync' = 'manual',
+  // Bank-sync provenance (see BalanceSnapshot). A write without it — e.g. a
+  // manual reconciliation replacing a bank-sync row — drops the old values.
+  bankProvenance?: Pick<BalanceSnapshot, 'balanceType' | 'balanceAsOf' | 'monthStartBalance'>
 ): Promise<BalanceSnapshot> {
   const data = await readSnapshots(userId);
 
@@ -103,6 +106,11 @@ export async function createBalanceSnapshot(
     source,
     createdAt: new Date().toISOString(),
   };
+  if (bankProvenance?.balanceType !== undefined) snapshot.balanceType = bankProvenance.balanceType;
+  if (bankProvenance?.balanceAsOf !== undefined) snapshot.balanceAsOf = bankProvenance.balanceAsOf;
+  if (bankProvenance?.monthStartBalance !== undefined) {
+    snapshot.monthStartBalance = bankProvenance.monthStartBalance;
+  }
 
   if (existingIndex >= 0) {
     data.snapshots[existingIndex] = snapshot;

@@ -75,6 +75,7 @@ export async function computeAccountProjection(
     tripTransfers,
     currentMonthActuals,
     anchorLiveAsOf,
+    anchorMonthStartBalance,
     bankData,
     directRecurring,
     directPlanned,
@@ -85,9 +86,15 @@ export async function computeAccountProjection(
   // bank-actuals retrospective. Both reuse the inputs' memoized bank reads,
   // so each linked ledger is decoded once per projection.
   const [cardBillTransfers, retrospective] = await Promise.all([
-    computeCardBillTransfersForAccount(userId, accountId, account, recurringItems, plannedItems, bankData),
+    // Forecast bills past the engine's end month are never used (the Home
+    // glance projects to the current month only).
+    computeCardBillTransfersForAccount(
+      userId, accountId, account, recurringItems, plannedItems, bankData, options.filters?.endDate
+    ),
     options.withRetrospective
-      ? getRetrospectiveForAccount(userId, accountId, account, latestSnapshot, anchorLiveAsOf, bankData)
+      ? getRetrospectiveForAccount(
+          userId, accountId, account, latestSnapshot, anchorLiveAsOf, anchorMonthStartBalance, bankData
+        )
       : Promise.resolve<MonthlyProjection[]>([]),
   ]);
 
@@ -122,9 +129,9 @@ export async function computeAccountProjection(
  * this cash account. These sit to the LEFT of the forecast on the cashflow
  * page. Returns [] when no bank cash/savings account is linked (so non-bank
  * accounts are unaffected) or when there's no usable history. A live bank-sync
- * anchor (`anchorLiveAsOf`) is converted to the anchor month's opening balance
- * before chaining backward. A bank problem must never break the core cashflow
- * projection.
+ * anchor chains backward from the anchor month's opening balance — its stored
+ * `anchorMonthStartBalance`, else reconstructed from `anchorLiveAsOf` (legacy
+ * snapshot). A bank problem must never break the core cashflow projection.
  */
 async function getRetrospectiveForAccount(
   userId: string,
@@ -132,6 +139,7 @@ async function getRetrospectiveForAccount(
   account: FinancialAccount,
   latestSnapshot: BalanceSnapshot | null,
   anchorLiveAsOf: string | null,
+  anchorMonthStartBalance: number | null,
   bankData: BankDataLoader
 ): Promise<MonthlyProjection[]> {
   try {
@@ -148,6 +156,7 @@ async function getRetrospectiveForAccount(
       anchor,
       cardPayments,
       anchorLiveAsOf,
+      anchorMonthStartBalance,
     });
   } catch (error) {
     console.error('Retrospective reconstruction failed:', error);

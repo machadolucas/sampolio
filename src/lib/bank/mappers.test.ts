@@ -225,6 +225,21 @@ describe('mapSessionDetails', () => {
   });
 });
 
+describe('mapBalances reference date', () => {
+  it('keeps a valid reference_date (datetimes cut to the date) and drops a malformed one', () => {
+    const balances = mapBalances({
+      balances: [
+        { balance_type: 'CLBD', reference_date: '2026-09-30', balance_amount: { amount: '1', currency: 'EUR' } },
+        { balance_type: 'ITBD', reference_date: '2026-10-01T08:00:00Z', balance_amount: { amount: '2', currency: 'EUR' } },
+        { balance_type: 'ITAV', reference_date: 'yesterday', balance_amount: { amount: '3', currency: 'EUR' } },
+        { balance_type: 'XPCD', balance_amount: { amount: '4', currency: 'EUR' } },
+      ],
+    });
+    expect(balances.map((b) => b.referenceDate)).toEqual(['2026-09-30', '2026-10-01', undefined, undefined]);
+    expect('referenceDate' in balances[3]).toBe(false);
+  });
+});
+
 describe('mapBalances + pickAnchorBalance', () => {
   it('prefers closing-booked', () => {
     const balances = mapBalances({

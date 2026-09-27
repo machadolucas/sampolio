@@ -70,4 +70,21 @@ describe('createBalanceSnapshot — last-write-wins per entity/month', () => {
     // Latest (by month) is June's bank value.
     expect((await getLatestSnapshot(userId2, 'cash-account', entityId))?.actualBalance).toBe(4850);
   });
+  it('persists optional bank-sync provenance and drops it when a manual check-in replaces the row', async () => {
+    const userId3 = 'test-user-3';
+    const synced = await createBalanceSnapshot(userId3, 'cash-account', entityId, '2026-09', 1000, 1200, 'bank-sync', {
+      balanceType: 'CLBD',
+      balanceAsOf: '2026-09-09',
+      monthStartBalance: 2000,
+    });
+    expect(synced).toMatchObject({ balanceType: 'CLBD', balanceAsOf: '2026-09-09', monthStartBalance: 2000 });
+    const stored = await getLatestSnapshot(userId3, 'cash-account', entityId);
+    expect(stored).toMatchObject({ balanceType: 'CLBD', balanceAsOf: '2026-09-09', monthStartBalance: 2000 });
+
+    await createBalanceSnapshot(userId3, 'cash-account', entityId, '2026-09', 1200, 1250, 'manual');
+    const manual = await getLatestSnapshot(userId3, 'cash-account', entityId);
+    expect(manual?.source).toBe('manual');
+    expect(manual && 'monthStartBalance' in manual).toBe(false);
+    expect(manual && 'balanceAsOf' in manual).toBe(false);
+  });
 });

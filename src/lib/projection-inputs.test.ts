@@ -154,6 +154,107 @@ describe('stale bank-sync anchor (sync stopped last month)', () => {
   });
 });
 
+describe('bank-sync anchor with stored provenance (R2-1/R2-2)', () => {
+  it('re-bases an ITAV snapshot on its booked-basis balance so pending holds are not counted twice', async () => {
+    mocks.getLatestSnapshot.mockResolvedValue(
+      createMockSnapshot({
+        entityId: 'acc',
+        yearMonth: '2026-09',
+        actualBalance: 1150, // ITAV: booked €1,200 − €50 hold
+        source: 'bank-sync',
+        createdAt: '2026-09-10T11:00:00.000Z',
+        balanceType: 'ITAV',
+        balanceAsOf: '2026-09-10',
+        monthStartBalance: 2000,
+      })
+    );
+    mocks.getBankTransactions.mockImplementation(async (_userId: string, linkId: string) =>
+      linkId === 'link-cash'
+        ? [
+            tx({ bookingDate: '2026-09-03', amount: -800, counterpartyName: 'Rent' }),
+            tx({ bookingDate: '2026-09-09', amount: -50, status: 'pending', counterpartyName: 'Hold' }),
+          ]
+        : []
+    );
+    const inputs = await gatherProjectionInputs('user-alex', 'acc');
+    expect(inputs!.anchorLiveAsOf).toBe('2026-09-10');
+    expect(inputs!.anchorMonthStartBalance).toBe(2000);
+    expect(inputs!.latestSnapshot?.actualBalance).toBe(1200);
+    expect(inputs!.currentMonthActuals?.transactions.map((t) => t.amount)).toEqual([-800]);
+  });
+
+  it('a CLBD for the previous month-end anchors the full current month from that close', async () => {
+    mocks.getLatestSnapshot.mockResolvedValue(
+      createMockSnapshot({
+        entityId: 'acc',
+        yearMonth: '2026-09',
+        actualBalance: 1000,
+        source: 'bank-sync',
+        createdAt: '2026-09-01T06:00:00.000Z',
+        balanceType: 'CLBD',
+        balanceAsOf: '2026-08-31',
+        monthStartBalance: 1000,
+      })
+    );
+    mocks.getBankTransactions.mockImplementation(async (_userId: string, linkId: string) =>
+      linkId === 'link-cash' ? [tx({ bookingDate: '2026-09-01', amount: -800, counterpartyName: 'Rent' })] : []
+    );
+    const inputs = await gatherProjectionInputs('user-alex', 'acc');
+    expect(inputs!.anchorLiveAsOf).toBe('2026-08-31');
+    // Nothing of September is inside the balance: no actuals, full forecast.
+    expect(inputs!.currentMonthActuals).toBeNull();
+    expect(inputs!.latestSnapshot?.actualBalance).toBe(1000);
+    const sep = calculateProjection(
+      inputs!.account, inputs!.directRecurring, inputs!.directPlanned, inputs!.taxedIncomes,
+      undefined, inputs!.latestSnapshot, [], [], [], inputs!.currentMonthActuals
+    ).find((m) => m.yearMonth === '2026-09')!;
+    expect(sep.endingBalance).toBe(3200); // 1000 + 3000 − 800
+  });
+
+  it('passes a legacy bank-sync snapshot through untouched', async () => {
+    const legacy = createMockSnapshot({
+      entityId: 'acc',
+      yearMonth: '2026-09',
+      actualBalance: 1000,
+      source: 'bank-sync',
+      createdAt: '2026-09-10T11:00:00.000Z',
+    });
+    mocks.getLatestSnapshot.mockResolvedValue(legacy);
+    mocks.getBankTransactions.mockResolvedValue([]);
+    const inputs = await gatherProjectionInputs('user-alex', 'acc');
+    expect(inputs!.latestSnapshot).toBe(legacy);
+    expect(inputs!.anchorMonthStartBalance).toBeNull();
+    expect(inputs!.anchorLiveAsOf).toBe('2026-09-10');
+  });
+});
+
+describe('computeCardBillTransfersForAccount horizon', () => {
+  it('stops forecast bills at the optional end month', async () => {
+    const cardConnection = {
+      id: 'conn-1',
+      aspspName: 'Test Bank',
+      linkedAccounts: [
+        {
+          id: 'link-card', accountRole: 'credit-card', linkedFinancialAccountId: 'acc', isExcluded: false,
+          name: 'Visa', statementDay: 20, paymentDueDay: 10, expectedMonthlySpend: 100,
+        },
+      ],
+    } as unknown as BankConnection;
+    mocks.getBankConnections.mockResolvedValue([cardConnection]);
+    mocks.getBankTransactions.mockResolvedValue([]);
+    const full = await computeCardBillTransfersForAccount('user-alex', 'acc', account, [], []);
+    const capped = await computeCardBillTransfersForAccount('user-alex', 'acc', account, [], [], undefined, '2026-10');
+    const forecasts = (list: typeof full) => list.filter((t) => t.basis === 'forecast');
+    // Sept 27, statement day 20 / due day 10: the open cycle is billed Nov 10.
+    expect(forecasts(full).length).toBeGreaterThan(6);
+    expect(forecasts(capped)).toEqual([]);
+    // The real (open-cycle) bill is kept either way.
+    expect(capped.filter((t) => t.basis !== 'forecast')).toEqual(full.filter((t) => t.basis !== 'forecast'));
+    const cappedDec = await computeCardBillTransfersForAccount('user-alex', 'acc', account, [], [], undefined, '2026-12');
+    expect(forecasts(cappedDec).map((t) => t.yearMonth)).toEqual(['2026-12']);
+  });
+});
+
 describe('bank data loader (PERF-06)', () => {
   it('reads the connection list and each linked ledger once per projection', async () => {
     mocks.getLatestSnapshot.mockResolvedValue(
