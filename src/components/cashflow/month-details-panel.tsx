@@ -30,8 +30,10 @@ function rowActivationProps(onActivate?: () => void) {
     };
 }
 
-// The ::before pseudo-elements stretch each 20px pill to a 44px-tall hit
-// area without changing the compact layout (tap-target rule).
+// The ::before pseudo-elements stretch each 20px pill to a 44px-tall hit area
+// on touch screens (tap-target rule) without changing the compact layout; the
+// section headers add matching bottom spacing on coarse pointers so the
+// enlarged target never overlaps the first row.
 export function SortToggle({ value, onChange, isDark }: { value: 'name' | 'amount'; onChange: (v: 'name' | 'amount') => void; isDark: boolean }) {
     return (
         <div className="flex gap-1">
@@ -39,7 +41,7 @@ export function SortToggle({ value, onChange, isDark }: { value: 'name' | 'amoun
                 type="button"
                 aria-pressed={value === 'amount'}
                 aria-label="Sort by amount"
-                className={`relative px-1.5 py-0.5 rounded text-xs before:absolute before:-inset-y-3 before:inset-x-0 before:content-[''] ${value === 'amount'
+                className={`relative px-1.5 py-0.5 rounded text-xs before:absolute before:-inset-y-1 pointer-coarse:before:-inset-y-3 before:inset-x-0 before:content-[''] ${value === 'amount'
                     ? isDark ? 'bg-gray-700 text-gray-200' : 'bg-gray-200 text-gray-800'
                     : isDark ? 'text-gray-500 hover:text-gray-300' : 'text-gray-400 hover:text-gray-600'
                     }`}
@@ -51,7 +53,7 @@ export function SortToggle({ value, onChange, isDark }: { value: 'name' | 'amoun
                 type="button"
                 aria-pressed={value === 'name'}
                 aria-label="Sort by name"
-                className={`relative px-1.5 py-0.5 rounded text-xs before:absolute before:-inset-y-3 before:inset-x-0 before:content-[''] ${value === 'name'
+                className={`relative px-1.5 py-0.5 rounded text-xs before:absolute before:-inset-y-1 pointer-coarse:before:-inset-y-3 before:inset-x-0 before:content-[''] ${value === 'name'
                     ? isDark ? 'bg-gray-700 text-gray-200' : 'bg-gray-200 text-gray-800'
                     : isDark ? 'text-gray-500 hover:text-gray-300' : 'text-gray-400 hover:text-gray-600'
                     }`}
@@ -157,7 +159,7 @@ export function MonthDetailsPanel({ projection, currency, onEditItem, isSimple =
             {/* Income Breakdown */}
             {projection.incomeBreakdown.length > 0 && (
                 <div>
-                    <div className="flex items-center justify-between mb-1">
+                    <div className="flex items-center justify-between mb-1 pointer-coarse:mb-3">
                         <h4 className={`text-xs font-semibold ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
                             Income
                         </h4>
@@ -203,7 +205,7 @@ export function MonthDetailsPanel({ projection, currency, onEditItem, isSimple =
             {/* Expense Breakdown */}
             {projection.expenseBreakdown.length > 0 && (
                 <div>
-                    <div className="flex items-center justify-between mb-1">
+                    <div className="flex items-center justify-between mb-1 pointer-coarse:mb-3">
                         <h4 className={`text-xs font-semibold ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
                             Expenses
                         </h4>

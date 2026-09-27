@@ -406,7 +406,7 @@ type SaveState = 'idle' | 'saving' | 'saved' | 'error';
 // name is just the caption, not the caption plus the help button and text.
 function FieldLabel({ label, tip, isDark, htmlFor }: { label: string; tip: string; isDark: boolean; htmlFor: string }) {
   return (
-    <div className={`flex items-center gap-1 text-xs mb-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+    <div className={`flex items-center gap-1 pointer-coarse:gap-3 text-xs mb-1 pointer-coarse:mb-3 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
       <label htmlFor={htmlFor}>{label}</label>
       <HelpHint text={tip} />
     </div>

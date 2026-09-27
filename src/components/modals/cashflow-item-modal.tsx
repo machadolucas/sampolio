@@ -88,6 +88,20 @@ type UnifiedItem = {
     originalItem: RecurringItem | PlannedItem | SalaryConfig | TaxedIncome;
 };
 
+// Mobile list sorting (the desktop DataTables sort via their column headers).
+// Same keys and default directions as the tables' initial sort.
+type MobileSortKey = 'monthly' | 'month' | 'amount' | 'name';
+const MOBILE_SORT_LABELS: Record<MobileSortKey, string> = { monthly: '≈ / month', month: 'Month', amount: 'Amount', name: 'Name' };
+function sortMobileItems(items: UnifiedItem[], key: MobileSortKey): UnifiedItem[] {
+    const sorted = [...items];
+    switch (key) {
+        case 'monthly': return sorted.sort((a, b) => (b.monthlyEquivalent ?? 0) - (a.monthlyEquivalent ?? 0));
+        case 'month': return sorted.sort((a, b) => (a.scheduledYm ?? '').localeCompare(b.scheduledYm ?? ''));
+        case 'amount': return sorted.sort((a, b) => b.displayAmount - a.displayAmount);
+        case 'name': return sorted.sort((a, b) => a.name.localeCompare(b.name, 'fi-FI'));
+    }
+}
+
 interface CashflowItemModalProps {
     visible: boolean;
     onHide: () => void;
@@ -194,6 +208,8 @@ export function CashflowItemModal({
     const uid = useId();
     const toast = useToast();
     const [isSaving, setIsSaving] = useState(false);
+    const [regularMobileSort, setRegularMobileSort] = useState<MobileSortKey>('monthly');
+    const [oneTimeMobileSort, setOneTimeMobileSort] = useState<MobileSortKey>('month');
     const [isDeleting, setIsDeleting] = useState(false);
     const [recurringItems, setRecurringItems] = useState<RecurringItem[]>([]);
     const [plannedItems, setPlannedItems] = useState<PlannedItem[]>([]);
@@ -908,9 +924,28 @@ export function CashflowItemModal({
     // Mobile (< lg) stacked list next to the desktop DataTables (§17 table
     // pattern): name + amount on top, details + the same actions below, so
     // nothing hides off-screen at 390px.
-    const mobileItemList = (items: UnifiedItem[], detail: (item: UnifiedItem) => string) => (
-        <ul className="lg:hidden divide-y surface-border border-y">
-            {items.map(item => (
+    const mobileItemList = (
+        items: UnifiedItem[],
+        detail: (item: UnifiedItem) => string,
+        sort: { value: MobileSortKey; options: MobileSortKey[]; onChange: (key: MobileSortKey) => void },
+    ) => (
+        <div className="lg:hidden space-y-1">
+        <div className="flex items-center justify-end gap-1 text-xs" role="group" aria-label="Sort items">
+            <span className="opacity-60 mr-1">Sort:</span>
+            {sort.options.map((key) => (
+                <button
+                    key={key}
+                    type="button"
+                    aria-pressed={sort.value === key}
+                    onClick={() => sort.onChange(key)}
+                    className={`min-h-11 px-2 rounded ${sort.value === key ? 'font-semibold bg-gray-200 dark:bg-gray-700' : 'opacity-70'}`}
+                >
+                    {MOBILE_SORT_LABELS[key]}
+                </button>
+            ))}
+        </div>
+        <ul className="divide-y surface-border border-y">
+            {sortMobileItems(items, sort.value).map(item => (
                 <li key={item.id} className="py-2 space-y-1">
                     <div className="flex items-start justify-between gap-2">
                         <span className={`font-medium min-w-0 break-words ${item.isActive ? '' : 'opacity-60'}`}>{item.name}</span>
@@ -925,6 +960,7 @@ export function CashflowItemModal({
                 </li>
             ))}
         </ul>
+        </div>
     );
 
     return (
@@ -1011,7 +1047,7 @@ export function CashflowItemModal({
                                             recurrenceTag(item.recurrence).label,
                                             item.monthlyEquivalent === null ? null : `≈ ${formatCurrency(item.monthlyEquivalent, currency)} / month`,
                                             item.category,
-                                        ].filter(Boolean).join(' · '))}
+                                        ].filter(Boolean).join(' · '), { value: regularMobileSort, options: ['monthly', 'amount', 'name'], onChange: setRegularMobileSort })}
                                         <div className="hidden lg:block overflow-x-auto">
                                             <DataTable
                                                 value={regularItems}
@@ -1062,7 +1098,7 @@ export function CashflowItemModal({
                                             item.scheduledYm ? formatYearMonth(item.scheduledYm) : null,
                                             item.recurrence === 'taxed-income' ? 'Gross income' : null,
                                             item.category,
-                                        ].filter(Boolean).join(' · '))}
+                                        ].filter(Boolean).join(' · '), { value: oneTimeMobileSort, options: ['month', 'amount', 'name'], onChange: setOneTimeMobileSort })}
                                         <div className="hidden lg:block overflow-x-auto">
                                             <DataTable
                                                 value={oneTimeItems}
