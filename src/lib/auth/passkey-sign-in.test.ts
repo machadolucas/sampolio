@@ -8,6 +8,7 @@ import { closeDb, getDb } from '@/lib/db/sqlite/client';
 import { passkey, rateLimit, session } from '@/lib/db/sqlite/schema';
 import { recordPasskeySignIn } from '@/lib/db/passkeys';
 import { updateUser } from '@/lib/db/users';
+import { updateAppSettings } from '@/lib/db/app-settings';
 
 /**
  * Passkey sign-in against the real Better Auth instance, driven by a software
@@ -27,6 +28,7 @@ beforeAll(async () => {
   closeDb();
   resetAuthForTests();
   expect((await bootstrapDatabase()).ok).toBe(true);
+  await updateAppSettings({ selfSignupEnabled: true }, 'test');
   for (const [name, email] of [['Alex', 'alex@example.com'], ['Sam', 'sam@example.com']] as const) {
     const { user: created } = await getAuth().api.signUpEmail({ body: { name, email, password: STRONG } });
     ids[name.toLowerCase() as 'alex' | 'sam'] = created.id;

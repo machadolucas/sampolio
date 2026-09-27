@@ -323,6 +323,7 @@ export function UsersModal({ visible, onHide }: UsersModalProps) {
                     <div className="flex flex-col gap-2">
                         <label className="font-medium">{editingUser ? 'New Password (leave empty to keep)' : 'Password'}</label>
                         <Password value={formData.password} onChange={(e) => setFormData({ ...formData, password: e.target.value })} className="w-full" inputClassName="w-full" toggleMask feedback={!editingUser} />
+                        <small className="text-xs text-gray-500 dark:text-gray-400">8–128 characters, with an uppercase and a lowercase letter, a number and a symbol.</small>
                     </div>
                     <div className="flex flex-col gap-2">
                         <label className="font-medium">Role</label>

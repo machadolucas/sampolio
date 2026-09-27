@@ -11,6 +11,11 @@
  */
 export const PASSKEY_REGISTRATION_MAX_SESSION_AGE_MS = 10 * 60 * 1000;
 
+/** `resetMyData` / `deleteMyAccount` (src/lib/actions/account.ts) reuse the
+ * same window and answer with this message (shown in the settings toast). */
+export const RECENT_SIGN_IN_REQUIRED_MESSAGE =
+  'For security, sign out and sign in again, then retry within 10 minutes.';
+
 /** APIError body.code returned when that guard refuses registration. */
 export const PASSKEY_REAUTH_REQUIRED = 'PASSKEY_REAUTH_REQUIRED';
 

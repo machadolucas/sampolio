@@ -156,8 +156,13 @@ function buildAuthOptions({ withNextCookies = true }: { withNextCookies?: boolea
     telemetry: { enabled: false },
     onAPIError: { errorURL: '/auth/error' },
     // No HTTP self-service profile edit: name/avatar changes go through our
-    // own server actions (validation + the 'users' cache tag).
-    disabledPaths: ['/update-user'],
+    // own server actions (validation + the 'users' cache tag). No HTTP
+    // /change-password either: `changeMyPassword` adds a per-user lockout
+    // (`pw:<userId>`) that the raw endpoint lacks, so a stolen cookie plus
+    // rotating IPs could otherwise brute-force the current password.
+    // disabledPaths is enforced only by the HTTP router (`onRequest`), so the
+    // server-side `auth.api.changePassword` call keeps working.
+    disabledPaths: ['/update-user', '/change-password'],
     database: drizzleAdapter(getDb(), { provider: 'sqlite', schema }),
 
     emailAndPassword: {

@@ -16,7 +16,13 @@ import { closeDb } from '@/lib/db/sqlite/client';
 import { bootstrapDatabase } from '@/lib/db/sqlite/bootstrap';
 import { getAuth, resetAuthForTests } from '@/lib/auth/server';
 import { resetRateLimits } from '@/lib/rate-limit';
-import { changeMyPassword } from './account';
+import { updateAppSettings } from '@/lib/db/app-settings';
+import { eq } from 'drizzle-orm';
+import { getDb } from '@/lib/db/sqlite/client';
+import { session as sessionTable } from '@/lib/db/sqlite/schema';
+import { findUserByEmail } from '@/lib/db/users';
+import { RECENT_SIGN_IN_REQUIRED_MESSAGE } from '@/lib/auth/constants';
+import { changeMyPassword, deleteMyAccount, resetMyData } from './account';
 import { signUp } from './auth';
 
 const STRONG = 'Str0ng!pass';
@@ -27,6 +33,8 @@ beforeAll(async () => {
   closeDb();
   resetAuthForTests();
   expect((await bootstrapDatabase()).ok).toBe(true);
+  // Missing app-settings fail closed once a user exists; these tests sign up many.
+  await updateAppSettings({ selfSignupEnabled: true }, 'test');
 });
 afterAll(() => {
   closeDb();
@@ -110,5 +118,45 @@ describe('HTTP surface', () => {
     const ok = await getAuth().handler(new Request('http://localhost:4998/api/auth/get-session', { headers: { cookie } }));
     expect(ok.status).toBe(200);
     expect((await ok.json())?.user?.email).toBe('user2@example.com');
+  });
+
+  it('disables /change-password (the action with the per-user lockout is the only path)', async () => {
+    const cookie = await cookieFor('user2@example.com', STRONG);
+    const res = await getAuth().handler(
+      new Request('http://localhost:4998/api/auth/change-password', {
+        method: 'POST',
+        headers: { cookie, origin: 'http://localhost:4998', 'content-type': 'application/json' },
+        body: JSON.stringify({ currentPassword: STRONG, newPassword: 'N3w!password', revokeOtherSessions: false }),
+      }),
+    );
+    expect(res.status).toBe(404);
+    // Password unchanged.
+    await expect(cookieFor('user2@example.com', STRONG)).resolves.toContain('sampolio.session_token=');
+  });
+});
+
+describe('destructive self-service needs a recent sign-in', () => {
+  async function signedIn(email: string, ageMinutes: number) {
+    const cookie = await cookieFor(email, STRONG);
+    const user = await findUserByEmail(email);
+    const createdAt = new Date(Date.now() - ageMinutes * 60 * 1000);
+    getDb().update(sessionTable).set({ createdAt }).where(eq(sessionTable.userId, user!.id)).run();
+    requestHeaders.current = new Headers({ cookie, origin: 'http://localhost:4998' });
+    return user!;
+  }
+
+  it('refuses resetMyData and deleteMyAccount on a session older than 10 minutes', async () => {
+    const user = await signedIn('user3@example.com', 11);
+    expect(await resetMyData()).toEqual({ success: false, error: RECENT_SIGN_IN_REQUIRED_MESSAGE });
+    expect(await deleteMyAccount({ confirmationText: 'user3@example.com' })).toEqual({
+      success: false,
+      error: RECENT_SIGN_IN_REQUIRED_MESSAGE,
+    });
+    expect((await findUserByEmail('user3@example.com'))?.id).toBe(user.id);
+  });
+
+  it('allows them right after signing in', async () => {
+    await signedIn('user3@example.com', 1);
+    expect(await resetMyData()).toEqual({ success: true });
   });
 });

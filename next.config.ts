@@ -19,7 +19,7 @@ const securityHeaders = [
   // Prevent DNS prefetch to avoid leaking hostnames
   {
     key: 'X-DNS-Prefetch-Control',
-    value: 'on',
+    value: 'off',
   },
   // Restrict browser features
   {
@@ -36,7 +36,11 @@ const securityHeaders = [
     key: 'Content-Security-Policy',
     value: [
       "default-src 'self'",
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval'", // Required for Next.js
+      // 'unsafe-inline' is required by Next's inline bootstrap scripts (a
+      // nonce would force dynamic rendering under cacheComponents).
+      // 'unsafe-eval' is only needed by `next dev` (HMR / React Refresh); a
+      // production build never evals, so it is omitted there.
+      `script-src 'self' 'unsafe-inline'${process.env.NODE_ENV === 'production' ? '' : " 'unsafe-eval'"}`,
       "worker-src 'self'", // Service worker (PWA)
       "style-src 'self' 'unsafe-inline'", // Required for PrimeReact
       "img-src 'self' data: blob:",

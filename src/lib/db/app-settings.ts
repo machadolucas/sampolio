@@ -6,6 +6,7 @@ import {
   readEncryptedFile,
   writeEncryptedFile,
 } from './encryption';
+import { isFirstUserSetup } from './sqlite/legacy-import';
 
 const APP_SETTINGS_FILE = 'app-settings.enc';
 
@@ -15,16 +16,23 @@ async function getAppSettingsPath(): Promise<string> {
   return path.join(dataDir, APP_SETTINGS_FILE);
 }
 
-const DEFAULT_SETTINGS: AppSettings = {
-  selfSignupEnabled: true, // Default to enabled for first-time setup
-  updatedAt: new Date().toISOString(),
-  updatedBy: 'system',
-};
+// Fails closed: a missing `app-settings.enc` (restore mistake, manual cleanup)
+// must not silently reopen public sign-up. Before the first account exists the
+// default is "enabled" so the owner can register (the first-user rule in the
+// sign-up hooks admits them regardless); once any user exists it is "disabled"
+// until an admin turns it on.
+function defaultSettings(): AppSettings {
+  return {
+    selfSignupEnabled: isFirstUserSetup(),
+    updatedAt: new Date().toISOString(),
+    updatedBy: 'system',
+  };
+}
 
 export async function getAppSettings(): Promise<AppSettings> {
   const settingsPath = await getAppSettingsPath();
   const settings = await readEncryptedFile<AppSettings>(settingsPath);
-  return settings || DEFAULT_SETTINGS;
+  return settings || defaultSettings();
 }
 
 export async function updateAppSettings(

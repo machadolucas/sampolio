@@ -89,6 +89,9 @@ describe('sign-up gating and first-user admin', () => {
   });
 
   it('rejects weak passwords and too-short names server-side', async () => {
+    // A user exists now, so the (missing) settings file fails closed; open sign-up
+    // to reach the body validation.
+    await updateAppSettings({ selfSignupEnabled: true }, 'test');
     await expectApiError(
       getAuth().api.signUpEmail({ body: { name: 'Sam', email: 'sam@example.com', password: 'weakpassword' } }),
       400,

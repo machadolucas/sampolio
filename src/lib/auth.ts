@@ -28,3 +28,19 @@ export async function auth(): Promise<AppSession | null> {
   if (getSetupFailure()) return null; // fail closed without touching the DB (bootstrap.ts)
   return toAppSession(await getRequestSession());
 }
+
+/**
+ * Milliseconds since the current request's session was created (i.e. since
+ * the sign-in), or null without a usable session. Destructive self-service
+ * actions compare it against PASSKEY_REGISTRATION_MAX_SESSION_AGE_MS
+ * (src/lib/auth/constants.ts) to require a recent sign-in. Shares the
+ * per-request cached lookup with `auth()`.
+ */
+export async function getSessionAgeMs(): Promise<number | null> {
+  if (getSetupFailure()) return null;
+  const result = await getRequestSession();
+  if (!toAppSession(result)) return null;
+  const createdAt = result?.session?.createdAt;
+  if (!createdAt) return null;
+  return Date.now() - new Date(createdAt).getTime();
+}

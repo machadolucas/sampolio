@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
-/** The one password policy: sign-up, self-service change, and the Better Auth
+/** The one password policy: sign-up, self-service change, admin create/reset
+ * (src/lib/actions/admin.ts), and the Better Auth
  * `hooks.before` gate on /sign-up/email and /change-password
  * (src/lib/auth/server.ts) all use it. */
 export const passwordPolicySchema = z.string()

@@ -8,8 +8,8 @@
     "node": ">=26"
   },
   "scripts": {
-    "dev": "next dev -p 4999",
-    "dev:preview": "DEV_AUTH_BYPASS=you@example.com next dev -p 4999",
+    "dev": "next dev -H 127.0.0.1 -p 4999",
+    "dev:preview": "DEV_AUTH_BYPASS=you@example.com next dev -H 127.0.0.1 -p 4999",
     "build": "npm run copy-themes && next build",
     "start": "next start",
     "lint": "eslint",

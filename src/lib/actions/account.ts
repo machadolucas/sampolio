@@ -5,7 +5,8 @@ import * as path from 'path';
 import { updateTag } from 'next/cache';
 import { headers } from 'next/headers';
 import { isAPIError } from 'better-auth/api';
-import { auth } from '@/lib/auth';
+import { auth, getSessionAgeMs } from '@/lib/auth';
+import { PASSKEY_REGISTRATION_MAX_SESSION_AGE_MS, RECENT_SIGN_IN_REQUIRED_MESSAGE } from '@/lib/auth/constants';
 import { getAuth } from '@/lib/auth/server';
 import type { ApiResponse, AccountDeletionBlocker, AccountDeletionPreflight, PasskeySummary } from '@/types';
 import {
@@ -209,11 +210,24 @@ export async function getAccountDeletionPreflight(): Promise<ApiResponse<Account
  * split group and mortgage they belong to, tears down bank connections
  * (best-effort consent revoke), then hard-deletes the user directory + index
  * entry. Irreversible — gated by typing the account's own email. */
+/** Wiping data or deleting the account needs a session younger than the
+ * passkey-registration window, so a stolen long-lived cookie (or injected
+ * script riding one) cannot erase everything in one call. Returns an error
+ * message, or null when the session is recent enough. */
+async function requireRecentSignIn(): Promise<string | null> {
+  const ageMs = await getSessionAgeMs();
+  if (ageMs === null || ageMs > PASSKEY_REGISTRATION_MAX_SESSION_AGE_MS) return RECENT_SIGN_IN_REQUIRED_MESSAGE;
+  return null;
+}
+
 export async function deleteMyAccount(input: { confirmationText: string }): Promise<ApiResponse<null>> {
   const session = await auth();
   if (!session?.user?.id || !session.user.email) return { success: false, error: 'Not authenticated' };
   const userId = session.user.id;
   const userEmail = session.user.email;
+
+  const reauth = await requireRecentSignIn();
+  if (reauth) return { success: false, error: reauth };
 
   if (input.confirmationText.trim().toLowerCase() !== userEmail.trim().toLowerCase()) {
     return { success: false, error: 'Confirmation text does not match your account email' };
@@ -287,6 +301,9 @@ export async function resetMyData(): Promise<ApiResponse<null>> {
   const session = await auth();
   if (!session?.user?.id) return { success: false, error: 'Not authenticated' };
   const userId = session.user.id;
+
+  const reauth = await requireRecentSignIn();
+  if (reauth) return { success: false, error: reauth };
 
   const connections = await cachedGetBankConnections(userId);
   for (const connection of connections) {
