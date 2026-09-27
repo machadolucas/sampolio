@@ -79,6 +79,7 @@ export function BudgetExpenseLog({
   const sourceNames = new Map(budget.fundingSources.map(s => [s.id, s.name]));
 
   const submitQuickEntry = async () => {
+    if (saving) return;
     setError('');
     const parsed = budgetExpenseEntrySchema.safeParse({
       date: dateToIso(date),
@@ -91,15 +92,25 @@ export function BudgetExpenseLog({
       setError(parsed.error.issues[0]?.message ?? 'Please check the entry');
       return;
     }
+    // The fields stay editable while saving, so the next receipt can be typed
+    // right away — on success only clear the draft that was submitted, never
+    // text entered since.
+    const submittedDescription = description;
+    const submittedAmount = amount;
     setSaving(true);
-    const res = await addBudgetExpenseEntry(budget.id, { ...parsed.data, fundingSourceId: sourceId ?? undefined });
-    setSaving(false);
-    if (res.success && res.data) {
-      onChanged(res.data);
-      setDescription('');
-      setAmount(null);
-    } else {
-      setError(res.error ?? 'Something went wrong');
+    try {
+      const res = await addBudgetExpenseEntry(budget.id, { ...parsed.data, fundingSourceId: sourceId ?? undefined });
+      if (res.success && res.data) {
+        onChanged(res.data);
+        setDescription(cur => (cur === submittedDescription ? '' : cur));
+        setAmount(cur => (cur === submittedAmount ? null : cur));
+      } else {
+        setError(res.error ?? 'Something went wrong');
+      }
+    } catch {
+      setError('Something went wrong');
+    } finally {
+      setSaving(false);
     }
   };
 

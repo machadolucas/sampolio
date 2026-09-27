@@ -88,9 +88,10 @@ function isContributionActiveInMonth(
 }
 
 /**
- * Calculate investment projection for a single account
+ * Calculate investment projection for a single account. Exported for the
+ * monthly check-in prefill (src/lib/reconcile-prefill.ts).
  */
-function calculateInvestmentProjection(
+export function calculateInvestmentProjection(
   investment: InvestmentAccount,
   contributions: InvestmentContribution[],
   startDate: YearMonth,
@@ -170,9 +171,10 @@ function calculateInvestmentProjection(
 // ============================================================
 
 /**
- * Calculate receivable projection
+ * Calculate receivable projection. Exported for the monthly check-in prefill
+ * (src/lib/reconcile-prefill.ts).
  */
-function calculateReceivableProjection(
+export function calculateReceivableProjection(
   receivable: Receivable,
   repayments: ReceivableRepayment[],
   startDate: YearMonth,

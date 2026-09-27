@@ -56,6 +56,8 @@ export function GoalDialog({
     handleSubmit,
     reset,
     watch,
+    getValues,
+    setValue,
     formState: { errors },
   } = useForm<GoalFormData>({
     resolver: zodResolver(goalSchema),
@@ -100,6 +102,17 @@ export function GoalDialog({
   // account balance, with a target date set — hide it otherwise so the form
   // never shows a control the schema would reject.
   const canInject = goalType === 'spend' && trackingMethod === 'account-balance' && !!targetDate;
+
+  // Clear a hidden `injectIntoCashflow` as soon as its prerequisites stop
+  // applying: the resolver validates before handleSave runs, so a stale `true`
+  // on the hidden checkbox would otherwise block Save. Re-checked against the
+  // live values so the reset-on-open (same commit) never clears a valid flag.
+  useEffect(() => {
+    if (canInject) return;
+    const v = getValues();
+    const applies = v.goalType === 'spend' && v.trackingMethod === 'account-balance' && !!v.targetDate;
+    if (!applies && v.injectIntoCashflow) setValue('injectIntoCashflow', false, { shouldValidate: false });
+  }, [canInject, getValues, setValue]);
 
   const accountOptions = accounts
     .filter((a) => !a.isArchived || a.id === goal?.linkedAccountId)
@@ -308,6 +321,8 @@ export function GoalDialog({
             </label>
           </div>
         )}
+        {/* Fallback: shown even when the checkbox is hidden, so a failed save is never silent. */}
+        {errors.injectIntoCashflow && <small className="block text-red-500">{errors.injectIntoCashflow.message}</small>}
 
         <div>
           <label htmlFor="goal-priority" className="block text-sm font-medium mb-1">Priority <span className="opacity-50">(optional)</span></label>

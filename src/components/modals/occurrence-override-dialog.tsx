@@ -20,7 +20,11 @@ import {
 import { getRecurringItemById } from '@/lib/actions/recurring';
 import type { RecurringItem, YearMonth } from '@/types';
 import { MdSave, MdDelete, MdClose, MdSkipNext } from 'react-icons/md';
-import { occurrenceOverrideSchema, type OccurrenceOverrideFormData } from '@/lib/schemas/occurrence-override.schema';
+import {
+    occurrenceOverrideSchema,
+    toOccurrenceOverridePayload,
+    type OccurrenceOverrideFormData,
+} from '@/lib/schemas/occurrence-override.schema';
 
 interface OccurrenceOverrideDialogProps {
     visible: boolean;
@@ -64,6 +68,7 @@ export function OccurrenceOverrideDialog({
     });
 
     const skipOccurrence = watch('skipOccurrence');
+    const overrideAmount = watch('amount');
 
     // Load recurring item details + existing override when dialog opens
     useEffect(() => {
@@ -111,21 +116,17 @@ export function OccurrenceOverrideDialog({
     const handleSave = async (formData: OccurrenceOverrideFormData) => {
         setIsSaving(true);
         try {
+            const payload = toOccurrenceOverridePayload(formData);
             const result = await upsertRecurringItemOccurrenceOverride(
                 accountId,
                 recurringItemId,
                 yearMonth,
-                {
-                    name: formData.name || undefined,
-                    amount: formData.amount || undefined,
-                    category: formData.category || null,
-                    skipOccurrence: formData.skipOccurrence,
-                }
+                payload
             );
             if (result.success) {
                 toast.success(
                     'Override Saved',
-                    formData.skipOccurrence
+                    payload.skipOccurrence
                         ? `Occurrence skipped for ${formatYearMonth(yearMonth)}`
                         : `Override saved for ${formatYearMonth(yearMonth)}`
                 );
@@ -287,9 +288,15 @@ export function OccurrenceOverrideDialog({
                                             maxFractionDigits={2}
                                             className="w-full"
                                             placeholder={String(recurringItem.amount)}
+                                            aria-describedby={overrideAmount === 0 ? 'override-amount-hint' : undefined}
                                         />
                                     )}
                                 />
+                                {overrideAmount === 0 && !skipOccurrence && (
+                                    <p id="override-amount-hint" className={`text-xs mt-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                                        An amount of 0 is saved as a skipped occurrence.
+                                    </p>
+                                )}
                             </div>
 
                             <div>

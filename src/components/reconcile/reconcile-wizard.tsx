@@ -15,16 +15,18 @@ import { useToast } from '@/components/providers/toast-provider';
 import { formatCurrency, formatYearMonth, MONTHS } from '@/lib/constants';
 import { getCurrentYearMonth } from '@/lib/projection';
 import { getAccounts } from '@/lib/actions/accounts';
-import { getInvestmentAccounts } from '@/lib/actions/investments';
-import { getReceivables } from '@/lib/actions/receivables';
-import { getDebts } from '@/lib/actions/debts';
+import { getInvestmentAccounts, getContributions } from '@/lib/actions/investments';
+import { getReceivables, getRepayments } from '@/lib/actions/receivables';
+import { getDebts, getReferenceRates, getExtraPayments } from '@/lib/actions/debts';
 import { getProjection } from '@/lib/actions/projection';
 import {
     startReconciliationSession,
     createBalanceSnapshot,
     completeReconciliationSession,
     applyReconciliationBalances,
+    getLatestSnapshot,
 } from '@/lib/actions/reconciliation';
+import { expectedInvestmentBalance, expectedReceivableBalance, expectedDebtState } from '@/lib/reconcile-prefill';
 import { useAppContext } from '@/components/layout/app-layout';
 import type { FinancialAccount, InvestmentAccount, Receivable, Debt, EntityType, Currency } from '@/types';
 
@@ -79,6 +81,10 @@ export function ReconcileWizard({
 
     // Entity data
     const [entities, setEntities] = useState<EntityRow[]>([]);
+    // Full non-cash entities, kept for the engine-based expected prefill.
+    const sourceEntitiesRef = useRef<{ investments: InvestmentAccount[]; receivables: Receivable[]; debts: Debt[] }>({
+        investments: [], receivables: [], debts: [],
+    });
     const [sessionId, setSessionId] = useState<string | null>(null);
     const toast = useToast();
 
@@ -96,6 +102,14 @@ export function ReconcileWizard({
             ]);
 
             const rows: EntityRow[] = [];
+            sourceEntitiesRef.current = {
+                investments: investmentsResult.success && investmentsResult.data
+                    ? investmentsResult.data.filter((i: InvestmentAccount) => !i.isArchived) : [],
+                receivables: receivablesResult.success && receivablesResult.data
+                    ? receivablesResult.data.filter((r: Receivable) => !r.isArchived) : [],
+                debts: debtsResult.success && debtsResult.data
+                    ? debtsResult.data.filter((d: Debt) => !d.isArchived) : [],
+            };
 
             // Cash accounts
             if (accountsResult.success && accountsResult.data) {
@@ -116,7 +130,7 @@ export function ReconcileWizard({
             // Investments
             if (investmentsResult.success && investmentsResult.data) {
                 for (const investment of investmentsResult.data.filter((i: InvestmentAccount) => !i.isArchived)) {
-                    const balance = investment.currentValuation || investment.startingValuation;
+                    const balance = investment.currentValuation ?? investment.startingValuation;
                     rows.push({
                         entityType: 'investment',
                         entityId: investment.id,
@@ -213,37 +227,71 @@ export function ReconcileWizard({
         }));
     };
 
-    // Refine the "expected" balance for cash accounts to the projected balance
-    // for the chosen month, so the variance shown reflects the actual forecast for
-    // that month (not just the last stored starting balance). Other entity types
-    // keep their current stored value as the expected baseline.
+    // Refine every row's "expected" balance to the value the projection engines
+    // hold for the START of the chosen month — cash from the account projection,
+    // investments/receivables/debts from the same wealth engines the Overview
+    // uses, anchored on each entity's latest snapshot (src/lib/reconcile-prefill.ts).
+    // The actual is pre-filled to the same value, so confirming an untouched row
+    // re-anchors at exactly what the projection already had and nothing moves.
     const refineExpectedBalances = useCallback(async () => {
+        if (entities.length === 0) return;
+        const { investments, receivables, debts } = sourceEntitiesRef.current;
         const cashRows = entities.filter(e => e.entityType === 'cash-account');
-        if (cashRows.length === 0) return;
 
-        const expectedById = new Map<string, number>();
-        await Promise.all(cashRows.map(async (row) => {
-            try {
+        type Refined = { expected: number; remainingInstallments?: number };
+        const expectedById = new Map<string, Refined>();
+        const safe = async (fn: () => Promise<void>) => {
+            try { await fn(); } catch { /* Non-fatal: keep the stored value for this row */ }
+        };
+
+        await Promise.all([
+            ...cashRows.map(row => safe(async () => {
                 const res = await getProjection(row.entityId);
                 if (res.success && res.data) {
                     const month = res.data.monthly.find(m => m.yearMonth === selectedYearMonth);
-                    if (month) expectedById.set(row.entityId, month.startingBalance);
+                    if (month) expectedById.set(row.entityId, { expected: month.startingBalance });
                 }
-            } catch {
-                // Non-fatal: fall back to the stored expected balance for this row
-            }
-        }));
+            })),
+            ...investments.map(inv => safe(async () => {
+                const [contribs, snap] = await Promise.all([getContributions(inv.id), getLatestSnapshot('investment', inv.id)]);
+                if (!contribs.success || !snap.success) return;
+                expectedById.set(inv.id, {
+                    expected: expectedInvestmentBalance(inv, contribs.data ?? [], snap.data ?? null, selectedYearMonth),
+                });
+            })),
+            ...receivables.map(rec => safe(async () => {
+                const [repayments, snap] = await Promise.all([getRepayments(rec.id), getLatestSnapshot('receivable', rec.id)]);
+                if (!repayments.success || !snap.success) return;
+                expectedById.set(rec.id, {
+                    expected: expectedReceivableBalance(rec, repayments.data ?? [], snap.data ?? null, selectedYearMonth),
+                });
+            })),
+            ...debts.map(debt => safe(async () => {
+                const [rates, extras, snap] = await Promise.all([
+                    getReferenceRates(debt.id), getExtraPayments(debt.id), getLatestSnapshot('debt', debt.id),
+                ]);
+                if (!rates.success || !extras.success || !snap.success) return;
+                const state = expectedDebtState(debt, rates.data ?? [], extras.data ?? [], snap.data ?? null, selectedYearMonth);
+                expectedById.set(debt.id, { expected: state.principal, remainingInstallments: state.remainingInstallments });
+            })),
+        ]);
 
         if (expectedById.size === 0) return;
 
         setEntities(prev => prev.map(e => {
-            if (e.entityType === 'cash-account' && expectedById.has(e.entityId)) {
-                const expected = expectedById.get(e.entityId)!;
-                // The user hasn't edited anything yet at this point, so pre-fill the
-                // actual to the projected value (zero variance until they change it).
-                return { ...e, expectedBalance: expected, actualBalance: expected, variance: 0 };
-            }
-            return e;
+            const refined = expectedById.get(e.entityId);
+            if (!refined) return e;
+            // The user hasn't edited anything yet at this point, so pre-fill the
+            // actual to the projected value (zero variance until they change it).
+            return {
+                ...e,
+                expectedBalance: refined.expected,
+                actualBalance: refined.expected,
+                variance: 0,
+                ...(e.entityType === 'debt' && refined.remainingInstallments !== undefined
+                    ? { remainingInstallments: refined.remainingInstallments }
+                    : {}),
+            };
         }));
     }, [entities, selectedYearMonth]);
 
