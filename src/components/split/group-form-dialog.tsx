@@ -8,14 +8,17 @@ import { InputText } from 'primereact/inputtext';
 import { Dropdown } from 'primereact/dropdown';
 import { Button } from 'primereact/button';
 import { Message } from 'primereact/message';
+import { confirmDialog } from 'primereact/confirmdialog';
 import { MdClose } from 'react-icons/md';
 import {
   createSplitGroup,
   updateSplitGroup,
   addSplitGroupMember,
   removeSplitGroupMember,
+  leaveSplitGroup,
   updateSplitGroupMemberRole,
 } from '@/lib/actions/split-groups';
+import { useToast } from '@/components/providers/toast-provider';
 import { CURRENCIES } from '@/lib/constants';
 import type { Currency, SplitGroup, SplitGroupMemberRole } from '@/types';
 
@@ -30,13 +33,17 @@ export function GroupFormDialog({
   onHide,
   group,
   onSaved,
+  onLeft,
 }: {
   visible: boolean;
   onHide: () => void;
   group?: SplitGroup;
   onSaved: (groupId?: string) => void;
+  /** Called after the viewer successfully left the group (navigate away). */
+  onLeft?: () => void;
 }) {
   const editing = !!group;
+  const toast = useToast();
   const { data: session } = useSession();
   const myId = session?.user?.id ?? '';
   const myRole = group?.members.find((m) => m.userId === myId)?.role;
@@ -73,6 +80,55 @@ export function GroupFormDialog({
       if (!pendingEmails.includes(email)) setPendingEmails((p) => [...p, email]);
       setMemberEmail('');
     }
+  };
+
+  const confirmRemove = (member: SplitGroup['members'][number]) => {
+    if (!group) return;
+    confirmDialog({
+      header: 'Remove member',
+      message: `Remove ${member.name} from ${group.name}? They will lose access to this group and its expenses.`,
+      icon: 'pi pi-exclamation-triangle',
+      acceptLabel: 'Remove',
+      rejectLabel: 'Cancel',
+      defaultFocus: 'reject',
+      acceptClassName: 'p-button-danger',
+      accept: async () => {
+        setSaving(true);
+        setError('');
+        const res = await removeSplitGroupMember(group.id, member.userId);
+        setSaving(false);
+        if (!res.success) {
+          toast.error('Could not remove member', res.error);
+          return;
+        }
+        onSaved(group.id);
+      },
+    });
+  };
+
+  const confirmLeave = () => {
+    if (!group) return;
+    confirmDialog({
+      header: 'Leave group',
+      message: `Leave ${group.name}? You will lose access to its expenses. You can leave once your balance is €0.`,
+      icon: 'pi pi-exclamation-triangle',
+      acceptLabel: 'Leave',
+      rejectLabel: 'Cancel',
+      defaultFocus: 'reject',
+      acceptClassName: 'p-button-danger',
+      accept: async () => {
+        setSaving(true);
+        const res = await leaveSplitGroup(group.id);
+        setSaving(false);
+        if (!res.success) {
+          toast.error('Could not leave the group', res.error);
+          return;
+        }
+        toast.success('You left the group', group.name);
+        onHide();
+        onLeft?.();
+      },
+    });
   };
 
   const save = async () => {
@@ -159,17 +215,17 @@ export function GroupFormDialog({
                   ) : (
                     <span className="text-xs text-gray-400 capitalize">{m.role}</span>
                   )}
-                  {m.role !== 'owner' && (
+                  {isOwner && m.role !== 'owner' && m.userId !== myId && (
                     <Button
                       icon={<MdClose />}
                       text
                       rounded
                       severity="danger"
-                      onClick={async () => {
-                        const res = await removeSplitGroupMember(group!.id, m.userId);
-                        if (!res.success) setError(res.error ?? 'Could not remove');
-                        else onSaved(group!.id);
-                      }}
+                      className="w-11 h-11"
+                      aria-label={`Remove ${m.name}`}
+                      title={`Remove ${m.name}`}
+                      disabled={saving}
+                      onClick={() => confirmRemove(m)}
                     />
                   )}
                 </div>
@@ -179,19 +235,31 @@ export function GroupFormDialog({
             pendingEmails.map((e) => (
               <div key={e} className="flex items-center justify-between text-sm">
                 <span>{e}</span>
-                <Button icon={<MdClose />} text rounded onClick={() => setPendingEmails((p) => p.filter((x) => x !== e))} />
+                <Button icon={<MdClose />} text rounded aria-label={`Remove ${e}`} onClick={() => setPendingEmails((p) => p.filter((x) => x !== e))} />
               </div>
             ))}
-          <div className="flex gap-2">
-            <InputText
-              value={memberEmail}
-              onChange={(e) => setMemberEmail(e.target.value)}
-              placeholder="Partner's account email"
-              className="flex-1"
-              onKeyDown={(e) => e.key === 'Enter' && addPartner()}
+          {(!editing || isOwner) && (
+            <div className="flex gap-2">
+              <InputText
+                value={memberEmail}
+                onChange={(e) => setMemberEmail(e.target.value)}
+                placeholder="Partner's account email"
+                className="flex-1"
+                onKeyDown={(e) => e.key === 'Enter' && addPartner()}
+              />
+              <Button label="Add" outlined onClick={addPartner} disabled={saving} />
+            </div>
+          )}
+          {editing && (
+            <Button
+              label="Leave group"
+              text
+              severity="danger"
+              className="self-start min-h-[44px]"
+              disabled={saving}
+              onClick={confirmLeave}
             />
-            <Button label="Add" outlined onClick={addPartner} disabled={saving} />
-          </div>
+          )}
         </div>
 
         {error && <Message severity="error" text={error} />}

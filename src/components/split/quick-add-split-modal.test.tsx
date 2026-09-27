@@ -33,7 +33,27 @@ vi.mock('primereact/confirmdialog', () => ({ confirmDialog: mocks.confirmDialog 
 vi.mock('primereact/dialog', () => ({ Dialog: ({ visible, children }: any) => visible ? <div role="dialog">{children}</div> : null }));
 vi.mock('primereact/button', () => ({ Button: ({ label, onClick, disabled, loading, children, ...rest }: any) => <button type="button" disabled={disabled || loading} onClick={onClick} {...rest}>{label ?? children}</button> }));
 vi.mock('primereact/inputtext', () => ({ InputText: (props: any) => <input {...props} /> }));
-vi.mock('primereact/inputnumber', () => ({ InputNumber: ({ value, onValueChange, inputRef, ...props }: any) => <input ref={inputRef} value={value ?? ''} onChange={(e) => onValueChange({ value: Number(e.target.value) })} {...props} /> }));
+// Mirrors PrimeReact 10: typing does NOT call onValueChange; the value is only
+// committed on blur or Enter, and a consumer's onKeyDown runs BEFORE the Enter
+// commit. (An always-live mock hid the stale-amount Enter bug.)
+const parseMockAmount = (text: string) => (text.trim() === '' ? null : Number(text.replace(/[^0-9,.-]/g, '').replace(',', '.')));
+vi.mock('primereact/inputnumber', () => ({
+  InputNumber: ({ value, onValueChange, onKeyDown, inputRef, inputClassName, ...props }: any) => (
+    <input
+      className={inputClassName}
+      key={String(value ?? '')}
+      ref={inputRef}
+      aria-label="Amount"
+      defaultValue={value == null ? '' : String(value).replace('.', ',')}
+      onKeyDown={(e) => {
+        onKeyDown?.(e);
+        if (!e.defaultPrevented && e.key === 'Enter') onValueChange?.({ value: parseMockAmount(e.currentTarget.value) });
+      }}
+      onBlur={(e) => onValueChange?.({ value: parseMockAmount(e.currentTarget.value) })}
+      {...props}
+    />
+  ),
+}));
 vi.mock('primereact/dropdown', () => ({ Dropdown: ({ value, options, onChange, ...props }: any) => <select value={value} onChange={(e) => onChange({ value: e.target.value })} {...props}>{options?.map((o: any) => <option key={o.value} value={o.value}>{o.label}</option>)}</select> }));
 vi.mock('primereact/calendar', () => ({ Calendar: ({ value }: any) => <input aria-label="Date" value={value?.toISOString?.().slice(0, 10) ?? ''} readOnly /> }));
 vi.mock('primereact/message', () => ({ Message: ({ text }: any) => <div role="alert">{text}</div> }));
@@ -121,5 +141,28 @@ describe('QuickAddSplitModal duplicate and review UX', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Confirm link' }));
     await waitFor(() => expect(screen.getByText('Link expired')).toBeInTheDocument());
     expect(mocks.createSplitExpense).not.toHaveBeenCalled();
+  });
+});
+
+describe('QuickAddSplitModal Enter-to-save', () => {
+  it('saves the typed amount on Enter, not the stale prefilled one', async () => {
+    openModal();
+    const input = await screen.findByLabelText('Amount');
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Save' })).not.toBeDisabled());
+    fireEvent.change(input, { target: { value: '30,75 €' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    await waitFor(() => expect(mocks.createSplitExpense).toHaveBeenCalledTimes(1));
+    expect(mocks.createSplitExpense.mock.calls[0][1].amountCents).toBe(3075);
+  });
+
+  it('saves a freshly typed amount on Enter instead of reporting a missing amount', async () => {
+    openModal({ title: 'Lunch' });
+    const input = await screen.findByLabelText('Amount');
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Save' })).not.toBeDisabled());
+    fireEvent.change(input, { target: { value: '12,50' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    await waitFor(() => expect(mocks.createSplitExpense).toHaveBeenCalledTimes(1));
+    expect(mocks.createSplitExpense.mock.calls[0][1].amountCents).toBe(1250);
+    expect(screen.queryByText('Add an amount')).not.toBeInTheDocument();
   });
 });

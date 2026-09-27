@@ -8,7 +8,8 @@
  * Expenses are stored in MONTHLY CHUNK files (one array per YYYY-MM), not one
  * file per row — at ~2,500 rows/group the per-file PBKDF2 cost of one-file-per-row
  * would block the event loop on every cache miss. A maintained summary.enc holds
- * running balances so the hot paths never decrypt the full history.
+ * running balances so the hot paths never decrypt the full history: add, edit,
+ * delete and occurrence overwrites apply a delta; import/prune rebuild it.
  *
  * Layout:
  *   data/shared/split-groups/{id}.enc                    # group meta + members + recurrence rules
@@ -301,12 +302,13 @@ export async function getExpensesForMonth(groupId: string, yearMonth: string): P
   return rows ?? [];
 }
 
-const sortRows = (rows: SplitExpense[]): SplitExpense[] =>
+/** Newest date first, then newest createdAt (sorts `rows` in place). */
+export const sortExpenseRows = (rows: SplitExpense[]): SplitExpense[] =>
   rows.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : b.createdAt.localeCompare(a.createdAt)));
 
 export async function getExpensesForMonths(groupId: string, months: string[]): Promise<SplitExpense[]> {
   const chunks = await Promise.all(months.map((ym) => getExpensesForMonth(groupId, ym)));
-  return sortRows(chunks.flat());
+  return sortExpenseRows(chunks.flat());
 }
 
 export async function getAllExpenses(groupId: string): Promise<SplitExpense[]> {
@@ -323,11 +325,23 @@ async function writeMonthChunk(groupId: string, yearMonth: string, rows: SplitEx
   }
 }
 
-async function locateExpense(
-  groupId: string,
-  id: string,
-): Promise<{ ym: string; rows: SplitExpense[]; index: number } | null> {
-  for (const ym of await getExpenseMonths(groupId)) {
+/** A row located inside its month chunk (the chunk array is the live read). */
+export interface LocatedExpense {
+  ym: string;
+  rows: SplitExpense[];
+  index: number;
+}
+
+/**
+ * Find a row by id. Scans the optional `monthHint` chunk first (callers usually
+ * know the row's date), then every chunk NEWEST-first — edits and deletes almost
+ * always target recent rows. Chunks are read one at a time so a hit stops early.
+ */
+export async function locateExpense(groupId: string, id: string, monthHint?: string): Promise<LocatedExpense | null> {
+  const months = (await getExpenseMonths(groupId)).reverse();
+  const hint = monthHint && months.includes(monthHint) ? monthHint : undefined;
+  const order = hint ? [hint, ...months.filter((ym) => ym !== hint)] : months;
+  for (const ym of order) {
     const rows = await getExpensesForMonth(groupId, ym);
     const index = rows.findIndex((r) => r.id === id);
     if (index >= 0) return { ym, rows, index };
@@ -335,8 +349,8 @@ async function locateExpense(
   return null;
 }
 
-export async function getExpenseById(groupId: string, id: string): Promise<SplitExpense | null> {
-  const loc = await locateExpense(groupId, id);
+export async function getExpenseById(groupId: string, id: string, monthHint?: string): Promise<SplitExpense | null> {
+  const loc = await locateExpense(groupId, id, monthHint);
   return loc ? loc.rows[loc.index] : null;
 }
 
@@ -346,7 +360,7 @@ export async function addExpense(groupId: string, expense: SplitExpense): Promis
   const rows = await getExpensesForMonth(groupId, ym);
   rows.push(expense);
   await writeMonthChunk(groupId, ym, rows);
-  await bumpSummaryForAdd(groupId, expense);
+  await applySummaryDelta(groupId, null, expense);
   return expense;
 }
 
@@ -354,37 +368,48 @@ export async function addExpense(groupId: string, expense: SplitExpense): Promis
  * Upsert a recurrence-generated row by its `occurrenceKey` (idempotent re-run):
  * an existing occurrence is overwritten in place (preserving id/createdAt), a new
  * one is appended. Returns whether it was newly created.
+ *
+ * `onePerMonth` (monthly/yearly rules): skip — write nothing — when the month
+ * chunk already holds another row generated from the same rule. Rules anchored
+ * on the 29th–31st used to drift to the 28th, so a stored cursor such as
+ * `2026-04-28` would otherwise get a second April row (`2026-04-30`).
  */
 export async function upsertExpenseByOccurrence(
   groupId: string,
   expense: SplitExpense,
-): Promise<{ expense: SplitExpense; created: boolean }> {
+  opts?: { onePerMonth?: boolean },
+): Promise<{ expense: SplitExpense; created: boolean; skipped?: boolean }> {
   const ym = ymOf(expense.date);
   const rows = await getExpensesForMonth(groupId, ym);
   const idx = expense.occurrenceKey
     ? rows.findIndex((r) => r.occurrenceKey && r.occurrenceKey === expense.occurrenceKey)
     : -1;
-  let created: boolean;
+  if (idx < 0 && opts?.onePerMonth && expense.generatedFromRuleId) {
+    const sibling = rows.find((r) => r.generatedFromRuleId === expense.generatedFromRuleId);
+    if (sibling) return { expense: sibling, created: false, skipped: true };
+  }
   if (idx >= 0) {
     const prev = rows[idx];
     expense.id = prev.id;
     expense.createdAt = prev.createdAt;
     rows[idx] = expense;
-    created = false;
-  } else {
-    rows.push(expense);
-    created = true;
+    await writeMonthChunk(groupId, ym, rows);
+    await applySummaryDelta(groupId, prev, expense);
+    return { expense, created: false };
   }
+  rows.push(expense);
   await writeMonthChunk(groupId, ym, rows);
-  if (created) await bumpSummaryForAdd(groupId, expense);
-  else await rebuildSummary(groupId);
-  return { expense, created };
+  await applySummaryDelta(groupId, null, expense);
+  return { expense, created: true };
 }
 
-/** Replace a row (cold path); may move it across month chunks. Rebuilds the summary. */
-export async function updateExpense(groupId: string, id: string, next: SplitExpense): Promise<SplitExpense | null> {
-  const loc = await locateExpense(groupId, id);
-  if (!loc) return null;
+/**
+ * Replace an already-located row (reusing the chunk read by `locateExpense`, so
+ * the caller must hold the group lock between the two). May move the row across
+ * month chunks. Delta-updates the summary.
+ */
+export async function replaceLocatedExpense(groupId: string, loc: LocatedExpense, next: SplitExpense): Promise<SplitExpense> {
+  const prev = loc.rows[loc.index];
   const newYm = ymOf(next.date);
   if (loc.ym === newYm) {
     loc.rows[loc.index] = next;
@@ -396,17 +421,35 @@ export async function updateExpense(groupId: string, id: string, next: SplitExpe
     target.push(next);
     await writeMonthChunk(groupId, newYm, target);
   }
-  await rebuildSummary(groupId);
+  await applySummaryDelta(groupId, prev, next);
   return next;
 }
 
-/** Delete a row (cold path). Rebuilds the summary. */
-export async function deleteExpense(groupId: string, id: string): Promise<boolean> {
-  const loc = await locateExpense(groupId, id);
-  if (!loc) return false;
-  loc.rows.splice(loc.index, 1);
+/** Delete an already-located row (caller holds the group lock). Returns the removed row. */
+export async function deleteLocatedExpense(groupId: string, loc: LocatedExpense): Promise<SplitExpense> {
+  const [removed] = loc.rows.splice(loc.index, 1);
   await writeMonthChunk(groupId, loc.ym, loc.rows);
-  await rebuildSummary(groupId);
+  await applySummaryDelta(groupId, removed, null);
+  return removed;
+}
+
+/** Replace a row by id; may move it across month chunks. Delta-updates the summary. */
+export async function updateExpense(
+  groupId: string,
+  id: string,
+  next: SplitExpense,
+  monthHint?: string,
+): Promise<SplitExpense | null> {
+  const loc = await locateExpense(groupId, id, monthHint);
+  if (!loc) return null;
+  return replaceLocatedExpense(groupId, loc, next);
+}
+
+/** Delete a row by id. Delta-updates the summary. */
+export async function deleteExpense(groupId: string, id: string, monthHint?: string): Promise<boolean> {
+  const loc = await locateExpense(groupId, id, monthHint);
+  if (!loc) return false;
+  await deleteLocatedExpense(groupId, loc);
   return true;
 }
 
@@ -485,21 +528,45 @@ async function writeSummary(groupId: string, summary: SplitGroupSummary): Promis
   await writeEncryptedFile(getSummaryFile(groupId), summary);
 }
 
-/** O(1) summary delta for a freshly-added row (no other chunks read). */
-async function bumpSummaryForAdd(groupId: string, expense: SplitExpense): Promise<void> {
-  const s = await getSplitGroupSummary(groupId);
-  for (const [uid, c] of Object.entries(expense.netByUserId)) {
-    s.netByUserId[uid] = (s.netByUserId[uid] ?? 0) + c;
+/**
+ * O(1) summary delta (no other chunks read): subtract `removed`'s contribution,
+ * add `added`'s. Covers add (null, row), edit (old, new) and delete (row, null).
+ * Falls back to a full {@link rebuildSummary} when the summary file is missing
+ * or when a delete removes the row that set `lastActivityAt` (the next-latest
+ * createdAt can sit in any chunk). Zero nets are dropped (readers use `?? 0`).
+ */
+async function applySummaryDelta(
+  groupId: string,
+  removed: SplitExpense | null,
+  added: SplitExpense | null,
+): Promise<void> {
+  const s = await readEncryptedFile<SplitGroupSummary>(getSummaryFile(groupId));
+  const lostLatest =
+    !!removed && removed.createdAt === s?.lastActivityAt && (!added || added.createdAt < removed.createdAt);
+  if (!s || lostLatest) {
+    await rebuildSummary(groupId);
+    return;
   }
-  if (expense.kind === 'expense') s.expenseCount += 1;
-  else s.paymentCount += 1;
-  if (!s.lastActivityAt || expense.createdAt > s.lastActivityAt) s.lastActivityAt = expense.createdAt;
+  const apply = (row: SplitExpense, sign: 1 | -1) => {
+    for (const [uid, c] of Object.entries(row.netByUserId)) {
+      const next = (s.netByUserId[uid] ?? 0) + sign * c;
+      if (next === 0) delete s.netByUserId[uid];
+      else s.netByUserId[uid] = next;
+    }
+    if (row.kind === 'expense') s.expenseCount += sign;
+    else s.paymentCount += sign;
+  };
+  if (removed) apply(removed, -1);
+  if (added) {
+    apply(added, 1);
+    if (!s.lastActivityAt || added.createdAt > s.lastActivityAt) s.lastActivityAt = added.createdAt;
+  }
   s.monthsWithData = await getExpenseMonths(groupId); // cheap: filenames, no decrypt
   s.updatedAt = new Date().toISOString();
   await writeSummary(groupId, s);
 }
 
-/** Full recompute from all chunks (cold paths: edit/delete/import/repair). */
+/** Full recompute from all chunks (cold paths: import, occurrence pruning, repair). */
 export async function rebuildSummary(groupId: string): Promise<SplitGroupSummary> {
   const months = await getExpenseMonths(groupId);
   const net: Record<string, number> = {};

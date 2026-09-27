@@ -12,8 +12,11 @@ import {
   pruneOccurrencesAfter,
   computeSeenWatermark,
   guessCategory,
+  assertBalancedSplit,
+  parseAmountInput,
 } from './split-utils';
-import type { SplitExpense, SplitGroupMember } from '@/types';
+import { splitSpecSchema } from './schemas/split.schema';
+import type { SplitExpense, SplitGroupMember, SplitSpec } from '@/types';
 
 const A = 'user-a';
 const B = 'user-b';
@@ -326,5 +329,134 @@ describe('computeSeenWatermark', () => {
     // Snapshot excludes mine-1 (createdAt equals it) and earlier; theirs-1 is the
     // first candidate and is unviewed → frontier never advances.
     expect(computeSeenWatermark(rows, '2026-01-02T00:00:00Z', A, new Set())).toBeNull();
+  });
+});
+
+describe('resolveSplit zero-sum invariant (CXA-04)', () => {
+  const netSum = (net: Record<string, number>) => Object.values(net).reduce((a, c) => a + c, 0);
+
+  it('refuses weighted modes without a member config (payer would be credited with no debtor)', () => {
+    expect(() => resolveSplit([A, B], 10000, { paidByUserId: A, splitMode: 'shares' })).toThrow();
+    expect(() => resolveSplit([A, B], 10000, { paidByUserId: A, splitMode: 'percent' })).toThrow();
+    expect(() => resolveSplit([A, B], 10000, { paidByUserId: A, splitMode: 'percent', splitConfig: { ghost: 100 } })).toThrow();
+    expect(() => resolveSplit([A, B], 10000, { paidByUserId: A, splitMode: 'shares', splitConfig: { [A]: 0, [B]: 0 } })).toThrow();
+  });
+
+  it('refuses negative allocations', () => {
+    expect(() =>
+      resolveSplit([A, B], 10000, { paidByUserId: A, splitMode: 'exact', splitConfig: { [A]: 12000, [B]: -2000 } }),
+    ).toThrow();
+    expect(() =>
+      resolveSplit([A, B], 10000, { paidByUserId: A, splitMode: 'shares', splitConfig: { [A]: 3, [B]: -1 } }),
+    ).toThrow();
+  });
+
+  it('collapses duplicate participants instead of dropping cents', () => {
+    const r = resolveSplit([A, B, C], 300, { paidByUserId: A, splitMode: 'equal', participantUserIds: [A, A, B] });
+    expect(r.owed).toEqual([
+      { userId: A, amountCents: 150 },
+      { userId: B, amountCents: 150 },
+    ]);
+    expect(netSum(r.netByUserId)).toBe(0);
+  });
+
+  it('keeps every supported mode zero-sum', () => {
+    const specs: SplitSpec[] = [
+      { paidByUserId: A, splitMode: 'equal' as const },
+      { paidByUserId: B, splitMode: 'full' as const },
+      { paidByUserId: A, splitMode: 'exact' as const, splitConfig: { [A]: 1, [B]: 998, [C]: 2 } },
+      { paidByUserId: C, splitMode: 'percent' as const, splitConfig: { [A]: 33.3, [B]: 33.3, [C]: 33.4 } },
+      { paidByUserId: A, splitMode: 'shares' as const, splitConfig: { [A]: 1, [B]: 2 } },
+    ];
+    for (const spec of specs) {
+      const r = resolveSplit([A, B, C], 1001, spec);
+      expect(netSum(r.netByUserId)).toBe(0);
+      expect(r.owed.reduce((a, s) => a + s.amountCents, 0)).toBe(1001);
+    }
+  });
+
+  it('rejects a non-positive or fractional amount', () => {
+    expect(() => resolveSplit([A, B], 0, { paidByUserId: A, splitMode: 'equal' })).toThrow();
+    expect(() => resolveSplit([A, B], 10.5, { paidByUserId: A, splitMode: 'equal' })).toThrow();
+  });
+
+  it('assertBalancedSplit catches paid/owed/net mismatches', () => {
+    expect(() =>
+      assertBalancedSplit(100, { paidBy: [{ userId: A, amountCents: 100 }], owed: [], netByUserId: { [A]: 100 } }),
+    ).toThrow();
+    expect(() =>
+      assertBalancedSplit(100, {
+        paidBy: [{ userId: A, amountCents: 100 }],
+        owed: [{ userId: B, amountCents: 100 }],
+        netByUserId: { [A]: 100, [B]: -100 },
+      }),
+    ).not.toThrow();
+  });
+});
+
+describe('splitSpecSchema (CXA-04)', () => {
+  it('requires a config for exact/percent/shares', () => {
+    expect(splitSpecSchema.safeParse({ paidByUserId: A, splitMode: 'shares' }).success).toBe(false);
+    expect(splitSpecSchema.safeParse({ paidByUserId: A, splitMode: 'percent', splitConfig: {} }).success).toBe(false);
+    expect(splitSpecSchema.safeParse({ paidByUserId: A, splitMode: 'percent', splitConfig: { [A]: 0 } }).success).toBe(false);
+    expect(splitSpecSchema.safeParse({ paidByUserId: A, splitMode: 'exact', splitConfig: { [A]: 100 } }).success).toBe(true);
+    expect(splitSpecSchema.safeParse({ paidByUserId: A, splitMode: 'equal' }).success).toBe(true);
+  });
+
+  it('rejects negative values and duplicate participants', () => {
+    expect(splitSpecSchema.safeParse({ paidByUserId: A, splitMode: 'exact', splitConfig: { [A]: -1 } }).success).toBe(false);
+    expect(
+      splitSpecSchema.safeParse({ paidByUserId: A, splitMode: 'equal', participantUserIds: [A, A] }).success,
+    ).toBe(false);
+  });
+});
+
+describe('generateOccurrenceDates month-end anchors (BUG-10)', () => {
+  it('computes each monthly occurrence from the anchor: Jan 31 → Feb 28 → Mar 31', () => {
+    expect(generateOccurrenceDates({ interval: 'monthly', anchorDate: '2026-01-31' }, '2026-05-31')).toEqual([
+      '2026-01-31',
+      '2026-02-28',
+      '2026-03-31',
+      '2026-04-30',
+      '2026-05-31',
+    ]);
+  });
+
+  it('resumes after a clamped cursor without drifting', () => {
+    expect(
+      generateOccurrenceDates(
+        { interval: 'monthly', anchorDate: '2026-01-31', lastGeneratedThrough: '2026-02-28' },
+        '2026-04-30',
+      ),
+    ).toEqual(['2026-03-31', '2026-04-30']);
+  });
+
+  it('keeps a Feb 29 yearly rule on Feb 29 in leap years', () => {
+    expect(generateOccurrenceDates({ interval: 'yearly', anchorDate: '2024-02-29' }, '2028-12-31')).toEqual([
+      '2024-02-29',
+      '2025-02-28',
+      '2026-02-28',
+      '2027-02-28',
+      '2028-02-29',
+    ]);
+  });
+
+  it('keeps biweekly stepping unchanged', () => {
+    expect(
+      generateOccurrenceDates(
+        { interval: 'biweekly', anchorDate: '2026-01-01', lastGeneratedThrough: '2026-01-15' },
+        '2026-02-12',
+      ),
+    ).toEqual(['2026-01-29', '2026-02-12']);
+  });
+});
+
+describe('parseAmountInput (UX-04)', () => {
+  it('parses fi-FI formatted input text', () => {
+    expect(parseAmountInput('12,50')).toBe(12.5);
+    expect(parseAmountInput('1\u00a0234,50\u00a0€')).toBe(1234.5);
+    expect(parseAmountInput('12.5')).toBe(12.5);
+    expect(parseAmountInput('')).toBeNull();
+    expect(parseAmountInput(' € ')).toBeNull();
   });
 });

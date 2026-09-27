@@ -19,7 +19,7 @@ import { getMySplitGroups, getMySplitLinkCandidates, createSplitExpense, setDefa
 import { getUserPreferences } from '@/lib/actions/user-preferences';
 import { DelayedSkeleton } from '@/components/ui/delayed-loading';
 import { findSplitDuplicateCandidates } from '@/lib/bank-split-match';
-import { toCents, guessCategory } from '@/lib/split-utils';
+import { toCents, guessCategory, parseAmountInput } from '@/lib/split-utils';
 import { SPLIT_CATEGORIES, formatCurrency } from '@/lib/constants';
 import { SplitEditor, emptyDraft, resolveDraftSpec, type SplitDraft } from './split-editor';
 import type { SplitGroup, SplitExpenseBankLink, SplitDuplicateCandidate, SplitLinkCandidate, Currency } from '@/types';
@@ -72,7 +72,7 @@ export function QuickAddSplitModal({ visible, onHide, onSaved, initial, onConfir
   const [groups, setGroups] = useState<SplitGroup[]>([]);
   const [groupId, setGroupId] = useState<string>('');
   const [title, setTitle] = useState('');
-  const [amount, setAmount] = useState<number | null>(null);
+  const [amountState, setAmount] = useState<number | null>(null);
   const [draft, setDraft] = useState<SplitDraft>(() => emptyDraft(myId));
   const [date, setDate] = useState<Date>(new Date());
   const [category, setCategory] = useState<string>('');
@@ -161,8 +161,11 @@ export function QuickAddSplitModal({ visible, onHide, onSaved, initial, onConfir
     setTimeout(() => amountRef.current?.focus(), 60);
   };
 
-  const save = async (addAnother: boolean, acknowledgedIds: string[] = []) => {
+  /** `amountOverride` carries a value read straight from the input (Enter key)
+   * or from a previous attempt, bypassing a possibly stale `amount` state. */
+  const save = async (addAnother: boolean, acknowledgedIds: string[] = [], amountOverride?: number | null) => {
     if (savingRef.current) return;
+    const amount = amountOverride !== undefined ? amountOverride : amountState;
     if (!group) {
       setError('Pick a group');
       return;
@@ -216,7 +219,7 @@ export function QuickAddSplitModal({ visible, onHide, onSaved, initial, onConfir
             style: { width: 'min(32rem, calc(100vw - 2rem))' },
             acceptClassName: 'p-button-warning',
             accept: () => {
-              void save(addAnother, [...new Set([...acknowledgedIds, ...duplicateList.map(candidate => candidate.expenseId)])]);
+              void save(addAnother, [...new Set([...acknowledgedIds, ...duplicateList.map(candidate => candidate.expenseId)])], amount);
             },
           });
           return;
@@ -364,7 +367,7 @@ export function QuickAddSplitModal({ visible, onHide, onSaved, initial, onConfir
                 keyboard opens straight onto the number people care about most. */}
             <InputNumber
               inputRef={amountRef}
-              value={amount}
+              value={amountState}
               onValueChange={(e) => setAmount(e.value ?? null)}
               mode="currency"
               currency={bankLink?.currency ?? group?.currency ?? 'EUR'}
@@ -375,7 +378,13 @@ export function QuickAddSplitModal({ visible, onHide, onSaved, initial, onConfir
               autoFocus
               inputMode="decimal"
               onKeyDown={(e) => {
-                if (e.key === 'Enter') save(false);
+                if (e.key !== 'Enter' && e.key !== 'NumpadEnter') return;
+                // PrimeReact calls onKeyDown BEFORE it commits the typed text
+                // (onValueChange fires on blur/Enter, and never on Android
+                // Enter), so read the live input text instead of `amountState`.
+                const live = parseAmountInput((e.target as HTMLInputElement).value);
+                setAmount(live);
+                void save(false, [], live);
               }}
             />
             <InputText
@@ -391,7 +400,7 @@ export function QuickAddSplitModal({ visible, onHide, onSaved, initial, onConfir
                 members={group.members}
                 myId={myId}
                 currency={group.currency}
-                amountCents={amount != null ? toCents(amount) : null}
+                amountCents={amountState != null ? toCents(amountState) : null}
                 value={draft}
                 onChange={setDraft}
               />

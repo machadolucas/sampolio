@@ -145,7 +145,9 @@ export function resolveDraftSpec(
       const remaining = 100 - touchedSum;
       if (remaining < -0.01) return { spec: null, error: 'Percentages exceed 100%' };
       if (auto.length === 0 && Math.abs(remaining) > 0.01) return { spec: null, error: 'Percentages must add up to 100%' };
-      const perAuto = auto.length ? remaining / auto.length : 0;
+      // Clamp: the 0.01 tolerance above can leave a hair-negative remainder,
+      // and the server rejects negative split weights.
+      const perAuto = auto.length ? Math.max(0, remaining / auto.length) : 0;
       const cfg: Record<string, number> = {};
       for (const id of memberIds) cfg[id] = draft.percents[id] != null ? (draft.percents[id] as number) : perAuto;
       return { spec: { paidByUserId: payer, splitMode: 'percent', splitConfig: cfg } };

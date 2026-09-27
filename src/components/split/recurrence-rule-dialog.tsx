@@ -2,6 +2,7 @@
 /* eslint-disable react-hooks/set-state-in-effect -- the form intentionally resets its fields when the dialog opens */
 
 import { useEffect, useState } from 'react';
+import { parseISO } from 'date-fns';
 import { Dialog } from 'primereact/dialog';
 import { InputText } from 'primereact/inputtext';
 import { InputNumber } from 'primereact/inputnumber';
@@ -59,8 +60,9 @@ export function RecurrenceRuleDialog({
       setCategory(rule.category);
       setDraft(draftFromSpec(rule.split, myId, members));
       setInterval(rule.interval);
-      setAnchorDate(new Date(rule.anchorDate));
-      setEndDate(rule.endDate ? new Date(rule.endDate) : null);
+      // parseISO = local midnight; `new Date('YYYY-MM-DD')` is UTC and would shift the day west of UTC.
+      setAnchorDate(parseISO(rule.anchorDate));
+      setEndDate(rule.endDate ? parseISO(rule.endDate) : null);
     } else {
       setTitle('');
       setAmount(null);

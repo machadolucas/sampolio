@@ -78,18 +78,31 @@ function allocateEqually(amountCents: number, ids: string[]): Record<string, num
 
 /**
  * Reduce a {@link SplitSpec} + total to canonical paid/owed shares and net.
- * Single-payer model (the common case); throws on an inconsistent exact split.
+ * Single-payer model (the common case). Throws on any spec that cannot settle
+ * to zero: an inconsistent exact split, a weighted split with no (member)
+ * weights, negative allocations. Duplicate participant ids are collapsed
+ * (they would otherwise overwrite each other's share and leave cents unowed).
+ * The result is checked by {@link assertBalancedSplit} before it is returned.
  */
 export function resolveSplit(
   memberIds: string[],
   amountCents: number,
   spec: SplitSpec,
 ): ResolvedSplit {
+  if (!Number.isInteger(amountCents) || amountCents <= 0) {
+    throw new Error('Amount must be a positive whole number of cents');
+  }
   const payer = spec.paidByUserId;
   if (!memberIds.includes(payer)) {
     throw new Error('Payer is not a member of the group');
   }
-  const participants = (spec.participantUserIds ?? memberIds).filter((id) => memberIds.includes(id));
+  const participants = [...new Set(spec.participantUserIds ?? memberIds)].filter((id) => memberIds.includes(id));
+  const cfg = spec.splitConfig ?? {};
+  for (const value of Object.values(cfg)) {
+    if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+      throw new Error('Split values cannot be negative');
+    }
+  }
 
   let owedMap: Record<string, number>;
   switch (spec.splitMode) {
@@ -103,7 +116,6 @@ export function resolveSplit(
       break;
     }
     case 'exact': {
-      const cfg = spec.splitConfig ?? {};
       owedMap = {};
       let sum = 0;
       for (const [id, c] of Object.entries(cfg)) {
@@ -116,16 +128,14 @@ export function resolveSplit(
       }
       break;
     }
-    case 'percent': {
-      const cfg = spec.splitConfig ?? {};
-      const ids = Object.keys(cfg).filter((id) => memberIds.includes(id));
-      owedMap = allocateByWeights(amountCents, ids, ids.map((id) => cfg[id]));
-      break;
-    }
+    case 'percent':
     case 'shares': {
-      const cfg = spec.splitConfig ?? {};
       const ids = Object.keys(cfg).filter((id) => memberIds.includes(id));
-      owedMap = allocateByWeights(amountCents, ids, ids.map((id) => cfg[id]));
+      const weights = ids.map((id) => cfg[id]);
+      if (ids.length === 0 || weights.reduce((a, b) => a + b, 0) <= 0) {
+        throw new Error('Choose how to split this expense between members');
+      }
+      owedMap = allocateByWeights(amountCents, ids, weights);
       break;
     }
     default:
@@ -148,7 +158,23 @@ export function resolveSplit(
     .filter(([, c]) => c !== 0)
     .map(([userId, amountCents]) => ({ userId, amountCents }));
 
-  return { netByUserId, paidBy, owed };
+  const resolved = { netByUserId, paidBy, owed };
+  assertBalancedSplit(amountCents, resolved);
+  return resolved;
+}
+
+/**
+ * The zero-sum invariant every persisted expense must satisfy: paid shares and
+ * owed shares each total the amount, no share is negative, and member nets sum
+ * to zero. Throws otherwise (so nothing unsettleable reaches the chunk files).
+ */
+export function assertBalancedSplit(amountCents: number, resolved: ResolvedSplit): void {
+  const sum = (shares: SplitShare[]) => shares.reduce((a, s) => a + s.amountCents, 0);
+  const negative = [...resolved.paidBy, ...resolved.owed].some((s) => s.amountCents < 0);
+  const netSum = Object.values(resolved.netByUserId).reduce((a, c) => a + c, 0);
+  if (negative || sum(resolved.paidBy) !== amountCents || sum(resolved.owed) !== amountCents || netSum !== 0) {
+    throw new Error('This split does not add up to the total');
+  }
 }
 
 /** net contribution of a settle-up payment: from gains +amount, to loses it. */
@@ -205,18 +231,23 @@ export function suggestSettleUp(balances: SplitMemberBalance[]): SettleUpSuggest
 
 // ---------- recurrence (date-grained) ----------
 
-function stepDate(date: Date, interval: SplitInterval): Date {
+/**
+ * The n-th occurrence (n = 0 is the anchor) computed FROM THE ANCHOR, never by
+ * chaining from the previous occurrence: date-fns clamps Jan 31 + 1 month to
+ * Feb 28, and chaining would then keep every later month on the 28th.
+ */
+function occurrenceAt(anchor: Date, interval: SplitInterval, n: number): Date {
   switch (interval) {
     case 'daily':
-      return addDays(date, 1);
+      return addDays(anchor, n);
     case 'weekly':
-      return addWeeks(date, 1);
+      return addWeeks(anchor, n);
     case 'biweekly':
-      return addWeeks(date, 2);
+      return addWeeks(anchor, 2 * n);
     case 'monthly':
-      return addMonths(date, 1);
+      return addMonths(anchor, n);
     case 'yearly':
-      return addYears(date, 1);
+      return addYears(anchor, n);
   }
 }
 
@@ -224,7 +255,8 @@ function stepDate(date: Date, interval: SplitInterval): Date {
  * The YYYY-MM-DD occurrence dates to materialize for a rule, from the first
  * not-yet-generated occurrence up to (and including) `upToInclusive`, bounded
  * by the rule's `endDate`. Returns [] when nothing is due. Idempotent: pass the
- * rule's `lastGeneratedThrough` to resume exactly after it.
+ * rule's `lastGeneratedThrough` to resume exactly after it. Month-end anchors
+ * clamp per month (Jan 31 → Feb 28 → Mar 31) and Feb 29 clamps per year.
  */
 export function generateOccurrenceDates(
   rule: { interval: SplitInterval; anchorDate: string; endDate?: string; lastGeneratedThrough?: string },
@@ -233,19 +265,22 @@ export function generateOccurrenceDates(
   const upTo = parseISO(upToInclusive);
   const end = rule.endDate ? parseISO(rule.endDate) : null;
   const hardStop = end && end < upTo ? end : upTo;
+  const anchor = parseISO(rule.anchorDate);
 
-  let cursor = parseISO(rule.anchorDate);
+  let n = 0;
   // Fast-forward past already-generated occurrences.
   if (rule.lastGeneratedThrough) {
     const last = parseISO(rule.lastGeneratedThrough);
-    while (cursor <= last) cursor = stepDate(cursor, rule.interval);
+    while (n < 100000 && occurrenceAt(anchor, rule.interval, n) <= last) n++;
   }
 
   const dates: string[] = [];
   let guard = 0;
-  while (cursor <= hardStop && guard < 10000) {
+  while (guard < 10000) {
+    const cursor = occurrenceAt(anchor, rule.interval, n);
+    if (!(cursor <= hardStop)) break;
     dates.push(format(cursor, 'yyyy-MM-dd'));
-    cursor = stepDate(cursor, rule.interval);
+    n++;
     guard++;
   }
   return dates;
@@ -338,6 +373,22 @@ export function computeSeenWatermark(
     }
   }
   return watermark;
+}
+
+// ---------- amount input parsing ----------
+
+/**
+ * Parse the text of a fi-FI formatted amount field ("1 234,50 €", "12,5",
+ * "12.50") into euros, or null when it holds no number. Used where a keyboard
+ * submit must read the live input text: PrimeReact's InputNumber only commits
+ * its value on blur/Enter, and calls a consumer's onKeyDown BEFORE committing.
+ */
+export function parseAmountInput(text: string | null | undefined): number | null {
+  if (!text) return null;
+  const cleaned = text.replace(/[^0-9,.-]/g, '').replace(',', '.');
+  if (!/\d/.test(cleaned)) return null;
+  const value = Number(cleaned);
+  return Number.isFinite(value) ? value : null;
 }
 
 // ---------- category auto-guess (quick-add convenience) ----------

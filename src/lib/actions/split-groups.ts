@@ -1,6 +1,7 @@
 'use server';
 
 import { z } from 'zod';
+import { format } from 'date-fns';
 import { isSafeId } from '@/lib/safe-id';
 import { v4 as uuidv4 } from 'uuid';
 import { auth } from '@/lib/auth';
@@ -17,8 +18,12 @@ import {
   updateSplitGroupMemberRole as dbUpdateMemberRole,
   addExpense as dbAddExpense,
   updateExpense as dbUpdateExpense,
-  deleteExpense as dbDeleteExpense,
   getExpenseById as dbGetExpenseById,
+  locateExpense as dbLocateExpense,
+  replaceLocatedExpense as dbReplaceLocatedExpense,
+  deleteLocatedExpense as dbDeleteLocatedExpense,
+  getSplitGroupById as dbGetSplitGroupById,
+  getSplitGroupSummary as dbGetSplitGroupSummary,
   getAllExpenses as dbGetAllExpenses,
   upsertExpenseByOccurrence as dbUpsertOccurrence,
   bulkImportExpenses as dbBulkImport,
@@ -82,7 +87,18 @@ import type {
   BankTransaction,
 } from '@/types';
 
-const todayISO = (): string => new Date().toISOString().slice(0, 10);
+/** Today in the server's local time zone (the app runs on Helsinki time), not UTC. */
+const todayISO = (): string => format(new Date(), 'yyyy-MM-dd');
+
+/** One wording for every failed email lookup — unknown, inactive or otherwise —
+ * so adding a member never reveals whether an address has an account. */
+const MEMBER_LOOKUP_ERROR = "Couldn't add that email. Check it belongs to an active Sampolio account.";
+
+const ymOf = (date: string): string => date.slice(0, 7);
+
+/** A client-supplied month hint is only an optimisation: drop anything that isn't YYYY-MM. */
+const safeMonthHint = (hint: unknown): string | undefined =>
+  chunkMonthSchema.safeParse(hint).success ? (hint as string) : undefined;
 
 // ============================================================
 // ACCESS CONTROL + INVALIDATION
@@ -104,11 +120,17 @@ async function loadGroupForMember(groupId: string, opts?: { requireOwner?: boole
   return { ok: true, group, userId: session.user.id };
 }
 
-/** One invalidation reaches every member (group/summary/expense tags + each member's list). */
-function invalidateGroup(group: SplitGroup): void {
+/**
+ * One invalidation reaches every member (group/summary/expense tags + each
+ * member's list). Expense chunks are cached per month: pass the `months` a
+ * write touched, or `allMonths` for bulk writes (import, prune, group delete).
+ */
+function invalidateGroup(group: SplitGroup, touched?: { months?: Iterable<string>; allMonths?: boolean }): void {
   updateTag(`split-group:${group.id}`);
   updateTag(`split-group:${group.id}:summary`);
   updateTag(`split-group:${group.id}:expenses`);
+  if (touched?.allMonths) updateTag(`split-group:${group.id}:expense-chunks`);
+  for (const ym of new Set(touched?.months ?? [])) updateTag(`split-group:${group.id}:expenses:${ym}`);
   for (const m of group.members) updateTag(`user:${m.userId}:split-groups`);
 }
 
@@ -426,7 +448,7 @@ export async function createSplitGroup(
     const resolved: SplitGroupMember[] = [];
     for (const m of validated.members ?? []) {
       const user = await findUserByEmail(m.email);
-      if (!user || !user.isActive) return { success: false, error: `No active account for ${m.email}` };
+      if (!user || !user.isActive) return { success: false, error: `${m.email}: ${MEMBER_LOOKUP_ERROR}` };
       if (user.id === session.user.id) continue;
       resolved.push({ userId: user.id, email: user.email, name: user.name, role: m.role ?? 'member' });
     }
@@ -453,7 +475,7 @@ export async function updateSplitGroup(
   if (!loaded.ok) return { success: false, error: loaded.error };
   try {
     const validated = updateSplitGroupSchema.parse(data);
-    const updated = await dbUpdateSplitGroup(groupId, validated, loaded.userId);
+    const updated = await withGroupLock(groupId, () => dbUpdateSplitGroup(groupId, validated, loaded.userId));
     if (!updated) return { success: false, error: 'Group not found' };
     invalidateGroup(updated);
     return { success: true, data: updated };
@@ -467,8 +489,8 @@ export async function updateSplitGroup(
 export async function deleteSplitGroup(groupId: string): Promise<ApiResponse<void>> {
   const loaded = await loadGroupForMember(groupId, { requireOwner: true });
   if (!loaded.ok) return { success: false, error: loaded.error };
-  await dbDeleteSplitGroup(groupId);
-  invalidateGroup(loaded.group);
+  await withGroupLock(groupId, () => dbDeleteSplitGroup(groupId));
+  invalidateGroup(loaded.group, { allMonths: true });
   return { success: true };
 }
 
@@ -481,13 +503,15 @@ export async function addSplitGroupMember(
   try {
     const { email, role } = addSplitMemberSchema.parse(data);
     const user = await findUserByEmail(email);
-    if (!user || !user.isActive) return { success: false, error: `No active account for ${email}` };
-    const updated = await dbAddMember(groupId, {
-      userId: user.id,
-      email: user.email,
-      name: user.name,
-      role: role ?? 'member',
-    });
+    if (!user || !user.isActive) return { success: false, error: MEMBER_LOOKUP_ERROR };
+    const updated = await withGroupLock(groupId, () =>
+      dbAddMember(groupId, {
+        userId: user.id,
+        email: user.email,
+        name: user.name,
+        role: role ?? 'member',
+      }),
+    );
     if (!updated) return { success: false, error: 'Group not found' };
     invalidateGroup(updated);
     return { success: true, data: updated };
@@ -498,19 +522,63 @@ export async function addSplitGroupMember(
   }
 }
 
+type MemberRemoval = { ok: true; group: SplitGroup } | { ok: false; error: string };
+
+/**
+ * Remove `userId` from the group under the group lock, re-reading the group
+ * doc and summary UNCACHED so the checks and the write see the same state.
+ * Refuses while the member's net ≠ 0 and refuses removing the last owner (the
+ * group would be left with nobody able to manage it).
+ */
+function removeMemberLocked(
+  groupId: string,
+  userId: string,
+  messages: { notSettled: string; lastOwner: string },
+): Promise<MemberRemoval> {
+  return withGroupLock(groupId, async (): Promise<MemberRemoval> => {
+    const group = await dbGetSplitGroupById(groupId);
+    if (!group) return { ok: false, error: 'Group not found' };
+    const target = group.members.find((m) => m.userId === userId);
+    if (!target) return { ok: false, error: 'Member not found' };
+    const summary = await dbGetSplitGroupSummary(groupId);
+    if ((summary.netByUserId[userId] ?? 0) !== 0) return { ok: false, error: messages.notSettled };
+    if (target.role === 'owner' && group.members.filter((m) => m.role === 'owner').length <= 1) {
+      return { ok: false, error: messages.lastOwner };
+    }
+    const updated = await dbRemoveMember(groupId, userId);
+    return updated ? { ok: true, group: updated } : { ok: false, error: 'Group not found' };
+  });
+}
+
 export async function removeSplitGroupMember(groupId: string, userId: string): Promise<ApiResponse<SplitGroup>> {
   const loaded = await loadGroupForMember(groupId, { requireOwner: true });
   if (!loaded.ok) return { success: false, error: loaded.error };
-  const summary = await cachedGetSplitGroupSummary(groupId);
-  if ((summary.netByUserId[userId] ?? 0) !== 0) {
-    return { success: false, error: 'Settle this member up to €0 before removing them' };
-  }
-  const updated = await dbRemoveMember(groupId, userId);
-  if (!updated) return { success: false, error: 'Group not found' };
-  invalidateGroup(updated);
+  const removed = await removeMemberLocked(groupId, userId, {
+    notSettled: 'Settle this member up to €0 before removing them',
+    lastOwner: 'Make another member an owner first — a group must always have one',
+  });
+  if (!removed.ok) return { success: false, error: removed.error };
+  invalidateGroup(removed.group);
   // also drop the removed user's membership-list cache
   updateTag(`user:${userId}:split-groups`);
-  return { success: true, data: updated };
+  return { success: true, data: removed.group };
+}
+
+/**
+ * Self-service exit: any member may leave once their own balance is €0. The
+ * last owner cannot leave (promote someone else first, or delete the group).
+ */
+export async function leaveSplitGroup(groupId: string): Promise<ApiResponse<void>> {
+  const loaded = await loadGroupForMember(groupId);
+  if (!loaded.ok) return { success: false, error: loaded.error };
+  const removed = await removeMemberLocked(groupId, loaded.userId, {
+    notSettled: 'Settle up to €0 before leaving this group',
+    lastOwner: 'You are the only owner. Make another member an owner first, or delete the group.',
+  });
+  if (!removed.ok) return { success: false, error: removed.error };
+  invalidateGroup(removed.group);
+  updateTag(`user:${loaded.userId}:split-groups`);
+  return { success: true };
 }
 
 export async function updateSplitGroupMemberRole(
@@ -522,19 +590,24 @@ export async function updateSplitGroupMemberRole(
   if (!loaded.ok) return { success: false, error: loaded.error };
   try {
     const parsedRole = splitGroupMemberRoleSchema.parse(role);
-    const target = loaded.group.members.find((m) => m.userId === userId);
-    if (!target) return { success: false, error: 'Member not found' };
-    if (target.role === 'owner' && parsedRole !== 'owner') {
-      const ownerCount = loaded.group.members.filter((m) => m.role === 'owner').length;
-      if (ownerCount <= 1) {
-        return { success: false, error: 'Make another member an owner first — a group must always have one' };
+    const result = await withGroupLock(groupId, async (): Promise<MemberRemoval> => {
+      const group = await dbGetSplitGroupById(groupId);
+      if (!group) return { ok: false, error: 'Group not found' };
+      const target = group.members.find((m) => m.userId === userId);
+      if (!target) return { ok: false, error: 'Member not found' };
+      if (target.role === 'owner' && parsedRole !== 'owner') {
+        const ownerCount = group.members.filter((m) => m.role === 'owner').length;
+        if (ownerCount <= 1) {
+          return { ok: false, error: 'Make another member an owner first — a group must always have one' };
+        }
       }
-    }
-    const updated = await dbUpdateMemberRole(groupId, userId, parsedRole);
-    if (!updated) return { success: false, error: 'Group not found' };
-    invalidateGroup(updated);
+      const updated = await dbUpdateMemberRole(groupId, userId, parsedRole);
+      return updated ? { ok: true, group: updated } : { ok: false, error: 'Group not found' };
+    });
+    if (!result.ok) return { success: false, error: result.error };
+    invalidateGroup(result.group);
     updateTag(`user:${userId}:split-groups`);
-    return { success: true, data: updated };
+    return { success: true, data: result.group };
   } catch (error) {
     if (error instanceof z.ZodError) return { success: false, error: error.issues[0]?.message ?? 'Validation error' };
     console.error('Update split member role error:', error);
@@ -646,7 +719,7 @@ export async function createSplitExpense(
     if ('duplicates' in saved) {
       return { success: false, error: 'This transaction may already be split', duplicate: saved.duplicates };
     }
-    invalidateGroup(loaded.group);
+    invalidateGroup(loaded.group, { months: [ymOf(row.date)] });
     notifySplitActivity({ event: 'expense.created', group: loaded.group, authorUserId: loaded.userId, expense: row });
     return { success: true, data: saved.row };
   } catch (error) {
@@ -677,7 +750,7 @@ export async function quickAddSplitExpense(
       'manual',
     );
     await withGroupLock(groupId, () => dbAddExpense(groupId, row));
-    invalidateGroup(loaded.group);
+    invalidateGroup(loaded.group, { months: [ymOf(row.date)] });
     notifySplitActivity({ event: 'expense.created', group: loaded.group, authorUserId: loaded.userId, expense: row });
     return { success: true, data: row };
   } catch (error) {
@@ -765,7 +838,7 @@ export async function confirmSplitBankLink(
     if (!saved) return { success: false, error: 'Expense not found' };
     if (saved.row.kind !== 'expense') return { success: false, error: 'Expense not found' };
     if (!saved.changed) return { success: true, data: saved.row };
-    invalidateGroup(loaded.group);
+    invalidateGroup(loaded.group, { months: [ymOf(saved.row.date)] });
     notifySplitActivity({ event: 'expense.updated', group: loaded.group, authorUserId: loaded.userId, expense: saved.row });
     return { success: true, data: saved.row };
   } catch (error) {
@@ -774,10 +847,16 @@ export async function confirmSplitBankLink(
   }
 }
 
+/**
+ * Edit an expense. `monthHint` (the row's CURRENT `YYYY-MM`, which the client
+ * already has) lets the locate hit the right chunk first; the located chunk is
+ * reused for the write and the summary is delta-updated.
+ */
 export async function updateSplitExpense(
   groupId: string,
   expenseId: string,
   data: z.infer<typeof updateSplitExpenseSchema>,
+  monthHint?: string,
 ): Promise<ApiResponse<SplitExpense>> {
   const loaded = await loadGroupForMember(groupId);
   if (!loaded.ok) return { success: false, error: loaded.error };
@@ -786,8 +865,9 @@ export async function updateSplitExpense(
     const saved = await withGroupLock(groupId, async () => {
       // Read and rebuild inside the same lock as the write. Otherwise a
       // concurrent bank-link confirmation can be silently overwritten.
-      const existing = await dbGetExpenseById(groupId, expenseId);
-      if (!existing || existing.kind !== 'expense') return null;
+      const loc = await dbLocateExpense(groupId, expenseId, safeMonthHint(monthHint));
+      const existing = loc?.rows[loc.index];
+      if (!loc || !existing || existing.kind !== 'expense') return null;
       const next = buildExpenseRow(loaded.group, validated, existing.createdByUserId, existing.source, {
         id: existing.id,
         createdAt: existing.createdAt,
@@ -795,18 +875,20 @@ export async function updateSplitExpense(
         occurrenceKey: existing.occurrenceKey,
         bankLink: existing.bankLink,
       });
-      return dbUpdateExpense(groupId, expenseId, next);
+      const fromYm = loc.ym;
+      const row = await dbReplaceLocatedExpense(groupId, loc, next);
+      return { row, fromYm };
     });
     if (!saved) return { success: false, error: 'Expense not found' };
-    if (saved.kind !== 'expense') return { success: false, error: 'Expense not found' };
-    invalidateGroup(loaded.group);
+    if (saved.row.kind !== 'expense') return { success: false, error: 'Expense not found' };
+    invalidateGroup(loaded.group, { months: [saved.fromYm, ymOf(saved.row.date)] });
     notifySplitActivity({
       event: 'expense.updated',
       group: loaded.group,
       authorUserId: loaded.userId,
-      expense: saved,
+      expense: saved.row,
     });
-    return { success: true, data: saved };
+    return { success: true, data: saved.row };
   } catch (error) {
     if (error instanceof z.ZodError) return { success: false, error: error.issues[0]?.message ?? 'Validation error' };
     console.error('Update split expense error:', error);
@@ -814,18 +896,20 @@ export async function updateSplitExpense(
   }
 }
 
-export async function deleteSplitExpense(groupId: string, expenseId: string): Promise<ApiResponse<void>> {
+export async function deleteSplitExpense(groupId: string, expenseId: string, monthHint?: string): Promise<ApiResponse<void>> {
   const loaded = await loadGroupForMember(groupId);
   if (!loaded.ok) return { success: false, error: loaded.error };
-  // Snapshot the row BEFORE deleting it — the notification needs its title and
-  // amount, and the db delete only reports success. Payment rows are deleted
-  // through this same action and deliberately notify nothing.
-  const snapshot = await dbGetExpenseById(groupId, expenseId);
-  const ok = await withGroupLock(groupId, () => dbDeleteExpense(groupId, expenseId));
-  if (!ok) return { success: false, error: 'Expense not found' };
-  invalidateGroup(loaded.group);
-  if (snapshot && snapshot.kind === 'expense') {
-    notifySplitActivity({ event: 'expense.deleted', group: loaded.group, authorUserId: loaded.userId, expense: snapshot });
+  // One locate under the lock; the removed row doubles as the notification
+  // snapshot (title/amount). Payment rows are deleted through this same
+  // action and deliberately notify nothing.
+  const removed = await withGroupLock(groupId, async () => {
+    const loc = await dbLocateExpense(groupId, expenseId, safeMonthHint(monthHint));
+    return loc ? dbDeleteLocatedExpense(groupId, loc) : null;
+  });
+  if (!removed) return { success: false, error: 'Expense not found' };
+  invalidateGroup(loaded.group, { months: [ymOf(removed.date)] });
+  if (removed.kind === 'expense') {
+    notifySplitActivity({ event: 'expense.deleted', group: loaded.group, authorUserId: loaded.userId, expense: removed });
   }
   return { success: true };
 }
@@ -860,7 +944,7 @@ export async function recordSettleUp(
       amountCents: validated.amountCents,
     };
     await withGroupLock(groupId, () => dbAddExpense(groupId, payment));
-    invalidateGroup(loaded.group);
+    invalidateGroup(loaded.group, { months: [ymOf(payment.date)] });
     notifySplitActivity({ event: 'payment.recorded', group: loaded.group, authorUserId: loaded.userId, payment });
     return { success: true, data: payment };
   } catch (error) {
@@ -882,6 +966,8 @@ export async function createSplitRecurrenceRule(
   if (!loaded.ok) return { success: false, error: loaded.error };
   try {
     const v = createSplitRecurrenceRuleSchema.parse(data);
+    // Reject a split that could never materialize (throws with a user-facing message).
+    resolveSplit(loaded.group.members.map((m) => m.userId), v.amountCents, v.split);
     const now = new Date().toISOString();
     const rule: SplitRecurrenceRule = {
       id: uuidv4(),
@@ -898,7 +984,7 @@ export async function createSplitRecurrenceRule(
       createdAt: now,
       updatedAt: now,
     };
-    const updated = await dbAddRule(groupId, rule);
+    const updated = await withGroupLock(groupId, () => dbAddRule(groupId, rule));
     if (!updated) return { success: false, error: 'Group not found' };
     invalidateGroup(updated);
     // Materialize any occurrences already due (e.g. a back-dated anchor).
@@ -907,7 +993,7 @@ export async function createSplitRecurrenceRule(
   } catch (error) {
     if (error instanceof z.ZodError) return { success: false, error: error.issues[0]?.message ?? 'Validation error' };
     console.error('Create recurrence rule error:', error);
-    return { success: false, error: 'Failed to create recurring expense' };
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to create recurring expense' };
   }
 }
 
@@ -923,6 +1009,9 @@ export async function updateSplitRecurrenceRule(
     const prev = loaded.group.recurrenceRules.find((r) => r.id === ruleId);
     if (!prev) return { success: false, error: 'Recurring rule not found' };
 
+    if (v.split || v.amountCents !== undefined) {
+      resolveSplit(loaded.group.members.map((m) => m.userId), v.amountCents ?? prev.amountCents, v.split ?? prev.split);
+    }
     const { updates, pruneAfter } = planRecurrenceRuleUpdate(prev, v);
 
     // Prune the now-orphaned generated tail (if the end date moved back past
@@ -933,7 +1022,7 @@ export async function updateSplitRecurrenceRule(
       return dbUpdateRule(groupId, ruleId, updates);
     });
     if (!updated) return { success: false, error: 'Group not found' };
-    invalidateGroup(updated);
+    invalidateGroup(updated, { allMonths: pruneAfter !== null });
     // Re-materialize any occurrences newly due (e.g. the end date was extended).
     // MUST run OUTSIDE the lock above: withGroupLock is NOT reentrant and
     // catchUpGroupRecurrences takes the lock itself (mirrors createSplitRecurrenceRule).
@@ -942,14 +1031,14 @@ export async function updateSplitRecurrenceRule(
   } catch (error) {
     if (error instanceof z.ZodError) return { success: false, error: error.issues[0]?.message ?? 'Validation error' };
     console.error('Update recurrence rule error:', error);
-    return { success: false, error: 'Failed to update recurring expense' };
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to update recurring expense' };
   }
 }
 
 export async function deleteSplitRecurrenceRule(groupId: string, ruleId: string): Promise<ApiResponse<SplitGroup>> {
   const loaded = await loadGroupForMember(groupId);
   if (!loaded.ok) return { success: false, error: loaded.error };
-  const updated = await dbDeleteRule(groupId, ruleId);
+  const updated = await withGroupLock(groupId, () => dbDeleteRule(groupId, ruleId));
   if (!updated) return { success: false, error: 'Group not found' };
   invalidateGroup(updated);
   return { success: true, data: updated };
@@ -957,41 +1046,61 @@ export async function deleteSplitRecurrenceRule(groupId: string, ruleId: string)
 
 /**
  * Idempotently materialize any due recurring expenses for a group. Runs under
- * the per-group mutex; uses deterministic occurrenceKeys so a re-run overwrites
- * rather than duplicates; advances each rule's cursor monotonically; and only
- * invalidates the cache when something was actually generated.
+ * the per-group mutex and RE-READS the group doc uncached inside it, so a call
+ * queued behind another sees the advanced rule cursors and generates nothing
+ * twice. Uses deterministic occurrenceKeys so a re-run overwrites rather than
+ * duplicates; advances each rule's cursor monotonically; notifies and counts
+ * only newly created rows; and only invalidates when something was written.
+ * A rule whose split can no longer resolve (e.g. its payer left) is skipped
+ * without blocking the other rules.
  */
 export async function catchUpGroupRecurrences(groupId: string): Promise<ApiResponse<{ generated: number }>> {
   const loaded = await loadGroupForMember(groupId);
   if (!loaded.ok) return { success: false, error: loaded.error };
   return withGroupLock(groupId, async () => {
     try {
-      const group = loaded.group;
+      const group = await dbGetSplitGroupById(groupId);
+      if (!group || !group.members.some((m) => m.userId === loaded.userId)) {
+        return { success: false, error: 'Group not found' };
+      }
       const today = todayISO();
       let generated = 0;
+      let wroteRule = false;
+      const touchedMonths = new Set<string>();
       for (const rule of group.recurrenceRules) {
         if (!rule.isActive) continue;
         const dates = generateOccurrenceDates(rule, today);
         if (dates.length === 0) continue;
-        for (const d of dates) {
-          const row = buildExpenseRow(
-            group,
-            { title: rule.title, category: rule.category, amountCents: rule.amountCents, date: d, note: rule.note, split: rule.split },
-            rule.split.paidByUserId,
-            'recurring',
-            { generatedFromRuleId: rule.id, occurrenceKey: `${rule.id}:${d}` },
-          );
-          await dbUpsertOccurrence(groupId, row);
-          generated++;
-          // Safe inside withGroupLock: notifySplitActivity only *schedules* the
-          // POST (Next's after()), which runs once the response is out.
-          notifySplitActivity({ event: 'expense.generated', group, authorUserId: rule.split.paidByUserId, expense: row });
+        try {
+          const onePerMonth = rule.interval === 'monthly' || rule.interval === 'yearly';
+          for (const d of dates) {
+            const row = buildExpenseRow(
+              group,
+              { title: rule.title, category: rule.category, amountCents: rule.amountCents, date: d, note: rule.note, split: rule.split },
+              rule.split.paidByUserId,
+              'recurring',
+              { generatedFromRuleId: rule.id, occurrenceKey: `${rule.id}:${d}` },
+            );
+            const result = await dbUpsertOccurrence(groupId, row, { onePerMonth });
+            if (result.skipped) continue;
+            touchedMonths.add(ymOf(d));
+            if (!result.created) continue;
+            generated++;
+            // Safe inside withGroupLock: notifySplitActivity only *schedules* the
+            // POST (Next's after()), which runs once the response is out.
+            notifySplitActivity({ event: 'expense.generated', group, authorUserId: rule.split.paidByUserId, expense: row });
+          }
+        } catch (error) {
+          console.error(`Catch-up skipped recurrence rule ${rule.id}:`, error);
+          continue; // leave the cursor so the rule retries once it is fixed
         }
         const last = dates[dates.length - 1];
-        const cursor = !rule.lastGeneratedThrough || last > rule.lastGeneratedThrough ? last : rule.lastGeneratedThrough;
-        await dbUpdateRule(groupId, rule.id, { lastGeneratedThrough: cursor });
+        if (!rule.lastGeneratedThrough || last > rule.lastGeneratedThrough) {
+          await dbUpdateRule(groupId, rule.id, { lastGeneratedThrough: last });
+          wroteRule = true;
+        }
       }
-      if (generated > 0) invalidateGroup(group);
+      if (wroteRule || touchedMonths.size > 0) invalidateGroup(group, { months: touchedMonths });
       return { success: true, data: { generated } };
     } catch (error) {
       console.error('Catch-up recurrences error:', error);
@@ -1053,6 +1162,6 @@ export async function importSplitwiseCsv(
   }
 
   const imported = await withGroupLock(groupId, () => dbBulkImport(groupId, expenses, replaceAll ?? false));
-  invalidateGroup(loaded.group);
+  invalidateGroup(loaded.group, { allMonths: true });
   return { success: true, data: { imported } };
 }

@@ -133,6 +133,22 @@ export default function SplitGroupDetailPage() {
     [groupId],
   );
 
+  // Infinite scroll appends only the newly revealed (older) months instead of
+  // refetching the whole window; month chunks are cached per month server-side.
+  const appendExpenses = useCallback(
+    async (months: string[]) => {
+      if (months.length === 0) return;
+      const res = await getSplitExpenses(groupId, months);
+      if (!res.success || !res.data) return;
+      const older = res.data;
+      setExpenses((cur) => {
+        const seen = new Set(cur.map((x) => x.id));
+        return [...cur, ...older.filter((x) => !seen.has(x.id))];
+      });
+    },
+    [groupId],
+  );
+
   const load = useCallback(async () => {
     const res = await getSplitGroupView(groupId);
     if (!res.success || !res.data) {
@@ -183,10 +199,10 @@ export default function SplitGroupDetailPage() {
     setLoadingMore(true);
     const next = visibleCount + 6;
     setVisibleCount(next);
-    await loadExpenses(monthsDesc.slice(0, next));
+    await appendExpenses(monthsDesc.slice(visibleCount, next));
     setLoadingMore(false);
     loadingMoreRef.current = false;
-  }, [visibleCount, monthsDesc, loadExpenses]);
+  }, [visibleCount, monthsDesc, appendExpenses]);
 
   useEffect(() => {
     const el = sentinelRef.current;
@@ -417,7 +433,7 @@ export default function SplitGroupDetailPage() {
         const prevBalances = balances;
         setExpenses((cur) => cur.filter((x) => x.id !== row.id));
         setBalances((cur) => cur.map((b) => ({ ...b, netCents: b.netCents - (row.netByUserId[b.userId] ?? 0) })));
-        const res = await deleteSplitExpense(groupId, row.id);
+        const res = await deleteSplitExpense(groupId, row.id, row.date.slice(0, 7));
         if (!res.success) {
           setExpenses(prevExpenses);
           setBalances(prevBalances);
@@ -797,7 +813,13 @@ export default function SplitGroupDetailPage() {
         onSaved={() => { load(); toast.success(editRule ? 'Recurring rule updated' : 'Recurring rule added'); }}
       />
       <SplitImportDialog visible={showImport} onHide={() => setShowImport(false)} group={group} onImported={() => { load(); toast.success('Expenses imported'); }} />
-      <GroupFormDialog visible={showSettings} onHide={() => setShowSettings(false)} group={group} onSaved={() => { load(); toast.success('Group updated'); }} />
+      <GroupFormDialog
+        visible={showSettings}
+        onHide={() => setShowSettings(false)}
+        group={group}
+        onSaved={() => { load(); toast.success('Group updated'); }}
+        onLeft={() => router.push('/split')}
+      />
       {bankLinkDialog && (
         <BankLinkDetailsDialog
           visible={!!bankLinkDialog}

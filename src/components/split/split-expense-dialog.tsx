@@ -2,6 +2,7 @@
 /* eslint-disable react-hooks/set-state-in-effect -- the form intentionally resets its fields when the dialog opens */
 
 import { useEffect, useState } from 'react';
+import { parseISO } from 'date-fns';
 import { Dialog } from 'primereact/dialog';
 import { InputText } from 'primereact/inputtext';
 import { InputNumber } from 'primereact/inputnumber';
@@ -58,7 +59,7 @@ export function SplitExpenseDialog({
       setAmount(expense.amountCents / 100);
       setDraft(draftFromExpense(expense, myId, members));
       setCategory(expense.category);
-      setDate(new Date(expense.date));
+      setDate(parseISO(expense.date)); // local midnight — `new Date('YYYY-MM-DD')` is UTC and shifts west of UTC
       setNote(expense.note ?? '');
     } else {
       setTitle('');
@@ -87,7 +88,7 @@ export function SplitExpenseDialog({
       split: spec,
     };
     const res = editing
-      ? await updateSplitExpense(groupId, expense!.id, payload)
+      ? await updateSplitExpense(groupId, expense!.id, payload, expense!.date.slice(0, 7))
       : await createSplitExpense(groupId, payload);
     setSaving(false);
     if (!res.success) return setError(res.error ?? 'Failed to save');

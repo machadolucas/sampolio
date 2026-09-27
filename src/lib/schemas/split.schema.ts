@@ -8,12 +8,30 @@ const cents = z.number().int('Amount must be whole cents');
 export const splitModeEnum = z.enum(['equal', 'full', 'exact', 'percent', 'shares']);
 export const splitIntervalEnum = z.enum(['daily', 'weekly', 'biweekly', 'monthly', 'yearly']);
 
-export const splitSpecSchema = z.object({
-  paidByUserId: z.string().min(1, 'Pick who paid'),
-  splitMode: splitModeEnum,
-  splitConfig: z.record(z.string(), z.number()).optional(),
-  participantUserIds: z.array(z.string()).optional(),
-});
+// Weighted/exact modes carry their allocation in splitConfig, so it is required
+// there: without it the payer is credited the full amount and nobody owes it.
+// resolveSplit re-checks the zero-sum invariant against the group's members.
+const CONFIGURED_SPLIT_MODES = new Set(['exact', 'percent', 'shares']);
+
+export const splitSpecSchema = z
+  .object({
+    paidByUserId: z.string().min(1, 'Pick who paid'),
+    splitMode: splitModeEnum,
+    splitConfig: z.record(z.string(), z.number().min(0, 'Split values cannot be negative')).optional(),
+    participantUserIds: z
+      .array(z.string().min(1))
+      .refine((ids) => new Set(ids).size === ids.length, 'Each participant can only be listed once')
+      .optional(),
+  })
+  .superRefine((spec, ctx) => {
+    if (!CONFIGURED_SPLIT_MODES.has(spec.splitMode)) return;
+    const values = Object.values(spec.splitConfig ?? {});
+    if (values.length === 0) {
+      ctx.addIssue({ code: 'custom', path: ['splitConfig'], message: 'Enter how to split this expense' });
+    } else if (spec.splitMode !== 'exact' && values.reduce((a, b) => a + b, 0) <= 0) {
+      ctx.addIssue({ code: 'custom', path: ['splitConfig'], message: 'Split weights must add up to more than zero' });
+    }
+  });
 
 export const createSplitGroupSchema = z.object({
   name: z.string().min(1, 'Name is required'),

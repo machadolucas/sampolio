@@ -39,7 +39,9 @@
  *   user:{userId}:mortgages                           – a user's mortgage membership list
  *   split-group:{groupId}                             – shared split group doc (members + recurrence rules)
  *   split-group:{groupId}:summary                     – maintained running balances + month index
- *   split-group:{groupId}:expenses                    – the group's monthly expense chunks
+ *   split-group:{groupId}:expenses                    – whole-history expense readers (month list, all rows)
+ *   split-group:{groupId}:expenses:{YYYY-MM}          – one month chunk (per-month cache entry)
+ *   split-group:{groupId}:expense-chunks              – every per-month entry (bulk import/prune/delete)
  *   user:{userId}:split-groups                        – a user's split-group membership list
  */
 
@@ -71,8 +73,9 @@ import {
   getSplitGroupById as dbGetSplitGroupById,
   getSplitGroupSummary as dbGetSplitGroupSummary,
   getExpenseMonths as dbGetExpenseMonths,
-  getExpensesForMonths as dbGetExpensesForMonths,
+  getExpensesForMonth as dbGetExpensesForMonth,
   getAllExpenses as dbGetAllExpenses,
+  sortExpenseRows,
 } from './split-groups';
 import { getReceivables, getReceivableById, getRepayments } from './receivables';
 import { getGoals, getGoalById } from './goals';
@@ -644,11 +647,24 @@ export async function cachedGetSplitExpenseMonths(groupId: string): Promise<stri
   return dbGetExpenseMonths(groupId);
 }
 
-export async function cachedGetSplitExpensesForMonths(groupId: string, months: string[]): Promise<SplitExpense[]> {
+/**
+ * One month chunk, cached per month so windows that overlap (infinite scroll,
+ * Home activity, insights, bank candidates) share entries and a mutation only
+ * drops the months it touched (`invalidateGroup` in actions/split-groups.ts
+ * updates `:expenses:{ym}`; bulk writes update `:expense-chunks`).
+ */
+export async function cachedGetSplitExpensesForMonth(groupId: string, yearMonth: string): Promise<SplitExpense[]> {
   'use cache';
-  cacheTag('all-data', `split-group:${groupId}:expenses`);
+  cacheTag('all-data', `split-group:${groupId}:expense-chunks`, `split-group:${groupId}:expenses:${yearMonth}`);
   cacheLife('indefinite');
-  return dbGetExpensesForMonths(groupId, months);
+  return dbGetExpensesForMonth(groupId, yearMonth);
+}
+
+/** A window of months composed from the per-month entries (not itself cached). */
+export async function cachedGetSplitExpensesForMonths(groupId: string, months: string[]): Promise<SplitExpense[]> {
+  const chunks = await Promise.all([...new Set(months)].map((ym) => cachedGetSplitExpensesForMonth(groupId, ym)));
+  // Cached entries are shared — sort a fresh array, never the cached ones.
+  return sortExpenseRows(chunks.flat());
 }
 
 export async function cachedGetAllSplitExpenses(groupId: string): Promise<SplitExpense[]> {
