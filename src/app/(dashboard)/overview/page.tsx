@@ -540,6 +540,8 @@ export default function OverviewPage() {
                                     text
                                     severity="secondary"
                                     tooltip={showBreakdown ? 'Show net worth only' : 'Show breakdown'}
+                                    aria-label={showBreakdown ? 'Show net worth only' : 'Show breakdown'}
+                                    aria-pressed={showBreakdown}
                                     onClick={() => setShowBreakdown(!showBreakdown)}
                                 />
                             </div>

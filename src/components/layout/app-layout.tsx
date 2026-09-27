@@ -360,6 +360,8 @@ export function AppLayout({ children }: AppLayoutProps) {
                     <MobileTopBar
                         onOpenMenu={() => setMobileNavOpen(true)}
                         onOpenCommandPalette={commandPalette.open}
+                        demoMode={demoMode}
+                        onExitDemo={() => setDemoMode(false)}
                     />
                     <BottomNav onOpenMore={() => setMobileNavOpen(true)} />
                     <MobileNavDrawer visible={mobileNavOpen} onHide={() => setMobileNavOpen(false)} />
@@ -372,16 +374,17 @@ export function AppLayout({ children }: AppLayoutProps) {
                         env() is 0 in a normal desktop browser — zero height. */}
                     <div className="hidden lg:block fixed top-0 inset-x-0 h-[env(safe-area-inset-top)] z-40 glass-chrome" />
 
-                    {/* Demo-mode indicator pill — shown on ALL pages while demo mode
-                        is on. Tap to turn it off.
-                        z-45: above the mobile chrome (z-40), below overlays (z-50). */}
+                    {/* Demo-mode indicator pill (lg+) — shown on ALL pages while demo
+                        mode is on. Tap to turn it off. Below lg the pill lives inside
+                        MobileTopBar (in flow, never over the Search button).
+                        z-45: above the chrome (z-40), below overlays (z-50). */}
                     {demoMode && (
                         <button
                             type="button"
                             onClick={() => setDemoMode(false)}
                             title="Demo mode — amounts hidden. Tap to show them again."
                             aria-label="Demo mode active — tap to show amounts"
-                            className="fixed z-[45] right-3 top-[calc(0.75rem+env(safe-area-inset-top))] rounded-full border surface-border bg-[var(--surface-card)]/80 backdrop-blur px-3 py-1.5 text-xs flex items-center gap-1.5 shadow-sm cursor-pointer"
+                            className="hidden lg:flex fixed z-[45] right-3 top-[calc(0.75rem+env(safe-area-inset-top))] rounded-full border surface-border bg-[var(--surface-card)]/80 backdrop-blur px-3 py-1.5 text-xs items-center gap-1.5 shadow-sm cursor-pointer"
                         >
                             <MdVisibilityOff size={14} />
                             <span>Demo</span>

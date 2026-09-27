@@ -3,11 +3,14 @@
 import Link from 'next/link';
 import { useTheme } from '@/components/providers/theme-provider';
 import { BrandLogo } from '@/components/layout/brand-logo';
-import { MdMenu, MdSearch } from 'react-icons/md';
+import { MdMenu, MdSearch, MdVisibilityOff } from 'react-icons/md';
 
 interface MobileTopBarProps {
     onOpenMenu: () => void;
     onOpenCommandPalette: () => void;
+    /** Demo mode on: show the "Demo" pill in the bar (tap turns it off). */
+    demoMode?: boolean;
+    onExitDemo?: () => void;
 }
 
 /**
@@ -15,9 +18,11 @@ interface MobileTopBarProps {
  * action (→ command palette) and the hamburger that opens the nav drawer.
  * The monthly check-in deliberately lives on Overview, not here. Sits at z-40
  * so PrimeReact overlays (z-50+) and dialogs always render above it. Top
- * padding respects the iOS status-bar inset in standalone mode.
+ * padding respects the iOS status-bar inset in standalone mode. While demo mode
+ * is on, the Demo pill sits in the bar's own flow before Search, so it can never
+ * cover the Search button (the desktop pill is a fixed overlay in AppLayout).
  */
-export function MobileTopBar({ onOpenMenu, onOpenCommandPalette }: MobileTopBarProps) {
+export function MobileTopBar({ onOpenMenu, onOpenCommandPalette, demoMode = false, onExitDemo }: MobileTopBarProps) {
     const { theme } = useTheme();
     const isDark = theme === 'dark';
 
@@ -37,6 +42,20 @@ export function MobileTopBar({ onOpenMenu, onOpenCommandPalette }: MobileTopBarP
                 </Link>
             </div>
             <div className="flex items-center gap-1">
+                {demoMode && onExitDemo && (
+                    <button
+                        type="button"
+                        onClick={onExitDemo}
+                        title="Demo mode — amounts hidden. Tap to show them again."
+                        aria-label="Demo mode active — tap to show amounts"
+                        className="h-11 px-1 flex items-center cursor-pointer active:opacity-60"
+                    >
+                        <span className="rounded-full border surface-border bg-[var(--surface-card)]/80 px-3 py-1.5 text-xs flex items-center gap-1.5 shadow-sm">
+                            <MdVisibilityOff size={14} />
+                            <span>Demo</span>
+                        </span>
+                    </button>
+                )}
                 <button type="button" onClick={onOpenCommandPalette} aria-label="Search" className={iconBtn}>
                     <MdSearch size={22} />
                 </button>
