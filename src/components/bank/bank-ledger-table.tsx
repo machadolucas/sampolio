@@ -11,7 +11,7 @@ import { IconField } from 'primereact/iconfield';
 import { InputIcon } from 'primereact/inputicon';
 import { Button } from 'primereact/button';
 import { MdCallSplit, MdExpandMore } from 'react-icons/md';
-import { formatCurrency, formatYearMonth } from '@/lib/constants';
+import { formatCurrency, formatYearMonth, formatDate, formatDateTime, LOCALE } from '@/lib/constants';
 import { useAppContext } from '@/components/layout/app-layout';
 import { maskIban, txDisplayDate } from '@/lib/bank-utils';
 import { guessCategory } from '@/lib/split-utils';
@@ -39,8 +39,8 @@ function fmtDateTime(value: string): { date: string; time: string | null } {
   const hasTime = value.length > 10 || value.includes('T');
   const d = new Date(hasTime ? value : `${value}T00:00:00`);
   if (Number.isNaN(d.getTime())) return { date: value, time: null };
-  const date = d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
-  const time = hasTime ? d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : null;
+  const date = formatDate(d);
+  const time = hasTime ? d.toLocaleTimeString(LOCALE, { hour: '2-digit', minute: '2-digit' }) : null;
   return { date, time };
 }
 
@@ -421,7 +421,7 @@ export function BankLedgerTable({
       )}
       <div className="flex gap-2">
         <span className="opacity-60 w-40 shrink-0">First seen</span>
-        <span>{new Date(t.firstSeenAt).toLocaleString('en-GB')}</span>
+        <span>{formatDateTime(t.firstSeenAt)}</span>
       </div>
       {t.amount < 0 && (
         <div className="pt-2">
@@ -472,7 +472,10 @@ export function BankLedgerTable({
             // regardless of specificity, so without this the icon overlaps the
             // placeholder text. Same !important idiom the color-override block
             // in globals.css documents for this exact unlayered-vs-layered gap.
-            className="w-full !pl-10 p-inputtext-sm"
+            // `!text-base` below lg: iOS zooms the page into any focused input
+            // under 16px (the theme's p-inputtext-sm is 14px).
+            className="w-full !pl-10 p-inputtext-sm !text-base lg:!text-sm"
+            aria-label="Search transactions"
           />
         </IconField>
         {query.trim() && (

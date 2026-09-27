@@ -6,11 +6,12 @@ import { Card } from 'primereact/card';
 import { Button } from 'primereact/button';
 import { Menu } from 'primereact/menu';
 import { Tag } from 'primereact/tag';
-import { ProgressSpinner } from 'primereact/progressspinner';
 import { confirmDialog } from 'primereact/confirmdialog';
-import { MdFileDownload, MdMoreVert, MdPlace } from 'react-icons/md';
+import { MdCloudOff, MdFileDownload, MdMoreVert, MdPlace } from 'react-icons/md';
 import { useAppContext } from '@/components/layout/app-layout';
 import { useToast } from '@/components/providers/toast-provider';
+import { ListPageSkeleton } from '@/components/ui/skeletons';
+import { EmptyState } from '@/components/ui/empty-state';
 import { getBudgetById, getBudgets, updateBudget, deleteBudget, unconfirmBudget } from '@/lib/actions/budgets';
 import { getTrips } from '@/lib/actions/trips';
 import { getProjection } from '@/lib/actions/projection';
@@ -37,6 +38,7 @@ export default function BudgetDetailPage() {
   const appToast = useToast();
 
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [budget, setBudget] = useState<Budget | null>(null);
   const [trips, setTrips] = useState<Trip[]>([]);
   const [allBudgets, setAllBudgets] = useState<Budget[]>([]);
@@ -61,11 +63,16 @@ export default function BudgetDetailPage() {
       setAllBudgets(budgetsRes.success && budgetsRes.data ? budgetsRes.data : []);
     } catch (err) {
       console.error('Failed to load budget:', err);
+      // A thrown fetch (network/server) must not leave the page loading
+      // forever: show an error state with Retry when nothing is on screen yet;
+      // a failed background refresh keeps the loaded data and says so.
+      if (hasLoadedOnce.current) appToast.error('Could not refresh', 'Showing the last loaded data.');
+      else setLoadError(true);
     } finally {
       hasLoadedOnce.current = true;
       setIsLoading(false);
     }
-  }, [budgetId, router]);
+  }, [budgetId, router, appToast]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
   useEffect(() => { if (appContext) appContext.setRefreshCallback(fetchData); }, [appContext, fetchData]);
@@ -135,12 +142,20 @@ export default function BudgetDetailPage() {
   const toast = (msg: string, severity: 'success' | 'error' = 'success') =>
     severity === 'success' ? appToast.success('Done', msg) : appToast.error('Error', msg);
 
-  if (isLoading || !budget || !feasibility || !rollup) {
+  if (loadError && !budget) {
     return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <ProgressSpinner />
-      </div>
+      <EmptyState
+        className="py-16"
+        icon={<MdCloudOff />}
+        title="Couldn't load this budget"
+        body="Check your connection and try again."
+        action={{ label: 'Retry', onClick: () => { setLoadError(false); hasLoadedOnce.current = false; void fetchData(); } }}
+      />
     );
+  }
+
+  if (isLoading || !budget || !feasibility || !rollup) {
+    return <ListPageSkeleton rows={4} />;
   }
 
   const tag = statusTag(budget);
@@ -210,7 +225,7 @@ export default function BudgetDetailPage() {
         </div>
         <div className="flex gap-2 shrink-0 self-start">
           <Button label="Export for reporting" icon={<MdFileDownload />} outlined size="small" onClick={() => setExportOpen(true)} />
-          <Button icon={<MdMoreVert />} text severity="secondary" onClick={(e) => menuRef.current?.toggle(e)} />
+          <Button icon={<MdMoreVert />} text severity="secondary" aria-label="More budget actions" aria-haspopup="menu" onClick={(e) => menuRef.current?.toggle(e)} />
           <Menu
             ref={menuRef}
             popup

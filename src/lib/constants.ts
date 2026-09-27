@@ -261,6 +261,42 @@ export function formatYearMonthShort(yearMonth: string): string {
   return `${MONTHS_SHORT[parseInt(month, 10) - 1]} ${year}`;
 }
 
+/**
+ * Parse a Date, an ISO timestamp, or a bare 'YYYY-MM-DD' calendar date. A bare
+ * date is read as a LOCAL date so the day never shifts through UTC.
+ */
+function toDate(value: Date | string): Date | null {
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+  const bare = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  const d = bare ? new Date(Number(bare[1]), Number(bare[2]) - 1, Number(bare[3])) : new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+/** A calendar date in fi-FI numeric form, e.g. "27.9.2026". Unparseable input is returned as-is. */
+export function formatDate(value: Date | string): string {
+  const d = toDate(value);
+  return d ? d.toLocaleDateString(LOCALE) : String(value);
+}
+
+/** Date and time in fi-FI form, e.g. "27.9.2026 14.05". Unparseable input is returned as-is. */
+export function formatDateTime(value: Date | string): string {
+  const d = toDate(value);
+  if (!d) return String(value);
+  return `${d.toLocaleDateString(LOCALE)} ${d.toLocaleTimeString(LOCALE, { hour: '2-digit', minute: '2-digit' })}`;
+}
+
+/**
+ * A day and month for prose, with the app's English month names (matching
+ * formatYearMonth), e.g. "15 March" or, with `year`, "15 March 2026";
+ * `short` uses "15 Mar".
+ */
+export function formatDayMonth(value: Date | string, opts: { year?: boolean; short?: boolean } = {}): string {
+  const d = toDate(value);
+  if (!d) return String(value);
+  const month = (opts.short ? MONTHS_SHORT : MONTHS)[d.getMonth()];
+  return `${d.getDate()} ${month}${opts.year ? ` ${d.getFullYear()}` : ''}`;
+}
+
 /** Format a percentage rate with two decimals, fi-FI style (e.g. "2,71 %"). */
 export function formatRate(rate: number): string {
   return `${new Intl.NumberFormat(LOCALE, {

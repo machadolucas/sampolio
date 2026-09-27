@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, useId } from 'react';
 import { useRouter } from 'next/navigation';
 import { MdAccountBalanceWallet, MdArrowDownward, MdArrowUpward, MdAdd, MdClose, MdArrowBack, MdArrowForward, MdHome } from 'react-icons/md';
 import { Dialog } from 'primereact/dialog';
@@ -20,6 +20,7 @@ import { createSalaryConfig } from '@/lib/actions/salary';
 import { completeOnboarding, getUserPreferences } from '@/lib/actions/user-preferences';
 import { useAppContext } from '@/components/layout/app-layout';
 import { calculateNetSalary } from '@/lib/salary-utils';
+import { formatCurrency } from '@/lib/constants';
 import type { Currency, DisplayMode, SalaryBenefit } from '@/types';
 
 interface OnboardingWizardProps {
@@ -59,6 +60,7 @@ const INCOME_TYPE_OPTIONS = [
 ];
 
 export function OnboardingWizard({ visible, onComplete }: OnboardingWizardProps) {
+    const uid = useId();
     const { theme } = useTheme();
     const isDark = theme === 'dark';
     const router = useRouter();
@@ -299,10 +301,10 @@ export function OnboardingWizard({ visible, onComplete }: OnboardingWizardProps)
 
                         <div className="max-w-md mx-auto space-y-4">
                             <div>
-                                <label className={`block text-sm font-medium mb-1 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                                <label htmlFor={`${uid}-account-name`} className={`block text-sm font-medium mb-1 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
                                     Account Name
                                 </label>
-                                <InputText
+                                <InputText id={`${uid}-account-name`}
                                     value={accountName}
                                     onChange={(e) => setAccountName(e.target.value)}
                                     placeholder="e.g. Main Account"
@@ -311,10 +313,10 @@ export function OnboardingWizard({ visible, onComplete }: OnboardingWizardProps)
                             </div>
 
                             <div>
-                                <label className={`block text-sm font-medium mb-1 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                                <label htmlFor={`${uid}-currency`} className={`block text-sm font-medium mb-1 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
                                     Currency
                                 </label>
-                                <Dropdown
+                                <Dropdown inputId={`${uid}-currency`}
                                     value={currency}
                                     options={CURRENCY_OPTIONS}
                                     onChange={(e) => setCurrency(e.value)}
@@ -323,10 +325,10 @@ export function OnboardingWizard({ visible, onComplete }: OnboardingWizardProps)
                             </div>
 
                             <div>
-                                <label className={`block text-sm font-medium mb-1 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                                <label htmlFor={`${uid}-current-balance`} className={`block text-sm font-medium mb-1 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
                                     Current Balance
                                 </label>
-                                <InputNumber
+                                <InputNumber inputId={`${uid}-current-balance`}
                                     value={accountBalance}
                                     onValueChange={(e) => setAccountBalance(e.value ?? 0)}
                                     mode="currency"
@@ -367,10 +369,10 @@ export function OnboardingWizard({ visible, onComplete }: OnboardingWizardProps)
                             </p>
 
                             <div>
-                                <label className={`block text-sm font-medium mb-1 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                                <label htmlFor={`${uid}-income-name`} className={`block text-sm font-medium mb-1 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
                                     Income Name
                                 </label>
-                                <InputText
+                                <InputText id={`${uid}-income-name`}
                                     value={incomeName}
                                     onChange={(e) => setIncomeName(e.target.value)}
                                     placeholder="e.g. Salary"
@@ -380,10 +382,10 @@ export function OnboardingWizard({ visible, onComplete }: OnboardingWizardProps)
 
                             {incomeType === 'simple' ? (
                                 <div>
-                                    <label className={`block text-sm font-medium mb-1 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                                    <label htmlFor={`${uid}-monthly-amount-after`} className={`block text-sm font-medium mb-1 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
                                         Monthly Amount (after tax)
                                     </label>
-                                    <InputNumber
+                                    <InputNumber inputId={`${uid}-monthly-amount-after`}
                                         value={incomeAmount}
                                         onValueChange={(e) => setIncomeAmount(e.value ?? 0)}
                                         mode="currency"
@@ -396,10 +398,10 @@ export function OnboardingWizard({ visible, onComplete }: OnboardingWizardProps)
                             ) : (
                                 <>
                                     <div>
-                                        <label className={`block text-sm font-medium mb-1 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                                        <label htmlFor={`${uid}-gross-salary-monthly`} className={`block text-sm font-medium mb-1 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
                                             Gross Salary (Monthly, before tax)
                                         </label>
-                                        <InputNumber
+                                        <InputNumber inputId={`${uid}-gross-salary-monthly`}
                                             value={grossSalary}
                                             onValueChange={(e) => setGrossSalary(e.value ?? 0)}
                                             mode="currency"
@@ -412,10 +414,10 @@ export function OnboardingWizard({ visible, onComplete }: OnboardingWizardProps)
 
                                     <div className="grid grid-cols-2 gap-3">
                                         <div>
-                                            <label className={`block text-sm font-medium mb-1 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                                            <label htmlFor={`${uid}-tax-rate-from`} className={`block text-sm font-medium mb-1 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
                                                 Tax Rate (%) — from your payslip
                                             </label>
-                                            <InputNumber
+                                            <InputNumber inputId={`${uid}-tax-rate-from`}
                                                 value={taxRate}
                                                 onValueChange={(e) => setTaxRate(e.value ?? 0)}
                                                 suffix="%"
@@ -428,10 +430,10 @@ export function OnboardingWizard({ visible, onComplete }: OnboardingWizardProps)
                                             />
                                         </div>
                                         <div>
-                                            <label className={`block text-sm font-medium mb-1 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                                            <label htmlFor={`${uid}-contributions`} className={`block text-sm font-medium mb-1 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
                                                 Contributions (%)
                                             </label>
-                                            <InputNumber
+                                            <InputNumber inputId={`${uid}-contributions`}
                                                 value={contributionsRate}
                                                 onValueChange={(e) => setContributionsRate(e.value ?? 0)}
                                                 suffix="%"
@@ -446,10 +448,10 @@ export function OnboardingWizard({ visible, onComplete }: OnboardingWizardProps)
                                     </div>
 
                                     <div>
-                                        <label className={`block text-sm font-medium mb-1 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                                        <label htmlFor={`${uid}-other-deductions-fixed`} className={`block text-sm font-medium mb-1 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
                                             Other Deductions (fixed amount)
                                         </label>
-                                        <InputNumber
+                                        <InputNumber inputId={`${uid}-other-deductions-fixed`}
                                             value={otherDeductions}
                                             onValueChange={(e) => setOtherDeductions(e.value ?? 0)}
                                             mode="currency"
@@ -507,6 +509,7 @@ export function OnboardingWizard({ visible, onComplete }: OnboardingWizardProps)
                                                 />
                                                 <div className="flex items-center gap-1 shrink-0">
                                                     <InputSwitch
+                                                        aria-label={`${benefit.name || 'Benefit'} is taxable`}
                                                         checked={benefit.isTaxable}
                                                         onChange={e => {
                                                             const updated = [...salaryBenefits];
@@ -524,6 +527,7 @@ export function OnboardingWizard({ visible, onComplete }: OnboardingWizardProps)
                                                     text
                                                     severity="danger"
                                                     size="small"
+                                                    aria-label={`Remove ${benefit.name || 'benefit'}`}
                                                     onClick={() => setSalaryBenefits(prev => prev.filter((_, i) => i !== idx))}
                                                 />
                                             </div>
@@ -535,35 +539,35 @@ export function OnboardingWizard({ visible, onComplete }: OnboardingWizardProps)
                                         <div className={`p-4 rounded-lg space-y-1 ${isDark ? 'bg-gray-800' : 'bg-gray-50'}`}>
                                             <div className="flex justify-between text-sm">
                                                 <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>Gross</span>
-                                                <span>{grossSalary.toLocaleString()} {currency}</span>
+                                                <span>{formatCurrency(grossSalary, currency)}</span>
                                             </div>
                                             {salaryBenefits.filter(b => b.amount > 0).length > 0 && (
                                                 <div className="flex justify-between text-sm">
                                                     <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>+ Benefits</span>
-                                                    <span className="text-blue-500">+{salaryBenefits.reduce((s, b) => s + b.amount, 0).toLocaleString()} {currency}</span>
+                                                    <span className="text-blue-500">+{formatCurrency(salaryBenefits.reduce((s, b) => s + b.amount, 0), currency)}</span>
                                                 </div>
                                             )}
                                             {taxRate > 0 && (
                                                 <div className="flex justify-between text-sm">
                                                     <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>- Tax ({taxRate}%)</span>
-                                                    <span className="text-red-500">-{((grossSalary + salaryBenefits.filter(b => b.isTaxable).reduce((s, b) => s + b.amount, 0)) * taxRate / 100).toLocaleString()} {currency}</span>
+                                                    <span className="text-red-500">-{formatCurrency(((grossSalary + salaryBenefits.filter(b => b.isTaxable).reduce((s, b) => s + b.amount, 0)) * taxRate / 100), currency)}</span>
                                                 </div>
                                             )}
                                             {contributionsRate > 0 && (
                                                 <div className="flex justify-between text-sm">
                                                     <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>- Contributions ({contributionsRate}%)</span>
-                                                    <span className="text-red-500">-{((grossSalary + salaryBenefits.filter(b => b.isTaxable).reduce((s, b) => s + b.amount, 0)) * contributionsRate / 100).toLocaleString()} {currency}</span>
+                                                    <span className="text-red-500">-{formatCurrency(((grossSalary + salaryBenefits.filter(b => b.isTaxable).reduce((s, b) => s + b.amount, 0)) * contributionsRate / 100), currency)}</span>
                                                 </div>
                                             )}
                                             {otherDeductions > 0 && (
                                                 <div className="flex justify-between text-sm">
                                                     <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>- Other Deductions</span>
-                                                    <span className="text-red-500">-{otherDeductions.toLocaleString()} {currency}</span>
+                                                    <span className="text-red-500">-{formatCurrency(otherDeductions, currency)}</span>
                                                 </div>
                                             )}
                                             <div className={`flex justify-between items-center pt-2 border-t ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
                                                 <span className="font-medium">Net Salary</span>
-                                                <span className="text-xl font-bold text-green-600">{previewNetSalary.toLocaleString()} {currency}/mo</span>
+                                                <span className="text-xl font-bold text-green-600">{formatCurrency(previewNetSalary, currency)}/mo</span>
                                             </div>
                                         </div>
                                     )}
@@ -590,11 +594,11 @@ export function OnboardingWizard({ visible, onComplete }: OnboardingWizardProps)
                                 <div key={idx} className="flex items-end gap-2">
                                     <div className="flex-1">
                                         {idx === 0 && (
-                                            <label className={`block text-sm font-medium mb-1 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                                            <label htmlFor={`${uid}-name-${idx}`} className={`block text-sm font-medium mb-1 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
                                                 Name
                                             </label>
                                         )}
-                                        <InputText
+                                        <InputText id={`${uid}-name-${idx}`}
                                             value={expense.name}
                                             onChange={(e) => updateExpense(idx, 'name', e.target.value)}
                                             placeholder="Expense name"
@@ -603,11 +607,12 @@ export function OnboardingWizard({ visible, onComplete }: OnboardingWizardProps)
                                     </div>
                                     <div className="flex-1">
                                         {idx === 0 && (
-                                            <label className={`block text-sm font-medium mb-1 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                                            <label htmlFor={`${uid}-amount-${idx}`} className={`block text-sm font-medium mb-1 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
                                                 Amount
                                             </label>
                                         )}
-                                        <InputNumber
+                                        <InputNumber inputId={`${uid}-amount-${idx}`}
+                                            aria-label={idx === 0 ? undefined : `Amount for ${expense.name || 'expense'}`}
                                             value={expense.amount}
                                             onValueChange={(e) => updateExpense(idx, 'amount', e.value ?? 0)}
                                             mode="currency"
@@ -622,6 +627,7 @@ export function OnboardingWizard({ visible, onComplete }: OnboardingWizardProps)
                                         severity="danger"
                                         text
                                         rounded
+                                        aria-label={`Remove ${expense.name || 'expense'}`}
                                         onClick={() => removeExpense(idx)}
                                         disabled={expenses.length <= 1}
                                     />
@@ -686,13 +692,13 @@ export function OnboardingWizard({ visible, onComplete }: OnboardingWizardProps)
                                         <div className="flex items-center justify-between">
                                             <span className={isDark ? 'text-gray-300' : 'text-gray-600'}>Gross Salary</span>
                                             <span className="font-semibold">
-                                                {grossSalary.toLocaleString()} {currency}/mo
+                                                {formatCurrency(grossSalary, currency)}/mo
                                             </span>
                                         </div>
                                         <div className="flex items-center justify-between">
                                             <span className={isDark ? 'text-gray-300' : 'text-gray-600'}>Net Salary</span>
                                             <span className="font-semibold text-green-500">
-                                                +{previewNetSalary.toLocaleString()} {currency}/mo
+                                                +{formatCurrency(previewNetSalary, currency)}/mo
                                             </span>
                                         </div>
                                     </>
@@ -701,7 +707,7 @@ export function OnboardingWizard({ visible, onComplete }: OnboardingWizardProps)
                                     <div className="flex items-center justify-between">
                                         <span className={isDark ? 'text-gray-300' : 'text-gray-600'}>Income</span>
                                         <span className="font-semibold text-green-500">
-                                            +{incomeAmount.toLocaleString()} {currency}/mo
+                                            +{formatCurrency(incomeAmount, currency)}/mo
                                         </span>
                                     </div>
                                 )}
@@ -709,7 +715,7 @@ export function OnboardingWizard({ visible, onComplete }: OnboardingWizardProps)
                                     <div key={i} className="flex items-center justify-between">
                                         <span className={isDark ? 'text-gray-300' : 'text-gray-600'}>{e.name}</span>
                                         <span className="font-semibold text-red-500">
-                                            -{e.amount.toLocaleString()} {currency}/mo
+                                            -{formatCurrency(e.amount, currency)}/mo
                                         </span>
                                     </div>
                                 ))}

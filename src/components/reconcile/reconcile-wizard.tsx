@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useId } from 'react';
 import { MdArrowBack, MdArrowForward, MdCheck, MdError } from 'react-icons/md';
 import { Dialog } from 'primereact/dialog';
 import { Button } from 'primereact/button';
@@ -64,6 +64,7 @@ export function ReconcileWizard({
     onComplete,
     initialYearMonth,
 }: ReconcileWizardProps) {
+    const uid = useId();
     const { theme } = useTheme();
     const isDark = theme === 'dark';
     const appContext = useAppContext();
@@ -329,18 +330,33 @@ export function ReconcileWizard({
             // changed ones. The confirmed balance is the anchor projections re-base
             // on, so recording it every month keeps forecasts correct even when a
             // balance happens to match the projection (zero variance).
+            // Sequential on purpose: snapshot files are read-modify-write with
+            // no cross-request locking. Stop at the first failure so the
+            // success toast never claims a check-in that did not fully land.
+            const failedSnapshots: string[] = [];
+            let firstSnapshotError: string | undefined;
             for (const entity of entities) {
                 if (entity.actualBalance !== null) {
                     // Store debt snapshots as negative values for historical consistency
                     const sign = entity.entityType === 'debt' ? -1 : 1;
-                    await createBalanceSnapshot({
+                    const snapResult = await createBalanceSnapshot({
                         entityType: entity.entityType,
                         entityId: entity.entityId,
                         yearMonth: selectedYearMonth,
                         expectedBalance: entity.expectedBalance * sign,
                         actualBalance: entity.actualBalance * sign,
                     });
+                    if (!snapResult?.success) {
+                        failedSnapshots.push(entity.name);
+                        firstSnapshotError ??= snapResult?.error;
+                    }
                 }
+            }
+            if (failedSnapshots.length > 0) {
+                const message = `Could not save ${failedSnapshots.length === 1 ? 'the balance for' : 'balances for'} ${failedSnapshots.join(', ')}${firstSnapshotError ? ` (${firstSnapshotError})` : ''}. Balances were not applied to your accounts yet — try saving again.`;
+                setError(message);
+                toast.error('Check-in not saved', message);
+                return;
             }
 
             // Apply actual balances to the entities so current-state displays use
@@ -372,7 +388,13 @@ export function ReconcileWizard({
             }
 
             // Complete the session
-            await completeReconciliationSession(sessionId);
+            const completeResult = await completeReconciliationSession(sessionId);
+            if (!completeResult?.success) {
+                const message = completeResult?.error || 'Balances were saved, but the check-in could not be marked complete.';
+                setError(message);
+                toast.error('Check-in not completed', message);
+                return;
+            }
 
             // Confirm to the user that the check-in landed and projections moved.
             const changedCount = entities.filter(e => e.actualBalance !== null && e.variance !== 0).length;
@@ -449,10 +471,10 @@ export function ReconcileWizard({
 
                         <div className="flex gap-4">
                             <div className="flex-1 min-w-0">
-                                <label className={`block text-sm font-medium mb-2 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                                <label htmlFor={`${uid}-year`} className={`block text-sm font-medium mb-2 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
                                     Year
                                 </label>
-                                <Dropdown
+                                <Dropdown inputId={`${uid}-year`}
                                     value={selectedYear}
                                     options={yearOptions}
                                     onChange={(e) => setSelectedYear(e.value)}
@@ -460,10 +482,10 @@ export function ReconcileWizard({
                                 />
                             </div>
                             <div className="flex-1 min-w-0">
-                                <label className={`block text-sm font-medium mb-2 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                                <label htmlFor={`${uid}-month`} className={`block text-sm font-medium mb-2 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
                                     Month
                                 </label>
-                                <Dropdown
+                                <Dropdown inputId={`${uid}-month`}
                                     value={selectedMonth}
                                     options={monthOptions}
                                     onChange={(e) => setSelectedMonth(e.value)}
@@ -534,6 +556,7 @@ export function ReconcileWizard({
                                                 <div className="flex items-center gap-4">
                                                     <div className="flex-1">
                                                         <InputNumber
+                                                            aria-label={`Actual balance for ${entity.name}`}
                                                             value={entity.actualBalance}
                                                             onValueChange={(e) => handleActualBalanceChange(entity.entityId, e.value ?? null)}
                                                             mode="currency"
@@ -547,10 +570,10 @@ export function ReconcileWizard({
                                                 {entity.entityType === 'debt' && !isSimple && (
                                                     <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 mt-3">
                                                         <div className="flex-1 min-w-0">
-                                                            <label className={`text-xs mb-1 block ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                                                            <label htmlFor={`${uid}-remaining-installments-${entity.entityId}`} className={`text-xs mb-1 block ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
                                                                 Remaining Installments
                                                             </label>
-                                                            <InputNumber
+                                                            <InputNumber inputId={`${uid}-remaining-installments-${entity.entityId}`}
                                                                 value={entity.remainingInstallments}
                                                                 onValueChange={(e) => handleDebtFieldChange(entity.entityId, 'remainingInstallments', e.value ?? null)}
                                                                 locale="fi-FI"
@@ -560,10 +583,10 @@ export function ReconcileWizard({
                                                             />
                                                         </div>
                                                         <div className="flex-1 min-w-0">
-                                                            <label className={`text-xs mb-1 block ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                                                            <label htmlFor={`${uid}-installment-amount-${entity.entityId}`} className={`text-xs mb-1 block ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
                                                                 Installment Amount
                                                             </label>
-                                                            <InputNumber
+                                                            <InputNumber inputId={`${uid}-installment-amount-${entity.entityId}`}
                                                                 value={entity.installmentAmount}
                                                                 onValueChange={(e) => handleDebtFieldChange(entity.entityId, 'installmentAmount', e.value ?? null)}
                                                                 mode="currency"
@@ -726,7 +749,8 @@ export function ReconcileWizard({
             header="Monthly Check-in"
             style={{ width: '700px', maxWidth: '95vw' }}
             modal
-            dismissableMask
+            // No dismissableMask: a stray click outside must not discard the
+            // balances typed in; the close button and Esc stay deliberate.
             footer={renderFooter()}
         >
             <div className="space-y-6">

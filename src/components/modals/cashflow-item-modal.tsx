@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useId } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Dialog } from 'primereact/dialog';
@@ -147,10 +147,11 @@ function HelpTip({ text }: { text: string }) {
     return <small className="block mt-1 opacity-60">{text}</small>;
 }
 
-function MonthPicker({ value, onChange, placeholder, helpText }: { value: string; onChange: (ym: string) => void; placeholder?: string; helpText?: string }) {
+function MonthPicker({ value, onChange, placeholder, helpText, inputId }: { value: string; onChange: (ym: string) => void; placeholder?: string; helpText?: string; inputId?: string }) {
     return (
         <div>
             <Calendar
+                inputId={inputId}
                 value={yearMonthToDate(value)}
                 onChange={(e) => onChange(dateToYearMonth(e.value as Date))}
                 view="month"
@@ -190,6 +191,7 @@ export function CashflowItemModal({
     initialRecurrence,
     autoOpenForm,
 }: CashflowItemModalProps) {
+    const uid = useId();
     const toast = useToast();
     const [isSaving, setIsSaving] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
@@ -895,12 +897,34 @@ export function CashflowItemModal({
                     text size="small"
                     tooltip={item.isActive ? 'Deactivate' : 'Activate'}
                     tooltipOptions={{ position: 'top' }}
+                    aria-label={`${item.isActive ? 'Deactivate' : 'Activate'} ${item.name}`}
                     onClick={() => handleToggleActive(item)}
                 />
             )}
-            <Button icon={<MdEdit />} text size="small" tooltip="Edit" tooltipOptions={{ position: 'top' }} onClick={() => openEditForm(item)} />
-            <Button icon={<MdDelete />} text size="small" severity="danger" tooltip="Delete" tooltipOptions={{ position: 'top' }} onClick={() => handleDelete(item)} />
+            <Button icon={<MdEdit />} text size="small" tooltip="Edit" tooltipOptions={{ position: 'top' }} aria-label={`Edit ${item.name}`} onClick={() => openEditForm(item)} />
+            <Button icon={<MdDelete />} text size="small" severity="danger" tooltip="Delete" tooltipOptions={{ position: 'top' }} aria-label={`Delete ${item.name}`} onClick={() => handleDelete(item)} />
         </div>
+    );
+    // Mobile (< lg) stacked list next to the desktop DataTables (§17 table
+    // pattern): name + amount on top, details + the same actions below, so
+    // nothing hides off-screen at 390px.
+    const mobileItemList = (items: UnifiedItem[], detail: (item: UnifiedItem) => string) => (
+        <ul className="lg:hidden divide-y surface-border border-y">
+            {items.map(item => (
+                <li key={item.id} className="py-2 space-y-1">
+                    <div className="flex items-start justify-between gap-2">
+                        <span className={`font-medium min-w-0 break-words ${item.isActive ? '' : 'opacity-60'}`}>{item.name}</span>
+                        <span className="shrink-0 text-right">{amountColumn(item)}</span>
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs opacity-60 min-w-0 truncate">
+                            {!item.isActive && 'Inactive · '}{detail(item)}
+                        </span>
+                        {actionsColumn(item)}
+                    </div>
+                </li>
+            ))}
+        </ul>
     );
 
     return (
@@ -921,6 +945,7 @@ export function CashflowItemModal({
                             <div className="flex flex-wrap items-center gap-3">
                                 <Dropdown
                                     value={selectedAccountId}
+                                    aria-label="Cash account"
                                     onChange={(e: DropdownChangeEvent) => onAccountChange(e.value)}
                                     options={accounts.filter(a => !a.isArchived).map(a => ({ value: a.id, label: a.name }))}
                                     optionLabel="label"
@@ -982,7 +1007,12 @@ export function CashflowItemModal({
                                             </Card>
                                         </div>
                                         <p className="text-xs opacity-50">Quarterly amounts are ÷3 and yearly ÷12 to estimate the monthly figure.</p>
-                                        <div className="overflow-x-auto">
+                                        {mobileItemList(regularItems, (item) => [
+                                            recurrenceTag(item.recurrence).label,
+                                            item.monthlyEquivalent === null ? null : `≈ ${formatCurrency(item.monthlyEquivalent, currency)} / month`,
+                                            item.category,
+                                        ].filter(Boolean).join(' · '))}
+                                        <div className="hidden lg:block overflow-x-auto">
                                             <DataTable
                                                 value={regularItems}
                                                 dataKey="id"
@@ -1028,7 +1058,12 @@ export function CashflowItemModal({
                                             <span className="text-green-600 font-medium">+{formatCurrency(upcomingIncome, currency)}</span>
                                             <span className="text-red-600 font-medium">-{formatCurrency(upcomingExpense, currency)}</span>
                                         </div>
-                                        <div className="overflow-x-auto">
+                                        {mobileItemList(oneTimeItems, (item) => [
+                                            item.scheduledYm ? formatYearMonth(item.scheduledYm) : null,
+                                            item.recurrence === 'taxed-income' ? 'Gross income' : null,
+                                            item.category,
+                                        ].filter(Boolean).join(' · '))}
+                                        <div className="hidden lg:block overflow-x-auto">
                                             <DataTable
                                                 value={oneTimeItems}
                                                 dataKey="id"
@@ -1073,12 +1108,12 @@ export function CashflowItemModal({
                 <div className="space-y-4">
                     {/* Type: Income / Expense */}
                     <div>
-                        <label className="text-sm font-medium mb-1 block">Type</label>
+                        <label id={`${uid}-type`} className="text-sm font-medium mb-1 block">Type</label>
                         <Controller
                             name="type"
                             control={control}
                             render={({ field }) => (
-                                <SelectButton
+                                <SelectButton aria-labelledby={`${uid}-type`}
                                     value={field.value}
                                     onChange={(e) => {
                                         const val = e.value as 'income' | 'expense';
@@ -1102,12 +1137,12 @@ export function CashflowItemModal({
 
                     {/* Recurrence */}
                     <div>
-                        <label className="text-sm font-medium mb-1 block">Recurrence</label>
+                        <label id={`${uid}-recurrence`} className="text-sm font-medium mb-1 block">Recurrence</label>
                         <Controller
                             name="recurrence"
                             control={control}
                             render={({ field }) => (
-                                <SelectButton
+                                <SelectButton aria-labelledby={`${uid}-recurrence`}
                                     value={field.value}
                                     onChange={(e) => {
                                         const val = e.value as FormRecurrence;
@@ -1129,12 +1164,12 @@ export function CashflowItemModal({
 
                     {/* Name */}
                     <div>
-                        <label className="text-sm font-medium">Name</label>
+                        <label htmlFor={`${uid}-name`} className="text-sm font-medium">Name</label>
                         <Controller
                             name="name"
                             control={control}
                             render={({ field }) => (
-                                <InputText
+                                <InputText id={`${uid}-name`}
                                     value={field.value}
                                     onChange={e => {
                                         const name = e.target.value;
@@ -1165,18 +1200,18 @@ export function CashflowItemModal({
                     {/* Amount (recurring / one-off) */}
                     {showAmountAndCategory && (
                         <div>
-                            <label className="text-sm font-medium">Amount ({currency})</label>
+                            <label htmlFor={`${uid}-amount`} className="text-sm font-medium">Amount ({currency})</label>
                             <Controller
                                 name="amount"
                                 control={control}
                                 render={({ field }) => (
-                                    <InputNumber
+                                    <InputNumber inputId={`${uid}-amount`}
                                         value={field.value ?? null}
                                         onValueChange={e => field.onChange(e.value ?? undefined)}
                                         mode="currency"
                                         currency={currency}
                                         locale="fi-FI"
-                                        placeholder="0.00"
+                                        placeholder="0,00"
                                         className="w-full"
                                     />
                                 )}
@@ -1194,8 +1229,8 @@ export function CashflowItemModal({
                                 control={control}
                                 render={({ field }) => (
                                     <>
-                                        <label className="text-sm font-medium">Category{categoryAutoSet && field.value ? <span className="ml-1 text-xs opacity-60">(suggested)</span> : null}</label>
-                                        <Dropdown
+                                        <label htmlFor={`${uid}-category`} className="text-sm font-medium">Category{categoryAutoSet && field.value ? <span className="ml-1 text-xs opacity-60">(suggested)</span> : null}</label>
+                                        <Dropdown inputId={`${uid}-category`}
                                             value={field.value}
                                             onChange={e => { setCategoryAutoSet(false); field.onChange(e.value); }}
                                             options={[{ value: '', label: 'None' }, ...ITEM_CATEGORIES.map(c => ({ value: c, label: c }))]}
@@ -1214,12 +1249,12 @@ export function CashflowItemModal({
                     {/* Paid by card (expenses only) */}
                     {showMore && type === 'expense' && showAmountAndCategory && cardOptions.length > 0 && (
                         <div>
-                            <label className="text-sm font-medium">Paid by card</label>
+                            <label htmlFor={`${uid}-paid-by-card`} className="text-sm font-medium">Paid by card</label>
                             <Controller
                                 name="paidByCardLinkId"
                                 control={control}
                                 render={({ field }) => (
-                                    <Dropdown
+                                    <Dropdown inputId={`${uid}-paid-by-card`}
                                         value={field.value}
                                         onChange={e => field.onChange(e.value)}
                                         options={[{ value: '', label: 'Paid from cash' }, ...cardOptions]}
@@ -1265,12 +1300,12 @@ export function CashflowItemModal({
                                 </p>
                             )}
                             <div>
-                                <label className="text-sm font-medium">Gross Salary (Monthly)</label>
+                                <label htmlFor={`${uid}-gross-salary-monthly`} className="text-sm font-medium">Gross Salary (Monthly)</label>
                                 <Controller
                                     name="grossSalary"
                                     control={control}
                                     render={({ field }) => (
-                                        <InputNumber
+                                        <InputNumber inputId={`${uid}-gross-salary-monthly`}
                                             value={field.value ?? null}
                                             onValueChange={e => field.onChange(e.value ?? undefined)}
                                             mode="currency"
@@ -1286,12 +1321,12 @@ export function CashflowItemModal({
                             </div>
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
-                                    <label className="text-sm font-medium">Tax Rate (%)</label>
+                                    <label htmlFor={`${uid}-tax-rate`} className="text-sm font-medium">Tax Rate (%)</label>
                                     <Controller
                                         name="taxRate"
                                         control={control}
                                         render={({ field }) => (
-                                            <InputNumber
+                                            <InputNumber inputId={`${uid}-tax-rate`}
                                                 value={field.value ?? null}
                                                 onValueChange={e => field.onChange(e.value ?? undefined)}
                                                 suffix=" %"
@@ -1306,12 +1341,12 @@ export function CashflowItemModal({
                                     <HelpTip text="Your income tax rate." />
                                 </div>
                                 <div>
-                                    <label className="text-sm font-medium">Contributions (%)</label>
+                                    <label htmlFor={`${uid}-contributions`} className="text-sm font-medium">Contributions (%)</label>
                                     <Controller
                                         name="contributionsRate"
                                         control={control}
                                         render={({ field }) => (
-                                            <InputNumber
+                                            <InputNumber inputId={`${uid}-contributions`}
                                                 value={field.value ?? null}
                                                 onValueChange={e => field.onChange(e.value ?? undefined)}
                                                 suffix=" %"
@@ -1327,18 +1362,18 @@ export function CashflowItemModal({
                                 </div>
                             </div>
                             <div>
-                                <label className="text-sm font-medium">Other Deductions (Fixed Amount)</label>
+                                <label htmlFor={`${uid}-other-deductions-fixed`} className="text-sm font-medium">Other Deductions (Fixed Amount)</label>
                                 <Controller
                                     name="otherDeductions"
                                     control={control}
                                     render={({ field }) => (
-                                        <InputNumber
+                                        <InputNumber inputId={`${uid}-other-deductions-fixed`}
                                             value={field.value ?? null}
                                             onValueChange={e => field.onChange(e.value ?? 0)}
                                             mode="currency"
                                             currency={currency}
                                             locale="fi-FI"
-                                            placeholder="0.00"
+                                            placeholder="0,00"
                                             className="w-full"
                                         />
                                     )}
@@ -1370,6 +1405,7 @@ export function CashflowItemModal({
                                                     {list.map((benefit, index) => (
                                                         <div key={benefit.id} className="flex items-center gap-2 p-2 bg-gray-100 dark:bg-gray-800 rounded-lg">
                                                             <InputText
+                                                                aria-label="Benefit name"
                                                                 placeholder="e.g., Meal Voucher"
                                                                 value={benefit.name}
                                                                 onChange={e => {
@@ -1395,6 +1431,7 @@ export function CashflowItemModal({
                                                             />
                                                             <div className="flex items-center gap-1 shrink-0">
                                                                 <InputSwitch
+                                                                    aria-label={`${benefit.name || 'Benefit'} is taxable`}
                                                                     checked={benefit.isTaxable}
                                                                     onChange={e => {
                                                                         const next = [...list];
@@ -1410,6 +1447,7 @@ export function CashflowItemModal({
                                                                 text
                                                                 severity="danger"
                                                                 size="small"
+                                                                aria-label={`Remove ${benefit.name || 'benefit'}`}
                                                                 onClick={() => field.onChange(list.filter((_, i) => i !== index))}
                                                             />
                                                         </div>
@@ -1443,10 +1481,10 @@ export function CashflowItemModal({
                                     name="isLinkedToRecurring"
                                     control={control}
                                     render={({ field }) => (
-                                        <InputSwitch checked={!!field.value} onChange={e => field.onChange(e.value ?? false)} />
+                                        <InputSwitch inputId={`${uid}-linked-recurring`} checked={!!field.value} onChange={e => field.onChange(e.value ?? false)} />
                                     )}
                                 />
-                                <label className="text-sm">Add as recurring income item</label>
+                                <label htmlFor={`${uid}-linked-recurring`} className="text-sm">Add as recurring income item</label>
                             </div>
                             <HelpTip text="When enabled, a recurring income entry is automatically created based on the net salary." />
                         </>
@@ -1456,12 +1494,12 @@ export function CashflowItemModal({
                     {recurrence === 'taxed-income' && (
                         <>
                             <div>
-                                <label className="text-sm font-medium">Gross Amount ({currency})</label>
+                                <label htmlFor={`${uid}-gross-amount`} className="text-sm font-medium">Gross Amount ({currency})</label>
                                 <Controller
                                     name="grossAmount"
                                     control={control}
                                     render={({ field }) => (
-                                        <InputNumber
+                                        <InputNumber inputId={`${uid}-gross-amount`}
                                             value={field.value ?? null}
                                             onValueChange={e => field.onChange(e.value ?? undefined)}
                                             mode="currency"
@@ -1477,12 +1515,12 @@ export function CashflowItemModal({
                             </div>
 
                             <div>
-                                <label className="text-sm font-medium mb-1 block">When</label>
+                                <label id={`${uid}-when`} className="text-sm font-medium mb-1 block">When</label>
                                 <Controller
                                     name="tiKind"
                                     control={control}
                                     render={({ field }) => (
-                                        <SelectButton
+                                        <SelectButton aria-labelledby={`${uid}-when`}
                                             value={field.value}
                                             onChange={e => { if (e.value) field.onChange(e.value); }}
                                             options={TI_KIND_OPTIONS}
@@ -1500,13 +1538,14 @@ export function CashflowItemModal({
                                     control={control}
                                     render={({ field }) => (
                                         <InputSwitch
+                                            inputId={`${uid}-use-salary-tax`}
                                             checked={!!field.value}
                                             disabled={!hasActiveSalary}
                                             onChange={e => field.onChange(e.value ?? false)}
                                         />
                                     )}
                                 />
-                                <label className="text-sm">Use my salary&apos;s tax settings</label>
+                                <label htmlFor={`${uid}-use-salary-tax`} className="text-sm">Use my salary&apos;s tax settings</label>
                             </div>
                             {hasActiveSalary
                                 ? <HelpTip text="Applies the active salary's tax and contribution rates. If those rates change, this recomputes automatically." />
@@ -1516,12 +1555,12 @@ export function CashflowItemModal({
                                 <>
                                     <div className="grid grid-cols-2 gap-4">
                                         <div>
-                                            <label className="text-sm font-medium">Tax Rate (%)</label>
+                                            <label htmlFor={`${uid}-tax-rate-2`} className="text-sm font-medium">Tax Rate (%)</label>
                                             <Controller
                                                 name="customTaxRate"
                                                 control={control}
                                                 render={({ field }) => (
-                                                    <InputNumber
+                                                    <InputNumber inputId={`${uid}-tax-rate-2`}
                                                         value={field.value ?? null}
                                                         onValueChange={e => field.onChange(e.value ?? undefined)}
                                                         suffix=" %"
@@ -1535,12 +1574,12 @@ export function CashflowItemModal({
                                             />
                                         </div>
                                         <div>
-                                            <label className="text-sm font-medium">Contributions (%)</label>
+                                            <label htmlFor={`${uid}-contributions-2`} className="text-sm font-medium">Contributions (%)</label>
                                             <Controller
                                                 name="customContributionsRate"
                                                 control={control}
                                                 render={({ field }) => (
-                                                    <InputNumber
+                                                    <InputNumber inputId={`${uid}-contributions-2`}
                                                         value={field.value ?? null}
                                                         onValueChange={e => field.onChange(e.value ?? undefined)}
                                                         suffix=" %"
@@ -1555,18 +1594,18 @@ export function CashflowItemModal({
                                         </div>
                                     </div>
                                     <div>
-                                        <label className="text-sm font-medium">Other Deductions (Fixed Amount)</label>
+                                        <label htmlFor={`${uid}-other-deductions-fixed-2`} className="text-sm font-medium">Other Deductions (Fixed Amount)</label>
                                         <Controller
                                             name="customOtherDeductions"
                                             control={control}
                                             render={({ field }) => (
-                                                <InputNumber
+                                                <InputNumber inputId={`${uid}-other-deductions-fixed-2`}
                                                     value={field.value ?? null}
                                                     onValueChange={e => field.onChange(e.value ?? 0)}
                                                     mode="currency"
                                                     currency={currency}
                                                     locale="fi-FI"
-                                                    placeholder="0.00"
+                                                    placeholder="0,00"
                                                     className="w-full"
                                                 />
                                             )}
@@ -1596,12 +1635,12 @@ export function CashflowItemModal({
                             {/* Schedule */}
                             {tiKind === 'one-off' ? (
                                 <div>
-                                    <label className="text-sm font-medium">Scheduled Month</label>
+                                    <label htmlFor={`${uid}-scheduled-month`} className="text-sm font-medium">Scheduled Month</label>
                                     <Controller
                                         name="scheduledDate"
                                         control={control}
                                         render={({ field }) => (
-                                            <MonthPicker value={field.value ?? ''} onChange={field.onChange} placeholder="When is it paid?" />
+                                            <MonthPicker inputId={`${uid}-scheduled-month`} value={field.value ?? ''} onChange={field.onChange} placeholder="When is it paid?" />
                                         )}
                                     />
                                     {errors.scheduledDate && <small className="text-red-500">{errors.scheduledDate.message}</small>}
@@ -1609,12 +1648,12 @@ export function CashflowItemModal({
                             ) : (
                                 <>
                                     <div>
-                                        <label className="text-sm font-medium">Frequency</label>
+                                        <label htmlFor={`${uid}-frequency`} className="text-sm font-medium">Frequency</label>
                                         <Controller
                                             name="frequency"
                                             control={control}
                                             render={({ field }) => (
-                                                <Dropdown
+                                                <Dropdown inputId={`${uid}-frequency`}
                                                     value={field.value}
                                                     onChange={e => field.onChange(e.value)}
                                                     options={FREQUENCIES}
@@ -1628,12 +1667,12 @@ export function CashflowItemModal({
                                     </div>
                                     {frequency === 'custom' && (
                                         <div>
-                                            <label className="text-sm font-medium">Interval (months)</label>
+                                            <label htmlFor={`${uid}-interval-months`} className="text-sm font-medium">Interval (months)</label>
                                             <Controller
                                                 name="customIntervalMonths"
                                                 control={control}
                                                 render={({ field }) => (
-                                                    <InputNumber
+                                                    <InputNumber inputId={`${uid}-interval-months`}
                                                         value={field.value ?? null}
                                                         onValueChange={e => field.onChange(e.value ?? undefined)}
                                                         placeholder="e.g., 6"
@@ -1676,12 +1715,12 @@ export function CashflowItemModal({
                     {recurrence === 'recurring' && (
                         <>
                             <div>
-                                <label className="text-sm font-medium">Frequency</label>
+                                <label htmlFor={`${uid}-frequency-2`} className="text-sm font-medium">Frequency</label>
                                 <Controller
                                     name="frequency"
                                     control={control}
                                     render={({ field }) => (
-                                        <Dropdown
+                                        <Dropdown inputId={`${uid}-frequency-2`}
                                             value={field.value}
                                             onChange={e => field.onChange(e.value)}
                                             options={FREQUENCIES}
@@ -1695,12 +1734,12 @@ export function CashflowItemModal({
                             </div>
                             {frequency === 'custom' && (
                                 <div>
-                                    <label className="text-sm font-medium">Interval (months)</label>
+                                    <label htmlFor={`${uid}-interval-months-2`} className="text-sm font-medium">Interval (months)</label>
                                     <Controller
                                         name="customIntervalMonths"
                                         control={control}
                                         render={({ field }) => (
-                                            <InputNumber
+                                            <InputNumber inputId={`${uid}-interval-months-2`}
                                                 value={field.value ?? null}
                                                 onValueChange={e => field.onChange(e.value ?? undefined)}
                                                 placeholder="e.g., 3 for quarterly"
@@ -1719,12 +1758,12 @@ export function CashflowItemModal({
                     {/* === ONE-OFF SPECIFIC FIELDS === */}
                     {recurrence === 'one-off' && (
                         <div>
-                            <label className="text-sm font-medium">Scheduled Month</label>
+                            <label htmlFor={`${uid}-scheduled-month-2`} className="text-sm font-medium">Scheduled Month</label>
                             <Controller
                                 name="scheduledDate"
                                 control={control}
                                 render={({ field }) => (
-                                    <MonthPicker value={field.value ?? ''} onChange={field.onChange} placeholder="When will this happen?" />
+                                    <MonthPicker inputId={`${uid}-scheduled-month-2`} value={field.value ?? ''} onChange={field.onChange} placeholder="When will this happen?" />
                                 )}
                             />
                             {errors.scheduledDate && <small className="text-red-500">{errors.scheduledDate.message}</small>}
@@ -1758,24 +1797,24 @@ export function CashflowItemModal({
                             {isReimbursable && (
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
                                     <div>
-                                        <label className="text-sm font-medium">Expected Month</label>
+                                        <label htmlFor={`${uid}-expected-month`} className="text-sm font-medium">Expected Month</label>
                                         <Controller
                                             name="expectedReimbursementMonth"
                                             control={control}
                                             render={({ field }) => (
-                                                <MonthPicker value={field.value ?? ''} onChange={field.onChange} placeholder="When is it paid back?" />
+                                                <MonthPicker inputId={`${uid}-expected-month`} value={field.value ?? ''} onChange={field.onChange} placeholder="When is it paid back?" />
                                             )}
                                         />
                                         {errors.expectedReimbursementMonth && <small className="text-red-500">{errors.expectedReimbursementMonth.message}</small>}
                                     </div>
                                     {editingItem?.sourceType === 'planned' && !!(editingItem.originalItem as PlannedItem).isReimbursable && (
                                         <div>
-                                            <label className="text-sm font-medium">Status</label>
+                                            <label id={`${uid}-status`} className="text-sm font-medium">Status</label>
                                             <Controller
                                                 name="reimbursementStatus"
                                                 control={control}
                                                 render={({ field }) => (
-                                                    <SelectButton
+                                                    <SelectButton aria-labelledby={`${uid}-status`}
                                                         value={field.value}
                                                         onChange={e => { if (e.value) field.onChange(e.value); }}
                                                         options={REIMBURSEMENT_STATUS_OPTIONS}
@@ -1797,23 +1836,23 @@ export function CashflowItemModal({
                     {showDateRange && (
                         <div className="grid grid-cols-2 gap-3">
                             <div>
-                                <label className="text-sm font-medium">Start Month</label>
+                                <label htmlFor={`${uid}-start-month`} className="text-sm font-medium">Start Month</label>
                                 <Controller
                                     name="startDate"
                                     control={control}
                                     render={({ field }) => (
-                                        <MonthPicker value={field.value ?? ''} onChange={field.onChange} placeholder="First month" />
+                                        <MonthPicker inputId={`${uid}-start-month`} value={field.value ?? ''} onChange={field.onChange} placeholder="First month" />
                                     )}
                                 />
                                 <HelpTip text="First month this item takes effect." />
                             </div>
                             <div>
-                                <label className="text-sm font-medium">End Month (opt)</label>
+                                <label htmlFor={`${uid}-end-month-opt`} className="text-sm font-medium">End Month (opt)</label>
                                 <Controller
                                     name="endDate"
                                     control={control}
                                     render={({ field }) => (
-                                        <MonthPicker value={field.value ?? ''} onChange={field.onChange} placeholder="Leave empty = ongoing" />
+                                        <MonthPicker inputId={`${uid}-end-month-opt`} value={field.value ?? ''} onChange={field.onChange} placeholder="Leave empty = ongoing" />
                                     )}
                                 />
                                 <HelpTip text="Leave empty to continue indefinitely." />
@@ -1828,10 +1867,10 @@ export function CashflowItemModal({
                                 name="isActive"
                                 control={control}
                                 render={({ field }) => (
-                                    <InputSwitch checked={!!field.value} onChange={e => field.onChange(e.value ?? false)} />
+                                    <InputSwitch inputId={`${uid}-active`} checked={!!field.value} onChange={e => field.onChange(e.value ?? false)} />
                                 )}
                             />
-                            <label className="text-sm">Active</label>
+                            <label htmlFor={`${uid}-active`} className="text-sm">Active</label>
                             <HelpTip text="Inactive items are paused and won't appear in projections." />
                         </div>
                     )}

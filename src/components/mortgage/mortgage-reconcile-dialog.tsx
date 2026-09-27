@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useId } from 'react';
 import { Dialog } from 'primereact/dialog';
 import { InputNumber } from 'primereact/inputnumber';
 import { Button } from 'primereact/button';
@@ -44,6 +44,7 @@ export function MortgageReconcileDialog({
   onClose: () => void;
   onSaved: (msg: string) => void;
 }) {
+  const uid = useId();
   const [drafts, setDrafts] = useState<LoanDraft[]>([]);
   const [seededFor, setSeededFor] = useState<string | null>(null);
   const [error, setError] = useState('');
@@ -117,29 +118,29 @@ export function MortgageReconcileDialog({
             <div className="font-medium mb-2">{d.label}</div>
             <div className={`grid gap-3 ${d.showSubsidy ? 'grid-cols-2 md:grid-cols-3' : 'grid-cols-2'}`}>
               <div>
-                <label className="text-xs opacity-70">Remaining balance</label>
-                <InputNumber value={d.remaining} onValueChange={(e) => update(d.loanId, 'remaining', e.value ?? 0)} mode="currency" currency={currency} locale="fi-FI" className="w-full" />
+                <label htmlFor={`${uid}-remaining-balance-${d.loanId}`} className="text-xs opacity-70">Remaining balance</label>
+                <InputNumber inputId={`${uid}-remaining-balance-${d.loanId}`} value={d.remaining} onValueChange={(e) => update(d.loanId, 'remaining', e.value ?? 0)} mode="currency" currency={currency} locale="fi-FI" className="w-full" />
                 <HelpTip text="What's still owed on this loan after this month's payment." />
               </div>
               <div>
-                <label className="text-xs opacity-70">Repayment (total charge)</label>
-                <InputNumber value={d.repayment} onValueChange={(e) => update(d.loanId, 'repayment', e.value ?? 0)} mode="currency" currency={currency} locale="fi-FI" className="w-full" />
+                <label htmlFor={`${uid}-repayment-total-charge-${d.loanId}`} className="text-xs opacity-70">Repayment (total charge)</label>
+                <InputNumber inputId={`${uid}-repayment-total-charge-${d.loanId}`} value={d.repayment} onValueChange={(e) => update(d.loanId, 'repayment', e.value ?? 0)} mode="currency" currency={currency} locale="fi-FI" className="w-full" />
                 <HelpTip text="The bank's full charge this month: principal + interest + insurance + invoicing share." />
               </div>
               <div>
-                <label className="text-xs opacity-70">Interest paid</label>
-                <InputNumber value={d.interest} onValueChange={(e) => update(d.loanId, 'interest', e.value ?? 0)} mode="currency" currency={currency} locale="fi-FI" className="w-full" />
+                <label htmlFor={`${uid}-interest-paid-${d.loanId}`} className="text-xs opacity-70">Interest paid</label>
+                <InputNumber inputId={`${uid}-interest-paid-${d.loanId}`} value={d.interest} onValueChange={(e) => update(d.loanId, 'interest', e.value ?? 0)} mode="currency" currency={currency} locale="fi-FI" className="w-full" />
                 <HelpTip text="The interest part of this month's charge, after any subsidy." />
               </div>
               <div>
-                <label className="text-xs opacity-70">Insurance</label>
-                <InputNumber value={d.insurance} onValueChange={(e) => update(d.loanId, 'insurance', e.value ?? 0)} mode="currency" currency={currency} locale="fi-FI" className="w-full" />
+                <label htmlFor={`${uid}-insurance-${d.loanId}`} className="text-xs opacity-70">Insurance</label>
+                <InputNumber inputId={`${uid}-insurance-${d.loanId}`} value={d.insurance} onValueChange={(e) => update(d.loanId, 'insurance', e.value ?? 0)} mode="currency" currency={currency} locale="fi-FI" className="w-full" />
                 <HelpTip text="Loan-protection insurance charged this month (0 if none)." />
               </div>
               {d.showSubsidy && (
                 <div>
-                  <label className="text-xs opacity-70">ASP subsidy</label>
-                  <InputNumber value={d.subsidy} onValueChange={(e) => update(d.loanId, 'subsidy', e.value ?? 0)} mode="currency" currency={currency} locale="fi-FI" className="w-full" />
+                  <label htmlFor={`${uid}-asp-subsidy-${d.loanId}`} className="text-xs opacity-70">ASP subsidy</label>
+                  <InputNumber inputId={`${uid}-asp-subsidy-${d.loanId}`} value={d.subsidy} onValueChange={(e) => update(d.loanId, 'subsidy', e.value ?? 0)} mode="currency" currency={currency} locale="fi-FI" className="w-full" />
                   <HelpTip text="Government interest subsidy this month (only when the rate is above the ASP threshold)." />
                 </div>
               )}

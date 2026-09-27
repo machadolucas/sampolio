@@ -280,6 +280,21 @@
   padding: 0;
 }
 
+/* Touch screens: small icon-only buttons still meet the 44px tap-target rule
+ * (AGENTS.md). Mouse/trackpad keeps the compact 36px size. */
+@media (pointer: coarse) {
+  .p-button.p-button-icon-only.p-button-sm:not(.p-inputnumber-button) {
+    width: 2.75rem;
+    height: 2.75rem;
+  }
+
+  /* The whole <th> is the sort toggle; a table cell's height acts as a
+   * minimum, so compact (p-datatable-sm) headers still reach 44px. */
+  .p-datatable .p-datatable-thead > tr > th.p-sortable-column {
+    height: 2.75rem;
+  }
+}
+
 .p-button.p-button-icon-only svg {
   width: 1.2rem;
   height: 1.2rem;

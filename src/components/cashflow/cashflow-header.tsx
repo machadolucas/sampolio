@@ -113,6 +113,7 @@ export function CashflowHeader({
                             // PrimeReact's memoized internals (same convention as DataTables).
                             key={demoMasked ? 'masked' : 'plain'}
                             value={selectedAccountId}
+                            aria-label="Cash account"
                             options={accounts.map(a => ({ label: a.name, value: a.id }))}
                             onChange={(e) => onSelectAccount(e.value)}
                             placeholder="Select Account"

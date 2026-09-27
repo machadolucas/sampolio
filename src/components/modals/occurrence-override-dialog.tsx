@@ -279,7 +279,7 @@ export function OccurrenceOverrideDialog({
                                     control={control}
                                     render={({ field }) => (
                                         <InputNumber
-                                            id="override-amount"
+                                            inputId="override-amount"
                                             value={field.value}
                                             onValueChange={(e) => field.onChange(e.value ?? 0)}
                                             mode="decimal"
@@ -287,7 +287,7 @@ export function OccurrenceOverrideDialog({
                                             minFractionDigits={2}
                                             maxFractionDigits={2}
                                             className="w-full"
-                                            placeholder={String(recurringItem.amount)}
+                                            placeholder={recurringItem.amount.toLocaleString('fi-FI', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                             aria-describedby={overrideAmount === 0 ? 'override-amount-hint' : undefined}
                                         />
                                     )}

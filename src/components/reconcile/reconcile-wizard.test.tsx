@@ -31,14 +31,20 @@ vi.mock('@/lib/actions/reconciliation', () => ({
   completeReconciliationSession: vi.fn(() => ok({})),
   applyReconciliationBalances: vi.fn(() => ok(undefined)),
 }));
+const toastMock = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), info: vi.fn(), show: vi.fn() }));
 vi.mock('@/components/providers/toast-provider', () => ({
-  useToast: () => ({ success: vi.fn(), error: vi.fn(), info: vi.fn(), show: vi.fn() }),
+  useToast: () => toastMock,
 }));
 vi.mock('@/components/layout/app-layout', () => ({
   useAppContext: () => null,
 }));
 
-import { startReconciliationSession } from '@/lib/actions/reconciliation';
+import {
+  startReconciliationSession,
+  createBalanceSnapshot,
+  applyReconciliationBalances,
+  completeReconciliationSession,
+} from '@/lib/actions/reconciliation';
 
 function renderWizard() {
   return renderWithProviders(<ReconcileWizard visible onHide={vi.fn()} />);
@@ -84,5 +90,41 @@ describe('ReconcileWizard', () => {
     // Back returns to the balances step
     fireEvent.click(screen.getByRole('button', { name: /Back/ }));
     expect(await screen.findByText(/Check your actual balances for/)).toBeInTheDocument();
+  });
+
+  it('does not report success when a snapshot write fails', async () => {
+    vi.mocked(createBalanceSnapshot).mockClear();
+    vi.mocked(applyReconciliationBalances).mockClear();
+    vi.mocked(completeReconciliationSession).mockClear();
+    toastMock.show.mockClear();
+    toastMock.error.mockClear();
+    vi.mocked(createBalanceSnapshot)
+      .mockResolvedValueOnce({ success: true, data: {} } as never)
+      .mockResolvedValueOnce({ success: false, error: 'Disk full' } as never);
+
+    renderWizard();
+    await screen.findByText(/Time for a quick check-in/);
+    fireEvent.click(screen.getByRole('button', { name: /Continue/ }));
+    await screen.findByText(/Check your actual balances for/);
+    fireEvent.click(screen.getByRole('button', { name: /Continue/ }));
+    await screen.findByText(/Reconciliation Summary for/);
+    fireEvent.click(screen.getByRole('button', { name: /Save check-in/ }));
+
+    expect(await screen.findByText(/Could not save the balance for Index Fund \(Disk full\)/)).toBeInTheDocument();
+    expect(applyReconciliationBalances).not.toHaveBeenCalled();
+    expect(completeReconciliationSession).not.toHaveBeenCalled();
+    expect(toastMock.show).not.toHaveBeenCalled();
+    expect(toastMock.error).toHaveBeenCalledWith('Check-in not saved', expect.stringContaining('Index Fund'));
+  });
+
+  it('does not close on a mask click (typed balances survive)', async () => {
+    const onHide = vi.fn();
+    renderWithProviders(<ReconcileWizard visible onHide={onHide} />);
+    await screen.findByText(/Time for a quick check-in/);
+    const mask = document.querySelector('.p-dialog-mask');
+    expect(mask).not.toBeNull();
+    fireEvent.mouseDown(mask!);
+    fireEvent.click(mask!);
+    expect(onHide).not.toHaveBeenCalled();
   });
 });

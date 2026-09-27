@@ -2,7 +2,7 @@
 
 import { AlertBanner } from '@/components/ui/alert-banner';
 import { BankAttentionBanner } from '@/components/bank/bank-attention-banner';
-import { formatYearMonth } from '@/lib/constants';
+import { formatYearMonth, formatDayMonth } from '@/lib/constants';
 import { getMonthsBetween } from '@/lib/projection';
 import { isCheckInDue } from '@/lib/checkin-utils';
 import type { ConnectionAttention } from '@/lib/actions/bank';
@@ -77,7 +77,7 @@ export function BannerStack({
                     action={{ label: 'Update rate', onClick: onUpdateEuribor }}
                 >
                     The mortgage interest rate for <b>{euriborDue.name}</b> is due for its yearly update — the bank resets it (the 12-month Euribor reference rate) around{' '}
-                    {euriborDue.lastResetDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })}. Enter the new rate from your bank so your payments stay accurate.
+                    {formatDayMonth(euriborDue.lastResetDate)}. Enter the new rate from your bank so your payments stay accurate.
                 </AlertBanner>
             )}
 

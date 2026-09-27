@@ -134,12 +134,12 @@ export function MortgageTransferComparison({ inputs, months, currentRow, current
           <div className="grid grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-3">
             <Field label="New margin">
               <Controller name="margin" control={control} render={({ field }) => (
-                <InputNumber value={field.value} onValueChange={(e) => field.onChange(e.value ?? 0)} suffix=" %" minFractionDigits={2} maxFractionDigits={3} min={0} className="w-full" inputClassName="w-full" />
+                <InputNumber locale="fi-FI" value={field.value} onValueChange={(e) => field.onChange(e.value ?? 0)} suffix=" %" minFractionDigits={2} maxFractionDigits={3} min={0} className="w-full" inputClassName="w-full" />
               )} />
             </Field>
             <Field label="Reference rate (Euribor)">
               <Controller name="euriborRate" control={control} render={({ field }) => (
-                <InputNumber value={field.value} onValueChange={(e) => field.onChange(e.value ?? 0)} suffix=" %" minFractionDigits={2} maxFractionDigits={3} className="w-full" inputClassName="w-full" />
+                <InputNumber locale="fi-FI" value={field.value} onValueChange={(e) => field.onChange(e.value ?? 0)} suffix=" %" minFractionDigits={2} maxFractionDigits={3} className="w-full" inputClassName="w-full" />
               )} />
             </Field>
             <Field label="Loan term (months)">

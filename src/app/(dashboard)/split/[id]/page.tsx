@@ -34,7 +34,7 @@ import { getUserPreferences } from '@/lib/actions/user-preferences';
 import { computeSeenWatermark } from '@/lib/split-utils';
 import { SplitActivityFeed } from '@/components/split/split-activity-feed';
 import { SelectButton } from 'primereact/selectbutton';
-import { formatCents, formatYearMonth } from '@/lib/constants';
+import { formatCents, formatYearMonth, formatDayMonth } from '@/lib/constants';
 import { useToast } from '@/components/providers/toast-provider';
 import { useCelebration } from '@/components/providers/celebration-provider';
 import { useAppContext } from '@/components/layout/app-layout';
@@ -585,7 +585,7 @@ export default function SplitGroupDetailPage() {
               <div key={r.id} className="flex items-center gap-2 text-sm">
                 <span className={`flex-1 truncate ${r.isActive ? '' : 'line-through text-gray-400'}`}>
                   {r.title} · {formatCents(r.amountCents, group.currency)} · {r.interval}
-                  {r.endDate && ` · until ${format(parseISO(r.endDate), 'MMM d, yyyy')}`}
+                  {r.endDate && ` · until ${formatDayMonth(r.endDate, { short: true, year: true })}`}
                 </span>
                 <Button
                   label={r.isActive ? 'Pause' : 'Resume'}
@@ -617,15 +617,26 @@ export default function SplitGroupDetailPage() {
                   text
                   size="small"
                   severity="danger"
-                  onClick={async () => {
-                    setGroup((g) => g && { ...g, recurrenceRules: g.recurrenceRules.filter((x) => x.id !== r.id) });
-                    const res = await deleteSplitRecurrenceRule(groupId, r.id);
-                    if (!res.success) {
-                      await load();
-                      toast.error('Failed to delete rule', res.error);
-                      return;
-                    }
-                    toast.success('Recurring rule deleted');
+                  aria-label={`Delete recurring ${r.title}`}
+                  onClick={() => {
+                    confirmDialog({
+                      header: 'Delete recurring expense?',
+                      message: `Stop adding “${r.title}” automatically? Expenses it already created stay in the group.`,
+                      icon: 'pi pi-exclamation-triangle',
+                      acceptLabel: 'Delete',
+                      rejectLabel: 'Cancel',
+                      acceptClassName: 'p-button-danger',
+                      accept: async () => {
+                        setGroup((g) => g && { ...g, recurrenceRules: g.recurrenceRules.filter((x) => x.id !== r.id) });
+                        const res = await deleteSplitRecurrenceRule(groupId, r.id);
+                        if (!res.success) {
+                          await load();
+                          toast.error('Failed to delete rule', res.error);
+                          return;
+                        }
+                        toast.success('Recurring rule deleted');
+                      },
+                    });
                   }}
                 />
               </div>

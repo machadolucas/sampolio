@@ -209,7 +209,7 @@ export function MortgageLedgerTable({
               text
               size="small"
               severity="success"
-              className="!w-7 !h-7"
+              aria-label={`Mark ${r.label} as actual`}
               tooltip="Mark this month as actual"
               tooltipOptions={{ position: 'top' }}
               onClick={() => onReconcile?.(r.yearMonth)}
@@ -223,7 +223,8 @@ export function MortgageLedgerTable({
               text
               size="small"
               severity="secondary"
-              className="!w-7 !h-7 opacity-50 hover:opacity-100"
+              className="opacity-50 hover:opacity-100"
+              aria-label={`Revert ${r.label} to forecast`}
               tooltip="Revert to forecast"
               tooltipOptions={{ position: 'top' }}
               onClick={() => onRevert(r.yearMonth)}

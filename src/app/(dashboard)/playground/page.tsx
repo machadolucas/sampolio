@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useId } from 'react';
 import dynamic from 'next/dynamic';
 import { Card } from 'primereact/card';
 import { Button } from 'primereact/button';
@@ -54,6 +54,9 @@ export default function PlaygroundPage() {
     const { theme } = useTheme();
     const isDark = theme === 'dark';
     const appContext = useAppContext();
+    // Demo mode masks formatCurrency output; memoized labels must re-run when it flips.
+    const demoMasked = appContext?.demoMasked ?? false;
+    const fieldId = useId();
     const accounts = useMemo(() =>
         (appContext?.accounts || []).filter((a: FinancialAccount) => !a.isArchived),
         [appContext?.accounts]
@@ -150,7 +153,10 @@ export default function PlaygroundPage() {
             });
         }
         return groups;
-    }, [pickerItems, currency]);
+        // demoMasked: formatCurrency reads the global demo mask, so the labels
+        // must be rebuilt when demo mode toggles (docs/features.md §10).
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [pickerItems, currency, demoMasked]);
 
     const buildFormMod = (): ScenarioModification | null => {
         if (selectedTemplate === 'cancel-item') {
@@ -330,10 +336,11 @@ export default function PlaygroundPage() {
                     {isItemPicker ? (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
-                                <label className={`block text-sm font-medium mb-1 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                                <label htmlFor={`${fieldId}-item`} className={`block text-sm font-medium mb-1 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
                                     Which item?
                                 </label>
                                 <Dropdown
+                                    inputId={`${fieldId}-item`}
                                     value={selectedItemId}
                                     options={itemGroups}
                                     optionGroupLabel="label"
@@ -349,10 +356,11 @@ export default function PlaygroundPage() {
                             </div>
                             {selectedTemplate === 'change-amount' && (
                                 <div>
-                                    <label className={`block text-sm font-medium mb-1 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                                    <label htmlFor={`${fieldId}-new-amount`} className={`block text-sm font-medium mb-1 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
                                         New amount
                                     </label>
                                     <InputNumber
+                                        inputId={`${fieldId}-new-amount`}
                                         value={changeAmountValue}
                                         onValueChange={e => setChangeAmountValue(e.value ?? 0)}
                                         mode="currency"
@@ -367,10 +375,11 @@ export default function PlaygroundPage() {
                     ) : (
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                             <div>
-                                <label className={`block text-sm font-medium mb-1 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                                <label htmlFor={`${fieldId}-name`} className={`block text-sm font-medium mb-1 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
                                     Name (optional)
                                 </label>
                                 <InputText
+                                    id={`${fieldId}-name`}
                                     value={scenarioName}
                                     onChange={e => setScenarioName(e.target.value)}
                                     placeholder="e.g. Netflix, Gym membership"
@@ -378,10 +387,11 @@ export default function PlaygroundPage() {
                                 />
                             </div>
                             <div>
-                                <label className={`block text-sm font-medium mb-1 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                                <label htmlFor={`${fieldId}-amount`} className={`block text-sm font-medium mb-1 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
                                     Amount
                                 </label>
                                 <InputNumber
+                                    inputId={`${fieldId}-amount`}
                                     value={scenarioAmount}
                                     onValueChange={e => setScenarioAmount(e.value ?? 0)}
                                     mode="currency"
@@ -392,10 +402,11 @@ export default function PlaygroundPage() {
                                 />
                             </div>
                             <div>
-                                <label className={`block text-sm font-medium mb-1 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                                <span id={`${fieldId}-frequency`} className={`block text-sm font-medium mb-1 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
                                     Frequency
-                                </label>
+                                </span>
                                 <SelectButton
+                                    aria-labelledby={`${fieldId}-frequency`}
                                     value={scenarioFrequency}
                                     options={[
                                         { label: 'Monthly', value: 'monthly' },
@@ -415,6 +426,7 @@ export default function PlaygroundPage() {
                                         minDate={new Date()}
                                         className="w-full mt-2"
                                         placeholder="Which month?"
+                                        ariaLabel="Which month?"
                                     />
                                 )}
                             </div>

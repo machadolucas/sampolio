@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useId } from 'react';
 import { Dialog } from 'primereact/dialog';
 import { InputNumber } from 'primereact/inputnumber';
 import { InputText } from 'primereact/inputtext';
@@ -28,6 +28,7 @@ import {
 import { fetchCurrentEuribor12m } from '@/lib/actions/euribor';
 import { getAccounts } from '@/lib/actions/accounts';
 import type { SharedMortgage, Currency, FinancialAccount } from '@/types';
+import { useFormSubmit } from '@/lib/hooks/use-form-submit';
 
 interface PreviewLoan {
   label: string;
@@ -56,6 +57,7 @@ export function EuriborUpdateDialog({
   onClose: () => void;
   onSaved: (msg: string) => void;
 }) {
+  const uid = useId();
   const [euribor, setEuribor] = useState<number>(lastEuribor);
   const [effectiveDate, setEffectiveDate] = useState(defaultEffectiveMonth);
   const [error, setError] = useState('');
@@ -115,15 +117,18 @@ export function EuriborUpdateDialog({
     else setError(res.error ?? 'Failed to save');
   };
 
+  const onFormSubmit = useFormSubmit(save, { disabled: saving });
+
   return (
     <Dialog header="Update your Euribor rate" visible={visible} onHide={handleHide} style={{ width: '32rem' }}>
+      <form onSubmit={onFormSubmit} noValidate>
       <p className="text-sm opacity-70 mb-3">
         Banks reset the 12-month Euribor once a year. Enter the new rate and your payments update automatically.
       </p>
       <div className="space-y-3">
         <div>
-          <label className="text-sm font-medium">New 12-month Euribor rate</label>
-          <InputNumber
+          <label htmlFor={`${uid}-new-12-month`} className="text-sm font-medium">New 12-month Euribor rate</label>
+          <InputNumber inputId={`${uid}-new-12-month`} locale="fi-FI"
             value={euribor}
             onValueChange={(e) => {
               const next = e.value ?? 0;
@@ -146,8 +151,8 @@ export function EuriborUpdateDialog({
           <HelpTip text="Euribor is the rate European banks charge each other. Your loan rate = Euribor + the bank's fixed margin." />
         </div>
         <div>
-          <label className="text-sm font-medium">Effective from</label>
-          <MonthPicker value={effectiveDate} onChange={setEffectiveDate} />
+          <label htmlFor={`${uid}-effective-from`} className="text-sm font-medium">Effective from</label>
+          <MonthPicker inputId={`${uid}-effective-from`} value={effectiveDate} onChange={setEffectiveDate} />
         </div>
 
         <div className="p-3 rounded-lg surface-ground text-sm">
@@ -171,9 +176,10 @@ export function EuriborUpdateDialog({
         {error && <Message severity="error" text={error} />}
       </div>
       <div className="flex justify-end gap-2 mt-4">
-        <Button label="Cancel" text onClick={handleHide} />
-        <Button label="Update rate" loading={saving} onClick={save} />
+        <Button type="button" label="Cancel" text onClick={handleHide} />
+        <Button label="Update rate" loading={saving} type="submit" />
       </div>
+      </form>
     </Dialog>
   );
 }
@@ -196,6 +202,7 @@ export function DriftAdjustmentDialog({
   onClose: () => void;
   onSaved: (msg: string) => void;
 }) {
+  const uid = useId();
   const [loanId, setLoanId] = useState(loans[0]?.id ?? '');
   const [yearMonth, setYearMonth] = useState(getCurrentYearMonth());
   // Starts empty: Save stays disabled until the user types the statement's
@@ -230,23 +237,26 @@ export function DriftAdjustmentDialog({
     else setError(res.error ?? 'Failed to save');
   };
 
+  const onFormSubmit = useFormSubmit(save, { disabled: saving });
+
   return (
     <Dialog header="Correct a balance" visible={visible} onHide={onClose} style={{ width: '30rem' }}>
+      <form onSubmit={onFormSubmit} noValidate>
       <p className="text-sm opacity-70 mb-3">
         If your bank statement differs from our estimate, enter the real balance here. We&apos;ll re-anchor future projections to it.
       </p>
       <div className="space-y-3">
         <div>
-          <label className="text-sm font-medium">Loan</label>
-          <Dropdown value={loanId} options={loans.map((l) => ({ label: l.label, value: l.id }))} onChange={(e) => setLoanId(e.value)} className="w-full" />
+          <label htmlFor={`${uid}-loan`} className="text-sm font-medium">Loan</label>
+          <Dropdown inputId={`${uid}-loan`} value={loanId} options={loans.map((l) => ({ label: l.label, value: l.id }))} onChange={(e) => setLoanId(e.value)} className="w-full" />
         </div>
         <div>
-          <label className="text-sm font-medium">Month of the statement</label>
-          <MonthPicker value={yearMonth} onChange={setYearMonth} />
+          <label htmlFor={`${uid}-month-of-the`} className="text-sm font-medium">Month of the statement</label>
+          <MonthPicker inputId={`${uid}-month-of-the`} value={yearMonth} onChange={setYearMonth} />
         </div>
         <div>
-          <label className="text-sm font-medium">Actual balance from your bank statement</label>
-          <InputNumber value={actualBalance} onValueChange={(e) => setActualBalance(e.value ?? null)} placeholder={formatCurrency(expected, currency)} mode="currency" currency={currency} locale="fi-FI" className="w-full" inputClassName="w-full" />
+          <label htmlFor={`${uid}-actual-balance-from`} className="text-sm font-medium">Actual balance from your bank statement</label>
+          <InputNumber inputId={`${uid}-actual-balance-from`} value={actualBalance} onValueChange={(e) => setActualBalance(e.value ?? null)} placeholder={formatCurrency(expected, currency)} mode="currency" currency={currency} locale="fi-FI" className="w-full" inputClassName="w-full" />
         </div>
         <div className="p-3 rounded-lg surface-ground text-sm">
           We projected {formatCurrency(expected, currency)}.
@@ -262,9 +272,10 @@ export function DriftAdjustmentDialog({
         {error && <Message severity="error" text={error} />}
       </div>
       <div className="flex justify-end gap-2 mt-4">
-        <Button label="Cancel" text onClick={onClose} />
-        <Button label="Save correction" loading={saving} onClick={save} disabled={!loanId || actualBalance === null} />
+        <Button type="button" label="Cancel" text onClick={onClose} />
+        <Button label="Save correction" loading={saving} type="submit" disabled={!loanId || actualBalance === null} />
       </div>
+      </form>
     </Dialog>
   );
 }
@@ -285,6 +296,7 @@ export function ExtraPaymentDialog({
   onClose: () => void;
   onSaved: (msg: string) => void;
 }) {
+  const uid = useId();
   const [loanId, setLoanId] = useState(loans[0]?.id ?? '');
   const [date, setDate] = useState(getCurrentYearMonth());
   const [amount, setAmount] = useState<number>(0);
@@ -317,24 +329,27 @@ export function ExtraPaymentDialog({
     else setError(res.error ?? 'Failed to save');
   };
 
+  const onFormSubmit = useFormSubmit(save, { disabled: saving });
+
   return (
     <Dialog header="Make an extra payment" visible={visible} onHide={onClose} style={{ width: '30rem' }}>
+      <form onSubmit={onFormSubmit} noValidate>
       <div className="space-y-3">
         <div>
-          <label className="text-sm font-medium">Loan</label>
-          <Dropdown value={loanId} options={loans.map((l) => ({ label: l.label, value: l.id }))} onChange={(e) => setLoanId(e.value)} className="w-full" />
+          <label htmlFor={`${uid}-loan`} className="text-sm font-medium">Loan</label>
+          <Dropdown inputId={`${uid}-loan`} value={loanId} options={loans.map((l) => ({ label: l.label, value: l.id }))} onChange={(e) => setLoanId(e.value)} className="w-full" />
         </div>
         <div>
-          <label className="text-sm font-medium">Month</label>
-          <MonthPicker value={date} onChange={setDate} />
+          <label htmlFor={`${uid}-month`} className="text-sm font-medium">Month</label>
+          <MonthPicker inputId={`${uid}-month`} value={date} onChange={setDate} />
         </div>
         <div>
-          <label className="text-sm font-medium">Amount</label>
-          <InputNumber value={amount} onValueChange={(e) => setAmount(e.value ?? 0)} mode="currency" currency={currency} locale="fi-FI" className="w-full" />
+          <label htmlFor={`${uid}-amount`} className="text-sm font-medium">Amount</label>
+          <InputNumber inputId={`${uid}-amount`} value={amount} onValueChange={(e) => setAmount(e.value ?? 0)} mode="currency" currency={currency} locale="fi-FI" className="w-full" />
         </div>
         <div>
-          <label className="text-sm font-medium block mb-1">What should it do?</label>
-          <SelectButton
+          <label id={`${uid}-what-should-it`} className="text-sm font-medium block mb-1">What should it do?</label>
+          <SelectButton aria-labelledby={`${uid}-what-should-it`}
             value={mode}
             onChange={(e) => e.value && setMode(e.value)}
             options={[
@@ -353,9 +368,10 @@ export function ExtraPaymentDialog({
         {error && <Message severity="error" text={error} />}
       </div>
       <div className="flex justify-end gap-2 mt-4">
-        <Button label="Cancel" text onClick={onClose} />
-        <Button label="Add payment" loading={saving} onClick={save} disabled={!loanId || !(amount > 0)} />
+        <Button type="button" label="Cancel" text onClick={onClose} />
+        <Button label="Add payment" loading={saving} type="submit" disabled={!loanId || !(amount > 0)} />
       </div>
+      </form>
     </Dialog>
   );
 }
@@ -374,6 +390,7 @@ export function MortgageMembersDialog({
   onClose: () => void;
   onChanged: (msg: string) => void;
 }) {
+  const uid = useId();
   const [email, setEmail] = useState('');
   const [initialPayment, setInitialPayment] = useState<number>(0);
   const [sharePercent, setSharePercent] = useState<number>(50);
@@ -506,20 +523,20 @@ export function MortgageMembersDialog({
 
       {isOwner && (
         <div className="border-t surface-border pt-3 space-y-2">
-          <label className="text-sm font-medium">Invite by email</label>
-          <InputText value={email} onChange={(e) => setEmail(e.target.value)} placeholder="partner@example.com" className="w-full" />
+          <label htmlFor={`${uid}-invite-by-email`} className="text-sm font-medium">Invite by email</label>
+          <InputText id={`${uid}-invite-by-email`} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="partner@example.com" className="w-full" />
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
             <div className="min-w-0">
-              <label className="text-xs opacity-70">Down payment</label>
-              <InputNumber value={initialPayment} onValueChange={(e) => setInitialPayment(e.value ?? 0)} mode="currency" currency={mortgage.currency} locale="fi-FI" className="w-full" inputClassName="w-full" />
+              <label htmlFor={`${uid}-down-payment`} className="text-xs opacity-70">Down payment</label>
+              <InputNumber inputId={`${uid}-down-payment`} value={initialPayment} onValueChange={(e) => setInitialPayment(e.value ?? 0)} mode="currency" currency={mortgage.currency} locale="fi-FI" className="w-full" inputClassName="w-full" />
             </div>
             <div className="min-w-0">
-              <label className="text-xs opacity-70">Loan share %</label>
-              <InputNumber value={sharePercent} onValueChange={(e) => setSharePercent(e.value ?? 0)} suffix=" %" className="w-full" inputClassName="w-full" />
+              <label htmlFor={`${uid}-loan-share`} className="text-xs opacity-70">Loan share %</label>
+              <InputNumber inputId={`${uid}-loan-share`} locale="fi-FI" value={sharePercent} onValueChange={(e) => setSharePercent(e.value ?? 0)} suffix=" %" className="w-full" inputClassName="w-full" />
             </div>
             <div className="min-w-0">
-              <label className="text-xs opacity-70">Target own %</label>
-              <InputNumber value={targetPercent} onValueChange={(e) => setTargetPercent(e.value ?? 0)} suffix=" %" className="w-full" inputClassName="w-full" />
+              <label htmlFor={`${uid}-target-own`} className="text-xs opacity-70">Target own %</label>
+              <InputNumber inputId={`${uid}-target-own`} locale="fi-FI" value={targetPercent} onValueChange={(e) => setTargetPercent(e.value ?? 0)} suffix=" %" className="w-full" inputClassName="w-full" />
             </div>
           </div>
           <Button label="Add member" loading={saving} onClick={add} disabled={!email} className="w-full mt-1" />

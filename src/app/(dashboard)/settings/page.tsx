@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, Suspense } from 'react';
+import { useState, useEffect, useRef, Suspense, useId } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useSession } from '@/lib/auth-client';
 import { Card } from 'primereact/card';
@@ -54,6 +54,7 @@ const SPLIT_NOTIFY_TOGGLES: { key: SplitNotifyEvent; label: string }[] = [
 ];
 
 function SettingsPageInner() {
+    const uid = useId();
     const { data: session } = useSession();
     // Reactive so a `?tab=…` deep-link switches the tab even when we're already
     // on /settings (e.g. the user-menu "Account" item navigating in place).
@@ -290,24 +291,33 @@ function SettingsPageInner() {
         }
     };
 
-    const handleCompact = async () => {
+    const handleCompact = () => {
         if (!compactPreview) return;
         const total = compactPreview.snapshots + compactPreview.sessions + compactPreview.adjustments;
         if (total === 0) return;
-        if (!confirm(`Remove ${total} old history record(s)? Your latest balances and all forecasts stay the same. This cannot be undone.`)) return;
-        setIsCompacting(true);
-        setCompactMessage(null);
-        try {
-            const res = await compactHistory();
-            if (res.success && res.data) {
-                setCompactMessage({ type: 'success', text: `Removed ${res.data.snapshots} snapshots, ${res.data.sessions} check-in logs, ${res.data.adjustments} adjustments.` });
-                setCompactPreview(null);
-            } else {
-                setCompactMessage({ type: 'error', text: res.error || 'Failed to compact history' });
-            }
-        } finally {
-            setIsCompacting(false);
-        }
+        confirmDialog({
+            header: 'Remove old history?',
+            message: `Remove ${total} old history record(s)? Your latest balances and all forecasts stay the same. This cannot be undone.`,
+            icon: 'pi pi-exclamation-triangle',
+            acceptLabel: 'Remove',
+            rejectLabel: 'Cancel',
+            acceptClassName: 'p-button-danger',
+            accept: async () => {
+                setIsCompacting(true);
+                setCompactMessage(null);
+                try {
+                    const res = await compactHistory();
+                    if (res.success && res.data) {
+                        setCompactMessage({ type: 'success', text: `Removed ${res.data.snapshots} snapshots, ${res.data.sessions} check-in logs, ${res.data.adjustments} adjustments.` });
+                        setCompactPreview(null);
+                    } else {
+                        setCompactMessage({ type: 'error', text: res.error || 'Failed to compact history' });
+                    }
+                } finally {
+                    setIsCompacting(false);
+                }
+            },
+        });
     };
 
     const heading = `text-lg font-semibold mb-4 ${isDark ? 'text-gray-100' : 'text-gray-900'}`;
@@ -353,12 +363,12 @@ function SettingsPageInner() {
             <h2 className={heading}>Appearance</h2>
             <div className="flex items-center justify-between">
                 <div>
-                    <p className={isDark ? 'text-gray-200' : 'text-gray-700'}>Dark Mode</p>
+                    <label htmlFor="settings-dark-mode" className={`block ${isDark ? 'text-gray-200' : 'text-gray-700'}`}>Dark Mode</label>
                     <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
                         Use dark theme for the interface
                     </p>
                 </div>
-                <InputSwitch checked={isDark} onChange={toggleTheme} />
+                <InputSwitch inputId="settings-dark-mode" checked={isDark} onChange={toggleTheme} />
             </div>
         </Card>
     );
@@ -368,13 +378,14 @@ function SettingsPageInner() {
             <h2 className={heading}>Reminders</h2>
             <div className="flex items-center justify-between gap-4">
                 <div className="min-w-0 flex-1">
-                    <p className={isDark ? 'text-gray-200' : 'text-gray-700'}>Monthly check-in reminders</p>
+                    <label htmlFor="settings-checkin-reminders" className={`block ${isDark ? 'text-gray-200' : 'text-gray-700'}`}>Monthly check-in reminders</label>
                     <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
                         Show the &quot;time to check in&quot; banner on Overview each month. With bank sync
                         keeping balances current, you may only need occasional manual check-ins (e.g. investments).
                     </p>
                 </div>
                 <InputSwitch
+                    inputId="settings-checkin-reminders"
                     className="shrink-0"
                     checked={checkInReminders}
                     onChange={async (e) => {
@@ -393,7 +404,7 @@ function SettingsPageInner() {
             {/* Sub-toggle: local device notification. Only meaningful while reminders are on. */}
             <div className={`flex items-center justify-between gap-4 mt-4 pl-4 border-l-2 ${isDark ? 'border-gray-700' : 'border-gray-200'} ${!checkInReminders ? 'opacity-50' : ''}`}>
                 <div className="min-w-0 flex-1">
-                    <p className={isDark ? 'text-gray-200' : 'text-gray-700'}>Also notify on this device</p>
+                    <label htmlFor="settings-checkin-notifications" className={`block ${isDark ? 'text-gray-200' : 'text-gray-700'}`}>Also notify on this device</label>
                     <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
                         When a monthly check-in is due, show a notification on this device the next time
                         you open the app. Uses the browser&apos;s notification permission — nothing is sent
@@ -401,6 +412,7 @@ function SettingsPageInner() {
                     </p>
                 </div>
                 <InputSwitch
+                    inputId="settings-checkin-notifications"
                     className="shrink-0"
                     disabled={!checkInReminders}
                     checked={checkInNotifications}
@@ -493,7 +505,7 @@ function SettingsPageInner() {
                     { label: 'Open Command Palette', key: '⌘K' },
                     { label: 'Quick Add Income', key: '⌘I' },
                     { label: 'Quick Add Expense', key: '⌘E' },
-                    { label: 'Start Reconciliation', key: '⌘R' },
+                    { label: 'Start monthly check-in', key: '⌘M' },
                 ].map(s => (
                     <div key={s.key} className="flex items-center justify-between">
                         <span className={isDark ? 'text-gray-200' : 'text-gray-700'}>{s.label}</span>
@@ -534,12 +546,15 @@ function SettingsPageInner() {
                     <p className={`text-xs mb-2 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>Removed defaults (click to restore):</p>
                     <div className="flex flex-wrap gap-1">
                         {removedDefaults.map(cat => (
-                            <Chip
+                            <button
+                                type="button"
                                 key={cat}
-                                label={cat}
-                                className="opacity-50 cursor-pointer"
+                                aria-label={`Restore ${cat}`}
+                                className="p-chip opacity-50 cursor-pointer hover:opacity-80 transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500"
                                 onClick={() => setRemovedDefaults(prev => prev.filter(c => c !== cat))}
-                            />
+                            >
+                                <span className="p-chip-text">{cat}</span>
+                            </button>
                         ))}
                     </div>
                 </div>
@@ -549,6 +564,7 @@ function SettingsPageInner() {
                     value={newCategoryName}
                     onChange={e => setNewCategoryName(e.target.value)}
                     placeholder="New category name"
+                    aria-label="New category name"
                     className="flex-1"
                     onKeyDown={e => {
                         if (e.key === 'Enter' && newCategoryName.trim()) {
@@ -563,6 +579,7 @@ function SettingsPageInner() {
                 <Button
                     icon={<MdAdd />}
                     outlined
+                    aria-label="Add category"
                     disabled={!newCategoryName.trim() || activeCategories.includes(newCategoryName.trim())}
                     onClick={() => {
                         const name = newCategoryName.trim();
@@ -603,10 +620,10 @@ function SettingsPageInner() {
             </p>
             <div className="space-y-4 max-w-md">
                 <div>
-                    <label className={`block text-sm font-medium mb-1 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                    <label htmlFor={`${uid}-default-tax-rate`} className={`block text-sm font-medium mb-1 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
                         Default Tax Rate (%)
                     </label>
-                    <InputNumber
+                    <InputNumber inputId={`${uid}-default-tax-rate`}
                         value={taxDefaults.taxRate}
                         onValueChange={e => setTaxDefaults(prev => ({ ...prev, taxRate: e.value ?? 0 }))}
                         suffix="%"
@@ -619,10 +636,10 @@ function SettingsPageInner() {
                     />
                 </div>
                 <div>
-                    <label className={`block text-sm font-medium mb-1 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                    <label htmlFor={`${uid}-default-contributions-rate`} className={`block text-sm font-medium mb-1 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
                         Default Contributions Rate (%)
                     </label>
-                    <InputNumber
+                    <InputNumber inputId={`${uid}-default-contributions-rate`}
                         value={taxDefaults.contributionsRate}
                         onValueChange={e => setTaxDefaults(prev => ({ ...prev, contributionsRate: e.value ?? 0 }))}
                         suffix="%"
@@ -635,10 +652,10 @@ function SettingsPageInner() {
                     />
                 </div>
                 <div>
-                    <label className={`block text-sm font-medium mb-1 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                    <label htmlFor={`${uid}-default-other-deductions`} className={`block text-sm font-medium mb-1 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
                         Default Other Deductions (fixed amount)
                     </label>
-                    <InputNumber
+                    <InputNumber inputId={`${uid}-default-other-deductions`}
                         value={taxDefaults.otherDeductions}
                         onValueChange={e => setTaxDefaults(prev => ({ ...prev, otherDeductions: e.value ?? 0 }))}
                         mode="currency"
@@ -778,12 +795,12 @@ function SettingsPageInner() {
             <div className="space-y-4">
                 <div className="flex items-center justify-between gap-4">
                     <div className="min-w-0 flex-1">
-                        <p className={isDark ? 'text-gray-200' : 'text-gray-700'}>Allow Self-Signup</p>
+                        <label htmlFor="settings-self-signup" className={`block ${isDark ? 'text-gray-200' : 'text-gray-700'}`}>Allow Self-Signup</label>
                         <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
                             Enable new users to register without admin approval
                         </p>
                     </div>
-                    <InputSwitch className="shrink-0" checked={selfSignupEnabled} onChange={(e) => setSelfSignupEnabled(e.value)} />
+                    <InputSwitch inputId="settings-self-signup" className="shrink-0" checked={selfSignupEnabled} onChange={(e) => setSelfSignupEnabled(e.value)} />
                 </div>
                 <Divider />
                 <div className="flex items-center justify-between gap-4">

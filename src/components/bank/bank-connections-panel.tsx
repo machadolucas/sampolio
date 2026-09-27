@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { Card } from 'primereact/card';
 import { Button } from 'primereact/button';
 import { Dropdown } from 'primereact/dropdown';
@@ -30,7 +30,7 @@ import { getAccounts } from '@/lib/actions/accounts';
 import { maskIban, getConsentExpiryInfo, effectiveCardNumbers } from '@/lib/bank-utils';
 import { suggestStatementDay } from '@/lib/bank/card-billing';
 import { STATEMENT_GRACE_DAYS } from '@/lib/bank/constants';
-import { formatCurrency } from '@/lib/constants';
+import { formatCurrency, formatDate, formatDateTime } from '@/lib/constants';
 import type {
   BankConnection,
   BankAccountLink,
@@ -306,6 +306,7 @@ export function BankConnectionsPanel() {
                     severity="danger"
                     text
                     tooltip="Disconnect"
+                    aria-label={`Disconnect ${conn.aspspName}`}
                     onClick={() => handleDisconnect(conn)}
                   />
                 </div>
@@ -313,9 +314,9 @@ export function BankConnectionsPanel() {
 
               <p className={`${subtle} mb-3`}>
                 {conn.lastSyncAt
-                  ? `Last synced ${new Date(conn.lastSyncAt).toLocaleString('en-GB')} · ${conn.lastSyncStatus ?? ''}`
+                  ? `Last synced ${formatDateTime(conn.lastSyncAt)} · ${conn.lastSyncStatus ?? ''}`
                   : 'Not synced yet'}
-                {expiry.expiresAt && ` · consent valid until ${expiry.expiresAt.toLocaleDateString('en-GB')}`}
+                {expiry.expiresAt && ` · consent valid until ${formatDate(expiry.expiresAt)}`}
                 {/* The bank's own ceiling on consent length — makes it obvious
                     whether a short consent is the bank's rule or our request. */}
                 {conn.aspspMaxConsentValiditySeconds != null &&
@@ -355,6 +356,7 @@ export function BankConnectionsPanel() {
           </p>
           <Dropdown
             value={selectedBank}
+            aria-label="Your bank"
             options={aspsps}
             onChange={(e) => setSelectedBank(e.value)}
             placeholder={aspsps.length ? 'Select your bank' : 'Loading banks…'}
@@ -400,11 +402,14 @@ const TIPS = {
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
 
-function FieldLabel({ label, tip, isDark }: { label: string; tip: string; isDark: boolean }) {
+// The HelpHint sits beside (not inside) the <label> so the input's accessible
+// name is just the caption, not the caption plus the help button and text.
+function FieldLabel({ label, tip, isDark, htmlFor }: { label: string; tip: string; isDark: boolean; htmlFor: string }) {
   return (
-    <label className={`flex items-center gap-1 text-xs mb-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-      {label} <HelpHint text={tip} />
-    </label>
+    <div className={`flex items-center gap-1 text-xs mb-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+      <label htmlFor={htmlFor}>{label}</label>
+      <HelpHint text={tip} />
+    </div>
   );
 }
 
@@ -414,21 +419,24 @@ function ToggleField({
   checked,
   onChange,
   isDark,
+  inputId,
 }: {
   label: string;
   tip: string;
   checked: boolean;
   onChange: (v: boolean) => void;
   isDark: boolean;
+  inputId: string;
 }) {
   return (
     <div
       className={`flex items-center justify-between gap-3 rounded-md px-3 py-2 border ${isDark ? 'border-gray-700' : 'border-gray-200'}`}
     >
       <span className={`flex items-center gap-1 text-xs ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
-        {label} <HelpHint text={tip} />
+        <label htmlFor={inputId}>{label}</label>
+        <HelpHint text={tip} />
       </span>
-      <InputSwitch checked={checked} onChange={(e) => onChange(!!e.value)} />
+      <InputSwitch inputId={inputId} checked={checked} onChange={(e) => onChange(!!e.value)} />
     </div>
   );
 }
@@ -462,6 +470,7 @@ function AccountLinkRow({
   onPatch: (data: Parameters<typeof updateBankAccountLink>[2]) => Promise<boolean>;
 }) {
   const subtle = `text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`;
+  const fieldId = useId();
   const [saveState, setSaveState] = useState<SaveState>('idle');
   const [nameDraft, setNameDraft] = useState(link.customName ?? '');
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -519,8 +528,9 @@ function AccountLinkRow({
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3">
         <div className="sm:col-span-2">
-          <FieldLabel label="Display name" tip={TIPS.customName} isDark={isDark} />
+          <FieldLabel label="Display name" tip={TIPS.customName} isDark={isDark} htmlFor={`${fieldId}-name`} />
           <InputText
+            id={`${fieldId}-name`}
             value={nameDraft}
             onChange={(e) => setNameDraft(e.target.value)}
             onBlur={() => {
@@ -534,8 +544,9 @@ function AccountLinkRow({
         </div>
 
         <div>
-          <FieldLabel label="Type" tip={TIPS.type} isDark={isDark} />
+          <FieldLabel label="Type" tip={TIPS.type} isDark={isDark} htmlFor={`${fieldId}-role`} />
           <Dropdown
+            inputId={`${fieldId}-role`}
             value={link.accountRole}
             options={ROLE_OPTIONS}
             onChange={(e) => patch({ accountRole: e.value })}
@@ -548,8 +559,10 @@ function AccountLinkRow({
             label={isCard ? 'Paid from account' : 'Anchors account'}
             tip={isCard ? TIPS.paidFrom : TIPS.anchors}
             isDark={isDark}
+            htmlFor={`${fieldId}-linked`}
           />
           <Dropdown
+            inputId={`${fieldId}-linked`}
             value={link.linkedFinancialAccountId ?? null}
             options={accountOptions}
             // PrimeReact returns the whole option OBJECT (not its value) when the
@@ -563,8 +576,9 @@ function AccountLinkRow({
         {isCard && (
           <>
             <div>
-              <FieldLabel label="Statement closes (day)" tip={TIPS.statementDay} isDark={isDark} />
+              <FieldLabel label="Statement closes (day)" tip={TIPS.statementDay} isDark={isDark} htmlFor={`${fieldId}-statement`} />
               <InputNumber
+                inputId={`${fieldId}-statement`}
                 value={link.statementDay ?? null}
                 onValueChange={(e) => patch({ statementDay: e.value ?? null })}
                 min={1}
@@ -576,8 +590,9 @@ function AccountLinkRow({
               />
             </div>
             <div>
-              <FieldLabel label="Payment due (day)" tip={TIPS.dueDay} isDark={isDark} />
+              <FieldLabel label="Payment due (day)" tip={TIPS.dueDay} isDark={isDark} htmlFor={`${fieldId}-due`} />
               <InputNumber
+                inputId={`${fieldId}-due`}
                 value={link.paymentDueDay ?? null}
                 onValueChange={(e) => {
                   const due = e.value ?? null;
@@ -598,8 +613,9 @@ function AccountLinkRow({
               />
             </div>
             <div className="sm:col-span-2">
-              <FieldLabel label="Credit limit" tip={TIPS.creditLimit} isDark={isDark} />
+              <FieldLabel label="Credit limit" tip={TIPS.creditLimit} isDark={isDark} htmlFor={`${fieldId}-limit`} />
               <InputNumber
+                inputId={`${fieldId}-limit`}
                 value={link.manualCreditLimit ?? null}
                 onValueChange={(e) => patch({ manualCreditLimit: e.value ?? null })}
                 mode="currency"
@@ -612,8 +628,9 @@ function AccountLinkRow({
               />
             </div>
             <div className="sm:col-span-2">
-              <FieldLabel label="Expected monthly spend (forecast buffer)" tip={TIPS.expectedSpend} isDark={isDark} />
+              <FieldLabel label="Expected monthly spend (forecast buffer)" tip={TIPS.expectedSpend} isDark={isDark} htmlFor={`${fieldId}-spend`} />
               <InputNumber
+                inputId={`${fieldId}-spend`}
                 value={link.expectedMonthlySpend ?? null}
                 onValueChange={(e) => patch({ expectedMonthlySpend: e.value ?? null })}
                 mode="currency"
@@ -640,6 +657,7 @@ function AccountLinkRow({
           checked={!!link.isExcluded}
           onChange={(v) => patch({ isExcluded: v })}
           isDark={isDark}
+          inputId={`${fieldId}-exclude`}
         />
       </div>
 

@@ -52,6 +52,7 @@ export function MobileNavDrawer({ visible, onHide }: MobileNavDrawerProps) {
                                 <Link
                                     href={item.href}
                                     onClick={onHide}
+                                    aria-current={active ? 'page' : undefined}
                                     className={`flex items-center gap-3 px-3 py-3 rounded-lg transition-colors duration-150 no-underline ${active
                                         ? isDark ? 'bg-accent-400/20 text-accent-300 active:bg-accent-400/30' : 'bg-accent-100 text-accent-800 active:bg-accent-200'
                                         : isDark ? 'text-gray-400 hover:bg-gray-800 hover:text-gray-200 active:bg-gray-800' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900 active:bg-gray-100'

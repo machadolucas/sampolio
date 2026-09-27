@@ -1,11 +1,10 @@
 'use client';
 
 import { useMemo } from 'react';
-import { parseISO, format } from 'date-fns';
 import { CategoryIcon } from './category-icon';
 import { UserAvatar } from '@/components/ui/user-avatar';
 import { useUserProfiles } from '@/lib/hooks/use-user-profiles';
-import { formatCents } from '@/lib/constants';
+import { formatCents, formatDayMonth } from '@/lib/constants';
 import type { Currency, SplitActivityEvent } from '@/types';
 
 function netLabel(cents: number, currency: Currency): { text: string; cls: string } {
@@ -94,7 +93,7 @@ export function SplitActivityFeed({
                 {e.kind === 'expense'
                   ? `added by ${e.actorUserId === myId ? 'You' : firstName(e.actorName)} · `
                   : ''}
-                {format(parseISO(e.date), 'MMM d')}
+                {formatDayMonth(e.date, { short: true })}
                 {showGroup ? ` · ${e.groupEmoji ? e.groupEmoji + ' ' : ''}${e.groupName}` : ''}
                 {e.source === 'recurring' ? ' · ↻' : ''}
               </div>

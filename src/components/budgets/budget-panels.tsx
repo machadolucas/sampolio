@@ -24,16 +24,27 @@ const FUNDING_TYPE_LABELS: Record<BudgetFundingType, string> = {
 
 function PanelRow({ children, onClick }: { children: React.ReactNode; onClick: () => void }) {
   return (
+    // Whole-row edit target: keyboard-reachable like the bank ledger rows
+    // (role="button" + Enter/Space). Inner controls stop propagation.
     <div
-      className="flex justify-between items-center gap-2 px-1.5 py-1 sm:px-2 sm:py-1.5 rounded cursor-pointer transition-colors text-sm hover:bg-black/5 dark:hover:bg-white/10 group"
+      role="button"
+      tabIndex={0}
+      className="flex justify-between items-center gap-2 px-1.5 py-1 sm:px-2 sm:py-1.5 rounded cursor-pointer transition-colors text-sm hover:bg-black/5 dark:hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 group"
       onClick={onClick}
+      onKeyDown={(e) => {
+        if (e.target !== e.currentTarget) return;
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onClick();
+        }
+      }}
     >
       {children}
     </div>
   );
 }
 
-function DeleteRowButton({ onDelete }: { onDelete: () => void }) {
+function DeleteRowButton({ onDelete, label }: { onDelete: () => void; label: string }) {
   return (
     <Button
       icon={<MdDelete />}
@@ -42,7 +53,8 @@ function DeleteRowButton({ onDelete }: { onDelete: () => void }) {
       size="small"
       // Hover-reveal only makes sense with a pointer (lg+ desktop); mobile has no
       // hover state, so the button stays visible below lg or it would be unreachable.
-      className="!p-1 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 shrink-0"
+      aria-label={label}
+      className="!p-1 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 lg:group-focus-within:opacity-100 shrink-0"
       onClick={(e) => { e.stopPropagation(); onDelete(); }}
     />
   );
@@ -117,7 +129,7 @@ export function BudgetLinesPanel({
                     {line.kind === 'monthly' ? '/ month' : formatYearMonthShort(line.month ?? budget.startMonth)}
                   </span>
                 </span>
-                <DeleteRowButton onDelete={() => handleDelete(line)} />
+                <DeleteRowButton label={`Delete ${line.name}`} onDelete={() => handleDelete(line)} />
               </div>
             </PanelRow>
           ))}
@@ -261,7 +273,7 @@ export function BudgetFundingPanel({
                 </div>
                 <div className="flex items-center gap-1 whitespace-nowrap shrink-0">
                   <span className="text-green-600">+{formatCurrency(source.amount, budget.currency)}</span>
-                  <DeleteRowButton onDelete={() => handleDelete(source)} />
+                  <DeleteRowButton label={`Delete ${source.name}`} onDelete={() => handleDelete(source)} />
                 </div>
               </PanelRow>
             );

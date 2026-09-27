@@ -7,10 +7,11 @@ import { Card } from 'primereact/card';
 import { Button } from 'primereact/button';
 import { Menu } from 'primereact/menu';
 import { SelectButton } from 'primereact/selectbutton';
+import { confirmDialog } from 'primereact/confirmdialog';
 import { TabView, TabPanel } from 'primereact/tabview';
 import { ChartsPageSkeleton } from '@/components/ui/skeletons';
 import { AlertBanner } from '@/components/ui/alert-banner';
-import { formatCurrency, formatYearMonth } from '@/lib/constants';
+import { formatCurrency, formatYearMonth, formatDayMonth } from '@/lib/constants';
 import { MdHouse, MdPercent, MdMoreVert, MdFlag } from 'react-icons/md';
 import { useAppContext } from '@/components/layout/app-layout';
 import { useTheme } from '@/components/providers/theme-provider';
@@ -159,12 +160,22 @@ export default function MortgagePage() {
     return map;
   }, [currentRow]);
 
-  const handleDelete = async () => {
+  const handleDelete = () => {
     if (!inputs) return;
-    if (!confirm('Delete this mortgage for all members? This cannot be undone.')) return;
-    const res = await deleteMortgage(inputs.mortgage.id);
-    if (res.success) { toast('Mortgage deleted'); fetchData(); }
-    else toast(res.error ?? 'Failed to delete', 'error');
+    const mortgageId = inputs.mortgage.id;
+    confirmDialog({
+      header: 'Delete mortgage?',
+      message: 'Delete this mortgage for all members? This cannot be undone.',
+      icon: 'pi pi-exclamation-triangle',
+      acceptLabel: 'Delete',
+      rejectLabel: 'Cancel',
+      acceptClassName: 'p-button-danger',
+      accept: async () => {
+        const res = await deleteMortgage(mortgageId);
+        if (res.success) { toast('Mortgage deleted'); fetchData(); }
+        else toast(res.error ?? 'Failed to delete', 'error');
+      },
+    });
   };
 
   const reconcileMonth = useMemo(
@@ -172,12 +183,23 @@ export default function MortgagePage() {
     [reconcileYM, months]
   );
 
-  const handleRevert = async (yearMonth: string) => {
+  const handleRevert = (yearMonth: string) => {
     if (!inputs) return;
-    if (!confirm(`Revert ${yearMonth} back to a forecast? Its recorded figures will be removed.`)) return;
-    const res = await revertMortgageMonth(inputs.mortgage.id, yearMonth);
-    if (res.success) { toast(`${yearMonth} reverted to forecast`); fetchData(); }
-    else toast(res.error ?? 'Failed to revert', 'error');
+    const mortgageId = inputs.mortgage.id;
+    const label = formatYearMonth(yearMonth);
+    confirmDialog({
+      header: 'Revert to forecast?',
+      message: `Revert ${label} back to a forecast? Its recorded figures will be removed.`,
+      icon: 'pi pi-exclamation-triangle',
+      acceptLabel: 'Revert',
+      rejectLabel: 'Cancel',
+      acceptClassName: 'p-button-danger',
+      accept: async () => {
+        const res = await revertMortgageMonth(mortgageId, yearMonth);
+        if (res.success) { toast(`${label} reverted to forecast`); fetchData(); }
+        else toast(res.error ?? 'Failed to revert', 'error');
+      },
+    });
   };
 
   if (isLoading) {
@@ -263,7 +285,7 @@ export default function MortgagePage() {
           icon={<MdPercent size={20} />}
           action={{ label: 'Update rate', onClick: () => setEuriborOpen(true) }}
         >
-          Your mortgage interest rate is due for its yearly update — the bank resets it (the 12-month Euribor reference rate) around {euriborDue.lastResetDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })}. Enter the new rate from your bank so your payments stay accurate.
+          Your mortgage interest rate is due for its yearly update — the bank resets it (the 12-month Euribor reference rate) around {formatDayMonth(euriborDue.lastResetDate)}. Enter the new rate from your bank so your payments stay accurate.
         </AlertBanner>
       )}
 
@@ -325,7 +347,7 @@ export default function MortgagePage() {
                   {euriborDue?.nextResetDate && (
                     <div className="flex items-center justify-between">
                       <span className="text-sm opacity-70">Next Euribor reset</span>
-                      <span className="font-semibold">{euriborDue.nextResetDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}</span>
+                      <span className="font-semibold">{formatDayMonth(euriborDue.nextResetDate, { year: true })}</span>
                     </div>
                   )}
                   {payoffMonth && (

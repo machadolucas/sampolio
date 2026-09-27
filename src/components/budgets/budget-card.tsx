@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { Tag } from 'primereact/tag';
 import { MdLuggage, MdPlace } from 'react-icons/md';
 import { formatYearMonth } from '@/lib/constants';
@@ -15,7 +16,8 @@ export function statusTag(budget: Budget): { value: string; severity: 'success' 
   return { value: 'Draft', severity: 'warning' };
 }
 
-export function BudgetCard({ budget, onClick }: { budget: Budget; onClick: () => void }) {
+/** A real link (keyboard, middle-click, open-in-new-tab all work). */
+export function BudgetCard({ budget }: { budget: Budget }) {
   const { theme } = useTheme();
   const isDark = theme === 'dark';
   const feasibility = computeFeasibility(budget);
@@ -23,11 +25,11 @@ export function BudgetCard({ budget, onClick }: { budget: Budget; onClick: () =>
   const tag = statusTag(budget);
 
   return (
-    <div
-      className={`rounded-xl border p-4 pressable cursor-pointer hover:shadow-md ${
+    <Link
+      href={`/budgets/${budget.id}`}
+      className={`block rounded-xl border p-4 pressable cursor-pointer hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 ${
         isDark ? 'border-neutral-700 bg-neutral-800/50 hover:bg-neutral-800' : 'border-neutral-200 bg-white hover:bg-neutral-50'
       } ${budget.isArchived ? 'opacity-60' : ''}`}
-      onClick={onClick}
     >
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
@@ -46,6 +48,6 @@ export function BudgetCard({ budget, onClick }: { budget: Budget; onClick: () =>
         {formatYearMonth(budget.startMonth)} – {formatYearMonth(budget.endMonth)} · {budget.currency}
       </p>
       <p className="text-sm mt-2">{verdict.sentence}</p>
-    </div>
+    </Link>
   );
 }

@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useId } from 'react';
+import { useFormSubmit } from '@/lib/hooks/use-form-submit';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Dialog } from 'primereact/dialog';
@@ -48,6 +49,7 @@ export function GoalDialog({
   onHide: () => void;
   onSaved: () => void;
 }) {
+  const uid = useId();
   const toast = useToast();
   const [isSaving, setIsSaving] = useState(false);
 
@@ -151,10 +153,14 @@ export function GoalDialog({
     }
   };
 
+  // Enter submits: the body is a <form>, and the footer's primary button is
+  // tied to it through the `form` attribute (the footer renders outside it).
+  const onFormSubmit = useFormSubmit(() => handleSubmit(handleSave)(), { disabled: isSaving });
+
   const footer = (
     <div className="flex justify-end gap-2">
-      <Button label="Cancel" icon={<MdClose />} severity="secondary" text onClick={onHide} disabled={isSaving} />
-      <Button label={goal ? 'Save' : 'Create goal'} icon={<MdSave />} onClick={handleSubmit(handleSave)} loading={isSaving} />
+      <Button type="button" label="Cancel" icon={<MdClose />} severity="secondary" text onClick={onHide} disabled={isSaving} />
+      <Button type="submit" form={`${uid}-form`} label={goal ? 'Save' : 'Create goal'} icon={<MdSave />} loading={isSaving} />
     </div>
   );
 
@@ -169,7 +175,7 @@ export function GoalDialog({
       closable
       draggable={false}
     >
-      <div className="space-y-4">
+      <form id={`${uid}-form`} className="space-y-4" onSubmit={onFormSubmit} noValidate>
         <div>
           <label htmlFor="goal-name" className="block text-sm font-medium mb-1">Name</label>
           <Controller
@@ -252,12 +258,12 @@ export function GoalDialog({
         </div>
 
         <div>
-          <label className="block text-sm font-medium mb-1">Track against</label>
+          <label id={`${uid}-track-against`} className="block text-sm font-medium mb-1">Track against</label>
           <Controller
             name="trackingMethod"
             control={control}
             render={({ field }) => (
-              <SelectButton
+              <SelectButton aria-labelledby={`${uid}-track-against`}
                 value={field.value}
                 onChange={(e) => { if (e.value) field.onChange(e.value); }}
                 options={TRACKING_OPTIONS}
@@ -268,12 +274,12 @@ export function GoalDialog({
         </div>
 
         <div>
-          <label className="block text-sm font-medium mb-1">Goal type</label>
+          <label id={`${uid}-goal-type`} className="block text-sm font-medium mb-1">Goal type</label>
           <Controller
             name="goalType"
             control={control}
             render={({ field }) => (
-              <SelectButton
+              <SelectButton aria-labelledby={`${uid}-goal-type`}
                 value={field.value ?? 'reserve'}
                 onChange={(e) => { if (e.value) field.onChange(e.value); }}
                 options={GOAL_TYPE_OPTIONS}
@@ -371,7 +377,7 @@ export function GoalDialog({
         <p className="text-xs opacity-50">
           Progress is shown in the goal&apos;s currency; amounts from accounts in other currencies are not converted.
         </p>
-      </div>
+      </form>
     </Dialog>
   );
 }

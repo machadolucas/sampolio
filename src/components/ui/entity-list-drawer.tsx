@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useId } from 'react';
 import { Button } from 'primereact/button';
 import { Dialog } from 'primereact/dialog';
 import { Sidebar } from 'primereact/sidebar';
@@ -12,8 +12,9 @@ import { Checkbox } from 'primereact/checkbox';
 import { ProgressSpinner } from 'primereact/progressspinner';
 import { Message } from 'primereact/message';
 import { Tooltip } from 'primereact/tooltip';
+import { confirmDialog } from 'primereact/confirmdialog';
 import { MdAccountBalanceWallet, MdBarChart, MdGroup, MdCreditCard, MdAdd, MdCheck, MdInfo, MdVisibility, MdVisibilityOff } from 'react-icons/md';
-import { formatCurrency, formatYearMonth, CURRENCIES, FREQUENCIES, PLANNING_HORIZONS } from '@/lib/constants';
+import { formatCurrency, formatYearMonth, formatRate, CURRENCIES, FREQUENCIES, PLANNING_HORIZONS } from '@/lib/constants';
 import { getCurrentYearMonth, addMonths } from '@/lib/projection';
 import { getDebtPayoffInfo, getDebtOriginalPrincipal } from '@/lib/debt-utils';
 import { calculateDebtAmortization } from '@/lib/wealth-projection';
@@ -21,6 +22,7 @@ import { DebtProgressCard } from '@/components/ui/debt-progress-card';
 import { useAppContext } from '@/components/layout/app-layout';
 import { HelpTip, MonthPicker, ItemCard, SubEntityList } from '@/components/ui/form-primitives';
 import { useToast } from '@/components/providers/toast-provider';
+import { useFormSubmit } from '@/lib/hooks/use-form-submit';
 import {
     getAccounts,
     createAccount,
@@ -99,6 +101,7 @@ function AccountForm({ account, onSave, onCancel }: {
     onSave: () => void;
     onCancel: () => void;
 }) {
+    const uid = useId();
     const toast = useToast();
     const [name, setName] = useState(account?.name || '');
     const [currency, setCurrency] = useState(account?.currency || 'EUR');
@@ -129,39 +132,41 @@ function AccountForm({ account, onSave, onCancel }: {
         } catch { setError('An error occurred.'); } finally { setIsSaving(false); }
     };
 
+    const onFormSubmit = useFormSubmit(handleSubmit, { disabled: isSaving });
+
     return (
-        <div className="space-y-4">
+        <form className="space-y-4" onSubmit={onFormSubmit} noValidate>
             <Message severity="info" text="A cash account represents a bank account or wallet. It's the starting point for tracking your income, expenses, and balance projections." className="w-full" />
             {error && <Message severity="error" text={error} className="w-full" />}
 
             <div className="flex flex-col gap-1">
-                <label className="font-medium text-sm">Account Name</label>
-                <InputText placeholder="e.g., Main Checking Account" value={name} onChange={(e) => setName(e.target.value)} />
+                <label htmlFor={`${uid}-account-name`} className="font-medium text-sm">Account Name</label>
+                <InputText id={`${uid}-account-name`} placeholder="e.g., Main Checking Account" value={name} onChange={(e) => setName(e.target.value)} />
                 <HelpTip text="Give your account a memorable name to easily identify it." />
             </div>
 
             <div className="flex flex-col gap-1">
-                <label className="font-medium text-sm">Currency</label>
-                <Dropdown value={currency} onChange={(e: DropdownChangeEvent) => setCurrency(e.value)} options={CURRENCIES} optionLabel="label" optionValue="value" placeholder="Select currency" />
+                <label htmlFor={`${uid}-currency`} className="font-medium text-sm">Currency</label>
+                <Dropdown inputId={`${uid}-currency`} value={currency} onChange={(e: DropdownChangeEvent) => setCurrency(e.value)} options={CURRENCIES} optionLabel="label" optionValue="value" placeholder="Select currency" />
                 <HelpTip text="The currency used for all amounts in this account." />
             </div>
 
             <div className="flex flex-col gap-1">
-                <label className="font-medium text-sm">Starting Balance</label>
-                <InputNumber value={startingBalance} onValueChange={(e) => setStartingBalance(e.value || 0)} mode="currency" currency={currency} locale="fi-FI" placeholder="Current account balance" />
+                <label htmlFor={`${uid}-starting-balance`} className="font-medium text-sm">Starting Balance</label>
+                <InputNumber inputId={`${uid}-starting-balance`} value={startingBalance} onValueChange={(e) => setStartingBalance(e.value || 0)} mode="currency" currency={currency} locale="fi-FI" placeholder="Current account balance" />
                 <HelpTip text="Your current account balance. Projections are calculated from this amount." />
             </div>
 
             <div className="flex flex-col gap-1">
-                <label className="font-medium text-sm">Planning Horizon</label>
-                <Dropdown value={planningHorizonMonths} onChange={(e: DropdownChangeEvent) => setPlanningHorizonMonths(e.value)} options={PLANNING_HORIZONS} optionLabel="label" optionValue="value" placeholder="How far ahead to project" />
+                <label htmlFor={`${uid}-planning-horizon`} className="font-medium text-sm">Planning Horizon</label>
+                <Dropdown inputId={`${uid}-planning-horizon`} value={planningHorizonMonths} onChange={(e: DropdownChangeEvent) => setPlanningHorizonMonths(e.value)} options={PLANNING_HORIZONS} optionLabel="label" optionValue="value" placeholder="How far ahead to project" />
                 <HelpTip text="How many months into the future to project your balance." />
             </div>
 
             {planningHorizonMonths === -1 && (
                 <div className="flex flex-col gap-1">
-                    <label className="font-medium text-sm">Custom End Date</label>
-                    <MonthPicker value={customEndDate} onChange={setCustomEndDate} placeholder="Projection end date" helpText="The last month to include in projections." />
+                    <label htmlFor={`${uid}-custom-end-date`} className="font-medium text-sm">Custom End Date</label>
+                    <MonthPicker inputId={`${uid}-custom-end-date`} value={customEndDate} onChange={setCustomEndDate} placeholder="Projection end date" helpText="The last month to include in projections." />
                 </div>
             )}
 
@@ -173,20 +178,21 @@ function AccountForm({ account, onSave, onCancel }: {
 
             {showAdvanced && (
                 <div className="flex flex-col gap-1">
-                    <label className="font-medium text-sm">History Start Month</label>
-                    <MonthPicker value={startingDate} onChange={setStartingDate} placeholder="When to start projections" helpText="The month your history begins. Defaults to the current month — you normally don't need to change it. After each monthly check-in, projections automatically re-anchor on your latest confirmed balance." />
+                    <label htmlFor={`${uid}-history-start-month`} className="font-medium text-sm">History Start Month</label>
+                    <MonthPicker inputId={`${uid}-history-start-month`} value={startingDate} onChange={setStartingDate} placeholder="When to start projections" helpText="The month your history begins. Defaults to the current month — you normally don't need to change it. After each monthly check-in, projections automatically re-anchor on your latest confirmed balance." />
                 </div>
             )}
 
             <div className="flex justify-end gap-2 pt-4">
-                <Button label="Cancel" severity="secondary" outlined onClick={onCancel} />
-                <Button label={account ? 'Save Changes' : 'Create Account'} icon={account ? <MdCheck /> : <MdAdd />} loading={isSaving} onClick={handleSubmit} />
+                <Button type="button" label="Cancel" severity="secondary" outlined onClick={onCancel} />
+                <Button label={account ? 'Save Changes' : 'Create Account'} icon={account ? <MdCheck /> : <MdAdd />} loading={isSaving} type="submit" />
             </div>
-        </div>
+        </form>
     );
 }
 
 function InvestmentForm({ investment, onSave, onCancel }: { investment: InvestmentAccount | null; onSave: () => void; onCancel: () => void; }) {
+    const uid = useId();
     const toast = useToast();
     const [name, setName] = useState(investment?.name || '');
     const [description, setDescription] = useState(investment?.description || '');
@@ -210,49 +216,51 @@ function InvestmentForm({ investment, onSave, onCancel }: { investment: Investme
         } catch { setError('An error occurred.'); } finally { setIsSaving(false); }
     };
 
+    const onFormSubmit = useFormSubmit(handleSubmit, { disabled: isSaving });
+
     return (
-        <div className="space-y-4">
+        <form className="space-y-4" onSubmit={onFormSubmit} noValidate>
             <Message severity="info" text="Track an investment such as stocks, ETFs, or a retirement fund. Set the expected annual growth rate and the app will project its future value." className="w-full" />
             {error && <Message severity="error" text={error} className="w-full" />}
 
             <div className="flex flex-col gap-1">
-                <label className="font-medium text-sm">Name</label>
-                <InputText placeholder="e.g., Index Fund Portfolio" value={name} onChange={(e) => setName(e.target.value)} />
+                <label htmlFor={`${uid}-name`} className="font-medium text-sm">Name</label>
+                <InputText id={`${uid}-name`} placeholder="e.g., Index Fund Portfolio" value={name} onChange={(e) => setName(e.target.value)} />
                 <HelpTip text="A descriptive name for this investment." />
             </div>
 
             <div className="flex flex-col gap-1">
-                <label className="font-medium text-sm">Description (optional)</label>
-                <InputTextarea placeholder="Additional notes about this investment" value={description} onChange={(e) => setDescription(e.target.value)} rows={2} />
+                <label htmlFor={`${uid}-description-optional`} className="font-medium text-sm">Description (optional)</label>
+                <InputTextarea id={`${uid}-description-optional`} placeholder="Additional notes about this investment" value={description} onChange={(e) => setDescription(e.target.value)} rows={2} />
             </div>
 
             <div className="flex flex-col gap-1">
-                <label className="font-medium text-sm">Currency</label>
-                <Dropdown value={currency} onChange={(e: DropdownChangeEvent) => setCurrency(e.value)} options={CURRENCIES} optionLabel="label" optionValue="value" />
+                <label htmlFor={`${uid}-currency`} className="font-medium text-sm">Currency</label>
+                <Dropdown inputId={`${uid}-currency`} value={currency} onChange={(e: DropdownChangeEvent) => setCurrency(e.value)} options={CURRENCIES} optionLabel="label" optionValue="value" />
             </div>
 
             <div className="flex flex-col gap-1">
-                <label className="font-medium text-sm">Current Valuation</label>
-                <InputNumber value={startingValuation} onValueChange={(e) => setStartingValuation(e.value || 0)} mode="currency" currency={currency} locale="fi-FI" placeholder="Current total value" />
+                <label htmlFor={`${uid}-current-valuation`} className="font-medium text-sm">Current Valuation</label>
+                <InputNumber inputId={`${uid}-current-valuation`} value={startingValuation} onValueChange={(e) => setStartingValuation(e.value || 0)} mode="currency" currency={currency} locale="fi-FI" placeholder="Current total value" />
                 <HelpTip text="The current market value of this investment." />
             </div>
 
             <div className="flex flex-col gap-1">
-                <label className="font-medium text-sm">Valuation Date</label>
-                <MonthPicker value={valuationDate} onChange={setValuationDate} placeholder="When was this valued?" helpText="The month when the valuation was last updated." />
+                <label htmlFor={`${uid}-valuation-date`} className="font-medium text-sm">Valuation Date</label>
+                <MonthPicker inputId={`${uid}-valuation-date`} value={valuationDate} onChange={setValuationDate} placeholder="When was this valued?" helpText="The month when the valuation was last updated." />
             </div>
 
             <div className="flex flex-col gap-1">
-                <label className="font-medium text-sm">Expected Annual Growth Rate</label>
-                <InputNumber value={annualGrowthRate} onValueChange={(e) => setAnnualGrowthRate(e.value || 0)} suffix=" %" locale="fi-FI" minFractionDigits={1} maxFractionDigits={2} placeholder="e.g., 7" />
+                <label htmlFor={`${uid}-expected-annual-growth`} className="font-medium text-sm">Expected Annual Growth Rate</label>
+                <InputNumber inputId={`${uid}-expected-annual-growth`} value={annualGrowthRate} onValueChange={(e) => setAnnualGrowthRate(e.value || 0)} suffix=" %" locale="fi-FI" minFractionDigits={1} maxFractionDigits={2} placeholder="e.g., 7" />
                 <HelpTip text="The average yearly return you expect. Historical stock market average is ~7%. Use a conservative estimate." />
             </div>
 
             <div className="flex justify-end gap-2 pt-4">
-                <Button label="Cancel" severity="secondary" outlined onClick={onCancel} />
-                <Button label={investment ? 'Save Changes' : 'Create Investment'} icon={investment ? <MdCheck /> : <MdAdd />} loading={isSaving} onClick={handleSubmit} />
+                <Button type="button" label="Cancel" severity="secondary" outlined onClick={onCancel} />
+                <Button label={investment ? 'Save Changes' : 'Create Investment'} icon={investment ? <MdCheck /> : <MdAdd />} loading={isSaving} type="submit" />
             </div>
-        </div>
+        </form>
     );
 }
 
@@ -260,6 +268,7 @@ const CONTRIBUTION_TYPES = [{ label: 'Contribution', value: 'contribution' }, { 
 const CONTRIBUTION_KINDS = [{ label: 'One-off', value: 'one-off' }, { label: 'Recurring', value: 'recurring' }];
 
 function ContributionForm({ investmentId, contribution, currency, onSave, onCancel }: { investmentId: string; contribution: InvestmentContribution | null; currency: Currency; onSave: () => void; onCancel: () => void; }) {
+    const uid = useId();
     const toast = useToast();
     const [contribType, setContribType] = useState<'contribution' | 'withdrawal'>(contribution?.type || 'contribution');
     const [contribKind, setContribKind] = useState<'one-off' | 'recurring'>(contribution?.kind || 'one-off');
@@ -292,54 +301,56 @@ function ContributionForm({ investmentId, contribution, currency, onSave, onCanc
         } catch { setError('An error occurred.'); } finally { setIsSaving(false); }
     };
 
+    const onFormSubmit = useFormSubmit(handleSubmit, { disabled: isSaving });
+
     return (
-        <div className="space-y-4">
+        <form className="space-y-4" onSubmit={onFormSubmit} noValidate>
             <Message severity="info" text="A contribution adds money to this investment; a withdrawal takes money out. Set it as one-off for a single event, or recurring for a regular schedule." className="w-full" />
             {error && <Message severity="error" text={error} className="w-full" />}
 
             <div className="flex flex-col gap-1">
-                <label className="font-medium text-sm">Type</label>
-                <Dropdown value={contribType} onChange={(e: DropdownChangeEvent) => setContribType(e.value)} options={CONTRIBUTION_TYPES} optionLabel="label" optionValue="value" />
+                <label htmlFor={`${uid}-type`} className="font-medium text-sm">Type</label>
+                <Dropdown inputId={`${uid}-type`} value={contribType} onChange={(e: DropdownChangeEvent) => setContribType(e.value)} options={CONTRIBUTION_TYPES} optionLabel="label" optionValue="value" />
                 <HelpTip text="Contribution = money going in. Withdrawal = money coming out." />
             </div>
 
             <div className="flex flex-col gap-1">
-                <label className="font-medium text-sm">Kind</label>
-                <Dropdown value={contribKind} onChange={(e: DropdownChangeEvent) => setContribKind(e.value)} options={CONTRIBUTION_KINDS} optionLabel="label" optionValue="value" />
+                <label htmlFor={`${uid}-kind`} className="font-medium text-sm">Kind</label>
+                <Dropdown inputId={`${uid}-kind`} value={contribKind} onChange={(e: DropdownChangeEvent) => setContribKind(e.value)} options={CONTRIBUTION_KINDS} optionLabel="label" optionValue="value" />
                 <HelpTip text="One-off = happens once. Recurring = repeats on a schedule." />
             </div>
 
             <div className="flex flex-col gap-1">
-                <label className="font-medium text-sm">Amount</label>
-                <InputNumber value={amount} onValueChange={(e) => setAmount(e.value || 0)} mode="currency" currency={currency} locale="fi-FI" />
+                <label htmlFor={`${uid}-amount`} className="font-medium text-sm">Amount</label>
+                <InputNumber inputId={`${uid}-amount`} value={amount} onValueChange={(e) => setAmount(e.value || 0)} mode="currency" currency={currency} locale="fi-FI" />
             </div>
 
             {contribKind === 'one-off' && (
                 <div className="flex flex-col gap-1">
-                    <label className="font-medium text-sm">Scheduled Date</label>
-                    <MonthPicker value={scheduledDate} onChange={setScheduledDate} placeholder="When will this happen?" helpText="The month this one-off contribution or withdrawal occurs." />
+                    <label htmlFor={`${uid}-scheduled-date`} className="font-medium text-sm">Scheduled Date</label>
+                    <MonthPicker inputId={`${uid}-scheduled-date`} value={scheduledDate} onChange={setScheduledDate} placeholder="When will this happen?" helpText="The month this one-off contribution or withdrawal occurs." />
                 </div>
             )}
             {contribKind === 'recurring' && (
                 <>
                     <div className="flex flex-col gap-1">
-                        <label className="font-medium text-sm">Frequency</label>
-                        <Dropdown value={frequency} onChange={(e: DropdownChangeEvent) => setFrequency(e.value)} options={FREQUENCIES} optionLabel="label" optionValue="value" />
+                        <label htmlFor={`${uid}-frequency`} className="font-medium text-sm">Frequency</label>
+                        <Dropdown inputId={`${uid}-frequency`} value={frequency} onChange={(e: DropdownChangeEvent) => setFrequency(e.value)} options={FREQUENCIES} optionLabel="label" optionValue="value" />
                     </div>
                     <div className="flex flex-col gap-1">
-                        <label className="font-medium text-sm">Start Date</label>
-                        <MonthPicker value={startDate} onChange={setStartDate} placeholder="First occurrence" helpText="The month the recurring contribution begins." />
+                        <label htmlFor={`${uid}-start-date`} className="font-medium text-sm">Start Date</label>
+                        <MonthPicker inputId={`${uid}-start-date`} value={startDate} onChange={setStartDate} placeholder="First occurrence" helpText="The month the recurring contribution begins." />
                     </div>
                     <div className="flex flex-col gap-1">
-                        <label className="font-medium text-sm">End Date (optional)</label>
-                        <MonthPicker value={endDate} onChange={setEndDate} placeholder="Leave empty for indefinite" helpText="Leave empty if this continues indefinitely." />
+                        <label htmlFor={`${uid}-end-date-optional`} className="font-medium text-sm">End Date (optional)</label>
+                        <MonthPicker inputId={`${uid}-end-date-optional`} value={endDate} onChange={setEndDate} placeholder="Leave empty for indefinite" helpText="Leave empty if this continues indefinitely." />
                     </div>
                 </>
             )}
 
             <div className="flex flex-col gap-1">
-                <label className="font-medium text-sm">Description (optional)</label>
-                <InputText placeholder="e.g., Monthly auto-invest" value={description} onChange={(e) => setDescription(e.target.value)} />
+                <label htmlFor={`${uid}-description-optional`} className="font-medium text-sm">Description (optional)</label>
+                <InputText id={`${uid}-description-optional`} placeholder="e.g., Monthly auto-invest" value={description} onChange={(e) => setDescription(e.target.value)} />
             </div>
 
             <div className="flex items-center gap-2">
@@ -350,14 +361,15 @@ function ContributionForm({ investmentId, contribution, currency, onSave, onCanc
             </div>
 
             <div className="flex justify-end gap-2 pt-4">
-                <Button label="Cancel" severity="secondary" outlined onClick={onCancel} />
-                <Button label={contribution ? 'Save' : 'Create'} icon={contribution ? <MdCheck /> : <MdAdd />} loading={isSaving} onClick={handleSubmit} />
+                <Button type="button" label="Cancel" severity="secondary" outlined onClick={onCancel} />
+                <Button label={contribution ? 'Save' : 'Create'} icon={contribution ? <MdCheck /> : <MdAdd />} loading={isSaving} type="submit" />
             </div>
-        </div>
+        </form>
     );
 }
 
 function ReceivableForm({ receivable, onSave, onCancel }: { receivable: Receivable | null; onSave: () => void; onCancel: () => void; }) {
+    const uid = useId();
     const toast = useToast();
     const [name, setName] = useState(receivable?.name || '');
     const [description, setDescription] = useState(receivable?.description || '');
@@ -384,36 +396,38 @@ function ReceivableForm({ receivable, onSave, onCancel }: { receivable: Receivab
         } catch { setError('An error occurred.'); } finally { setIsSaving(false); }
     };
 
+    const onFormSubmit = useFormSubmit(handleSubmit, { disabled: isSaving });
+
     return (
-        <div className="space-y-4">
+        <form className="space-y-4" onSubmit={onFormSubmit} noValidate>
             <Message severity="info" text="A receivable is money someone owes you — e.g., a personal loan you gave to a friend. Track the amount, expected repayments, and optional interest." className="w-full" />
             {error && <Message severity="error" text={error} className="w-full" />}
 
             <div className="flex flex-col gap-1">
-                <label className="font-medium text-sm">Name</label>
-                <InputText placeholder="e.g., Loan to John" value={name} onChange={(e) => setName(e.target.value)} />
+                <label htmlFor={`${uid}-name`} className="font-medium text-sm">Name</label>
+                <InputText id={`${uid}-name`} placeholder="e.g., Loan to John" value={name} onChange={(e) => setName(e.target.value)} />
                 <HelpTip text="Who owes you and/or a description of what this receivable is for." />
             </div>
 
             <div className="flex flex-col gap-1">
-                <label className="font-medium text-sm">Description (optional)</label>
-                <InputTextarea placeholder="Additional details or notes" value={description} onChange={(e) => setDescription(e.target.value)} rows={2} />
+                <label htmlFor={`${uid}-description-optional`} className="font-medium text-sm">Description (optional)</label>
+                <InputTextarea id={`${uid}-description-optional`} placeholder="Additional details or notes" value={description} onChange={(e) => setDescription(e.target.value)} rows={2} />
             </div>
 
             <div className="flex flex-col gap-1">
-                <label className="font-medium text-sm">Currency</label>
-                <Dropdown value={currency} onChange={(e: DropdownChangeEvent) => setCurrency(e.value)} options={CURRENCIES} optionLabel="label" optionValue="value" />
+                <label htmlFor={`${uid}-currency`} className="font-medium text-sm">Currency</label>
+                <Dropdown inputId={`${uid}-currency`} value={currency} onChange={(e: DropdownChangeEvent) => setCurrency(e.value)} options={CURRENCIES} optionLabel="label" optionValue="value" />
             </div>
 
             <div className="flex flex-col gap-1">
-                <label className="font-medium text-sm">Initial Principal</label>
-                <InputNumber value={initialPrincipal} onValueChange={(e) => setInitialPrincipal(e.value || 0)} mode="currency" currency={currency} locale="fi-FI" placeholder="Total amount owed to you" />
+                <label htmlFor={`${uid}-initial-principal`} className="font-medium text-sm">Initial Principal</label>
+                <InputNumber inputId={`${uid}-initial-principal`} value={initialPrincipal} onValueChange={(e) => setInitialPrincipal(e.value || 0)} mode="currency" currency={currency} locale="fi-FI" placeholder="Total amount owed to you" />
                 <HelpTip text="The total original amount that was lent or is owed to you." />
             </div>
 
             <div className="flex flex-col gap-1">
-                <label className="font-medium text-sm">Start Date</label>
-                <MonthPicker value={startDate} onChange={setStartDate} placeholder="When the receivable was created" helpText="The month the receivable started (e.g., when you lent the money)." />
+                <label htmlFor={`${uid}-start-date`} className="font-medium text-sm">Start Date</label>
+                <MonthPicker inputId={`${uid}-start-date`} value={startDate} onChange={setStartDate} placeholder="When the receivable was created" helpText="The month the receivable started (e.g., when you lent the money)." />
             </div>
 
             <div className="flex items-center gap-2">
@@ -425,32 +439,33 @@ function ReceivableForm({ receivable, onSave, onCancel }: { receivable: Receivab
 
             {hasInterest && (
                 <div className="flex flex-col gap-1">
-                    <label className="font-medium text-sm">Annual Interest Rate</label>
-                    <InputNumber value={annualInterestRate} onValueChange={(e) => setAnnualInterestRate(e.value || 0)} suffix=" %" locale="fi-FI" minFractionDigits={1} maxFractionDigits={3} placeholder="e.g., 5" />
+                    <label htmlFor={`${uid}-annual-interest-rate`} className="font-medium text-sm">Annual Interest Rate</label>
+                    <InputNumber inputId={`${uid}-annual-interest-rate`} value={annualInterestRate} onValueChange={(e) => setAnnualInterestRate(e.value || 0)} suffix=" %" locale="fi-FI" minFractionDigits={1} maxFractionDigits={3} placeholder="e.g., 5" />
                     <HelpTip text="The yearly interest rate applied to the outstanding balance." />
                 </div>
             )}
 
             <div className="flex flex-col gap-1">
-                <label className="font-medium text-sm">Expected Monthly Repayment</label>
-                <InputNumber value={expectedMonthlyRepayment} onValueChange={(e) => setExpectedMonthlyRepayment(e.value || 0)} mode="currency" currency={currency} locale="fi-FI" placeholder="How much do you expect per month?" />
+                <label htmlFor={`${uid}-expected-monthly-repayment`} className="font-medium text-sm">Expected Monthly Repayment</label>
+                <InputNumber inputId={`${uid}-expected-monthly-repayment`} value={expectedMonthlyRepayment} onValueChange={(e) => setExpectedMonthlyRepayment(e.value || 0)} mode="currency" currency={currency} locale="fi-FI" placeholder="How much do you expect per month?" />
                 <HelpTip text="The amount you expect to receive each month. Used for projecting when the receivable will be fully repaid." />
             </div>
 
             <div className="flex flex-col gap-1">
-                <label className="font-medium text-sm">Note (optional)</label>
-                <InputText placeholder="Any additional notes" value={note} onChange={(e) => setNote(e.target.value)} />
+                <label htmlFor={`${uid}-note-optional`} className="font-medium text-sm">Note (optional)</label>
+                <InputText id={`${uid}-note-optional`} placeholder="Any additional notes" value={note} onChange={(e) => setNote(e.target.value)} />
             </div>
 
             <div className="flex justify-end gap-2 pt-4">
-                <Button label="Cancel" severity="secondary" outlined onClick={onCancel} />
-                <Button label={receivable ? 'Save Changes' : 'Create Receivable'} icon={receivable ? <MdCheck /> : <MdAdd />} loading={isSaving} onClick={handleSubmit} />
+                <Button type="button" label="Cancel" severity="secondary" outlined onClick={onCancel} />
+                <Button label={receivable ? 'Save Changes' : 'Create Receivable'} icon={receivable ? <MdCheck /> : <MdAdd />} loading={isSaving} type="submit" />
             </div>
-        </div>
+        </form>
     );
 }
 
 function RepaymentForm({ receivableId, currency, onSave, onCancel }: { receivableId: string; currency: Currency; onSave: () => void; onCancel: () => void; }) {
+    const uid = useId();
     const toast = useToast();
     const [date, setDate] = useState(getCurrentYearMonth());
     const [amount, setAmount] = useState(0);
@@ -469,31 +484,33 @@ function RepaymentForm({ receivableId, currency, onSave, onCancel }: { receivabl
         } catch { setError('An error occurred.'); } finally { setIsSaving(false); }
     };
 
+    const onFormSubmit = useFormSubmit(handleSubmit, { disabled: isSaving });
+
     return (
-        <div className="space-y-4">
+        <form className="space-y-4" onSubmit={onFormSubmit} noValidate>
             <Message severity="info" text="Record an actual repayment you received. This reduces the outstanding balance of the receivable." className="w-full" />
             {error && <Message severity="error" text={error} className="w-full" />}
 
             <div className="flex flex-col gap-1">
-                <label className="font-medium text-sm">Date</label>
-                <MonthPicker value={date} onChange={setDate} placeholder="When was this received?" helpText="The month you received this repayment." />
+                <label htmlFor={`${uid}-date`} className="font-medium text-sm">Date</label>
+                <MonthPicker inputId={`${uid}-date`} value={date} onChange={setDate} placeholder="When was this received?" helpText="The month you received this repayment." />
             </div>
 
             <div className="flex flex-col gap-1">
-                <label className="font-medium text-sm">Amount Received</label>
-                <InputNumber value={amount} onValueChange={(e) => setAmount(e.value || 0)} mode="currency" currency={currency} locale="fi-FI" placeholder="Amount received" />
+                <label htmlFor={`${uid}-amount-received`} className="font-medium text-sm">Amount Received</label>
+                <InputNumber inputId={`${uid}-amount-received`} value={amount} onValueChange={(e) => setAmount(e.value || 0)} mode="currency" currency={currency} locale="fi-FI" placeholder="Amount received" />
             </div>
 
             <div className="flex flex-col gap-1">
-                <label className="font-medium text-sm">Description (optional)</label>
-                <InputText placeholder="e.g., Bank transfer from John" value={description} onChange={(e) => setDescription(e.target.value)} />
+                <label htmlFor={`${uid}-description-optional`} className="font-medium text-sm">Description (optional)</label>
+                <InputText id={`${uid}-description-optional`} placeholder="e.g., Bank transfer from John" value={description} onChange={(e) => setDescription(e.target.value)} />
             </div>
 
             <div className="flex justify-end gap-2 pt-4">
-                <Button label="Cancel" severity="secondary" outlined onClick={onCancel} />
-                <Button label="Add Repayment" icon={<MdAdd />} loading={isSaving} onClick={handleSubmit} />
+                <Button type="button" label="Cancel" severity="secondary" outlined onClick={onCancel} />
+                <Button label="Add Repayment" icon={<MdAdd />} loading={isSaving} type="submit" />
             </div>
-        </div>
+        </form>
     );
 }
 
@@ -508,6 +525,7 @@ const INTEREST_MODELS = [
 ];
 
 function DebtForm({ debt, onSave, onCancel }: { debt: Debt | null; onSave: () => void; onCancel: () => void; }) {
+    const uid = useId();
     const toast = useToast();
     const [name, setName] = useState(debt?.name || '');
     const [description, setDescription] = useState(debt?.description || '');
@@ -545,70 +563,72 @@ function DebtForm({ debt, onSave, onCancel }: { debt: Debt | null; onSave: () =>
         } catch { setError('An error occurred.'); } finally { setIsSaving(false); }
     };
 
+    const onFormSubmit = useFormSubmit(handleSubmit, { disabled: isSaving });
+
     return (
-        <div className="space-y-4">
+        <form className="space-y-4" onSubmit={onFormSubmit} noValidate>
             <Message severity="info" text="Track a debt like a mortgage, car loan, or personal loan. The app will project how the balance decreases over time as you make payments." className="w-full" />
             {error && <Message severity="error" text={error} className="w-full" />}
 
             <div className="flex flex-col gap-1">
-                <label className="font-medium text-sm">Name</label>
-                <InputText placeholder="e.g., Home Mortgage" value={name} onChange={(e) => setName(e.target.value)} />
+                <label htmlFor={`${uid}-name`} className="font-medium text-sm">Name</label>
+                <InputText id={`${uid}-name`} placeholder="e.g., Home Mortgage" value={name} onChange={(e) => setName(e.target.value)} />
                 <HelpTip text="A descriptive name for this debt." />
             </div>
 
             <div className="flex flex-col gap-1">
-                <label className="font-medium text-sm">Description (optional)</label>
-                <InputTextarea placeholder="Additional notes about this debt" value={description} onChange={(e) => setDescription(e.target.value)} rows={2} />
+                <label htmlFor={`${uid}-description-optional`} className="font-medium text-sm">Description (optional)</label>
+                <InputTextarea id={`${uid}-description-optional`} placeholder="Additional notes about this debt" value={description} onChange={(e) => setDescription(e.target.value)} rows={2} />
             </div>
 
             <div className="flex flex-col gap-1">
-                <label className="font-medium text-sm">Currency</label>
-                <Dropdown value={currency} onChange={(e: DropdownChangeEvent) => setCurrency(e.value)} options={CURRENCIES} optionLabel="label" optionValue="value" />
+                <label htmlFor={`${uid}-currency`} className="font-medium text-sm">Currency</label>
+                <Dropdown inputId={`${uid}-currency`} value={currency} onChange={(e: DropdownChangeEvent) => setCurrency(e.value)} options={CURRENCIES} optionLabel="label" optionValue="value" />
             </div>
 
             <div className="flex flex-col gap-1">
-                <label className="font-medium text-sm">Debt Type</label>
-                <Dropdown value={debtType} onChange={(e: DropdownChangeEvent) => setDebtType(e.value)} options={DEBT_TYPES} optionLabel="label" optionValue="value" />
+                <label htmlFor={`${uid}-debt-type`} className="font-medium text-sm">Debt Type</label>
+                <Dropdown inputId={`${uid}-debt-type`} value={debtType} onChange={(e: DropdownChangeEvent) => setDebtType(e.value)} options={DEBT_TYPES} optionLabel="label" optionValue="value" />
                 <HelpTip text={debtType === 'amortized'
                     ? 'An amortized loan calculates interest on the remaining balance each month. Your monthly payment stays the same, but the interest/principal split changes over time.'
                     : 'A fixed installment debt is repaid in equal payments of a set amount, without interest calculations. Common for buy-now-pay-later or interest-free plans.'} />
             </div>
 
             <div className="flex flex-col gap-1">
-                <label className="font-medium text-sm">Initial Principal</label>
-                <InputNumber value={initialPrincipal} onValueChange={(e) => setInitialPrincipal(e.value || 0)} mode="currency" currency={currency} locale="fi-FI" placeholder="Total amount borrowed" />
+                <label htmlFor={`${uid}-initial-principal`} className="font-medium text-sm">Initial Principal</label>
+                <InputNumber inputId={`${uid}-initial-principal`} value={initialPrincipal} onValueChange={(e) => setInitialPrincipal(e.value || 0)} mode="currency" currency={currency} locale="fi-FI" placeholder="Total amount borrowed" />
                 <HelpTip text="The total amount originally borrowed or currently owed." />
             </div>
 
             <div className="flex flex-col gap-1">
-                <label className="font-medium text-sm">Start Date</label>
-                <MonthPicker value={startDate} onChange={setStartDate} placeholder="When did the debt start?" helpText="The month the debt originated or the first payment was due." />
+                <label htmlFor={`${uid}-start-date`} className="font-medium text-sm">Start Date</label>
+                <MonthPicker inputId={`${uid}-start-date`} value={startDate} onChange={setStartDate} placeholder="When did the debt start?" helpText="The month the debt originated or the first payment was due." />
             </div>
 
             {debtType === 'amortized' && (
                 <>
                     <div className="flex flex-col gap-1">
-                        <label className="font-medium text-sm">Interest Model</label>
-                        <Dropdown value={interestModelType} onChange={(e: DropdownChangeEvent) => setInterestModelType(e.value)} options={INTEREST_MODELS} optionLabel="label" optionValue="value" />
+                        <label htmlFor={`${uid}-interest-model`} className="font-medium text-sm">Interest Model</label>
+                        <Dropdown inputId={`${uid}-interest-model`} value={interestModelType} onChange={(e: DropdownChangeEvent) => setInterestModelType(e.value)} options={INTEREST_MODELS} optionLabel="label" optionValue="value" />
                         <HelpTip text="Fixed = the rate stays the same. Variable = the rate changes based on a reference rate (e.g., Euribor). None = no interest." />
                     </div>
                     {interestModelType === 'fixed' && (
                         <div className="flex flex-col gap-1">
-                            <label className="font-medium text-sm">Fixed Interest Rate</label>
-                            <InputNumber value={fixedInterestRate} onValueChange={(e) => setFixedInterestRate(e.value || 0)} suffix=" %" locale="fi-FI" minFractionDigits={1} maxFractionDigits={3} placeholder="e.g., 3.5" />
+                            <label htmlFor={`${uid}-fixed-interest-rate`} className="font-medium text-sm">Fixed Interest Rate</label>
+                            <InputNumber inputId={`${uid}-fixed-interest-rate`} value={fixedInterestRate} onValueChange={(e) => setFixedInterestRate(e.value || 0)} suffix=" %" locale="fi-FI" minFractionDigits={1} maxFractionDigits={3} placeholder="e.g. 3,5" />
                             <HelpTip text="The annual interest rate. E.g., 3.5% means you pay 3.5% of remaining balance per year." />
                         </div>
                     )}
                     {interestModelType === 'variable' && (
                         <div className="flex flex-col gap-1">
-                            <label className="font-medium text-sm">Reference Rate Margin</label>
-                            <InputNumber value={referenceRateMargin} onValueChange={(e) => setReferenceRateMargin(e.value || 0)} suffix=" %" locale="fi-FI" minFractionDigits={1} maxFractionDigits={3} placeholder="e.g., 1.5" />
+                            <label htmlFor={`${uid}-reference-rate-margin`} className="font-medium text-sm">Reference Rate Margin</label>
+                            <InputNumber inputId={`${uid}-reference-rate-margin`} value={referenceRateMargin} onValueChange={(e) => setReferenceRateMargin(e.value || 0)} suffix=" %" locale="fi-FI" minFractionDigits={1} maxFractionDigits={3} placeholder="e.g. 1,5" />
                             <HelpTip text="The margin added on top of the reference rate (e.g., Euribor + this margin = your actual rate). Set reference rates per month in the expanded details." />
                         </div>
                     )}
                     <div className="flex flex-col gap-1">
-                        <label className="font-medium text-sm">Monthly Payment</label>
-                        <InputNumber value={monthlyPayment} onValueChange={(e) => setMonthlyPayment(e.value || 0)} mode="currency" currency={currency} locale="fi-FI" placeholder="Regular monthly payment" />
+                        <label htmlFor={`${uid}-monthly-payment`} className="font-medium text-sm">Monthly Payment</label>
+                        <InputNumber inputId={`${uid}-monthly-payment`} value={monthlyPayment} onValueChange={(e) => setMonthlyPayment(e.value || 0)} mode="currency" currency={currency} locale="fi-FI" placeholder="Regular monthly payment" />
                         <HelpTip text="The fixed amount you pay each month (principal + interest). Check your loan agreement for this value." />
                     </div>
                 </>
@@ -617,27 +637,28 @@ function DebtForm({ debt, onSave, onCancel }: { debt: Debt | null; onSave: () =>
             {debtType === 'fixed-installment' && (
                 <>
                     <div className="flex flex-col gap-1">
-                        <label className="font-medium text-sm">Installment Amount</label>
-                        <InputNumber value={installmentAmount} onValueChange={(e) => setInstallmentAmount(e.value || 0)} mode="currency" currency={currency} locale="fi-FI" placeholder="Amount per installment" />
+                        <label htmlFor={`${uid}-installment-amount`} className="font-medium text-sm">Installment Amount</label>
+                        <InputNumber inputId={`${uid}-installment-amount`} value={installmentAmount} onValueChange={(e) => setInstallmentAmount(e.value || 0)} mode="currency" currency={currency} locale="fi-FI" placeholder="Amount per installment" />
                         <HelpTip text="The fixed amount for each installment payment." />
                     </div>
                     <div className="flex flex-col gap-1">
-                        <label className="font-medium text-sm">Total Installments</label>
-                        <InputNumber value={totalInstallments} onValueChange={(e) => setTotalInstallments(e.value || 0)} placeholder="e.g., 12" />
+                        <label htmlFor={`${uid}-total-installments`} className="font-medium text-sm">Total Installments</label>
+                        <InputNumber inputId={`${uid}-total-installments`} value={totalInstallments} onValueChange={(e) => setTotalInstallments(e.value || 0)} placeholder="e.g., 12" />
                         <HelpTip text="The total number of installment payments (e.g., 12 for a 12-month plan)." />
                     </div>
                 </>
             )}
 
             <div className="flex justify-end gap-2 pt-4">
-                <Button label="Cancel" severity="secondary" outlined onClick={onCancel} />
-                <Button label={debt ? 'Save Changes' : 'Create Debt'} icon={debt ? <MdCheck /> : <MdAdd />} loading={isSaving} onClick={handleSubmit} />
+                <Button type="button" label="Cancel" severity="secondary" outlined onClick={onCancel} />
+                <Button label={debt ? 'Save Changes' : 'Create Debt'} icon={debt ? <MdCheck /> : <MdAdd />} loading={isSaving} type="submit" />
             </div>
-        </div>
+        </form>
     );
 }
 
 function ReferenceRateForm({ debtId, onSave, onCancel }: { debtId: string; onSave: () => void; onCancel: () => void; }) {
+    const uid = useId();
     const toast = useToast();
     const [yearMonth, setYearMonth] = useState(getCurrentYearMonth());
     const [rate, setRate] = useState(0);
@@ -655,31 +676,34 @@ function ReferenceRateForm({ debtId, onSave, onCancel }: { debtId: string; onSav
         } catch { setError('An error occurred.'); } finally { setIsSaving(false); }
     };
 
+    const onFormSubmit = useFormSubmit(handleSubmit, { disabled: isSaving });
+
     return (
-        <div className="space-y-4">
+        <form className="space-y-4" onSubmit={onFormSubmit} noValidate>
             <Message severity="info" text="Set the reference rate (e.g., Euribor) for a specific month. The debt's actual interest rate will be this value plus the margin you set on the debt." className="w-full" />
             {error && <Message severity="error" text={error} className="w-full" />}
 
             <div className="flex flex-col gap-1">
-                <label className="font-medium text-sm">Month</label>
-                <MonthPicker value={yearMonth} onChange={setYearMonth} placeholder="Select month" helpText="The month this reference rate applies to." />
+                <label htmlFor={`${uid}-month`} className="font-medium text-sm">Month</label>
+                <MonthPicker inputId={`${uid}-month`} value={yearMonth} onChange={setYearMonth} placeholder="Select month" helpText="The month this reference rate applies to." />
             </div>
 
             <div className="flex flex-col gap-1">
-                <label className="font-medium text-sm">Rate</label>
-                <InputNumber value={rate} onValueChange={(e) => setRate(e.value || 0)} suffix=" %" locale="fi-FI" minFractionDigits={1} maxFractionDigits={3} placeholder="e.g., 3.2" />
+                <label htmlFor={`${uid}-rate`} className="font-medium text-sm">Rate</label>
+                <InputNumber inputId={`${uid}-rate`} value={rate} onValueChange={(e) => setRate(e.value || 0)} suffix=" %" locale="fi-FI" minFractionDigits={1} maxFractionDigits={3} placeholder="e.g. 3,2" />
                 <HelpTip text="The base reference rate (e.g., 6-month Euribor) for this period." />
             </div>
 
             <div className="flex justify-end gap-2 pt-4">
-                <Button label="Cancel" severity="secondary" outlined onClick={onCancel} />
-                <Button label="Add Rate" icon={<MdAdd />} loading={isSaving} onClick={handleSubmit} />
+                <Button type="button" label="Cancel" severity="secondary" outlined onClick={onCancel} />
+                <Button label="Add Rate" icon={<MdAdd />} loading={isSaving} type="submit" />
             </div>
-        </div>
+        </form>
     );
 }
 
 function ExtraPaymentForm({ debtId, currency, onSave, onCancel }: { debtId: string; currency: Currency; onSave: () => void; onCancel: () => void; }) {
+    const uid = useId();
     const toast = useToast();
     const [date, setDate] = useState(getCurrentYearMonth());
     const [amount, setAmount] = useState(0);
@@ -698,31 +722,33 @@ function ExtraPaymentForm({ debtId, currency, onSave, onCancel }: { debtId: stri
         } catch { setError('An error occurred.'); } finally { setIsSaving(false); }
     };
 
+    const onFormSubmit = useFormSubmit(handleSubmit, { disabled: isSaving });
+
     return (
-        <div className="space-y-4">
+        <form className="space-y-4" onSubmit={onFormSubmit} noValidate>
             <Message severity="info" text="Record an extra one-time payment to reduce the debt faster. This is in addition to your regular monthly payments." className="w-full" />
             {error && <Message severity="error" text={error} className="w-full" />}
 
             <div className="flex flex-col gap-1">
-                <label className="font-medium text-sm">Date</label>
-                <MonthPicker value={date} onChange={setDate} placeholder="When was this paid?" helpText="The month this extra payment was made." />
+                <label htmlFor={`${uid}-date`} className="font-medium text-sm">Date</label>
+                <MonthPicker inputId={`${uid}-date`} value={date} onChange={setDate} placeholder="When was this paid?" helpText="The month this extra payment was made." />
             </div>
 
             <div className="flex flex-col gap-1">
-                <label className="font-medium text-sm">Amount</label>
-                <InputNumber value={amount} onValueChange={(e) => setAmount(e.value || 0)} mode="currency" currency={currency} locale="fi-FI" placeholder="Extra amount paid" />
+                <label htmlFor={`${uid}-amount`} className="font-medium text-sm">Amount</label>
+                <InputNumber inputId={`${uid}-amount`} value={amount} onValueChange={(e) => setAmount(e.value || 0)} mode="currency" currency={currency} locale="fi-FI" placeholder="Extra amount paid" />
             </div>
 
             <div className="flex flex-col gap-1">
-                <label className="font-medium text-sm">Description (optional)</label>
-                <InputText placeholder="e.g., Year-end bonus payment" value={description} onChange={(e) => setDescription(e.target.value)} />
+                <label htmlFor={`${uid}-description-optional`} className="font-medium text-sm">Description (optional)</label>
+                <InputText id={`${uid}-description-optional`} placeholder="e.g., Year-end bonus payment" value={description} onChange={(e) => setDescription(e.target.value)} />
             </div>
 
             <div className="flex justify-end gap-2 pt-4">
-                <Button label="Cancel" severity="secondary" outlined onClick={onCancel} />
-                <Button label="Add Payment" icon={<MdAdd />} loading={isSaving} onClick={handleSubmit} />
+                <Button type="button" label="Cancel" severity="secondary" outlined onClick={onCancel} />
+                <Button label="Add Payment" icon={<MdAdd />} loading={isSaving} type="submit" />
             </div>
-        </div>
+        </form>
     );
 }
 
@@ -866,6 +892,8 @@ export function EntityListDrawer({ visible, category, onClose, onRefresh, editEn
                 toast.success('Success', archive ? 'Archived successfully' : 'Restored successfully');
                 await fetchData();
                 onRefresh?.();
+            } else {
+                toast.error(archive ? 'Could not archive' : 'Could not restore', result?.error ?? 'Please try again.');
             }
         } catch (err) {
             console.error('Archive failed:', err);
@@ -873,8 +901,7 @@ export function EntityListDrawer({ visible, category, onClose, onRefresh, editEn
         }
     };
 
-    const handleDelete = async (id: string) => {
-        if (!confirm('Are you sure? This action cannot be undone.')) return;
+    const runDelete = async (id: string) => {
         try {
             let result;
             switch (category) {
@@ -887,6 +914,8 @@ export function EntityListDrawer({ visible, category, onClose, onRefresh, editEn
                 toast.success('Deleted successfully');
                 await fetchData();
                 onRefresh?.();
+            } else {
+                toast.error('Could not delete', result?.error ?? 'Please try again.');
             }
         } catch (err) {
             console.error('Delete failed:', err);
@@ -894,8 +923,19 @@ export function EntityListDrawer({ visible, category, onClose, onRefresh, editEn
         }
     };
 
-    const handleDeleteSubEntity = async (parentId: string, subId: string, subType: 'contribution' | 'repayment' | 'referenceRate' | 'extraPayment') => {
-        if (!confirm('Delete this item?')) return;
+    const handleDelete = (id: string) => {
+        confirmDialog({
+            header: 'Delete permanently?',
+            message: 'This cannot be undone. Archive it instead if you only want to hide it.',
+            icon: 'pi pi-exclamation-triangle',
+            acceptLabel: 'Delete',
+            rejectLabel: 'Cancel',
+            acceptClassName: 'p-button-danger',
+            accept: () => { void runDelete(id); },
+        });
+    };
+
+    const runDeleteSubEntity = async (parentId: string, subId: string, subType: 'contribution' | 'repayment' | 'referenceRate' | 'extraPayment') => {
         try {
             let result;
             switch (subType) {
@@ -908,11 +948,32 @@ export function EntityListDrawer({ visible, category, onClose, onRefresh, editEn
                 toast.success('Deleted successfully');
                 await fetchData();
                 onRefresh?.();
+            } else {
+                toast.error('Could not delete', result?.error ?? 'Please try again.');
             }
         } catch (err) {
             console.error('Delete sub-entity failed:', err);
             toast.error('Failed to delete');
         }
+    };
+
+    const SUB_ENTITY_LABELS = {
+        contribution: 'contribution',
+        repayment: 'repayment',
+        referenceRate: 'rate entry',
+        extraPayment: 'extra payment',
+    } as const;
+
+    const handleDeleteSubEntity = (parentId: string, subId: string, subType: 'contribution' | 'repayment' | 'referenceRate' | 'extraPayment') => {
+        confirmDialog({
+            header: `Delete this ${SUB_ENTITY_LABELS[subType]}?`,
+            message: 'This cannot be undone.',
+            icon: 'pi pi-exclamation-triangle',
+            acceptLabel: 'Delete',
+            rejectLabel: 'Cancel',
+            acceptClassName: 'p-button-danger',
+            accept: () => { void runDeleteSubEntity(parentId, subId, subType); },
+        });
     };
 
     const renderEmpty = () => (
@@ -1036,7 +1097,7 @@ export function EntityListDrawer({ visible, category, onClose, onRefresh, editEn
                                     <DebtProgressCard debt={debt} payoffInfo={payoff} isSimpleMode={isSimple} />
                                     {debt.interestModelType === 'variable' && (
                                         <SubEntityList title="Reference Rates"
-                                            items={debtRates.map(r => ({ id: r.id, label: `${r.rate}%`, detail: r.yearMonth }))}
+                                            items={debtRates.map(r => ({ id: r.id, label: formatRate(r.rate), detail: formatYearMonth(r.yearMonth) }))}
                                             onAdd={() => setFormState({ kind: 'referenceRate', debtId: debt.id })}
                                             onDeleteItem={(subId) => handleDeleteSubEntity(debt.id, subId, 'referenceRate')}
                                             addLabel="Add Rate"

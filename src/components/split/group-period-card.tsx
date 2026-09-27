@@ -18,13 +18,13 @@
  */
 
 import { useMemo, useState } from 'react';
-import { format, parseISO, subDays } from 'date-fns';
+import { format, subDays } from 'date-fns';
 import { MdExpandMore } from 'react-icons/md';
 import { useAppContext } from '@/components/layout/app-layout';
 import { UserAvatar } from '@/components/ui/user-avatar';
 import { useUserProfiles } from '@/lib/hooks/use-user-profiles';
 import { getAvatarColor } from '@/lib/avatar-utils';
-import { formatCents, getCategoryColor } from '@/lib/constants';
+import { formatCents, formatDayMonth, getCategoryColor } from '@/lib/constants';
 import { computeGroupPeriodInsights } from '@/lib/split-insights';
 import { computeTreemapLayout } from '@/lib/treemap-layout';
 import { describeGroupPeriod } from '@/lib/chart-descriptions';
@@ -259,7 +259,7 @@ export function GroupPeriodCard({ group, expenses, myUserId }: GroupPeriodCardPr
                   <li key={e.id} className="flex items-baseline gap-2">
                     <span className="min-w-0 flex-1 truncate">{e.title}</span>
                     <span className="shrink-0 text-xs text-gray-500 dark:text-gray-400">
-                      {format(parseISO(e.date), 'MMM d')}
+                      {formatDayMonth(e.date, { short: true })}
                     </span>
                     <span className="shrink-0 tabular-nums font-medium">{formatCents(e.cents, group.currency)}</span>
                   </li>

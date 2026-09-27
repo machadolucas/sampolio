@@ -7,7 +7,7 @@ import { ProgressBar } from 'primereact/progressbar';
 import { Slider } from 'primereact/slider';
 import { Tooltip } from 'primereact/tooltip';
 import { MdHouse, MdPercent, MdEvent, MdCheckCircle, MdPayments } from 'react-icons/md';
-import { formatCurrency, formatYearMonth, formatRate } from '@/lib/constants';
+import { formatCurrency, formatYearMonth, formatRate, formatDayMonth } from '@/lib/constants';
 import { MortgageOwnershipSankey } from '@/components/mortgage/mortgage-sankey';
 import { UserAvatar } from '@/components/ui/user-avatar';
 import { useUserProfiles } from '@/lib/hooks/use-user-profiles';
@@ -57,7 +57,7 @@ export function MortgageHeroCard({
   const euribor = rate - (firstLoan?.margin ?? 0);
   // The full amount transferred to the loan account this month = sum of each member's deposit.
   const monthlyPayment = (row?.members ?? []).reduce((s, m) => s + m.monthlyDeposit, 0);
-  const resetLabel = nextResetDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+  const resetLabel = formatDayMonth(nextResetDate, { short: true, year: true });
 
   return (
     <Card>

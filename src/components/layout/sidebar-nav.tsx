@@ -74,6 +74,7 @@ export function SidebarNav({
                         }`}
                     data-pr-tooltip={!expanded ? 'Search (⌘K)' : undefined}
                     data-pr-position="right"
+                    aria-label={expanded ? undefined : 'Search'}
                 >
                     <MdSearch size={20} className="shrink-0" />
                     {expanded && <span className="font-medium whitespace-nowrap">Search</span>}
@@ -99,6 +100,8 @@ export function SidebarNav({
                                         }`}
                                     data-pr-tooltip={!expanded ? item.label : undefined}
                                     data-pr-position="right"
+                                    aria-current={active ? 'page' : undefined}
+                                    aria-label={expanded ? undefined : item.label}
                                 >
                                     {item.icon}
                                     {expanded && (
@@ -124,6 +127,7 @@ export function SidebarNav({
                         onClick={onToggleCollapse}
                         tooltip={!expanded ? 'Expand sidebar' : undefined}
                         tooltipOptions={{ position: 'right' }}
+                        aria-label={expanded ? undefined : 'Expand sidebar'}
                     />
                 )}
                 <Menu model={userMenuItems} popup ref={userMenuRef} />
@@ -134,6 +138,8 @@ export function SidebarNav({
                     onClick={(e) => userMenuRef.current?.toggle(e)}
                     tooltip={!expanded ? myName : undefined}
                     tooltipOptions={{ position: 'right' }}
+                    aria-label={expanded ? undefined : `Account menu for ${myName}`}
+                    aria-haspopup="menu"
                 >
                     <UserAvatar userId={myId ?? ''} name={myName} avatarUrl={myAvatarUrl} size={22} className="shrink-0" />
                     {expanded && (

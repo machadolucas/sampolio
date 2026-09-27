@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useId } from 'react';
 import { Card } from 'primereact/card';
 import { Dialog } from 'primereact/dialog';
 import { Dropdown } from 'primereact/dropdown';
@@ -39,6 +39,7 @@ export function MortgageHistoryStrips({
   currency: Currency;
   onChanged: (msg: string) => void;
 }) {
+  const uid = useId();
   const loanLabel = (id?: string) => mortgage.loans.find((l) => l.id === id)?.label ?? '';
   const toast = useToast();
 
@@ -197,12 +198,12 @@ export function MortgageHistoryStrips({
         <p className="text-sm opacity-70 mb-3">The rate applies from the chosen month onward (your loan rate = Euribor + each loan&apos;s margin).</p>
         <div className="space-y-3">
           <div>
-            <label className="text-sm font-medium">Effective from</label>
-            <MonthPicker value={rateDate} onChange={setRateDate} />
+            <label htmlFor={`${uid}-effective-from`} className="text-sm font-medium">Effective from</label>
+            <MonthPicker inputId={`${uid}-effective-from`} value={rateDate} onChange={setRateDate} />
           </div>
           <div>
-            <label className="text-sm font-medium">12-month Euribor rate</label>
-            <InputNumber value={euribor} onValueChange={(e) => setEuribor(e.value ?? 0)} suffix=" %" minFractionDigits={2} maxFractionDigits={3} className="w-full" />
+            <label htmlFor={`${uid}-12-month-euribor`} className="text-sm font-medium">12-month Euribor rate</label>
+            <InputNumber inputId={`${uid}-12-month-euribor`} locale="fi-FI" value={euribor} onValueChange={(e) => setEuribor(e.value ?? 0)} suffix=" %" minFractionDigits={2} maxFractionDigits={3} className="w-full" />
           </div>
           {error && <Message severity="error" text={error} />}
         </div>
@@ -217,8 +218,8 @@ export function MortgageHistoryStrips({
         <p className="text-sm opacity-70 mb-3">The amount applies from the chosen month onward; earlier history is kept.</p>
         <div className="space-y-3">
           <div>
-            <label className="text-sm font-medium">What</label>
-            <Dropdown
+            <label htmlFor={`${uid}-what`} className="text-sm font-medium">What</label>
+            <Dropdown inputId={`${uid}-what`}
               value={type}
               options={(Object.keys(COST_LABELS) as MortgageCostType[]).map((t) => ({ label: COST_LABELS[t], value: t }))}
               onChange={(e) => setType(e.value)}
@@ -227,17 +228,17 @@ export function MortgageHistoryStrips({
           </div>
           {type === 'loan-insurance' && (
             <div>
-              <label className="text-sm font-medium">Loan</label>
-              <Dropdown value={loanId} options={mortgage.loans.map((l) => ({ label: l.label, value: l.id }))} onChange={(e) => setLoanId(e.value)} className="w-full" />
+              <label htmlFor={`${uid}-loan`} className="text-sm font-medium">Loan</label>
+              <Dropdown inputId={`${uid}-loan`} value={loanId} options={mortgage.loans.map((l) => ({ label: l.label, value: l.id }))} onChange={(e) => setLoanId(e.value)} className="w-full" />
             </div>
           )}
           <div>
-            <label className="text-sm font-medium">Effective from</label>
-            <MonthPicker value={costDate} onChange={setCostDate} />
+            <label htmlFor={`${uid}-effective-from-2`} className="text-sm font-medium">Effective from</label>
+            <MonthPicker inputId={`${uid}-effective-from-2`} value={costDate} onChange={setCostDate} />
           </div>
           <div>
-            <label className="text-sm font-medium">Monthly amount</label>
-            <InputNumber value={amount} onValueChange={(e) => setAmount(e.value ?? 0)} mode="currency" currency={currency} locale="fi-FI" className="w-full" />
+            <label htmlFor={`${uid}-monthly-amount`} className="text-sm font-medium">Monthly amount</label>
+            <InputNumber inputId={`${uid}-monthly-amount`} value={amount} onValueChange={(e) => setAmount(e.value ?? 0)} mode="currency" currency={currency} locale="fi-FI" className="w-full" />
           </div>
           {error && <Message severity="error" text={error} />}
         </div>

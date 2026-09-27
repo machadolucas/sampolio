@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, type KeyboardEvent } from 'react';
 import { Tag } from 'primereact/tag';
 import { useTheme } from '@/components/providers/theme-provider';
 import { formatCurrency, getCategoryColor } from '@/lib/constants';
@@ -11,11 +11,35 @@ import { MdCalendarToday, MdArrowForward, MdHistory } from 'react-icons/md';
 
 /** Sort-by toggle for the income/expense breakdown lists. Module-scope so it
  * isn't recreated on every render (which would reset its state). */
+/**
+ * Keyboard access for a whole-row click target (role="button", Enter/Space),
+ * matching the bank ledger rows. Returns nothing when the row is inert.
+ */
+function rowActivationProps(onActivate?: () => void) {
+    if (!onActivate) return {};
+    return {
+        role: 'button' as const,
+        tabIndex: 0,
+        onKeyDown: (e: KeyboardEvent<HTMLDivElement>) => {
+            if (e.target !== e.currentTarget) return;
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                onActivate();
+            }
+        },
+    };
+}
+
+// The ::before pseudo-elements stretch each 20px pill to a 44px-tall hit
+// area without changing the compact layout (tap-target rule).
 export function SortToggle({ value, onChange, isDark }: { value: 'name' | 'amount'; onChange: (v: 'name' | 'amount') => void; isDark: boolean }) {
     return (
         <div className="flex gap-1">
             <button
-                className={`px-1.5 py-0.5 rounded text-xs ${value === 'amount'
+                type="button"
+                aria-pressed={value === 'amount'}
+                aria-label="Sort by amount"
+                className={`relative px-1.5 py-0.5 rounded text-xs before:absolute before:-inset-y-3 before:inset-x-0 before:content-[''] ${value === 'amount'
                     ? isDark ? 'bg-gray-700 text-gray-200' : 'bg-gray-200 text-gray-800'
                     : isDark ? 'text-gray-500 hover:text-gray-300' : 'text-gray-400 hover:text-gray-600'
                     }`}
@@ -24,7 +48,10 @@ export function SortToggle({ value, onChange, isDark }: { value: 'name' | 'amoun
                 Amount
             </button>
             <button
-                className={`px-1.5 py-0.5 rounded text-xs ${value === 'name'
+                type="button"
+                aria-pressed={value === 'name'}
+                aria-label="Sort by name"
+                className={`relative px-1.5 py-0.5 rounded text-xs before:absolute before:-inset-y-3 before:inset-x-0 before:content-[''] ${value === 'name'
                     ? isDark ? 'bg-gray-700 text-gray-200' : 'bg-gray-200 text-gray-800'
                     : isDark ? 'text-gray-500 hover:text-gray-300' : 'text-gray-400 hover:text-gray-600'
                     }`}
@@ -140,9 +167,10 @@ export function MonthDetailsPanel({ projection, currency, onEditItem, isSimple =
                         {sortItems(projection.incomeBreakdown, incomeSortBy).map((item) => (
                             <div
                                 key={item.itemId}
-                                className={`flex justify-between items-center px-2 py-1 rounded cursor-pointer transition-colors text-sm ${isDark ? 'hover:bg-gray-800' : 'hover:bg-gray-100'
+                                className={`flex justify-between items-center px-2 py-1 rounded cursor-pointer transition-colors text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 ${isDark ? 'hover:bg-gray-800' : 'hover:bg-gray-100'
                                     }`}
                                 onClick={() => onEditItem?.(item.itemId, item.source, 'income')}
+                                {...rowActivationProps(onEditItem ? () => onEditItem(item.itemId, item.source, 'income') : undefined)}
                             >
                                 <div className="flex items-center gap-1 min-w-0 flex-wrap">
                                     <span className={`truncate ${isDark ? 'text-gray-200' : 'text-gray-700'}`}>{item.name}</span>
@@ -185,9 +213,10 @@ export function MonthDetailsPanel({ projection, currency, onEditItem, isSimple =
                         {sortItems(projection.expenseBreakdown, expenseSortBy).map((item) => (
                             <div
                                 key={item.itemId}
-                                className={`flex justify-between items-center px-2 py-1 rounded cursor-pointer transition-colors text-sm ${isDark ? 'hover:bg-gray-800' : 'hover:bg-gray-100'
+                                className={`flex justify-between items-center px-2 py-1 rounded cursor-pointer transition-colors text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 ${isDark ? 'hover:bg-gray-800' : 'hover:bg-gray-100'
                                     }`}
                                 onClick={() => onEditItem?.(item.itemId, item.source, 'expense')}
+                                {...rowActivationProps(onEditItem ? () => onEditItem(item.itemId, item.source, 'expense') : undefined)}
                             >
                                 <div className="flex items-center gap-1 min-w-0 flex-wrap">
                                     <span className={`truncate ${isDark ? 'text-gray-200' : 'text-gray-700'}`}>{item.name}</span>

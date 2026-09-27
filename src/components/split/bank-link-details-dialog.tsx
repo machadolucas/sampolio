@@ -2,14 +2,12 @@
 
 import { Dialog } from 'primereact/dialog';
 import { Button } from 'primereact/button';
-import { formatCurrency } from '@/lib/constants';
+import { formatCurrency, formatDate } from '@/lib/constants';
 import type { SplitExpenseBankLink } from '@/types';
 
 /** 'YYYY-MM-DD' → a readable date (never UTC parsing — the day must not shift). */
 function formatIsoDate(iso: string): string {
-  const [y, m, d] = iso.slice(0, 10).split('-').map(Number);
-  if (!y || !m || !d) return iso;
-  return new Date(y, m - 1, d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+  return formatDate(iso.slice(0, 10));
 }
 
 interface BankLinkDetailsDialogProps {

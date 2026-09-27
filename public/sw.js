@@ -15,7 +15,7 @@
  * activate→drop old caches + clients.claim. /sw.js is served no-cache (next.config.ts)
  * so the browser re-checks this script every load.
  */
-const CACHE_VERSION = 'v10';
+const CACHE_VERSION = 'v11';
 const CACHE = `sampolio-${CACHE_VERSION}`;
 const OFFLINE_URL = '/offline.html';
 

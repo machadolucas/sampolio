@@ -53,7 +53,7 @@ export function BudgetsSection({ budgets, onChanged }: BudgetsSectionProps) {
         <>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {active.map((b) => (
-              <BudgetCard key={b.id} budget={b} onClick={() => router.push(`/budgets/${b.id}`)} />
+              <BudgetCard key={b.id} budget={b} />
             ))}
           </div>
           {archived.length > 0 && (
@@ -68,7 +68,7 @@ export function BudgetsSection({ budgets, onChanged }: BudgetsSectionProps) {
               {showArchived && (
                 <div className="animate-fade-in grid grid-cols-1 md:grid-cols-2 gap-3 mt-2">
                   {archived.map((b) => (
-                    <BudgetCard key={b.id} budget={b} onClick={() => router.push(`/budgets/${b.id}`)} />
+                    <BudgetCard key={b.id} budget={b} />
                   ))}
                 </div>
               )}

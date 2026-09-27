@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useId } from 'react';
 import { Dialog } from 'primereact/dialog';
 import { Steps } from 'primereact/steps';
 import { InputText } from 'primereact/inputtext';
@@ -58,6 +58,7 @@ export function BudgetSetupWizard({
   onClose: () => void;
   onCreated: (b: Budget) => void;
 }) {
+  const uid = useId();
   const defaultStart = addMonths(getCurrentYearMonth(), 1);
   const [step, setStep] = useState(0);
   const [name, setName] = useState('');
@@ -187,28 +188,28 @@ export function BudgetSetupWizard({
         <div className="space-y-3">
           <Message severity="info" text="A trip, a project, anything with a start and an end. Rough numbers are fine — you can change everything later." />
           <div>
-            <label className="text-sm font-medium">What&apos;s the plan?</label>
-            <InputText value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Research trip abroad" className="w-full" autoFocus />
+            <label htmlFor={`${uid}-plan-name`} className="text-sm font-medium">What&apos;s the plan?</label>
+            <InputText id={`${uid}-plan-name`} value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Research trip abroad" className="w-full" autoFocus />
           </div>
           <div>
-            <label className="text-sm font-medium">Where? <span className="opacity-50 font-normal">(optional)</span></label>
-            <InputText value={destination} onChange={(e) => setDestination(e.target.value)} placeholder="e.g. Stockholm" className="w-full" />
+            <label htmlFor={`${uid}-where-optional`} className="text-sm font-medium">Where? <span className="opacity-50 font-normal">(optional)</span></label>
+            <InputText id={`${uid}-where-optional`} value={destination} onChange={(e) => setDestination(e.target.value)} placeholder="e.g. Stockholm" className="w-full" />
             <HelpTip text="Just a label — leave empty if this isn't a trip." />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-sm font-medium">From</label>
-              <MonthPicker value={startMonth} onChange={setStartMonth} />
+              <label htmlFor={`${uid}-from`} className="text-sm font-medium">From</label>
+              <MonthPicker inputId={`${uid}-from`} value={startMonth} onChange={setStartMonth} />
             </div>
             <div>
-              <label className="text-sm font-medium">Until</label>
-              <MonthPicker value={endMonth} onChange={setEndMonth} />
+              <label htmlFor={`${uid}-until`} className="text-sm font-medium">Until</label>
+              <MonthPicker inputId={`${uid}-until`} value={endMonth} onChange={setEndMonth} />
             </div>
           </div>
           {endMonth < startMonth && <Message severity="warn" text="The end can't be before the start." />}
           <div>
-            <label className="text-sm font-medium">Currency</label>
-            <Dropdown
+            <label htmlFor={`${uid}-currency`} className="text-sm font-medium">Currency</label>
+            <Dropdown inputId={`${uid}-currency`}
               value={currency}
               options={CURRENCIES.map((c) => ({ label: `${c.symbol} ${c.label}`, value: c.value }))}
               onChange={(e) => setCurrency(e.value)}
@@ -241,7 +242,7 @@ export function BudgetSetupWizard({
                   <InputText value={line.name} onChange={(e) => updateLine(i, { name: e.target.value })} placeholder="What is it?" className="flex-1 min-w-32" />
                   <InputNumber value={line.amount || null} onValueChange={(e) => updateLine(i, { amount: e.value ?? 0 })} mode="currency" currency={currency} locale="fi-FI" placeholder="Amount" inputClassName="w-28" autoFocus={i === lines.length - 1 && !line.amount} />
                   <SelectButton value={line.kind} options={KIND_OPTIONS} onChange={(e) => e.value && updateLine(i, { kind: e.value })} allowEmpty={false} />
-                  <Button icon={<MdDelete />} text severity="danger" size="small" onClick={() => setLines(prev => prev.filter((_, idx) => idx !== i))} />
+                  <Button icon={<MdDelete />} text severity="danger" size="small" aria-label={`Remove ${line.name || 'cost line'}`} onClick={() => setLines(prev => prev.filter((_, idx) => idx !== i))} />
                 </div>
                 {line.kind === 'monthly' && line.amount > 0 && (
                   <p className="text-xs opacity-60 mt-1">
@@ -270,7 +271,7 @@ export function BudgetSetupWizard({
                   <span className="text-xs font-semibold opacity-60">
                     {f.type === 'grant' ? 'Grant or stipend' : f.type === 'per-diem' ? 'Daily allowance' : 'Other money'}
                   </span>
-                  <Button icon={<MdDelete />} text severity="danger" size="small" onClick={() => setFunding(prev => prev.filter((_, idx) => idx !== i))} />
+                  <Button icon={<MdDelete />} text severity="danger" size="small" aria-label="Remove this funding source" onClick={() => setFunding(prev => prev.filter((_, idx) => idx !== i))} />
                 </div>
                 {f.type === 'per-diem' ? (
                   <div>
@@ -294,8 +295,8 @@ export function BudgetSetupWizard({
                 )}
                 {f.type === 'grant' && (
                   <div>
-                    <label className="text-xs font-medium opacity-70">What is it allowed to pay for?</label>
-                    <MultiSelect
+                    <label htmlFor={`${uid}-what-is-it-${i}`} className="text-xs font-medium opacity-70">What is it allowed to pay for?</label>
+                    <MultiSelect inputId={`${uid}-what-is-it-${i}`}
                       value={f.restricted}
                       options={BUDGET_CATEGORIES}
                       onChange={(e) => updateFunding(i, { restricted: e.value })}

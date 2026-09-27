@@ -6,6 +6,7 @@ import { InputTextarea } from 'primereact/inputtextarea';
 import { Checkbox } from 'primereact/checkbox';
 import { Button } from 'primereact/button';
 import { Message } from 'primereact/message';
+import { confirmDialog } from 'primereact/confirmdialog';
 import { importMortgageActuals, clearMortgageActuals } from '@/lib/actions/shared-mortgages';
 import type { SharedMortgage, MortgageActualInput } from '@/types';
 
@@ -107,13 +108,22 @@ export function MortgageImportDialog({
     else setError(res.error ?? 'Import failed');
   };
 
-  const doClear = async () => {
-    if (!confirm('Remove all imported history? Sampolio will go back to projecting from terms.')) return;
-    setSaving(true);
-    const res = await clearMortgageActuals(mortgage.id);
-    setSaving(false);
-    if (res.success) onImported('Imported history cleared.');
-    else setError(res.error ?? 'Failed to clear');
+  const doClear = () => {
+    confirmDialog({
+      header: 'Remove imported history?',
+      message: 'Remove all imported history? Sampolio will go back to projecting from terms.',
+      icon: 'pi pi-exclamation-triangle',
+      acceptLabel: 'Remove',
+      rejectLabel: 'Cancel',
+      acceptClassName: 'p-button-danger',
+      accept: async () => {
+        setSaving(true);
+        const res = await clearMortgageActuals(mortgage.id);
+        setSaving(false);
+        if (res.success) onImported('Imported history cleared.');
+        else setError(res.error ?? 'Failed to clear');
+      },
+    });
   };
 
   return (

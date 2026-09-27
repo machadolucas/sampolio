@@ -14,7 +14,7 @@ import { authClient } from '@/lib/auth-client';
 import { ACCOUNT_SETTINGS_PATH, PASSKEY_REAUTH_REQUIRED } from '@/lib/auth/constants';
 import { listMyPasskeys } from '@/lib/actions/account';
 import { useToast } from '@/components/providers/toast-provider';
-import { LOCALE } from '@/lib/constants';
+import { formatDate } from '@/lib/constants';
 import type { PasskeySummary } from '@/types';
 
 interface PasskeysPanelProps {
@@ -25,8 +25,8 @@ const CANCELLED_CODES = new Set(['ERROR_CEREMONY_ABORTED', 'AUTH_CANCELLED', 'RE
 
 const noopSubscribe = () => () => {};
 
-function formatDate(iso?: string): string {
-    return iso ? new Date(iso).toLocaleDateString(LOCALE) : '—';
+function formatPasskeyDate(iso?: string): string {
+    return iso ? formatDate(iso) : '—';
 }
 
 /**
@@ -191,7 +191,7 @@ export function PasskeysPanel({ isDark }: PasskeysPanelProps) {
                                     {pk.backedUp && <Tag value="Synced" severity="info" className="ml-2 align-middle text-xs" />}
                                 </p>
                                 <p className={`${subtext} truncate`}>
-                                    Added {formatDate(pk.createdAt)} · Last used {formatDate(pk.lastUsedAt)}
+                                    Added {formatPasskeyDate(pk.createdAt)} · Last used {formatPasskeyDate(pk.lastUsedAt)}
                                 </p>
                             </div>
                             <Button

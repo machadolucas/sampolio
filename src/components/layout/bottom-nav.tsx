@@ -67,6 +67,7 @@ export function BottomNav({ onOpenMore }: BottomNavProps) {
                     <Link
                         key={item.id}
                         href={item.href}
+                        aria-current={active ? 'page' : undefined}
                         className={`${cell} no-underline ${active ? activeCls : idleCls}`}
                     >
                         {item.icon}

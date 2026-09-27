@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useId } from 'react';
 import { Dialog } from 'primereact/dialog';
 import { InputText } from 'primereact/inputtext';
 import { InputNumber } from 'primereact/inputnumber';
@@ -28,6 +28,7 @@ import {
 import { getMySplitGroups } from '@/lib/actions/split-groups';
 import { getTrips } from '@/lib/actions/trips';
 import type { Budget, BudgetLine, BudgetFundingSource, BudgetFundingType, BudgetFundingTiming, Currency, FinancialAccount, SplitGroup, Trip } from '@/types';
+import { useFormSubmit } from '@/lib/hooks/use-form-submit';
 
 const PER_DIEM_SOURCE_OPTIONS = [
   { label: 'From a trip', value: 'trip' },
@@ -68,6 +69,7 @@ export function BudgetLineDialog({
   onHide: () => void;
   onSaved: (b: Budget) => void;
 }) {
+  const uid = useId();
   const [name, setName] = useState('');
   const [category, setCategory] = useState('Other');
   const [amount, setAmount] = useState<number | null>(null);
@@ -119,42 +121,44 @@ export function BudgetLineDialog({
     }
   };
 
+  const onFormSubmit = useFormSubmit(submit, { disabled: saving });
+
   return (
     <Dialog header={line ? 'Edit cost' : 'Add a cost'} visible={visible} onHide={onHide} style={{ width: '26rem' }}>
-      <div className="space-y-3">
+      <form className="space-y-3" onSubmit={onFormSubmit} noValidate>
         <div>
-          <label className="text-sm font-medium">What is it?</label>
-          <InputText value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Rent" className="w-full" autoFocus />
+          <label htmlFor={`${uid}-what-is-it`} className="text-sm font-medium">What is it?</label>
+          <InputText id={`${uid}-what-is-it`} value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Rent" className="w-full" autoFocus />
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="text-sm font-medium">Amount</label>
-            <InputNumber value={amount} onValueChange={(e) => setAmount(e.value ?? null)} mode="currency" currency={budget.currency} locale="fi-FI" className="w-full" />
+            <label htmlFor={`${uid}-amount`} className="text-sm font-medium">Amount</label>
+            <InputNumber inputId={`${uid}-amount`} value={amount} onValueChange={(e) => setAmount(e.value ?? null)} mode="currency" currency={budget.currency} locale="fi-FI" className="w-full" />
           </div>
           <div>
-            <label className="text-sm font-medium">Category</label>
-            <Dropdown value={category} options={BUDGET_CATEGORIES} onChange={(e) => setCategory(e.value)} className="w-full" />
+            <label htmlFor={`${uid}-category`} className="text-sm font-medium">Category</label>
+            <Dropdown inputId={`${uid}-category`} value={category} options={BUDGET_CATEGORIES} onChange={(e) => setCategory(e.value)} className="w-full" />
           </div>
         </div>
         <div>
-          <label className="text-sm font-medium">How often?</label>
-          <SelectButton value={kind} options={KIND_OPTIONS} onChange={(e) => e.value && setKind(e.value)} allowEmpty={false} className="w-full" />
+          <label id={`${uid}-how-often`} className="text-sm font-medium">How often?</label>
+          <SelectButton aria-labelledby={`${uid}-how-often`} value={kind} options={KIND_OPTIONS} onChange={(e) => e.value && setKind(e.value)} allowEmpty={false} className="w-full" />
           {kind === 'monthly' && (amount ?? 0) > 0 && (
             <HelpTip text={`${formatCurrency(amount!, budget.currency)} × ${monthCount} months = ${formatCurrency(amount! * monthCount, budget.currency)}`} />
           )}
         </div>
         {kind === 'one-off' && (
           <div>
-            <label className="text-sm font-medium">Which month?</label>
-            <MonthPicker value={month} onChange={setMonth} />
+            <label htmlFor={`${uid}-which-month`} className="text-sm font-medium">Which month?</label>
+            <MonthPicker inputId={`${uid}-which-month`} value={month} onChange={setMonth} />
           </div>
         )}
         {error && <Message severity="error" text={error} className="w-full" />}
         <div className="flex justify-end gap-2 pt-1">
-          <Button label="Cancel" text severity="secondary" onClick={onHide} disabled={saving} />
-          <Button label={line ? 'Save' : 'Add cost'} loading={saving} onClick={submit} />
+          <Button type="button" label="Cancel" text severity="secondary" onClick={onHide} disabled={saving} />
+          <Button label={line ? 'Save' : 'Add cost'} loading={saving} type="submit" />
         </div>
-      </div>
+      </form>
     </Dialog>
   );
 }
@@ -189,6 +193,7 @@ export function BudgetFundingDialog({
   // list (used for the funding row's linked-trip label after saving).
   onTripsChanged?: () => void;
 }) {
+  const uid = useId();
   const [type, setType] = useState<BudgetFundingType>('grant');
   const [name, setName] = useState('');
   const [amount, setAmount] = useState<number | null>(null);
@@ -328,17 +333,19 @@ export function BudgetFundingDialog({
     }
   };
 
+  const onFormSubmit = useFormSubmit(submit, { disabled: saving });
+
   return (
     <>
     <Dialog header={source ? 'Edit funding' : 'Add funding'} visible={visible} onHide={onHide} style={{ width: '28rem' }}>
-      <div className="space-y-3">
+      <form className="space-y-3" onSubmit={onFormSubmit} noValidate>
         <div>
-          <label className="text-sm font-medium">What kind of money is it?</label>
-          <Dropdown value={type} options={FUNDING_TYPE_OPTIONS} onChange={(e) => setType(e.value)} className="w-full" />
+          <label htmlFor={`${uid}-what-kind-of`} className="text-sm font-medium">What kind of money is it?</label>
+          <Dropdown inputId={`${uid}-what-kind-of`} value={type} options={FUNDING_TYPE_OPTIONS} onChange={(e) => setType(e.value)} className="w-full" />
         </div>
         <div>
-          <label className="text-sm font-medium">Name</label>
-          <InputText
+          <label htmlFor={`${uid}-name`} className="text-sm font-medium">Name</label>
+          <InputText id={`${uid}-name`}
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder={type === 'per-diem' ? 'e.g. Per diem allowance' : type === 'grant' ? 'e.g. Research foundation grant' : 'e.g. Savings I’ll use'}
@@ -362,9 +369,9 @@ export function BudgetFundingDialog({
 
             {isTripLinked ? (
               <div>
-                <label className="text-sm font-medium">Which trip?</label>
+                <label htmlFor={`${uid}-which-trip`} className="text-sm font-medium">Which trip?</label>
                 <div className="flex flex-col sm:flex-row gap-2">
-                  <Dropdown
+                  <Dropdown inputId={`${uid}-which-trip`}
                     value={tripId}
                     options={tripOptions}
                     optionDisabled="disabled"
@@ -393,12 +400,12 @@ export function BudgetFundingDialog({
               <div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="text-sm font-medium">Per day</label>
-                    <InputNumber value={rate} onValueChange={(e) => setRate(e.value ?? null)} mode="currency" currency={budget.currency} locale="fi-FI" className="w-full" />
+                    <label htmlFor={`${uid}-per-day`} className="text-sm font-medium">Per day</label>
+                    <InputNumber inputId={`${uid}-per-day`} value={rate} onValueChange={(e) => setRate(e.value ?? null)} mode="currency" currency={budget.currency} locale="fi-FI" className="w-full" />
                   </div>
                   <div>
-                    <label className="text-sm font-medium">Days</label>
-                    <InputNumber value={days} onValueChange={(e) => setDays(e.value ?? null)} className="w-full" />
+                    <label htmlFor={`${uid}-days`} className="text-sm font-medium">Days</label>
+                    <InputNumber inputId={`${uid}-days`} value={days} onValueChange={(e) => setDays(e.value ?? null)} className="w-full" />
                   </div>
                 </div>
                 {perDiemTotal > 0 && (
@@ -411,15 +418,15 @@ export function BudgetFundingDialog({
           </div>
         ) : (
           <div>
-            <label className="text-sm font-medium">Total amount</label>
-            <InputNumber value={amount} onValueChange={(e) => setAmount(e.value ?? null)} mode="currency" currency={budget.currency} locale="fi-FI" className="w-full" />
+            <label htmlFor={`${uid}-total-amount`} className="text-sm font-medium">Total amount</label>
+            <InputNumber inputId={`${uid}-total-amount`} value={amount} onValueChange={(e) => setAmount(e.value ?? null)} mode="currency" currency={budget.currency} locale="fi-FI" className="w-full" />
           </div>
         )}
 
         {type === 'grant' && (
           <div>
-            <label className="text-sm font-medium">What is it allowed to pay for?</label>
-            <MultiSelect
+            <label htmlFor={`${uid}-what-is-it`} className="text-sm font-medium">What is it allowed to pay for?</label>
+            <MultiSelect inputId={`${uid}-what-is-it`}
               value={restricted}
               options={BUDGET_CATEGORIES}
               onChange={(e) => setRestricted(e.value)}
@@ -433,8 +440,8 @@ export function BudgetFundingDialog({
 
         {!isSimple && (
           <div>
-            <label className="text-sm font-medium">When does the money arrive?</label>
-            <Dropdown value={timing} options={TIMING_OPTIONS} onChange={(e) => setTiming(e.value)} className="w-full" />
+            <label htmlFor={`${uid}-when-does-the`} className="text-sm font-medium">When does the money arrive?</label>
+            <Dropdown inputId={`${uid}-when-does-the`} value={timing} options={TIMING_OPTIONS} onChange={(e) => setTiming(e.value)} className="w-full" />
             {timing === 'specific-month' && (
               <div className="mt-2">
                 <MonthPicker value={receivedMonth} onChange={setReceivedMonth} />
@@ -445,10 +452,10 @@ export function BudgetFundingDialog({
 
         {error && <Message severity="error" text={error} className="w-full" />}
         <div className="flex justify-end gap-2 pt-1">
-          <Button label="Cancel" text severity="secondary" onClick={onHide} disabled={saving} />
-          <Button label={source ? 'Save' : 'Add funding'} loading={saving} onClick={submit} />
+          <Button type="button" label="Cancel" text severity="secondary" onClick={onHide} disabled={saving} />
+          <Button label={source ? 'Save' : 'Add funding'} loading={saving} type="submit" />
         </div>
-      </div>
+      </form>
     </Dialog>
 
     {/* Create a trip without leaving the budget. Only mounted for EUR budgets
@@ -480,6 +487,7 @@ export function BudgetDetailsDialog({
   onHide: () => void;
   onSaved: (b: Budget) => void;
 }) {
+  const uid = useId();
   const [name, setName] = useState('');
   const [destination, setDestination] = useState('');
   const [currency, setCurrency] = useState<Currency>('EUR');
@@ -552,30 +560,32 @@ export function BudgetDetailsDialog({
     }
   };
 
+  const onFormSubmit = useFormSubmit(submit, { disabled: saving });
+
   return (
     <Dialog header="Edit details" visible={visible} onHide={onHide} style={{ width: '26rem' }}>
-      <div className="space-y-3">
+      <form className="space-y-3" onSubmit={onFormSubmit} noValidate>
         <div>
-          <label className="text-sm font-medium">Name</label>
-          <InputText value={name} onChange={(e) => setName(e.target.value)} className="w-full" />
+          <label htmlFor={`${uid}-name`} className="text-sm font-medium">Name</label>
+          <InputText id={`${uid}-name`} value={name} onChange={(e) => setName(e.target.value)} className="w-full" />
         </div>
         <div>
-          <label className="text-sm font-medium">Where? <span className="opacity-50 font-normal">(optional)</span></label>
-          <InputText value={destination} onChange={(e) => setDestination(e.target.value)} placeholder="e.g. Stockholm" className="w-full" />
+          <label htmlFor={`${uid}-where-optional`} className="text-sm font-medium">Where? <span className="opacity-50 font-normal">(optional)</span></label>
+          <InputText id={`${uid}-where-optional`} value={destination} onChange={(e) => setDestination(e.target.value)} placeholder="e.g. Stockholm" className="w-full" />
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="text-sm font-medium">From</label>
-            <MonthPicker value={startMonth} onChange={setStartMonth} />
+            <label htmlFor={`${uid}-from`} className="text-sm font-medium">From</label>
+            <MonthPicker inputId={`${uid}-from`} value={startMonth} onChange={setStartMonth} />
           </div>
           <div>
-            <label className="text-sm font-medium">Until</label>
-            <MonthPicker value={endMonth} onChange={setEndMonth} />
+            <label htmlFor={`${uid}-until`} className="text-sm font-medium">Until</label>
+            <MonthPicker inputId={`${uid}-until`} value={endMonth} onChange={setEndMonth} />
           </div>
         </div>
         <div>
-          <label className="text-sm font-medium">Currency</label>
-          <Dropdown
+          <label htmlFor={`${uid}-currency`} className="text-sm font-medium">Currency</label>
+          <Dropdown inputId={`${uid}-currency`}
             value={currency}
             options={CURRENCIES.map((c) => ({ label: `${c.symbol} ${c.label}`, value: c.value }))}
             onChange={(e) => setCurrency(e.value)}
@@ -584,8 +594,8 @@ export function BudgetDetailsDialog({
           <HelpTip text="The currency you’ll mostly spend in." />
         </div>
         <div>
-          <label className="text-sm font-medium">Split group <span className="opacity-50 font-normal">(optional)</span></label>
-          <Dropdown
+          <label htmlFor={`${uid}-split-group-optional`} className="text-sm font-medium">Split group <span className="opacity-50 font-normal">(optional)</span></label>
+          <Dropdown inputId={`${uid}-split-group-optional`}
             value={effectiveSplitGroupId}
             options={splitGroupOptions}
             onChange={(e) => setSplitGroupId(e.value ?? '')}
@@ -595,10 +605,10 @@ export function BudgetDetailsDialog({
         </div>
         {error && <Message severity="error" text={error} className="w-full" />}
         <div className="flex justify-end gap-2 pt-1">
-          <Button label="Cancel" text severity="secondary" onClick={onHide} disabled={saving} />
-          <Button label="Save" loading={saving} onClick={submit} />
+          <Button type="button" label="Cancel" text severity="secondary" onClick={onHide} disabled={saving} />
+          <Button label="Save" loading={saving} type="submit" />
         </div>
-      </div>
+      </form>
     </Dialog>
   );
 }

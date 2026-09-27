@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useId } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Dialog } from 'primereact/dialog';
@@ -18,6 +18,7 @@ import { tripSchema, type TripFormData } from '@/lib/schemas/trip.schema';
 import { generateTripDays, calculatePerDiem } from '@/lib/per-diem-utils';
 import { buildDefaultRateSnapshot, PER_DIEM_COUNTRIES_2026, DOMESTIC_COUNTRY_CODE } from '@/lib/per-diem-rates';
 import { PerDiemBreakdown } from './per-diem-breakdown';
+import { formatCurrency } from '@/lib/constants';
 import type { FinancialAccount, Trip } from '@/types';
 
 const DESTINATION_OPTIONS = [
@@ -80,6 +81,7 @@ export function TripDialog({
   // it can pass a zero-arg callback.
   onSaved: (trip: Trip) => void;
 }) {
+  const uid = useId();
   const toast = useToast();
   const [isSaving, setIsSaving] = useState(false);
   const [ratesCollapsed, setRatesCollapsed] = useState(true);
@@ -427,8 +429,8 @@ export function TripDialog({
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3">
               {usedForeignCountries.map((code) => (
                 <div key={code}>
-                  <label className="block text-xs font-medium mb-1">{countryName(code)}</label>
-                  <InputNumber
+                  <label htmlFor={`${uid}-rate-${code}`} className="block text-xs font-medium mb-1">{countryName(code)}</label>
+                  <InputNumber inputId={`${uid}-rate-${code}`}
                     value={rates.countryRates[code] ?? rates.defaultForeign}
                     onValueChange={(e) => setValue('rates', {
                       ...rates,
@@ -466,13 +468,13 @@ export function TripDialog({
                       aria-label="Country"
                     />
                     <span className="text-sm font-semibold tabular-nums text-right">
-                      {perDiemResult.days[index] ? `€${perDiemResult.days[index].amount.toFixed(2)}` : '–'}
+                      {perDiemResult.days[index] ? formatCurrency(perDiemResult.days[index].amount, 'EUR') : '–'}
                     </span>
                   </div>
                   <div className="mt-2 grid grid-cols-2 gap-3">
                     <div className="min-w-0">
-                      <label className="block text-xs opacity-50 mb-1">Free meals</label>
-                      <InputNumber
+                      <label htmlFor={`${uid}-free-meals-${index}`} className="block text-xs opacity-50 mb-1">Free meals</label>
+                      <InputNumber inputId={`${uid}-free-meals-${index}`}
                         value={d.freeMeals}
                         onValueChange={(e) => updateDay(index, { freeMeals: e.value ?? 0 })}
                         min={0}
@@ -483,8 +485,8 @@ export function TripDialog({
                       />
                     </div>
                     <div className="min-w-0">
-                      <label className="block text-xs opacity-50 mb-1">Override amount</label>
-                      <InputNumber
+                      <label htmlFor={`${uid}-override-amount-${index}`} className="block text-xs opacity-50 mb-1">Override amount</label>
+                      <InputNumber inputId={`${uid}-override-amount-${index}`}
                         value={d.overrideAmount ?? null}
                         onValueChange={(e) => updateDay(index, { overrideAmount: e.value ?? null })}
                         mode="currency"

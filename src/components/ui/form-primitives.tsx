@@ -37,15 +37,19 @@ export function MonthPicker({
   onChange,
   placeholder,
   helpText,
+  inputId,
 }: {
   value: string;
   onChange: (ym: string) => void;
   placeholder?: string;
   helpText?: string;
+  /** Id for the text input, so a sibling `<label htmlFor>` names it. */
+  inputId?: string;
 }) {
   return (
     <div>
       <Calendar
+        inputId={inputId}
         value={yearMonthToDate(value)}
         onChange={(e) => onChange(dateToYearMonth(e.value as Date))}
         view="month"
@@ -97,9 +101,9 @@ export function ItemCard({
       {/* Labels show on mobile (no hover → no tooltips there) and collapse to
           icon-only + tooltip on lg+. */}
       <div className="flex items-center gap-1 mt-2 pt-2 border-t surface-border">
-        <Button icon={<MdEdit />} label="Edit" severity="secondary" text size="small" tooltip="Edit" tooltipOptions={{ position: 'top', showOnDisabled: false }} onClick={onEdit} className="lg:[&_.p-button-label]:hidden" aria-label="Edit" />
-        <Button icon={isArchived ? <MdReplay /> : <MdArchive />} label={isArchived ? 'Restore' : 'Archive'} severity="secondary" text size="small" tooltip={isArchived ? 'Restore' : 'Archive'} tooltipOptions={{ position: 'top' }} onClick={onArchive} className="lg:[&_.p-button-label]:hidden" aria-label={isArchived ? 'Restore' : 'Archive'} />
-        <Button icon={<MdDelete />} label="Delete" severity="danger" text size="small" tooltip="Delete" tooltipOptions={{ position: 'top' }} onClick={onDelete} className="lg:[&_.p-button-label]:hidden" aria-label="Delete" />
+        <Button icon={<MdEdit />} label="Edit" severity="secondary" text size="small" tooltip="Edit" tooltipOptions={{ position: 'top', showOnDisabled: false }} onClick={onEdit} className="lg:[&_.p-button-label]:hidden" aria-label={`Edit ${name}`} />
+        <Button icon={isArchived ? <MdReplay /> : <MdArchive />} label={isArchived ? 'Restore' : 'Archive'} severity="secondary" text size="small" tooltip={isArchived ? 'Restore' : 'Archive'} tooltipOptions={{ position: 'top' }} onClick={onArchive} className="lg:[&_.p-button-label]:hidden" aria-label={`${isArchived ? 'Restore' : 'Archive'} ${name}`} />
+        <Button icon={<MdDelete />} label="Delete" severity="danger" text size="small" tooltip="Delete" tooltipOptions={{ position: 'top' }} onClick={onDelete} className="lg:[&_.p-button-label]:hidden" aria-label={`Delete ${name}`} />
         {onExpand && (
           <Button
             icon={isExpanded ? <MdExpandLess /> : <MdExpandMore />}
@@ -108,6 +112,8 @@ export function ItemCard({
             size="small"
             tooltip={isExpanded ? `Hide ${expandLabel}` : `Show ${expandLabel}`}
             tooltipOptions={{ position: 'top' }}
+            aria-label={isExpanded ? `Hide ${expandLabel}` : `Show ${expandLabel}`}
+            aria-expanded={isExpanded}
             onClick={onExpand}
             className="ml-auto"
           />
@@ -137,7 +143,7 @@ export function SubEntityList({
     <div className="ml-4 mb-3 border-l surface-border pl-3">
       <div className="flex items-center justify-between mb-1">
         <span className="text-xs font-semibold opacity-60">{title || addLabel.replace('Add ', '')}</span>
-        <Button icon={<MdAdd />} size="small" text onClick={onAdd} tooltip={addLabel} tooltipOptions={{ position: 'top' }} />
+        <Button icon={<MdAdd />} size="small" text onClick={onAdd} tooltip={addLabel} tooltipOptions={{ position: 'top' }} aria-label={addLabel} />
       </div>
       {items.length === 0 ? (
         <p className="text-xs opacity-40">None yet</p>
@@ -151,8 +157,8 @@ export function SubEntityList({
                 {item.inactive && <Tag value="Inactive" severity="secondary" className="ml-1 text-xs" />}
               </div>
               <div className="flex gap-0.5">
-                {onEditItem && <Button icon={<MdEdit />} size="small" text severity="secondary" tooltip="Edit" tooltipOptions={{ position: 'top' }} aria-label="Edit" onClick={() => onEditItem(item.id)} />}
-                <Button icon={<MdDelete />} size="small" text severity="danger" tooltip="Delete" tooltipOptions={{ position: 'top' }} aria-label="Delete" onClick={() => onDeleteItem(item.id)} />
+                {onEditItem && <Button icon={<MdEdit />} size="small" text severity="secondary" tooltip="Edit" tooltipOptions={{ position: 'top' }} aria-label={`Edit ${item.label} ${item.detail}`} onClick={() => onEditItem(item.id)} />}
+                <Button icon={<MdDelete />} size="small" text severity="danger" tooltip="Delete" tooltipOptions={{ position: 'top' }} aria-label={`Delete ${item.label} ${item.detail}`} onClick={() => onDeleteItem(item.id)} />
               </div>
             </div>
           ))}

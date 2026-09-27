@@ -27,6 +27,7 @@ import { UserAvatar } from '@/components/ui/user-avatar';
 import { AvatarEditorDialog } from '@/components/ui/avatar-editor-dialog';
 import { invalidateUserProfiles } from '@/lib/hooks/use-user-profiles';
 import type { AdminUserRow, PublicUser, UserRole } from '@/types';
+import { formatDate } from '@/lib/constants';
 
 interface UsersModalProps {
     visible: boolean;
@@ -230,8 +231,8 @@ export function UsersModal({ visible, onHide }: UsersModalProps) {
         const isCurrentUser = user.id === session?.user?.id;
         return (
             <div className="flex gap-2">
-                <Button icon={<MdEdit />} severity="secondary" text onClick={() => openEditDialog(user)} />
-                <Button icon={<MdDelete />} severity="danger" text disabled={isCurrentUser} onClick={() => handleDelete(user)} />
+                <Button icon={<MdEdit />} severity="secondary" text aria-label={`Edit ${user.name}`} onClick={() => openEditDialog(user)} />
+                <Button icon={<MdDelete />} severity="danger" text disabled={isCurrentUser} aria-label={`Delete ${user.name}`} onClick={() => handleDelete(user)} />
             </div>
         );
     };
@@ -284,7 +285,7 @@ export function UsersModal({ visible, onHide }: UsersModalProps) {
                             <Column field="role" header="Role" body={roleBodyTemplate} sortable />
                             <Column field="isActive" header="Status" body={statusBodyTemplate} sortable />
                             <Column field="passkeyCount" header="Passkeys" body={passkeyBodyTemplate} sortable />
-                            <Column field="createdAt" header="Created" sortable body={(user) => new Date(user.createdAt).toLocaleDateString()} />
+                            <Column field="createdAt" header="Created" sortable body={(user) => formatDate(user.createdAt)} />
                             <Column body={actionsBodyTemplate} header="Actions" style={{ width: '120px' }} />
                         </DataTable>
                     </Card>
@@ -313,26 +314,26 @@ export function UsersModal({ visible, onHide }: UsersModalProps) {
                         </div>
                     )}
                     <div className="flex flex-col gap-2">
-                        <label className="font-medium">Name</label>
-                        <InputText value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} className="w-full" />
+                        <label htmlFor="user-form-name" className="font-medium">Name</label>
+                        <InputText id="user-form-name" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} className="w-full" />
                     </div>
                     <div className="flex flex-col gap-2">
-                        <label className="font-medium">Email</label>
-                        <InputText type="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} className="w-full" />
+                        <label htmlFor="user-form-email" className="font-medium">Email</label>
+                        <InputText id="user-form-email" type="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} className="w-full" />
                     </div>
                     <div className="flex flex-col gap-2">
-                        <label className="font-medium">{editingUser ? 'New Password (leave empty to keep)' : 'Password'}</label>
-                        <Password value={formData.password} onChange={(e) => setFormData({ ...formData, password: e.target.value })} className="w-full" inputClassName="w-full" toggleMask feedback={!editingUser} />
+                        <label htmlFor="user-form-password" className="font-medium">{editingUser ? 'New Password (leave empty to keep)' : 'Password'}</label>
+                        <Password inputId="user-form-password" value={formData.password} onChange={(e) => setFormData({ ...formData, password: e.target.value })} className="w-full" inputClassName="w-full" toggleMask feedback={!editingUser} />
                         <small className="text-xs text-gray-500 dark:text-gray-400">8–128 characters, with an uppercase and a lowercase letter, a number and a symbol.</small>
                     </div>
                     <div className="flex flex-col gap-2">
-                        <label className="font-medium">Role</label>
-                        <Dropdown value={formData.role} options={roleOptions} onChange={(e) => setFormData({ ...formData, role: e.value })} className="w-full" disabled={editingUser?.id === session?.user?.id} />
+                        <label htmlFor="user-form-role" className="font-medium">Role</label>
+                        <Dropdown inputId="user-form-role" value={formData.role} options={roleOptions} onChange={(e) => setFormData({ ...formData, role: e.value })} className="w-full" disabled={editingUser?.id === session?.user?.id} />
                     </div>
                     {editingUser && (
                         <div className="flex items-center gap-3">
-                            <InputSwitch checked={formData.isActive} onChange={(e) => setFormData({ ...formData, isActive: e.value })} disabled={editingUser?.id === session?.user?.id} />
-                            <label className="font-medium">Active</label>
+                            <InputSwitch inputId="user-form-active" checked={formData.isActive} onChange={(e) => setFormData({ ...formData, isActive: e.value })} disabled={editingUser?.id === session?.user?.id} />
+                            <label htmlFor="user-form-active" className="font-medium">Active</label>
                         </div>
                     )}
                     {editingUser && (

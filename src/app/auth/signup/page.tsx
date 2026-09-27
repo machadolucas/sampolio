@@ -130,7 +130,7 @@ export default function SignUpPage() {
                             control={control}
                             render={({ field }) => (
                                 <Password
-                                    id="password"
+                                    inputId="password"
                                     value={field.value}
                                     onChange={(e) => field.onChange(e.target.value)}
                                     placeholder="••••••••"
@@ -169,7 +169,7 @@ export default function SignUpPage() {
                             control={control}
                             render={({ field }) => (
                                 <Password
-                                    id="confirmPassword"
+                                    inputId="confirmPassword"
                                     value={field.value}
                                     onChange={(e) => field.onChange(e.target.value)}
                                     placeholder="••••••••"
