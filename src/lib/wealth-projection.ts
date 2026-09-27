@@ -36,6 +36,7 @@ import {
   isYearMonthInRange,
   resolveAnchor,
 } from './projection';
+import { createMonthStepper } from './month-stepper';
 
 // ============================================================
 // INVESTMENT PROJECTION
@@ -105,6 +106,8 @@ export function calculateInvestmentProjection(
   const anchor = resolveAnchor(investment.valuationDate, investment.startingValuation, latestSnapshot);
   let currentDate = anchor.startMonth;
   let currentValuation = anchor.startBalance;
+  // Bounded, forward-only month steps (malformed stored months can't hang).
+  const step = createMonthStepper();
 
   // If startDate is before the anchor, start from the anchor
   if (compareYearMonths(startDate, anchor.startMonth) < 0) {
@@ -127,7 +130,9 @@ export function calculateInvestmentProjection(
       }
 
       currentValuation = currentValuation + growth + monthContributions - monthWithdrawals;
-      currentDate = addMonths(currentDate, 1);
+      const next = step(currentDate);
+      if (next === null) return rows;
+      currentDate = next;
     }
   }
 
@@ -160,7 +165,9 @@ export function calculateInvestmentProjection(
     });
 
     currentValuation = endingValuation;
-    currentDate = addMonths(currentDate, 1);
+    const next = step(currentDate);
+    if (next === null) break;
+    currentDate = next;
   }
 
   return rows;
@@ -194,6 +201,7 @@ export function calculateReceivableProjection(
   const anchor = resolveAnchor(receivable.startDate, receivable.initialPrincipal, latestSnapshot);
   let currentDate = anchor.startMonth;
   let currentBalance = anchor.startBalance;
+  const step = createMonthStepper();
   const monthlyInterestRate = receivable.hasInterest
     ? (receivable.annualInterestRate ?? 0) / 100 / 12
     : 0;
@@ -228,7 +236,9 @@ export function calculateReceivableProjection(
     }
 
     currentBalance = endingBalance;
-    currentDate = addMonths(currentDate, 1);
+    const next = step(currentDate);
+    if (next === null) break;
+    currentDate = next;
 
     // Stop if fully repaid
     if (currentBalance <= 0) break;
@@ -293,6 +303,7 @@ export function calculateDebtAmortization(
   const anchor = resolveAnchor(debt.startDate, debt.initialPrincipal, latestSnapshot, true);
   let currentDate = anchor.startMonth;
   let remainingPrincipal = anchor.startBalance;
+  const step = createMonthStepper();
 
   // For fixed-installment debts: prefer the reconciled remaining count when anchored.
   let installmentsRemaining = anchored && debt.remainingInstallments != null
@@ -344,7 +355,9 @@ export function calculateDebtAmortization(
     }
 
     remainingPrincipal = endingPrincipal;
-    currentDate = addMonths(currentDate, 1);
+    const next = step(currentDate);
+    if (next === null) break;
+    currentDate = next;
   }
 
   return rows;
@@ -425,6 +438,7 @@ export function calculateWealthProjection(
 
   // Generate month-by-month wealth projection
   let currentDate = startDate;
+  const step = createMonthStepper();
   while (compareYearMonths(currentDate, endDate) <= 0) {
     const { year, month } = parseYearMonth(currentDate);
 
@@ -600,7 +614,9 @@ export function calculateWealthProjection(
       netWorth,
     });
 
-    currentDate = addMonths(currentDate, 1);
+    const next = step(currentDate);
+    if (next === null) break;
+    currentDate = next;
   }
 
   return months;

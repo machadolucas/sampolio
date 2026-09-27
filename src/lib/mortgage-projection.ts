@@ -33,6 +33,7 @@ import {
   getMonthsBetween,
   getCurrentYearMonth,
 } from './projection';
+import { createMonthStepper } from './month-stepper';
 
 // ============================================================
 // DAY COUNT
@@ -198,6 +199,7 @@ function projectLoan(
   let currentDate = loan.startDate;
   let balance = loan.initialPrincipal;
   let prevDate = addMonths(loan.startDate, -1);
+  const step = createMonthStepper(); // forward-only, bounded (on top of the term guard)
   let prevRate = NaN;
   let levelPayment =
     loan.currentMonthlyPayment ??
@@ -313,7 +315,9 @@ function projectLoan(
     balance = endingPrincipal;
     prevRate = rate;
     prevDate = currentDate;
-    currentDate = addMonths(currentDate, 1);
+    const next = step(currentDate);
+    if (next === null) break;
+    currentDate = next;
   }
 
   return rows;
@@ -403,6 +407,7 @@ export function calculateMortgageProjection(
   let cumFeesPaid = 0;
 
   let currentDate = genesis;
+  const step = createMonthStepper(); // malformed stored months can't hang the loop
   while (compareYearMonths(currentDate, endDate) <= 0) {
     const { year, month } = parseYearMonth(currentDate);
 
@@ -482,7 +487,9 @@ export function calculateMortgageProjection(
       members,
     });
 
-    currentDate = addMonths(currentDate, 1);
+    const next = step(currentDate);
+    if (next === null) break;
+    currentDate = next;
   }
 
   return months;

@@ -14,6 +14,7 @@ import {
   createMockMortgageRate,
 } from '@/test/mocks';
 import { calculateMortgageProjection } from './mortgage-projection';
+import { MAX_MONTH_ITERATIONS } from './projection';
 
 function buildWealthData(overrides?: Partial<WealthProjectionData>): WealthProjectionData {
   return {
@@ -460,4 +461,40 @@ describe('calculateWealthProjection', () => {
       expect(result[0].mortgageEquityTotal).toBeUndefined();
     });
   });
+
+  describe('malformed stored months (bounded loops)', () => {
+    it('stops at MAX_MONTH_ITERATIONS instead of hanging on a NaN end month', () => {
+      // "NaN-NaN" sorts after every real month, so an unbounded loop would never end.
+      const inv = createMockInvestment({ valuationDate: '2026-01', startingValuation: 1000 });
+      const debt = createMockDebt({ startDate: '2026-01', initialPrincipal: 1e12, monthlyPayment: 1 });
+      const rec = createMockReceivable({ startDate: '2026-01', initialPrincipal: 1e12, expectedMonthlyRepayment: 1 });
+      const data = buildWealthData({
+        investments: [inv],
+        investmentContributions: new Map([[inv.id, []]]),
+        debts: [debt],
+        debtReferenceRates: new Map([[debt.id, []]]),
+        debtExtraPayments: new Map([[debt.id, []]]),
+        receivables: [rec],
+        receivableRepayments: new Map([[rec.id, []]]),
+      });
+      const result = calculateWealthProjection(data, '2026-01', 'NaN-NaN');
+      expect(result).toHaveLength(MAX_MONTH_ITERATIONS + 1);
+    });
+
+    it('projects nothing (rather than spinning) from a non-advancing start month', () => {
+      const inv = createMockInvestment({ valuationDate: '2026-01' });
+      const data = buildWealthData({ investments: [inv], investmentContributions: new Map([[inv.id, []]]) });
+      expect(calculateWealthProjection(data, 'NaN-NaN', 'NaN-NaN')).toHaveLength(1);
+    });
+
+    it('bounds the shared-mortgage month loop too', () => {
+      const mortgage = createMockSharedMortgage();
+      const months = calculateMortgageProjection(
+        { mortgage, rates: [createMockMortgageRate({ effectiveDate: '2022-12', euriborRate: 3 })], costs: [], extraPayments: [], snapshots: [] },
+        'NaN-NaN'
+      );
+      expect(months.length).toBeLessThanOrEqual(MAX_MONTH_ITERATIONS + 1);
+    });
+  });
 });
+
