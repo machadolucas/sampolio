@@ -118,7 +118,9 @@ export async function importUserData(
     }
     const parsed = dataExportSchema.safeParse(payload);
     if (!parsed.success) {
-      return { success: false, error: `Not a valid Sampolio export file (${parsed.error.issues[0]?.message ?? 'invalid structure'})` };
+      const issue = parsed.error.issues[0];
+      const where = issue?.path.length ? `${issue.path.join('.')}: ` : '';
+      return { success: false, error: `Not a valid Sampolio export file (${issue ? `${where}${issue.message}` : 'invalid structure'})` };
     }
     // Structurally validated by the schema; DataExport is the concrete app-typed view.
     const data = parsed.data as unknown as DataExport;

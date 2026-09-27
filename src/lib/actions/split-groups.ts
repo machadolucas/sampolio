@@ -1,10 +1,12 @@
 'use server';
 
 import { z } from 'zod';
+import { isSafeId } from '@/lib/safe-id';
 import { v4 as uuidv4 } from 'uuid';
 import { auth } from '@/lib/auth';
 import { updateTag } from 'next/cache';
 import { findUserByEmail } from '@/lib/db/users';
+import { chunkMonthSchema } from '@/lib/schemas/id.schema';
 import { updateUserPreferences as dbUpdateUserPreferences } from '@/lib/db/user-preferences';
 import {
   createSplitGroup as dbCreateSplitGroup,
@@ -93,6 +95,7 @@ type LoadResult =
 async function loadGroupForMember(groupId: string, opts?: { requireOwner?: boolean }): Promise<LoadResult> {
   const session = await auth();
   if (!session?.user?.id) return { ok: false, error: 'Unauthorized' };
+  if (!isSafeId(groupId)) return { ok: false, error: 'Group not found' };
   const group = await cachedGetSplitGroupById(groupId);
   if (!group) return { ok: false, error: 'Group not found' };
   const me = group.members.find((m) => m.userId === session.user.id);
@@ -207,6 +210,10 @@ export async function getSplitGroupView(groupId: string): Promise<ApiResponse<Sp
 
 /** Expenses for the given months (defaults to the months present in the summary's latest year). */
 export async function getSplitExpenses(groupId: string, months?: string[]): Promise<ApiResponse<SplitExpense[]>> {
+  // Months become chunk file names — reject anything but YYYY-MM before any I/O.
+  if (months !== undefined && !z.array(chunkMonthSchema).max(1200).safeParse(months).success) {
+    return { success: false, error: 'Invalid months' };
+  }
   const loaded = await loadGroupForMember(groupId);
   if (!loaded.ok) return { success: false, error: loaded.error };
   const summary = await cachedGetSplitGroupSummary(groupId);

@@ -14,6 +14,8 @@ import {
   writeEncryptedFile,
   listFiles,
   deleteFile,
+  entityPath,
+  entityDir,
 } from './encryption';
 
 function getReceivablesDir(userId: string): string {
@@ -21,15 +23,15 @@ function getReceivablesDir(userId: string): string {
 }
 
 function getReceivableFile(userId: string, receivableId: string): string {
-  return path.join(getReceivablesDir(userId), `${receivableId}.enc`);
+  return entityPath(getReceivablesDir(userId), receivableId);
 }
 
 function getRepaymentsDir(userId: string, receivableId: string): string {
-  return path.join(getReceivablesDir(userId), receivableId, 'repayments');
+  return path.join(entityDir(getReceivablesDir(userId), receivableId), 'repayments');
 }
 
 function getRepaymentFile(userId: string, receivableId: string, repaymentId: string): string {
-  return path.join(getRepaymentsDir(userId, receivableId), `${repaymentId}.enc`);
+  return entityPath(getRepaymentsDir(userId, receivableId), repaymentId);
 }
 
 // ============================================================

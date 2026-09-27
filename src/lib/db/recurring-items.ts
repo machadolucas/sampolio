@@ -12,14 +12,16 @@ import {
   writeEncryptedFile,
   listFiles,
   deleteFile,
+  entityPath,
+  entityDir,
 } from './encryption';
 
 function getRecurringItemsDir(userId: string, accountId: string): string {
-  return path.join(getUserDir(userId), 'accounts', accountId, 'recurring');
+  return path.join(entityDir(path.join(getUserDir(userId), 'accounts'), accountId), 'recurring');
 }
 
 function getRecurringItemFile(userId: string, accountId: string, itemId: string): string {
-  return path.join(getRecurringItemsDir(userId, accountId), `${itemId}.enc`);
+  return entityPath(getRecurringItemsDir(userId, accountId), itemId);
 }
 
 export async function getRecurringItems(userId: string, accountId: string): Promise<RecurringItem[]> {

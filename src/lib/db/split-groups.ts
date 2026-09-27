@@ -38,6 +38,9 @@ import {
   writeEncryptedFile,
   listFiles,
   deleteFile,
+  entityPath,
+  entityDir,
+  assertChunkMonth,
 } from './encryption';
 import { pruneOccurrencesAfter } from '@/lib/split-utils';
 
@@ -52,19 +55,19 @@ function getGroupsDir(): string {
   return path.join(getSharedDir(), 'split-groups');
 }
 function getGroupFile(groupId: string): string {
-  return path.join(getGroupsDir(), `${groupId}.enc`);
+  return entityPath(getGroupsDir(), groupId);
 }
 function getExpensesDir(groupId: string): string {
-  return path.join(getGroupsDir(), groupId, 'expenses');
+  return path.join(entityDir(getGroupsDir(), groupId), 'expenses');
 }
 function getChunkFile(groupId: string, yearMonth: string): string {
-  return path.join(getExpensesDir(groupId), `${yearMonth}.enc`);
+  return path.join(getExpensesDir(groupId), `${assertChunkMonth(yearMonth)}.enc`);
 }
 function getSummaryFile(groupId: string): string {
-  return path.join(getGroupsDir(), groupId, 'summary.enc');
+  return path.join(entityDir(getGroupsDir(), groupId), 'summary.enc');
 }
 function getMemberIndexFile(userId: string): string {
-  return path.join(getSharedDir(), 'split-group-members', `${userId}.enc`);
+  return entityPath(path.join(getSharedDir(), 'split-group-members'), userId);
 }
 
 const ymOf = (date: string): string => date.slice(0, 7);

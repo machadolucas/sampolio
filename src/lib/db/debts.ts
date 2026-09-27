@@ -14,6 +14,8 @@ import {
   writeEncryptedFile,
   listFiles,
   deleteFile,
+  entityPath,
+  entityDir,
 } from './encryption';
 
 function getDebtsDir(userId: string): string {
@@ -21,23 +23,23 @@ function getDebtsDir(userId: string): string {
 }
 
 function getDebtFile(userId: string, debtId: string): string {
-  return path.join(getDebtsDir(userId), `${debtId}.enc`);
+  return entityPath(getDebtsDir(userId), debtId);
 }
 
 function getReferenceRatesDir(userId: string, debtId: string): string {
-  return path.join(getDebtsDir(userId), debtId, 'reference-rates');
+  return path.join(entityDir(getDebtsDir(userId), debtId), 'reference-rates');
 }
 
 function getReferenceRateFile(userId: string, debtId: string, rateId: string): string {
-  return path.join(getReferenceRatesDir(userId, debtId), `${rateId}.enc`);
+  return entityPath(getReferenceRatesDir(userId, debtId), rateId);
 }
 
 function getExtraPaymentsDir(userId: string, debtId: string): string {
-  return path.join(getDebtsDir(userId), debtId, 'extra-payments');
+  return path.join(entityDir(getDebtsDir(userId), debtId), 'extra-payments');
 }
 
 function getExtraPaymentFile(userId: string, debtId: string, paymentId: string): string {
-  return path.join(getExtraPaymentsDir(userId, debtId), `${paymentId}.enc`);
+  return entityPath(getExtraPaymentsDir(userId, debtId), paymentId);
 }
 
 // ============================================================

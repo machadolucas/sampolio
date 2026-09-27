@@ -16,6 +16,7 @@ import {
   readEncryptedFile,
   writeEncryptedFile,
   deleteFile,
+  entityPath,
 } from './encryption';
 
 /** Keep only the most recent runs per connection (bounded growth). */
@@ -26,7 +27,7 @@ function getSyncRunsDir(userId: string): string {
 }
 
 function getSyncRunsFile(userId: string, connectionId: string): string {
-  return path.join(getSyncRunsDir(userId), `${connectionId}.enc`);
+  return entityPath(getSyncRunsDir(userId), connectionId);
 }
 
 interface SyncRunsData {

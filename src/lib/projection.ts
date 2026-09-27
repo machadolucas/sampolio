@@ -136,11 +136,23 @@ export function getIntervalMonths(frequency: Frequency, customIntervalMonths?: n
     case 'yearly':
       return 12;
     case 'custom':
-      return customIntervalMonths || 1;
+      // Stored data is not trusted to be a positive integer (an interval of
+      // 0.5 or 0 would stop occurrence expansion from advancing).
+      return typeof customIntervalMonths === 'number' && Number.isFinite(customIntervalMonths) && customIntervalMonths >= 1
+        ? Math.floor(customIntervalMonths)
+        : 1;
     default:
       return 1;
   }
 }
+
+/**
+ * Hard ceiling on month-stepping loops (occurrence expansion, month lists):
+ * 200 years of monthly steps. Legitimate data stays far below it; malformed
+ * stored months (e.g. `NaN-NaN`, which sorts after every real month) or a
+ * non-advancing step would otherwise loop forever and hang the server.
+ */
+export const MAX_MONTH_ITERATIONS = 2400;
 
 // Check if a recurring item is active in a specific month
 export function isRecurringItemActiveInMonth(
@@ -181,9 +193,20 @@ export function getPlannedRepeatingOccurrences(
   const intervalMonths = getIntervalMonths(item.frequency, item.customIntervalMonths);
   let currentDate = item.firstOccurrence;
 
+  // Each step must strictly advance the month, and the total number of steps
+  // is bounded — malformed stored data yields a truncated list, never a hang.
+  let steps = 0;
+  const step = (from: YearMonth): YearMonth | null => {
+    const next = addMonths(from, intervalMonths);
+    if (++steps >= MAX_MONTH_ITERATIONS || compareYearMonths(next, from) <= 0) return null;
+    return next;
+  };
+
   // Move to first occurrence that's >= startDate
   while (compareYearMonths(currentDate, startDate) < 0) {
-    currentDate = addMonths(currentDate, intervalMonths);
+    const next = step(currentDate);
+    if (next === null) return occurrences;
+    currentDate = next;
   }
 
   // Collect all occurrences until endDate or item's endDate
@@ -192,7 +215,9 @@ export function getPlannedRepeatingOccurrences(
       break;
     }
     occurrences.push(currentDate);
-    currentDate = addMonths(currentDate, intervalMonths);
+    const next = step(currentDate);
+    if (next === null) break;
+    currentDate = next;
   }
 
   return occurrences;
@@ -251,7 +276,7 @@ export function generateMonthList(
   }
 
   let currentDate = startMonth;
-  while (compareYearMonths(currentDate, endDate) <= 0) {
+  while (compareYearMonths(currentDate, endDate) <= 0 && months.length < MAX_MONTH_ITERATIONS) {
     months.push(currentDate);
     currentDate = addMonths(currentDate, 1);
   }

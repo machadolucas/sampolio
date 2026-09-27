@@ -12,14 +12,16 @@ import {
   writeEncryptedFile,
   listFiles,
   deleteFile,
+  entityPath,
+  entityDir,
 } from './encryption';
 
 function getPlannedItemsDir(userId: string, accountId: string): string {
-  return path.join(getUserDir(userId), 'accounts', accountId, 'planned');
+  return path.join(entityDir(path.join(getUserDir(userId), 'accounts'), accountId), 'planned');
 }
 
 function getPlannedItemFile(userId: string, accountId: string, itemId: string): string {
-  return path.join(getPlannedItemsDir(userId, accountId), `${itemId}.enc`);
+  return entityPath(getPlannedItemsDir(userId, accountId), itemId);
 }
 
 export async function getPlannedItems(userId: string, accountId: string): Promise<PlannedItem[]> {

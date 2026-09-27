@@ -1,5 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { calculateProjection, calculateYearlyRollups, resolveAnchor, generateMonthList } from './projection';
+import {
+  calculateProjection,
+  calculateYearlyRollups,
+  resolveAnchor,
+  generateMonthList,
+  getPlannedRepeatingOccurrences,
+  getIntervalMonths,
+  MAX_MONTH_ITERATIONS,
+} from './projection';
 import type { MortgageTransfer, BudgetTransfer, CardBillTransfer, CurrentMonthActuals, GoalTransfer, TripTransfer } from './projection';
 import type { ActualTxLike } from '@/lib/current-month-actuals';
 import { createMockAccount, createMockRecurringItem, createMockPlannedItem, createMockTaxedIncome, createMockSnapshot } from '@/test/mocks';
@@ -1067,5 +1075,39 @@ describe('calculateYearlyRollups', () => {
     expect(yearly[0].totalIncome).toBe(12000); // 12 months * 1000
     expect(yearly[1].year).toBe(2027);
     expect(yearly[1].totalIncome).toBe(12000);
+  });
+});
+
+describe('malformed stored data cannot stall month loops', () => {
+  const repeating = (o: Record<string, unknown>) =>
+    createMockPlannedItem({ kind: 'repeating', frequency: 'custom', firstOccurrence: '2026-01', ...o });
+
+  it('non-positive / fractional custom intervals fall back to a whole, advancing step', () => {
+    expect(getIntervalMonths('custom', 0.5)).toBe(1);
+    expect(getIntervalMonths('custom', 0)).toBe(1);
+    expect(getIntervalMonths('custom', -3)).toBe(1);
+    expect(getIntervalMonths('custom', Number.NaN)).toBe(1);
+    expect(getIntervalMonths('custom', 2.5)).toBe(2);
+    expect(getIntervalMonths('custom', 6)).toBe(6);
+    const occ = getPlannedRepeatingOccurrences(repeating({ customIntervalMonths: 0.5 }), '2026-01', '2026-12');
+    expect(occ).toHaveLength(12);
+  });
+
+  it('occurrence expansion is bounded even with a garbage end month', () => {
+    // 'NaN-NaN' sorts after every real month, so an unbounded loop never ends.
+    const occ = getPlannedRepeatingOccurrences(repeating({ customIntervalMonths: 1 }), '2026-01', 'NaN-NaN');
+    expect(occ.length).toBeLessThanOrEqual(MAX_MONTH_ITERATIONS);
+  });
+
+  it('month list is bounded when the horizon is garbage', () => {
+    const account = createMockAccount({ planningHorizonMonths: undefined as unknown as number });
+    expect(generateMonthList(account).length).toBeLessThanOrEqual(MAX_MONTH_ITERATIONS);
+  });
+
+  it('legitimate schedules are unchanged', () => {
+    const occ = getPlannedRepeatingOccurrences(
+      repeating({ frequency: 'quarterly', firstOccurrence: '2025-11' }), '2026-01', '2026-12'
+    );
+    expect(occ).toEqual(['2026-02', '2026-05', '2026-08', '2026-11']);
   });
 });

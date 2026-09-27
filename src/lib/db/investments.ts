@@ -15,6 +15,8 @@ import {
   writeEncryptedFile,
   listFiles,
   deleteFile,
+  entityPath,
+  entityDir,
 } from './encryption';
 
 function getInvestmentsDir(userId: string): string {
@@ -22,15 +24,15 @@ function getInvestmentsDir(userId: string): string {
 }
 
 function getInvestmentFile(userId: string, investmentId: string): string {
-  return path.join(getInvestmentsDir(userId), `${investmentId}.enc`);
+  return entityPath(getInvestmentsDir(userId), investmentId);
 }
 
 function getContributionsDir(userId: string, investmentId: string): string {
-  return path.join(getInvestmentsDir(userId), investmentId, 'contributions');
+  return path.join(entityDir(getInvestmentsDir(userId), investmentId), 'contributions');
 }
 
 function getContributionFile(userId: string, investmentId: string, contributionId: string): string {
-  return path.join(getContributionsDir(userId, investmentId), `${contributionId}.enc`);
+  return entityPath(getContributionsDir(userId, investmentId), contributionId);
 }
 
 // ============================================================

@@ -1,6 +1,14 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import { getUserDir, ensureDir, readEncryptedFile, writeEncryptedFile } from './encryption';
+import {
+  getUserDir,
+  ensureDir,
+  readEncryptedFile,
+  writeEncryptedFile,
+  entityPath,
+  entityDir,
+  assertSafeId,
+} from './encryption';
 import { mergeById } from '@/lib/data-transfer-utils';
 import type { DataExport } from '@/lib/schemas/data-transfer.schema';
 import type { BalanceSnapshot, ReconciliationAdjustment, ReconciliationSession } from '@/types';
@@ -21,9 +29,29 @@ async function writeRows(dir: string, rows: Row[], userId: string): Promise<numb
   if (rows.length === 0) return 0;
   await ensureDir(dir);
   await Promise.all(
-    rows.map((row) => writeEncryptedFile(path.join(dir, `${row.id}.enc`), { ...row, userId }))
+    rows.map((row) => writeEncryptedFile(entityPath(dir, row.id), { ...row, userId }))
   );
   return rows.length;
+}
+
+// Every id that becomes a path segment, validated BEFORE replace mode deletes
+// anything — a bad id must reject the whole payload, not half-apply it. The
+// action's Zod schema already enforces this; this is the DB-layer backstop.
+function assertExportIds(data: DataExport): void {
+  const e = data.entities;
+  const check = (rows: Array<{ id: string }>) => rows.forEach((r) => assertSafeId(r.id));
+  for (const a of e.accounts) {
+    check([a]);
+    check(a.recurringItems);
+    check(a.plannedItems);
+    check(a.salaryConfigs);
+    check(a.taxedIncomes);
+  }
+  for (const i of e.investments) { check([i]); check(i.contributions); }
+  for (const d of e.debts) { check([d]); check(d.referenceRates); check(d.extraPayments); }
+  for (const r of e.receivables) { check([r]); check(r.repayments); }
+  check(e.goals);
+  check(e.budgets);
 }
 
 async function mergeAggregateFile<T extends { id: string }>(
@@ -54,6 +82,7 @@ export async function writeUserDataFromExport(
   mode: 'merge' | 'replace'
 ): Promise<ImportCounts> {
   const userDir = getUserDir(userId);
+  assertExportIds(data);
 
   if (mode === 'replace') {
     await Promise.all(
@@ -77,7 +106,7 @@ export async function writeUserDataFromExport(
     const { recurringItems, plannedItems, salaryConfigs, taxedIncomes, ...accountRow } = account;
     await writeRows(path.join(userDir, 'accounts'), [accountRow as unknown as Row], userId);
     counts.accounts++;
-    const base = path.join(userDir, 'accounts', account.id);
+    const base = entityDir(path.join(userDir, 'accounts'), account.id);
     counts.accountSubItems += await writeRows(path.join(base, 'recurring'), recurringItems as unknown as Row[], userId);
     counts.accountSubItems += await writeRows(path.join(base, 'planned'), plannedItems as unknown as Row[], userId);
     counts.accountSubItems += await writeRows(path.join(base, 'salary'), salaryConfigs as unknown as Row[], userId);
@@ -88,22 +117,22 @@ export async function writeUserDataFromExport(
     const { contributions, ...row } = investment;
     await writeRows(path.join(userDir, 'investments'), [row as unknown as Row], userId);
     counts.investments++;
-    await writeRows(path.join(userDir, 'investments', investment.id, 'contributions'), contributions as unknown as Row[], userId);
+    await writeRows(path.join(entityDir(path.join(userDir, 'investments'), investment.id), 'contributions'), contributions as unknown as Row[], userId);
   }
 
   for (const debt of e.debts) {
     const { referenceRates, extraPayments, ...row } = debt;
     await writeRows(path.join(userDir, 'debts'), [row as unknown as Row], userId);
     counts.debts++;
-    await writeRows(path.join(userDir, 'debts', debt.id, 'reference-rates'), referenceRates as unknown as Row[], userId);
-    await writeRows(path.join(userDir, 'debts', debt.id, 'extra-payments'), extraPayments as unknown as Row[], userId);
+    await writeRows(path.join(entityDir(path.join(userDir, 'debts'), debt.id), 'reference-rates'), referenceRates as unknown as Row[], userId);
+    await writeRows(path.join(entityDir(path.join(userDir, 'debts'), debt.id), 'extra-payments'), extraPayments as unknown as Row[], userId);
   }
 
   for (const receivable of e.receivables) {
     const { repayments, ...row } = receivable;
     await writeRows(path.join(userDir, 'receivables'), [row as unknown as Row], userId);
     counts.receivables++;
-    await writeRows(path.join(userDir, 'receivables', receivable.id, 'repayments'), repayments as unknown as Row[], userId);
+    await writeRows(path.join(entityDir(path.join(userDir, 'receivables'), receivable.id), 'repayments'), repayments as unknown as Row[], userId);
   }
 
   counts.goals = await writeRows(path.join(userDir, 'goals'), e.goals as unknown as Row[], userId);

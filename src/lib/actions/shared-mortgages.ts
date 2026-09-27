@@ -1,6 +1,7 @@
 'use server';
 
 import { z } from 'zod';
+import { isSafeId } from '@/lib/safe-id';
 import { CURRENCY_VALUES } from '@/lib/constants';
 import { auth } from '@/lib/auth';
 import { updateTag } from 'next/cache';
@@ -143,6 +144,7 @@ async function loadMortgageForMember(
 ): Promise<LoadResult> {
   const session = await auth();
   if (!session?.user?.id) return { ok: false, error: 'Unauthorized' };
+  if (!isSafeId(mortgageId)) return { ok: false, error: 'Mortgage not found' };
   const mortgage = await cachedGetMortgageById(mortgageId);
   if (!mortgage) return { ok: false, error: 'Mortgage not found' };
   const me = mortgage.members.find((m) => m.userId === session.user.id);

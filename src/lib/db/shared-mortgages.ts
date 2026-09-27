@@ -46,6 +46,8 @@ import {
   writeEncryptedFile,
   listFiles,
   deleteFile,
+  entityPath,
+  entityDir,
 } from './encryption';
 
 // ============================================================
@@ -59,25 +61,25 @@ function getMortgagesDir(): string {
   return path.join(getSharedDir(), 'mortgages');
 }
 function getMortgageFile(mortgageId: string): string {
-  return path.join(getMortgagesDir(), `${mortgageId}.enc`);
+  return entityPath(getMortgagesDir(), mortgageId);
 }
 function getRatesDir(mortgageId: string): string {
-  return path.join(getMortgagesDir(), mortgageId, 'rates');
+  return path.join(entityDir(getMortgagesDir(), mortgageId), 'rates');
 }
 function getCostsDir(mortgageId: string): string {
-  return path.join(getMortgagesDir(), mortgageId, 'costs');
+  return path.join(entityDir(getMortgagesDir(), mortgageId), 'costs');
 }
 function getExtraPaymentsDir(mortgageId: string): string {
-  return path.join(getMortgagesDir(), mortgageId, 'extra-payments');
+  return path.join(entityDir(getMortgagesDir(), mortgageId), 'extra-payments');
 }
 function getSnapshotsDir(mortgageId: string): string {
-  return path.join(getMortgagesDir(), mortgageId, 'snapshots');
+  return path.join(entityDir(getMortgagesDir(), mortgageId), 'snapshots');
 }
 function getActualsDir(mortgageId: string): string {
-  return path.join(getMortgagesDir(), mortgageId, 'actuals');
+  return path.join(entityDir(getMortgagesDir(), mortgageId), 'actuals');
 }
 function getMemberIndexFile(userId: string): string {
-  return path.join(getSharedDir(), 'mortgage-members', `${userId}.enc`);
+  return entityPath(path.join(getSharedDir(), 'mortgage-members'), userId);
 }
 
 // ============================================================
@@ -334,7 +336,7 @@ export async function setRate(
   const existing = (await getRates(mortgageId)).find((r) => r.effectiveDate === data.effectiveDate);
   if (existing) {
     const updated: MortgageRateEntry = { ...existing, euriborRate: data.euriborRate, note: data.note };
-    await writeEncryptedFile(path.join(dir, `${existing.id}.enc`), updated);
+    await writeEncryptedFile(entityPath(dir, existing.id), updated);
     return updated;
   }
   const entry: MortgageRateEntry = {
@@ -345,12 +347,12 @@ export async function setRate(
     note: data.note,
     createdAt: new Date().toISOString(),
   };
-  await writeEncryptedFile(path.join(dir, `${entry.id}.enc`), entry);
+  await writeEncryptedFile(entityPath(dir, entry.id), entry);
   return entry;
 }
 
 export async function deleteRate(mortgageId: string, rateId: string): Promise<boolean> {
-  await deleteFile(path.join(getRatesDir(mortgageId), `${rateId}.enc`));
+  await deleteFile(entityPath(getRatesDir(mortgageId), rateId));
   return true;
 }
 
@@ -380,7 +382,7 @@ export async function setCost(
   );
   if (existing) {
     const updated: MortgageCostEntry = { ...existing, amount: data.amount, note: data.note };
-    await writeEncryptedFile(path.join(dir, `${existing.id}.enc`), updated);
+    await writeEncryptedFile(entityPath(dir, existing.id), updated);
     return updated;
   }
   const entry: MortgageCostEntry = {
@@ -393,12 +395,12 @@ export async function setCost(
     note: data.note,
     createdAt: new Date().toISOString(),
   };
-  await writeEncryptedFile(path.join(dir, `${entry.id}.enc`), entry);
+  await writeEncryptedFile(entityPath(dir, entry.id), entry);
   return entry;
 }
 
 export async function deleteCost(mortgageId: string, costId: string): Promise<boolean> {
-  await deleteFile(path.join(getCostsDir(mortgageId), `${costId}.enc`));
+  await deleteFile(entityPath(getCostsDir(mortgageId), costId));
   return true;
 }
 
@@ -432,12 +434,12 @@ export async function createExtraPayment(
     note: data.note,
     createdAt: new Date().toISOString(),
   };
-  await writeEncryptedFile(path.join(dir, `${entry.id}.enc`), entry);
+  await writeEncryptedFile(entityPath(dir, entry.id), entry);
   return entry;
 }
 
 export async function deleteExtraPayment(mortgageId: string, paymentId: string): Promise<boolean> {
-  await deleteFile(path.join(getExtraPaymentsDir(mortgageId), `${paymentId}.enc`));
+  await deleteFile(entityPath(getExtraPaymentsDir(mortgageId), paymentId));
   return true;
 }
 
@@ -467,7 +469,7 @@ export async function createBalanceSnapshot(
   );
   if (existing) {
     const updated: MortgageBalanceSnapshot = { ...existing, actualBalance: data.actualBalance, note: data.note };
-    await writeEncryptedFile(path.join(dir, `${existing.id}.enc`), updated);
+    await writeEncryptedFile(entityPath(dir, existing.id), updated);
     return updated;
   }
   const entry: MortgageBalanceSnapshot = {
@@ -479,12 +481,12 @@ export async function createBalanceSnapshot(
     note: data.note,
     createdAt: new Date().toISOString(),
   };
-  await writeEncryptedFile(path.join(dir, `${entry.id}.enc`), entry);
+  await writeEncryptedFile(entityPath(dir, entry.id), entry);
   return entry;
 }
 
 export async function deleteBalanceSnapshot(mortgageId: string, snapshotId: string): Promise<boolean> {
-  await deleteFile(path.join(getSnapshotsDir(mortgageId), `${snapshotId}.enc`));
+  await deleteFile(entityPath(getSnapshotsDir(mortgageId), snapshotId));
   return true;
 }
 
@@ -521,7 +523,7 @@ export async function setActual(
       insurance: input.insurance,
       subsidy: input.subsidy ?? 0,
     };
-    await writeEncryptedFile(path.join(dir, `${existing.id}.enc`), updated);
+    await writeEncryptedFile(entityPath(dir, existing.id), updated);
     return updated;
   }
   const entry: MortgageActualEntry = {
@@ -536,7 +538,7 @@ export async function setActual(
     subsidy: input.subsidy ?? 0,
     createdAt: new Date().toISOString(),
   };
-  await writeEncryptedFile(path.join(dir, `${entry.id}.enc`), entry);
+  await writeEncryptedFile(entityPath(dir, entry.id), entry);
   return entry;
 }
 
@@ -555,7 +557,7 @@ export async function deleteAllActuals(mortgageId: string): Promise<void> {
 export async function deleteActualsForMonth(mortgageId: string, yearMonth: string): Promise<number> {
   const dir = getActualsDir(mortgageId);
   const toDelete = (await getActuals(mortgageId)).filter((a) => a.yearMonth === yearMonth);
-  for (const a of toDelete) await deleteFile(path.join(dir, `${a.id}.enc`));
+  for (const a of toDelete) await deleteFile(entityPath(dir, a.id));
   return toDelete.length;
 }
 

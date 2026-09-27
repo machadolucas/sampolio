@@ -17,6 +17,7 @@ import {
   readEncryptedFile,
   writeEncryptedFile,
   deleteFile,
+  entityDir,
 } from './encryption';
 
 function getAccountsDir(userId: string): string {
@@ -24,7 +25,7 @@ function getAccountsDir(userId: string): string {
 }
 
 function getTransactionsFile(userId: string, linkedAccountId: string): string {
-  return path.join(getAccountsDir(userId), linkedAccountId, 'transactions.enc');
+  return path.join(entityDir(getAccountsDir(userId), linkedAccountId), 'transactions.enc');
 }
 
 interface TransactionsData {

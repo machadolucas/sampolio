@@ -1,6 +1,7 @@
 'use server';
 
 import { z } from 'zod';
+import { isSafeId } from '@/lib/safe-id';
 import { CURRENCY_VALUES } from '@/lib/constants';
 import { auth } from '@/lib/auth';
 import {
@@ -123,7 +124,7 @@ async function loadOwnBudget(budgetId: string): Promise<LoadResult> {
   if (!session?.user?.id) {
     return { ok: false, error: 'Unauthorized' };
   }
-  const budget = await cachedGetBudgetById(session.user.id, budgetId);
+  const budget = isSafeId(budgetId) ? await cachedGetBudgetById(session.user.id, budgetId) : null;
   if (!budget) {
     return { ok: false, error: 'Budget not found' };
   }

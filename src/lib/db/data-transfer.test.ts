@@ -8,9 +8,9 @@ import { getRecurringItems } from './recurring-items';
 import { getGoals } from './goals';
 import { getBalanceSnapshots } from './reconciliation';
 import { getUserDir, writeEncryptedFile } from './encryption';
-import { dataExportSchema } from '@/lib/schemas/data-transfer.schema';
+import { dataExportSchema, MAX_IMPORT_ROWS_PER_ARRAY } from '@/lib/schemas/data-transfer.schema';
 import type { DataExport } from '@/lib/schemas/data-transfer.schema';
-import { createMockAccount, createMockRecurringItem } from '@/test/mocks';
+import { createMockAccount, createMockRecurringItem, createMockPlannedItem } from '@/test/mocks';
 import type { BalanceSnapshot, Goal } from '@/types';
 
 /** Real disk round-trips of the JSON backup writer (encrypted write → decrypt read). */
@@ -112,5 +112,62 @@ describe('data-transfer db layer', () => {
     const goals = await getGoals(userId);
     expect(goals.map((g) => g.id)).toEqual(['goal-1']); // goal-keep wiped by replace
     await expect(fs.readFile(bankFile, 'utf8')).resolves.toBe('sentinel');
+  });
+
+  describe('hostile payloads', () => {
+    const withGoals = (goals: unknown[]) => ({ ...payload, entities: { ...payload.entities, goals } });
+    const withAccount = (overrides: Record<string, unknown>) => ({
+      ...payload,
+      entities: { ...payload.entities, accounts: [{ ...payload.entities.accounts[0], ...overrides }] },
+    });
+
+    it('the schema rejects path-traversal ids anywhere in the payload', () => {
+      expect(dataExportSchema.safeParse(withGoals([{ ...goal, id: '../../../app-settings' }])).success).toBe(false);
+      expect(dataExportSchema.safeParse(withAccount({ id: '../../sam' })).success).toBe(false);
+      expect(
+        dataExportSchema.safeParse(withAccount({ recurringItems: [{ ...recurring, id: 'a/b' }] })).success
+      ).toBe(false);
+      expect(
+        dataExportSchema.safeParse({
+          ...payload,
+          entities: { ...payload.entities, reconciliation: { ...payload.entities.reconciliation, snapshots: [{ ...snapshot, id: '..' }] } },
+        }).success
+      ).toBe(false);
+    });
+
+    it('the writer rejects a traversal id before replace mode deletes anything', async () => {
+      const outside = path.join(dataDir, 'app-settings.enc');
+      const hostile = withGoals([{ ...goal, id: '../../../app-settings', selfSignupEnabled: true }]) as DataExport;
+      await expect(writeUserDataFromExport(userId, hostile, 'replace')).rejects.toThrow(/Invalid id/);
+      await expect(fs.access(outside)).rejects.toThrow();
+      // Nothing was wiped: the previous import is intact.
+      expect((await getGoals(userId)).map((g) => g.id)).toEqual(['goal-1']);
+    });
+
+    it('rejects planned/recurring rows that would stall the projection loops', () => {
+      const planned = (o: Record<string, unknown>) =>
+        withAccount({ plannedItems: [createMockPlannedItem({ id: 'p-1', kind: 'repeating', frequency: 'custom', firstOccurrence: '2026-01', ...o })] });
+      expect(dataExportSchema.safeParse(planned({ customIntervalMonths: 12 })).success).toBe(true);
+      expect(dataExportSchema.safeParse(planned({ customIntervalMonths: 0.5 })).success).toBe(false);
+      expect(dataExportSchema.safeParse(planned({ customIntervalMonths: 0 })).success).toBe(false);
+      expect(dataExportSchema.safeParse(planned({ firstOccurrence: '2026-1.5' })).success).toBe(false);
+      expect(dataExportSchema.safeParse(planned({ frequency: 'hourly' })).success).toBe(false);
+      expect(dataExportSchema.safeParse(planned({ endDate: '' })).success).toBe(true);
+      expect(
+        dataExportSchema.safeParse(withAccount({ recurringItems: [{ ...recurring, startDate: '2026-13' }] })).success
+      ).toBe(false);
+      expect(dataExportSchema.safeParse(withAccount({ planningHorizonMonths: 1e9 })).success).toBe(false);
+      expect(dataExportSchema.safeParse(withAccount({ customEndDate: 'zzzz' })).success).toBe(false);
+    });
+
+    it('keeps unknown fields for round-trips', () => {
+      const parsed = dataExportSchema.parse(withGoals([{ ...goal, futureField: { a: 1 } }]));
+      expect((parsed.entities.goals[0] as Record<string, unknown>).futureField).toEqual({ a: 1 });
+    });
+
+    it('caps row counts', () => {
+      const many = Array.from({ length: MAX_IMPORT_ROWS_PER_ARRAY + 1 }, (_, i) => ({ id: `g-${i}` }));
+      expect(dataExportSchema.safeParse(withGoals(many)).success).toBe(false);
+    });
   });
 });

@@ -1,6 +1,7 @@
 import * as crypto from 'crypto';
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import { isSafeId, isChunkMonth } from '@/lib/safe-id';
 
 const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 16;
@@ -125,13 +126,67 @@ export function getDataDir(): string {
   return dataDir;
 }
 
+// ============================================================
+// Path guards
+// ============================================================
+// Every id that becomes a path segment goes through `assertSafeId` (via
+// `entityPath` / `entityDir` / `getUserDir`), and every file primitive below
+// re-checks that the resolved path stays inside DATA_DIR. Ids reach the DB
+// layer straight from server-action arguments and import payloads, and
+// `path.join` resolves `..`, so without these a caller could read, overwrite
+// or delete any `.enc` file (other users' data, `shared/`, `app-settings.enc`).
+
+export class UnsafePathError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'UnsafePathError';
+  }
+}
+
+/** Throws unless `id` is a plain id segment (`[A-Za-z0-9_-]{1,64}`). */
+export function assertSafeId(id: unknown, label = 'id'): string {
+  if (!isSafeId(id)) throw new UnsafePathError(`Invalid ${label}`);
+  return id;
+}
+
+/** Throws unless `yearMonth` has the `YYYY-MM` shape (split chunk names). */
+export function assertChunkMonth(yearMonth: unknown, label = 'month'): string {
+  if (!isChunkMonth(yearMonth)) throw new UnsafePathError(`Invalid ${label}`);
+  return yearMonth;
+}
+
+/** `{dir}/{id}{suffix}` with `id` validated — the per-entity file builder. */
+export function entityPath(dir: string, id: string, suffix = '.enc'): string {
+  return path.join(dir, `${assertSafeId(id)}${suffix}`);
+}
+
+/** `{dir}/{id}` with `id` validated — the per-entity sub-directory builder. */
+export function entityDir(dir: string, id: string): string {
+  return path.join(dir, assertSafeId(id));
+}
+
+/**
+ * Defence in depth: the resolved path must be inside DATA_DIR. Files must be
+ * strictly inside; directory operations (`ensureDir`, `listFiles`) may also
+ * target DATA_DIR itself (e.g. `app-settings.enc` lives at the root).
+ */
+export function assertInsideDataDir(targetPath: string, opts?: { allowRoot?: boolean }): string {
+  const root = path.resolve(getDataDir());
+  const resolved = path.resolve(targetPath);
+  if (!(resolved.startsWith(root + path.sep) || (opts?.allowRoot && resolved === root))) {
+    throw new UnsafePathError('Path escapes the data directory');
+  }
+  return resolved;
+}
+
 // Get user-specific directory
 export function getUserDir(userId: string): string {
-  return path.join(getDataDir(), 'users', userId);
+  return path.join(getDataDir(), 'users', assertSafeId(userId, 'user id'));
 }
 
 // Ensure directory exists
 export async function ensureDir(dirPath: string): Promise<void> {
+  assertInsideDataDir(dirPath, { allowRoot: true });
   try {
     await fs.access(dirPath);
   } catch {
@@ -141,6 +196,7 @@ export async function ensureDir(dirPath: string): Promise<void> {
 
 // Read encrypted file
 export async function readEncryptedFile<T>(filePath: string): Promise<T | null> {
+  assertInsideDataDir(filePath);
   try {
     const encryptedContent = await fs.readFile(filePath, 'utf8');
     const decrypted = decrypt(encryptedContent);
@@ -155,6 +211,7 @@ export async function readEncryptedFile<T>(filePath: string): Promise<T | null> 
 
 // Write encrypted file
 export async function writeEncryptedFile<T>(filePath: string, data: T): Promise<void> {
+  assertInsideDataDir(filePath);
   const dirPath = path.dirname(filePath);
   await ensureDir(dirPath);
 
@@ -165,6 +222,7 @@ export async function writeEncryptedFile<T>(filePath: string, data: T): Promise<
 
 // Delete file
 export async function deleteFile(filePath: string): Promise<void> {
+  assertInsideDataDir(filePath);
   try {
     await fs.unlink(filePath);
   } catch (error) {
@@ -176,6 +234,7 @@ export async function deleteFile(filePath: string): Promise<void> {
 
 // List files in directory
 export async function listFiles(dirPath: string): Promise<string[]> {
+  assertInsideDataDir(dirPath, { allowRoot: true });
   try {
     const files = await fs.readdir(dirPath);
     return files;
@@ -189,6 +248,7 @@ export async function listFiles(dirPath: string): Promise<string[]> {
 
 // Check if file exists
 export async function fileExists(filePath: string): Promise<boolean> {
+  assertInsideDataDir(filePath);
   try {
     await fs.access(filePath);
     return true;
