@@ -5,7 +5,7 @@
 // No I/O — usable from both server actions and client components.
 
 import type { Budget, BudgetFundingSource, SplitExpense, Trip, YearMonth } from '@/types';
-import { addMonths, compareYearMonths, getMonthsBetween, type BudgetTransfer } from '@/lib/projection';
+import { addMonths, compareYearMonths, getMonthsBetween, MAX_MONTH_ITERATIONS, type BudgetTransfer } from '@/lib/projection';
 import { calculatePerDiem } from './per-diem-utils';
 
 export interface ExpandedBudgetLine {
@@ -97,15 +97,27 @@ function clampMonth(month: YearMonth, start: YearMonth, end: YearMonth): YearMon
   return month;
 }
 
-/** All months of the budget period, inclusive (empty if the period is inverted). */
-export function getBudgetMonths(budget: Budget): YearMonth[] {
+/**
+ * Inclusive months from `start` to `end` (empty if inverted). Bounded by
+ * MAX_MONTH_ITERATIONS and requires each step to move forward, so a malformed
+ * stored month (e.g. "NaN-NaN", which `addMonths` returns unchanged) can't
+ * spin the loop forever.
+ */
+function monthRange(start: YearMonth, end: YearMonth): YearMonth[] {
   const months: YearMonth[] = [];
-  let current = budget.startMonth;
-  while (compareYearMonths(current, budget.endMonth) <= 0) {
+  let current = start;
+  while (compareYearMonths(current, end) <= 0 && months.length < MAX_MONTH_ITERATIONS) {
     months.push(current);
-    current = addMonths(current, 1);
+    const next = addMonths(current, 1);
+    if (compareYearMonths(next, current) <= 0) break;
+    current = next;
   }
   return months;
+}
+
+/** All months of the budget period, inclusive (empty if the period is inverted). */
+export function getBudgetMonths(budget: Budget): YearMonth[] {
+  return monthRange(budget.startMonth, budget.endMonth);
 }
 
 export function calcPerDiemTotal(rate: number, days: number): number {
@@ -131,11 +143,7 @@ export function expandBudgetLines(budget: Budget): Map<YearMonth, ExpandedBudget
     } else {
       const start = clampMonth(line.startMonth ?? budget.startMonth, budget.startMonth, budget.endMonth);
       const end = clampMonth(line.endMonth ?? budget.endMonth, budget.startMonth, budget.endMonth);
-      let current = start;
-      while (compareYearMonths(current, end) <= 0) {
-        push(current, expanded);
-        current = addMonths(current, 1);
-      }
+      for (const month of monthRange(start, end)) push(month, expanded);
     }
   }
 

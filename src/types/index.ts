@@ -594,6 +594,12 @@ export interface Debt {
   currency: Currency;
   debtType: DebtType;
   initialPrincipal: number;
+  /**
+   * The principal before the first monthly check-in overwrote `initialPrincipal`
+   * with a confirmed balance (applyReconciliationBalances). Set once; absent on
+   * never-reconciled debts and on debts reconciled before this field existed.
+   */
+  originalPrincipal?: number;
   startDate: YearMonth;
 
   // For amortized loans (mortgage-like)
@@ -658,6 +664,7 @@ export interface CreateDebtRequest {
 export interface UpdateDebtRequest extends Partial<CreateDebtRequest> {
   isArchived?: boolean;
   remainingInstallments?: number;
+  originalPrincipal?: number;
 }
 
 // ============================================================

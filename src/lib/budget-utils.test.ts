@@ -32,6 +32,11 @@ describe('getBudgetMonths', () => {
     expect(getBudgetMonths(budget)).toEqual(['2026-03', '2026-04']);
   });
 
+  it('terminates on a malformed stored month instead of looping forever', () => {
+    const budget = createMockBudget({ startMonth: 'NaN-NaN', endMonth: 'NaN-NaN' });
+    expect(getBudgetMonths(budget).length).toBeLessThanOrEqual(1);
+  });
+
   it('crosses a year boundary', () => {
     const budget = createMockBudget({ startMonth: '2026-11', endMonth: '2027-02' });
     expect(getBudgetMonths(budget)).toEqual(['2026-11', '2026-12', '2027-01', '2027-02']);

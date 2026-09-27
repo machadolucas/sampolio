@@ -25,13 +25,16 @@ export interface DebtPayoffOptions {
  * Best available estimate of a debt's original principal. `Debt.initialPrincipal`
  * is overwritten with the confirmed balance by every monthly check-in
  * (applyReconciliationBalances), so it is only a lower bound once a debt has
- * been reconciled. The largest balance ever recorded in its snapshots (expected
- * or actual — early check-ins prefilled the expected value with the then
- * untouched initialPrincipal) recovers the original in most cases, without a
- * data-model change.
+ * been reconciled; `Debt.originalPrincipal` keeps the value from before the
+ * first check-in. For debts reconciled before that field existed, the largest
+ * balance recorded in their snapshots (early check-ins prefilled the expected
+ * value with the then untouched initialPrincipal) recovers it in most cases.
  */
 export function getDebtOriginalPrincipal(debt: Debt, snapshots: BalanceSnapshot[] = []): number {
-  let base = debt.initialPrincipal;
+  // `originalPrincipal` is captured before the first check-in overwrites
+  // `initialPrincipal`; the snapshot scan remains the fallback for debts
+  // reconciled before that field existed.
+  let base = Math.max(debt.initialPrincipal, debt.originalPrincipal ?? 0);
   for (const s of snapshots) {
     base = Math.max(base, Math.abs(s.expectedBalance), Math.abs(s.actualBalance));
   }

@@ -63,6 +63,15 @@ describe('expectedReceivableBalance', () => {
     expect(expectedReceivableBalance(rec, repayments, null, '2026-04')).toBe(4000);
   });
 
+  it('keeps the expected repayments of the months between now and a future check-in month', () => {
+    // Overview projects from the current month: Sep repays the expected 100, so
+    // October starts at 900. The prefill must agree (not restart repayments in Oct).
+    const r = createMockReceivable({ initialPrincipal: 1000, currentBalance: 1000, startDate: '2026-09', expectedMonthlyRepayment: 100 });
+    const overview = calculateReceivableProjection(r, [], '2026-09', '2026-10', null);
+    expect(overview.find((row) => row.yearMonth === '2026-10')?.startingBalance).toBe(900);
+    expect(expectedReceivableBalance(r, [], null, '2026-10', '2026-09')).toBe(900);
+  });
+
   it('confirming the prefill as a snapshot leaves the projection unchanged', () => {
     const before = calculateReceivableProjection(rec, repayments, '2026-04', '2027-04', null);
     const snap = createMockSnapshot({

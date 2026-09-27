@@ -160,6 +160,18 @@ describe('data-transfer db layer', () => {
       expect(dataExportSchema.safeParse(withAccount({ customEndDate: 'zzzz' })).success).toBe(false);
     });
 
+    it('accepts the custom-end-date horizon (-1) and rejects budget periods that would stall', () => {
+      expect(dataExportSchema.safeParse(withAccount({ planningHorizonMonths: -1, customEndDate: '2030-12' })).success).toBe(true);
+      expect(dataExportSchema.safeParse(withAccount({ planningHorizonMonths: -2 })).success).toBe(false);
+      const withBudget = (b: Record<string, unknown>) => ({
+        ...payload,
+        entities: { ...payload.entities, budgets: [{ id: 'b-1', startMonth: '2026-01', endMonth: '2026-03', ...b }] },
+      });
+      expect(dataExportSchema.safeParse(withBudget({})).success).toBe(true);
+      expect(dataExportSchema.safeParse(withBudget({ startMonth: 'NaN-NaN', endMonth: 'NaN-NaN' })).success).toBe(false);
+      expect(dataExportSchema.safeParse(withBudget({ lines: [{ id: 'l-1', startMonth: '2026-1.5' }] })).success).toBe(false);
+    });
+
     it('keeps unknown fields for round-trips', () => {
       const parsed = dataExportSchema.parse(withGoals([{ ...goal, futureField: { a: 1 } }]));
       expect((parsed.entities.goals[0] as Record<string, unknown>).futureField).toEqual({ a: 1 });

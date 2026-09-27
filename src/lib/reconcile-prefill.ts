@@ -25,7 +25,7 @@ import type {
   DebtExtraPayment,
   BalanceSnapshot,
 } from '@/types';
-import { compareYearMonths, resolveAnchor } from './projection';
+import { compareYearMonths, getCurrentYearMonth, resolveAnchor } from './projection';
 import {
   calculateInvestmentProjection,
   calculateReceivableProjection,
@@ -44,16 +44,26 @@ export function expectedInvestmentBalance(
   return row ? row.startingValuation : (investment.currentValuation ?? investment.startingValuation);
 }
 
-/** Start-of-month balance of a receivable for `yearMonth` (0 once repaid). */
+/**
+ * Start-of-month balance of a receivable for `yearMonth` (0 once repaid).
+ *
+ * The receivable engine applies the *expected* monthly repayment only from its
+ * `startDate` argument onward. Overview projects from the current month, so a
+ * future `yearMonth` must be projected from the same cutoff (not from
+ * `yearMonth` itself), or the expected repayments of the months in between
+ * would be dropped and confirming the row would raise the forecast.
+ */
 export function expectedReceivableBalance(
   receivable: Receivable,
   repayments: ReceivableRepayment[],
   latestSnapshot: BalanceSnapshot | null | undefined,
-  yearMonth: YearMonth
+  yearMonth: YearMonth,
+  currentMonth: YearMonth = getCurrentYearMonth()
 ): number {
   const anchor = resolveAnchor(receivable.startDate, receivable.initialPrincipal, latestSnapshot);
   if (compareYearMonths(yearMonth, anchor.startMonth) < 0) return receivable.currentBalance;
-  const rows = calculateReceivableProjection(receivable, repayments, yearMonth, yearMonth, latestSnapshot);
+  const projectionStart = compareYearMonths(yearMonth, currentMonth) > 0 ? currentMonth : yearMonth;
+  const rows = calculateReceivableProjection(receivable, repayments, projectionStart, yearMonth, latestSnapshot);
   const row = rows.find((r) => r.yearMonth === yearMonth);
   // The engine stops emitting rows once the balance reaches 0.
   return row ? row.startingBalance : 0;

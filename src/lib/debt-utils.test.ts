@@ -269,4 +269,16 @@ describe('getDebtPayoffInfo with a long payoff horizon (drawer usage)', () => {
     expect(info.percentPaid).toBeGreaterThan(40);
     expect(info.percentPaid).toBeLessThan(100);
   });
+
+  it('prefers the stored originalPrincipal when projected check-ins recorded no larger balance', () => {
+    // New-style check-in: expected == actual == projected balance (900), and the
+    // pre-check-in principal (1200) was kept in originalPrincipal.
+    const checkedIn = { ...debt, initialPrincipal: 900, originalPrincipal: 1200 };
+    const snap = createMockSnapshot({
+      entityType: 'debt', entityId: debt.id, yearMonth: '2026-04',
+      expectedBalance: -900, actualBalance: -900,
+    });
+    expect(getDebtOriginalPrincipal(checkedIn, [snap])).toBe(1200);
+    expect(getDebtOriginalPrincipal({ ...debt, initialPrincipal: 900 }, [snap])).toBe(900);
+  });
 });

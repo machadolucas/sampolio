@@ -22,5 +22,20 @@ describe('isLoopbackDevRequest', () => {
     for (const header of ['x-forwarded-for', 'x-forwarded-host', 'forwarded', 'x-real-ip', 'cf-connecting-ip']) {
       expect(isLoopbackDevRequest(h({ host: 'localhost:4999', [header]: '203.0.113.7' })), header).toBe(false);
     }
+    expect(isLoopbackDevRequest(h({ host: 'localhost:4999', 'x-forwarded-for': '127.0.0.1, 203.0.113.7' }))).toBe(false);
+    expect(isLoopbackDevRequest(h({ host: 'localhost:4999', 'x-forwarded-host': 'sampolio.example.com' }))).toBe(false);
+  });
+
+  it('accepts the x-forwarded-* headers Next itself adds to a direct loopback request', () => {
+    // base-server fills x-forwarded-host from Host and x-forwarded-for from the socket address.
+    for (const addr of ['127.0.0.1', '::1', '::ffff:127.0.0.1']) {
+      expect(isLoopbackDevRequest(h({
+        host: 'localhost:4999',
+        'x-forwarded-host': 'localhost:4999',
+        'x-forwarded-for': addr,
+        'x-forwarded-proto': 'http',
+        'x-forwarded-port': '4999',
+      })), addr).toBe(true);
+    }
   });
 });

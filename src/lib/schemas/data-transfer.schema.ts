@@ -61,14 +61,27 @@ const plannedRow = entityRow.extend({
   endDate: optionalMonth,
 });
 
+// `planningHorizonMonths: -1` is the "Custom End Date" option (PLANNING_HORIZONS);
+// it must then carry a real `customEndDate`.
 const accountRow = entityRow.extend({
   startingDate: yearMonthSchema,
-  planningHorizonMonths: z.number().int().min(1).max(600),
+  planningHorizonMonths: z.union([z.literal(-1), z.number().int().min(1).max(600)]),
   customEndDate: optionalMonth,
   recurringItems: rows(recurringRow),
   plannedItems: rows(plannedRow),
   salaryConfigs: rows(entityRow),
   taxedIncomes: rows(entityRow),
+});
+
+const budgetLineRow = z.looseObject({
+  month: optionalMonth,
+  startMonth: optionalMonth,
+  endMonth: optionalMonth,
+});
+const budgetRow = entityRow.extend({
+  startMonth: yearMonthSchema,
+  endMonth: yearMonthSchema,
+  lines: rows(budgetLineRow).optional(),
 });
 
 const investmentRow = entityRow.extend({ contributions: rows(entityRow) });
@@ -90,7 +103,7 @@ export const dataExportSchema = z.object({
     debts: rows(debtRow),
     receivables: rows(receivableRow),
     goals: rows(entityRow),
-    budgets: rows(entityRow),
+    budgets: rows(budgetRow),
     reconciliation: z.object({
       snapshots: rows(entityRow),
       adjustments: rows(entityRow),

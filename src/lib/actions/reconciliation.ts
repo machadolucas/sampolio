@@ -423,6 +423,12 @@ export async function applyReconciliationBalances(
           const debtUpdates: Record<string, unknown> = {
             initialPrincipal: Math.abs(actualBalance),
           };
+          // Keep the pre-reconciliation principal once, so debt progress
+          // ("% paid off") keeps a stable baseline after check-ins.
+          const existingDebt = await debtsDb.getDebtById(userId, entityId);
+          if (existingDebt && existingDebt.originalPrincipal == null) {
+            debtUpdates.originalPrincipal = existingDebt.initialPrincipal;
+          }
           if (validated.remainingInstallments != null) {
             debtUpdates.remainingInstallments = validated.remainingInstallments;
           }
