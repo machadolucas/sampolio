@@ -14,18 +14,17 @@ import { UserAvatar } from '@/components/ui/user-avatar';
 import { useUserProfiles } from '@/lib/hooks/use-user-profiles';
 import { SplitActivityFeed } from '@/components/split/split-activity-feed';
 import { BankAttentionBanner } from '@/components/bank/bank-attention-banner';
-import { getMySplitGroups, getSplitGroupView, getSplitActivity, catchUpGroupRecurrences } from '@/lib/actions/split-groups';
-import { getAccounts } from '@/lib/actions/accounts';
-import { getProjection } from '@/lib/actions/projection';
-import {
-  getBankConnectionsNeedingAttention,
-  getHomeBankGlance,
-  type ConnectionAttention,
-  type HomeBankAccountGlance,
-} from '@/lib/actions/bank';
+import { catchUpGroupRecurrences } from '@/lib/actions/split-groups';
+import { getHomeData, type HomeData, type HomeGlance } from '@/lib/actions/dashboard-data';
+import type { ConnectionAttention, HomeBankAccountGlance } from '@/lib/actions/bank';
 import { aggregatePairwiseNets } from '@/lib/split-insights';
 import { formatCents, formatCurrency, formatYearMonth } from '@/lib/constants';
 import type { BankAccountRole, Currency, SplitActivityEvent, SplitGroup, SplitMemberBalance } from '@/types';
+
+/** Groups with an active recurrence rule — the only ones catch-up can touch. */
+function hasActiveRecurrence(group: SplitGroup): boolean {
+  return (group.recurrenceRules ?? []).some((r) => r.isActive);
+}
 
 interface GroupLine {
   group: SplitGroup;
@@ -55,91 +54,67 @@ export function HomeDashboard() {
   const [lines, setLines] = useState<GroupLine[]>([]);
   const [events, setEvents] = useState<SplitActivityEvent[]>([]);
   const [currency, setCurrency] = useState<Currency>('EUR');
-  const [loaded, setLoaded] = useState(false);
-  // Bank connections needing attention (expired/expiring consent, failing sync) —
-  // fetched independently, same non-blocking pattern as fetchGlance below.
+  // Bank connections needing attention (expired/expiring consent, failing sync).
   const [bankAttention, setBankAttention] = useState<ConnectionAttention[]>([]);
   // Live balances of the accounts/cards used in the last 30 days — the strip at
-  // the top of the page. Fetched independently, like the glance below.
+  // the top of the page.
   const [bankRows, setBankRows] = useState<HomeBankAccountGlance[]>([]);
-  // Settles to true once the bank-glance fetch resolves (found rows or not) —
-  // the top row's geometry depends on whether there are any, so the skeleton
-  // must wait for it or the layout jumps right after paint.
-  const [bankLoaded, setBankLoaded] = useState(false);
   // "This month" glance: the primary account's projected end-of-month position.
-  const [glance, setGlance] = useState<{ yearMonth: string; startingBalance: number; totalIncome: number; totalExpenses: number; endingBalance: number; netChange: number; currency: Currency; isActualized?: boolean } | null>(null);
-  // Settles to true once fetchGlance has resolved (whether it found data or
-  // not) — glance loads independently of the split data, so the region's
-  // skeleton needs both flags to know when it's safe to swap in.
-  const [glanceLoaded, setGlanceLoaded] = useState(false);
+  const [glance, setGlance] = useState<HomeGlance | null>(null);
+  // Settles to true once the first getHomeData call resolves (found data or
+  // not) — the region's geometry depends on bank rows and the glance, so the
+  // skeleton must wait for it or the layout jumps right after paint.
+  const [regionLoaded, setRegionLoaded] = useState(false);
   // Plain-words "how we get this number" breakdown, opened by tapping the glance tile.
   const [explainOpen, setExplainOpen] = useState(false);
 
-  const fetchGlance = useCallback(async () => {
-    try {
-      const accRes = await getAccounts();
-      const primary = accRes.success && accRes.data ? accRes.data.find((a) => !a.isArchived) : undefined;
-      if (!primary) return setGlance(null);
-      const proj = await getProjection(primary.id);
-      if (!proj.success || !proj.data) return setGlance(null);
-      const now = new Date();
-      const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-      const row = proj.data.monthly.find((m) => m.yearMonth === ym) ?? proj.data.monthly[0];
-      if (!row) return setGlance(null);
-      setGlance({
-        yearMonth: row.yearMonth,
-        startingBalance: row.startingBalance,
-        totalIncome: row.totalIncome,
-        totalExpenses: row.totalExpenses,
-        endingBalance: row.endingBalance,
-        netChange: row.netChange,
-        currency: primary.currency,
-        isActualized: row.isActualized,
-      });
-    } finally {
-      setGlanceLoaded(true);
-    }
-  }, []);
-
-  const fetchBankGlance = useCallback(async () => {
-    try {
-      const res = await getHomeBankGlance();
-      if (res.success && res.data) setBankRows(res.data);
-    } finally {
-      // `finally` so a failed fetch still releases the region's skeleton.
-      setBankLoaded(true);
-    }
-  }, []);
-
-  const fetchBankAttention = useCallback(async () => {
-    const res = await getBankConnectionsNeedingAttention();
-    if (res.success && res.data) setBankAttention(res.data);
-  }, []);
+  const applyHomeData = useCallback((data: HomeData) => {
+    setGlance(data.glance);
+    setBankRows(data.bankGlance);
+    setBankAttention(data.bankAttention);
+    setLines(
+      data.splitGroups.map(({ group, balances }) => {
+        const other = group.members.find((m) => m.userId !== myId);
+        return {
+          group,
+          myNetCents: balances.find((b) => b.userId === myId)?.netCents ?? 0,
+          otherName: other?.name ?? 'Members',
+          otherUserId: other?.userId,
+          balances,
+        };
+      }),
+    );
+    if (data.splitGroups[0]) setCurrency(data.splitGroups[0].group.currency);
+    setEvents(data.splitActivity);
+  }, [myId]);
 
   const fetchData = useCallback(async () => {
     if (!myId) return;
-    void fetchGlance(); // independent — don't block the split data on it
-    void fetchBankGlance(); // independent — same non-blocking pattern
-    void fetchBankAttention(); // independent — same non-blocking pattern
-    const res = await getMySplitGroups();
-    const groups = res.success && res.data ? res.data : [];
-    // Materialize any due recurrences across groups (cheap; no-ops when nothing due).
-    await Promise.all(groups.map((g) => catchUpGroupRecurrences(g.id)));
-    const built = await Promise.all(
-      groups.map(async (g) => {
-        const view = await getSplitGroupView(g.id);
-        const balances = view.success ? view.data!.balances : [];
-        const myNetCents = balances.find((b) => b.userId === myId)?.netCents ?? 0;
-        const other = g.members.find((m) => m.userId !== myId);
-        return { group: g, myNetCents, otherName: other?.name ?? 'Members', otherUserId: other?.userId, balances };
-      }),
-    );
-    setLines(built);
-    if (groups[0]) setCurrency(groups[0].currency);
-    const act = await getSplitActivity(5);
-    if (act.success && act.data) setEvents(act.data);
-    setLoaded(true);
-  }, [myId, fetchGlance, fetchBankGlance, fetchBankAttention]);
+    try {
+      // One aggregate read (glance + bank strip + attention + split) — one
+      // round trip instead of 6 + 2×groups serial server actions.
+      const res = await getHomeData();
+      if (!res.success || !res.data) return;
+      applyHomeData(res.data);
+      setRegionLoaded(true);
+
+      // Materialize any due split recurrences (a MUTATION, so it stays a
+      // separate call and runs after the first paint). Only when a rule
+      // actually generated rows is the aggregate re-read.
+      const due = res.data.splitGroups.map((l) => l.group).filter(hasActiveRecurrence);
+      if (due.length === 0) return;
+      const results = await Promise.all(due.map((g) => catchUpGroupRecurrences(g.id)));
+      if (results.some((r) => r.success && (r.data?.generated ?? 0) > 0)) {
+        const fresh = await getHomeData();
+        if (fresh.success && fresh.data) applyHomeData(fresh.data);
+      }
+    } catch (err) {
+      console.error('Failed to load home:', err);
+    } finally {
+      // `finally` so a failed fetch still releases the region's skeleton.
+      setRegionLoaded(true);
+    }
+  }, [myId, applyHomeData]);
 
   // Split into two effects (see goals/page.tsx): combining them re-ran the
   // fetch (and re-showed the loading skeleton) on every AppLayout re-render,
@@ -161,14 +136,6 @@ export function HomeDashboard() {
     [myId, lines],
   );
   const featureItems = navItems.filter((n) => n.id !== 'home');
-  // The glance/balances/activity region is considered "ready" only once the
-  // glance, bank-glance and split-data fetches have ALL settled — any of them
-  // can legitimately resolve to empty data, so this must be a load-state flag,
-  // never derived from the data itself (that would stay stuck for no-data users).
-  // The bank flag matters for layout, not just content: the top row's geometry
-  // (strip + narrow tile vs. one full-width tile) depends on whether there are
-  // bank rows, so swapping in before it settles would shift the page.
-  const regionLoaded = loaded && glanceLoaded && bankLoaded;
 
   // The overall split position, mirroring /split's summaryTotalLine: entries
   // under a cent are noise; more than one currency can't be summed (app-wide).

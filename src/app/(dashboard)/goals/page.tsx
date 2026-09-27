@@ -5,14 +5,14 @@ import { useSession } from '@/lib/auth-client';
 import { Button } from 'primereact/button';
 import { confirmDialog } from 'primereact/confirmdialog';
 import { ListPageSkeleton } from '@/components/ui/skeletons';
-import { MdAdd, MdFlag } from 'react-icons/md';
+import { MdAdd, MdErrorOutline, MdFlag } from 'react-icons/md';
 import { useAppContext } from '@/components/layout/app-layout';
 import { useToast } from '@/components/providers/toast-provider';
-import { getGoals, updateGoal, deleteGoal } from '@/lib/actions/goals';
-import { getAccounts } from '@/lib/actions/accounts';
-import { getProjection } from '@/lib/actions/projection';
+import { updateGoal, deleteGoal } from '@/lib/actions/goals';
+import { getGoalsPageData } from '@/lib/actions/dashboard-data';
 import { calculateGoalProgress, computeGoalPlan } from '@/lib/goal-utils';
-import { fetchWealthProjectionMonths } from '@/lib/wealth-assembly';
+import { assembleWealthProjection } from '@/lib/wealth-assembly';
+import { AlertBanner } from '@/components/ui/alert-banner';
 import { GoalCard } from '@/components/goals/goal-card';
 import { GoalDialog } from '@/components/goals/goal-dialog';
 import type { FinancialAccount, Goal, MonthlyProjection, WealthProjectionMonth } from '@/types';
@@ -31,42 +31,57 @@ export default function GoalsPage() {
   const [editingGoal, setEditingGoal] = useState<Goal | null>(null);
   const [showArchived, setShowArchived] = useState(false);
   const hasLoadedOnce = useRef(false);
+  // True once any load succeeded — a failed FIRST load must not render the
+  // "Set your first goal" empty state as if the user had no goals.
+  const [hasLoadedData, setHasLoadedData] = useState(false);
 
   const userId = session?.user?.id;
+
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     if (!hasLoadedOnce.current) setIsLoading(true);
     try {
-      const [goalsRes, accountsRes] = await Promise.all([getGoals(), getAccounts()]);
-      const loadedGoals = goalsRes.success && goalsRes.data ? goalsRes.data : [];
+      // One aggregate read: goals + accounts + (when any goal needs them) the
+      // wealth inputs, whose per-account projections also serve the
+      // account-balance goals — each projection is computed exactly once.
+      const res = await getGoalsPageData();
+      if (!res.success || !res.data) {
+        // Keep whatever loaded last; never fall back to an empty "no goals" state.
+        setLoadError(res.error || "Couldn't load your goals. Try again.");
+        return;
+      }
+      const { goals: loadedGoals, accounts: loadedAccounts, wealth } = res.data;
       setGoals(loadedGoals);
-      setAccounts(accountsRes.success && accountsRes.data ? accountsRes.data : []);
+      setAccounts(loadedAccounts);
 
       // Projections only for the accounts goals actually track.
-      const activeGoals = loadedGoals.filter((g) => !g.isArchived);
-      const linkedAccountIds = [...new Set(
-        activeGoals
-          .filter((g) => g.trackingMethod === 'account-balance' && g.linkedAccountId)
+      const linkedAccountIds = new Set(
+        loadedGoals
+          .filter((g) => !g.isArchived && g.trackingMethod === 'account-balance' && g.linkedAccountId)
           .map((g) => g.linkedAccountId as string)
-      )];
-      const projectionResults = await Promise.all(
-        linkedAccountIds.map((id) =>
-          getProjection(id).then((r) => [id, r.success && r.data ? r.data.monthly : []] as [string, MonthlyProjection[]])
-        )
       );
-      setCashProjections(new Map(projectionResults));
+      setCashProjections(new Map(
+        [...linkedAccountIds].map((id) => [id, wealth?.cashProjections[id]?.monthly ?? []] as [string, MonthlyProjection[]])
+      ));
 
       // The full wealth projection is needed for net-worth goals directly, AND
       // for the joint plan whenever ANY non-manual goal exists — an
       // account-balance goal's claim also reduces the net-worth pool for
-      // later net-worth goals (see computeGoalPlan in goal-utils.ts).
-      if (activeGoals.some((g) => g.trackingMethod !== 'manual')) {
-        setWealthMonths(await fetchWealthProjectionMonths(userId));
+      // later net-worth goals (see computeGoalPlan in goal-utils.ts). The
+      // action returns `wealth` exactly in that case.
+      if (wealth) {
+        const now = new Date();
+        const startDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+        setWealthMonths(assembleWealthProjection(wealth, userId, startDate, 60, now).months);
       } else {
         setWealthMonths([]);
       }
+      setLoadError(null);
+      setHasLoadedData(true);
     } catch (err) {
       console.error('Failed to load goals:', err);
+      setLoadError("Couldn't load your goals. Check your connection and try again.");
     } finally {
       hasLoadedOnce.current = true;
       setIsLoading(false);
@@ -180,7 +195,13 @@ export default function GoalsPage() {
         <Button label="New goal" icon={<MdAdd />} className="shrink-0 self-start sm:self-auto" onClick={openCreate} />
       </div>
 
-      {active.length === 0 && archived.length === 0 ? (
+      {loadError && (
+        <AlertBanner severity="error" icon={<MdErrorOutline />} action={{ label: 'Retry', onClick: () => { void fetchData(); } }}>
+          {loadError}
+        </AlertBanner>
+      )}
+
+      {loadError && !hasLoadedData ? null : active.length === 0 && archived.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-center">
           <MdFlag size={48} className="opacity-30 mb-4" />
           <p className="text-lg font-medium mb-1">Set your first goal</p>

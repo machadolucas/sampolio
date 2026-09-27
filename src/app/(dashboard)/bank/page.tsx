@@ -8,7 +8,8 @@ import { Tag } from 'primereact/tag';
 import { Skeleton } from 'primereact/skeleton';
 import { ListPageSkeleton } from '@/components/ui/skeletons';
 import { DelayedSkeleton } from '@/components/ui/delayed-loading';
-import { MdAccountBalance, MdSettings, MdRefresh, MdAutorenew } from 'react-icons/md';
+import { MdAccountBalance, MdSettings, MdRefresh, MdAutorenew, MdErrorOutline } from 'react-icons/md';
+import { AlertBanner } from '@/components/ui/alert-banner';
 import {
   getBankConnections,
   getBankTransactionsForLink,
@@ -97,7 +98,9 @@ function BankPageInner() {
   const movedWhileReorderingRef = useRef(false);
   const [selectedLinkId, setSelectedLinkId] = useState<string | null>(null);
   const [ledgers, setLedgers] = useState<Record<string, BankTransaction[]>>({});
-  const [ledgerLoadingId, setLedgerLoadingId] = useState<string | null>(null);
+  // Per-link fetch state: in flight, or the last fetch failed (retryable).
+  const [ledgerPending, setLedgerPending] = useState<Record<string, boolean>>({});
+  const [ledgerErrors, setLedgerErrors] = useState<Record<string, string>>({});
   const [candidatesByLink, setCandidatesByLink] = useState<Record<string, SplitLinkCandidate[]>>({});
   const [highlightTxId, setHighlightTxId] = useState<string | undefined>(undefined);
   const [refreshingAll, setRefreshingAll] = useState(false);
@@ -106,8 +109,15 @@ function BankPageInner() {
   // accounts already marked as loaded in loadedLedgersRef.
   const [ledgerVersion, setLedgerVersion] = useState(0);
   const hasLoadedOnce = useRef(false);
-  // Which accounts' ledgers have been fetched (lazily, on selection).
+  // Which accounts' ledgers have been fetched SUCCESSFULLY (lazily, on
+  // selection) — a link is marked only once its data is stored, so a failed
+  // or superseded request never blocks a later fetch.
   const loadedLedgersRef = useRef<Set<string>>(new Set());
+  // Latest request per link: `{ seq, version }`. A response applies only if it
+  // is still the newest request for its link (a refresh can supersede it);
+  // switching accounts does NOT discard it — ledgers are stored per link.
+  const ledgerRequestsRef = useRef<Map<string, { seq: number; version: number }>>(new Map());
+  const ledgerSeqRef = useRef(0);
 
   const load = useCallback(async () => {
     if (!hasLoadedOnce.current) setLoading(true);
@@ -266,18 +276,37 @@ function BankPageInner() {
   // Lazily fetch + cache the ledger for whichever account is selected.
   useEffect(() => {
     if (!selectedLinkId || loadedLedgersRef.current.has(selectedLinkId)) return;
-    loadedLedgersRef.current.add(selectedLinkId);
-    let active = true;
-    setLedgerLoadingId(selectedLinkId);
-    getBankTransactionsForLink(selectedLinkId).then((res) => {
-      if (!active) return;
-      if (res.success && res.data) setLedgers((prev) => ({ ...prev, [selectedLinkId]: res.data! }));
-      setLedgerLoadingId((cur) => (cur === selectedLinkId ? null : cur));
+    const linkId = selectedLinkId;
+    const inFlight = ledgerRequestsRef.current.get(linkId);
+    // Already fetching this link for the current refresh generation.
+    if (inFlight && inFlight.version === ledgerVersion) return;
+    const seq = ++ledgerSeqRef.current;
+    ledgerRequestsRef.current.set(linkId, { seq, version: ledgerVersion });
+    setLedgerPending((prev) => ({ ...prev, [linkId]: true }));
+    setLedgerErrors((prev) => {
+      if (!(linkId in prev)) return prev;
+      const next = { ...prev };
+      delete next[linkId];
+      return next;
     });
-    return () => {
-      active = false;
+    const settle = (error: string | null, data?: BankTransaction[]) => {
+      if (ledgerRequestsRef.current.get(linkId)?.seq !== seq) return; // superseded
+      ledgerRequestsRef.current.delete(linkId);
+      setLedgerPending((prev) => ({ ...prev, [linkId]: false }));
+      if (data) {
+        loadedLedgersRef.current.add(linkId);
+        setLedgers((prev) => ({ ...prev, [linkId]: data }));
+      } else {
+        setLedgerErrors((prev) => ({ ...prev, [linkId]: error ?? "Couldn't load transactions" }));
+      }
     };
+    getBankTransactionsForLink(linkId).then(
+      (res) => (res.success && res.data ? settle(null, res.data) : settle(res.error || "Couldn't load transactions")),
+      () => settle("Couldn't load transactions — check your connection")
+    );
   }, [selectedLinkId, ledgerVersion]);
+
+  const retryLedger = useCallback(() => setLedgerVersion((v) => v + 1), []);
 
   // Split-candidate wiring: once a ledger is loaded, fetch cross-group split
   // candidates for the months it covers so rows can be flagged "already
@@ -470,8 +499,16 @@ function BankPageInner() {
                     )}
               </div>
 
-              {ledgerLoadingId === selected.link.id && !ledgers[selected.link.id] ? (
+              {ledgerPending[selected.link.id] && !ledgers[selected.link.id] ? (
                 <LedgerSkeleton />
+              ) : ledgerErrors[selected.link.id] && !ledgers[selected.link.id] ? (
+                <AlertBanner
+                  severity="error"
+                  icon={<MdErrorOutline />}
+                  action={{ label: 'Retry', onClick: retryLedger }}
+                >
+                  {ledgerErrors[selected.link.id]}
+                </AlertBanner>
               ) : (
                 <BankLedgerTable
                   key={selected.link.id}

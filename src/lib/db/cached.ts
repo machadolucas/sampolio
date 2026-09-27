@@ -96,6 +96,7 @@ import {
   getLatestCompletedSession,
   getSessionForMonth,
 } from './reconciliation';
+import { latestSnapshotsByEntity } from '@/lib/latest-snapshots';
 
 import type {
   FinancialAccount,
@@ -486,6 +487,22 @@ export async function cachedGetLatestSnapshot(
   // anchor catch up to the real bank balance without a manual action.
   cacheLife('synced');
   return getLatestSnapshot(userId, entityType, entityId);
+}
+
+/**
+ * Latest snapshot per entity (`"{entityType}:{entityId}"` → snapshot) from ONE
+ * decrypt of the snapshots file — the batch counterpart of
+ * `cachedGetLatestSnapshot` for pages that need every entity's anchor (the
+ * dashboard aggregate reads in `src/lib/actions/dashboard-data.ts`).
+ * 'synced' for the same background bank-sync reason as the per-entity read.
+ */
+export async function cachedGetLatestSnapshotsByEntity(
+  userId: string
+): Promise<Record<string, BalanceSnapshot>> {
+  'use cache';
+  cacheTag('all-data', `user:${userId}`, `user:${userId}:reconciliation`);
+  cacheLife('synced');
+  return latestSnapshotsByEntity(await getBalanceSnapshots(userId));
 }
 
 export async function cachedGetReconciliationSessions(

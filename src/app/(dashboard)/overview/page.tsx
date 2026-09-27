@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import { useSession } from '@/lib/auth-client';
 import { Card } from 'primereact/card';
@@ -11,34 +12,44 @@ import { Tag } from 'primereact/tag';
 import { useTheme } from '@/components/providers/theme-provider';
 import { useAppContext } from '@/components/layout/app-layout';
 import { formatCurrency, formatYearMonth } from '@/lib/constants';
-import { getAccounts } from '@/lib/actions/accounts';
-import { getInvestmentAccounts, getContributions } from '@/lib/actions/investments';
-import { getReceivables, getRepayments } from '@/lib/actions/receivables';
-import { getDebts, getReferenceRates, getExtraPayments } from '@/lib/actions/debts';
-import { getMyMortgages, getMortgageProjectionInputs } from '@/lib/actions/shared-mortgages';
-import { getProjection } from '@/lib/actions/projection';
-import { getLatestCompletedSession, getLatestSnapshot } from '@/lib/actions/reconciliation';
-import { calculateWealthProjection, getLatestEndDate } from '@/lib/wealth-projection';
-import { calculateMortgageProjection } from '@/lib/mortgage-projection';
-import { isEuriborUpdateDue } from '@/lib/mortgage-utils';
-import { addMonths, compareYearMonths } from '@/lib/projection';
-import { getBudgets } from '@/lib/actions/budgets';
-import { getBankConnectionsNeedingAttention, getCardLiabilities, type ConnectionAttention } from '@/lib/actions/bank';
-import { getMySplitNetBalance } from '@/lib/actions/split-groups';
-import { getUserPreferences } from '@/lib/actions/user-preferences';
-import { computeActualsRollup } from '@/lib/budget-utils';
-import type { FinancialAccount, InvestmentAccount, Receivable, Debt, TimeHorizon, WealthProjectionMonth, Currency, InvestmentContribution, ReceivableRepayment, DebtReferenceRate, DebtExtraPayment, MonthlyProjection, BalanceSnapshot, MortgageProjectionMonth, Budget } from '@/types';
-import { NetWorthChart, WealthChart } from '@/components/charts';
-import { EntityListDrawer } from '@/components/ui/entity-list-drawer';
+import { getOverviewData, type OverviewData } from '@/lib/actions/dashboard-data';
+import {
+    assembleWealthProjection,
+    currentCashBalances,
+    pickBudgetBanner,
+    summarizeCardCredit,
+    type WealthAssembly,
+} from '@/lib/wealth-assembly';
+import { deriveHeroSummary, netWorthChangeVsLastMonth } from '@/lib/overview-hero';
+import type { FinancialAccount, TimeHorizon, Currency } from '@/types';
 import { StatusHeroCard } from '@/components/ui/status-hero-card';
 import { KpiTile } from '@/components/ui/kpi-tile';
+import { AlertBanner } from '@/components/ui/alert-banner';
 import { BannerStack, isCheckInBannerVisible } from '@/components/overview/banner-stack';
 import { KpiGroup } from '@/components/overview/kpi-group';
 import { NetWorthExplainDialog } from '@/components/overview/net-worth-explain-dialog';
 import { WealthDistribution } from '@/components/overview/wealth-distribution';
 import { plainTerm, helpText } from '@/lib/plain-language';
 import { PlanCheckCard } from '@/components/overview/forecast-vs-actual-card';
-import { MdSync, MdShowChart, MdEuro, MdAccountBalanceWallet, MdBarChart, MdGroup, MdCreditCard, MdArrowForward, MdAddCircle, MdRemoveCircle, MdHouse, MdHomeWork } from 'react-icons/md';
+import { MdSync, MdShowChart, MdEuro, MdAccountBalanceWallet, MdBarChart, MdGroup, MdCreditCard, MdArrowForward, MdAddCircle, MdRemoveCircle, MdHouse, MdHomeWork, MdErrorOutline } from 'react-icons/md';
+
+// Chart.js (primereact/chart) is heavy and client-only — code-split both charts
+// so they leave the Overview route's first-load JS. Imported from their own
+// modules (never a barrel that would drag in the ECharts charts' side effects).
+const ChartLoading = () => <div className="h-72 lg:h-96 rounded-lg bg-gray-100 dark:bg-gray-800/50 animate-pulse" />;
+const NetWorthChart = dynamic(
+    () => import('@/components/charts/net-worth-chart').then((m) => m.NetWorthChart),
+    { ssr: false, loading: ChartLoading },
+);
+// The entity drawer is large and only opens on a KPI tap — load it on demand.
+const EntityListDrawer = dynamic(
+    () => import('@/components/ui/entity-list-drawer').then((m) => m.EntityListDrawer),
+    { ssr: false },
+);
+const WealthChart = dynamic(
+    () => import('@/components/charts/wealth-chart').then((m) => m.WealthChart),
+    { ssr: false, loading: ChartLoading },
+);
 
 type EntityCategory = 'cash' | 'investments' | 'receivables' | 'debts';
 
@@ -81,41 +92,22 @@ export default function OverviewPage() {
     // Simple mode: the grouped KPI grid stays collapsed behind "See all balances".
     const [showAllKpis, setShowAllKpis] = useState(false);
     const [entityDrawer, setEntityDrawer] = useState<{ visible: boolean; category: EntityCategory }>({ visible: false, category: 'cash' });
+    // Latched on first open so the lazily loaded drawer keeps its close animation.
+    const [entityDrawerMounted, setEntityDrawerMounted] = useState(false);
+    if (entityDrawer.visible && !entityDrawerMounted) setEntityDrawerMounted(true);
     // Plain-words net-worth breakdown, opened by tapping the Net Worth KPI.
     const [explainNetWorthVisible, setExplainNetWorthVisible] = useState(false);
     const displayMode = appContext?.displayMode ?? 'advanced';
     const isSimple = displayMode === 'simple';
 
-    // Data states
-    const [accounts, setAccounts] = useState<FinancialAccount[]>([]);
-    const [investments, setInvestments] = useState<InvestmentAccount[]>([]);
-    const [receivables, setReceivables] = useState<Receivable[]>([]);
-    const [debts, setDebts] = useState<Debt[]>([]);
-    const [projection, setProjection] = useState<WealthProjectionMonth[]>([]);
-    const [lastReconciled, setLastReconciled] = useState<string | null>(null);
-    // The logged-in member's slice of any shared mortgage(s), for the current month.
-    const [mortgageSummary, setMortgageSummary] = useState<{ equity: number; liability: number; stake: number } | null>(null);
-    // Set when a mortgage's yearly Euribor rate is due for an update (drives the reminder banner).
-    const [euriborDue, setEuriborDue] = useState<{ name: string; lastResetDate: Date } | null>(null);
-    const [bankAttention, setBankAttention] = useState<ConnectionAttention[]>([]);
-    const [cardLiabilitiesTotal, setCardLiabilitiesTotal] = useState(0);
-    // Available credit vs total limit across cards (null when no limits known).
-    const [cardCredit, setCardCredit] = useState<{ available: number; limit: number } | null>(null);
-    // Logged-in user's net split balance (Splitwise replacement), in display currency.
-    const [splitNetTotal, setSplitNetTotal] = useState(0);
-    // Per-account current cash balance: bank snapshot when synced, else manual start.
-    const [cashCurrentBalances, setCashCurrentBalances] = useState<Map<string, number>>(new Map());
-    // At most one budget reminder: an over-budget category beats an upcoming trip.
-    const [budgetBanner, setBudgetBanner] = useState<{ type: 'upcoming' | 'over-budget'; budget: Budget; category?: string } | null>(null);
-    // User preference: show the "time to check in" reminder banner (default on).
-    const [checkInRemindersEnabled, setCheckInRemindersEnabled] = useState(true);
-    // Primary account's plan + bank-actual history, for the "Plan check" card.
-    const [planCheck, setPlanCheck] = useState<{ monthly: MonthlyProjection[]; retrospective: MonthlyProjection[] } | null>(null);
+    // The last SUCCESSFUL load: raw inputs + the assembled wealth projection.
+    // A failed refresh keeps it on screen (with an error banner) rather than
+    // replacing it with totals computed from missing data.
+    const [snapshot, setSnapshot] = useState<{ data: OverviewData; assembly: WealthAssembly } | null>(null);
+    const [loadError, setLoadError] = useState<string | null>(null);
+    const [retrying, setRetrying] = useState(false);
 
     const userId = session?.user?.id;
-
-    const displayCurrency = useMemo(() => getPrimaryCurrency(accounts), [accounts]);
-    const isMixedCurrency = useMemo(() => hasMixedCurrencies(accounts), [accounts]);
 
     const hasLoadedOnce = useRef(false);
 
@@ -124,193 +116,20 @@ export default function OverviewPage() {
             setIsLoading(true);
         }
         try {
-            const [accountsRes, investmentsRes, receivablesRes, debtsRes, sessionRes, mortgagesRes, budgetsRes, cardLiabRes, splitRes, prefsRes] = await Promise.all([
-                getAccounts(),
-                getInvestmentAccounts(),
-                getReceivables(),
-                getDebts(),
-                getLatestCompletedSession(),
-                getMyMortgages(),
-                getBudgets(),
-                getCardLiabilities(),
-                getMySplitNetBalance(),
-                getUserPreferences(),
-            ]);
-            setCheckInRemindersEnabled(prefsRes.success && prefsRes.data ? prefsRes.data.checkInRemindersEnabled !== false : true);
-            const splitNet = splitRes.success && splitRes.data ? splitRes.data.netCents / 100 : 0;
-            setSplitNetTotal(splitNet);
-
-            // Budget reminders: an over-budget category on an active confirmed
-            // budget, or a confirmed budget starting this/next month.
-            {
-                const now = new Date();
-                const cur = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-                const confirmed = budgetsRes.success && budgetsRes.data
-                    ? budgetsRes.data.filter((b) => b.status === 'confirmed' && !b.isArchived)
-                    : [];
-                let banner: { type: 'upcoming' | 'over-budget'; budget: Budget; category?: string } | null = null;
-                for (const b of confirmed) {
-                    const isActive = compareYearMonths(b.startMonth, cur) <= 0 && compareYearMonths(cur, b.endMonth) <= 0;
-                    if (isActive) {
-                        const over = computeActualsRollup(b).perCategory.find((c) => c.planned > 0 && c.actual > c.planned);
-                        if (over) { banner = { type: 'over-budget', budget: b, category: over.category }; break; }
-                    }
-                }
-                if (!banner) {
-                    const next = addMonths(cur, 1);
-                    const upcoming = confirmed.find((b) => b.startMonth === cur || b.startMonth === next);
-                    if (upcoming && compareYearMonths(cur, upcoming.endMonth) <= 0) banner = { type: 'upcoming', budget: upcoming };
-                }
-                setBudgetBanner(banner);
+            // One aggregate read (one round trip) instead of ~30 serial actions.
+            const res = await getOverviewData();
+            if (!res.success || !res.data) {
+                setLoadError(res.error || "Couldn't load the overview. Try again.");
+                return;
             }
-
-            const activeAccounts = accountsRes.success && accountsRes.data
-                ? accountsRes.data.filter((a: FinancialAccount) => !a.isArchived)
-                : [];
-            const activeInvestments = investmentsRes.success && investmentsRes.data
-                ? investmentsRes.data.filter((i: InvestmentAccount) => !i.isArchived)
-                : [];
-            const activeReceivables = receivablesRes.success && receivablesRes.data
-                ? receivablesRes.data.filter((r: Receivable) => !r.isArchived)
-                : [];
-            const activeDebts = debtsRes.success && debtsRes.data
-                ? debtsRes.data.filter((d: Debt) => !d.isArchived)
-                : [];
-
-            setAccounts(activeAccounts);
-            setInvestments(activeInvestments);
-            setReceivables(activeReceivables);
-            setDebts(activeDebts);
-
-            if (sessionRes.success && sessionRes.data) {
-                setLastReconciled(sessionRes.data.yearMonth);
-            }
-
-            // Fetch sub-data for wealth projection in parallel
-            const [contributionsResults, repaymentsResults, ratesResults, extraPaymentsResults, cashProjectionsResults, investmentSnapshotResults, receivableSnapshotResults, debtSnapshotResults, cashSnapshotResults] = await Promise.all([
-                Promise.all(activeInvestments.map((inv: InvestmentAccount) => getContributions(inv.id).then(r => [inv.id, r.success && r.data ? r.data : []] as [string, InvestmentContribution[]]))),
-                Promise.all(activeReceivables.map((rec: Receivable) => getRepayments(rec.id).then(r => [rec.id, r.success && r.data ? r.data : []] as [string, ReceivableRepayment[]]))),
-                Promise.all(activeDebts.map((d: Debt) => getReferenceRates(d.id).then(r => [d.id, r.success && r.data ? r.data : []] as [string, DebtReferenceRate[]]))),
-                Promise.all(activeDebts.map((d: Debt) => getExtraPayments(d.id).then(r => [d.id, r.success && r.data ? r.data : []] as [string, DebtExtraPayment[]]))),
-                Promise.all(activeAccounts.map((a: FinancialAccount) => getProjection(a.id).then(r => [a.id, {
-                    monthly: r.success && r.data ? r.data.monthly : [],
-                    retrospective: r.success && r.data ? (r.data.retrospective ?? []) : [],
-                }] as [string, { monthly: MonthlyProjection[]; retrospective: MonthlyProjection[] }]))),
-                Promise.all(activeInvestments.map((inv: InvestmentAccount) => getLatestSnapshot('investment', inv.id).then(r => [inv.id, r.success && r.data ? r.data : null] as [string, BalanceSnapshot | null]))),
-                Promise.all(activeReceivables.map((rec: Receivable) => getLatestSnapshot('receivable', rec.id).then(r => [rec.id, r.success && r.data ? r.data : null] as [string, BalanceSnapshot | null]))),
-                Promise.all(activeDebts.map((d: Debt) => getLatestSnapshot('debt', d.id).then(r => [d.id, r.success && r.data ? r.data : null] as [string, BalanceSnapshot | null]))),
-                Promise.all(activeAccounts.map((a: FinancialAccount) => getLatestSnapshot('cash-account', a.id).then(r => [a.id, r.success && r.data ? r.data : null] as [string, BalanceSnapshot | null]))),
-            ]);
-
-            const investmentContributions = new Map<string, InvestmentContribution[]>(contributionsResults);
-            const receivableRepayments = new Map<string, ReceivableRepayment[]>(repaymentsResults);
-            const debtReferenceRates = new Map<string, DebtReferenceRate[]>(ratesResults);
-            const debtExtraPayments = new Map<string, DebtExtraPayment[]>(extraPaymentsResults);
-            const cashProjections = new Map<string, MonthlyProjection[]>(
-                cashProjectionsResults.map(([id, p]) => [id, p.monthly] as [string, MonthlyProjection[]])
-            );
-            // The "Plan check" card compares the primary account's plan against
-            // its bank-actual history.
-            const primaryAccountId: string | undefined = activeAccounts[0]?.id;
-            setPlanCheck(
-                (primaryAccountId ? cashProjectionsResults.find(([id]) => id === primaryAccountId)?.[1] : undefined) ?? null
-            );
-            const investmentSnapshots = new Map<string, BalanceSnapshot | null>(investmentSnapshotResults);
-            const receivableSnapshots = new Map<string, BalanceSnapshot | null>(receivableSnapshotResults);
-            const debtSnapshots = new Map<string, BalanceSnapshot | null>(debtSnapshotResults);
-            // Latest real balance per cash account (bank-sync snapshot when available,
-            // else a manual reconciliation) — used as the account's current value so
-            // the bank balance supersedes the manually-entered starting value.
-            const cashSnapshots = new Map<string, BalanceSnapshot | null>(cashSnapshotResults);
-            setCashCurrentBalances(
-                new Map(activeAccounts.map((a: FinancialAccount) => [a.id, cashSnapshots.get(a.id)?.actualBalance ?? a.startingBalance] as [string, number]))
-            );
-
             const now = new Date();
             const startDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-
-            // Shared mortgages the logged-in member belongs to: project each and fold
-            // the member's equity (asset) and loan-share (liability) into net worth.
-            const activeMortgages = mortgagesRes.success && mortgagesRes.data
-                ? mortgagesRes.data.filter((m) => !m.isArchived)
-                : [];
-            const mortgageProjections: MortgageProjectionMonth[][] = [];
-            const mortgageNames: string[] = [];
-
-            const wealthData = {
-                cashAccounts: activeAccounts,
-                cashProjections,
-                investments: activeInvestments,
-                investmentContributions,
-                receivables: activeReceivables,
-                receivableRepayments,
-                debts: activeDebts,
-                debtReferenceRates,
-                debtExtraPayments,
-                investmentSnapshots,
-                receivableSnapshots,
-                debtSnapshots,
-                mortgageProjections,
-                mortgageNames,
-                currentUserId: userId,
-                cardLiabilities: cardLiabRes.success && cardLiabRes.data ? cardLiabRes.data : [],
-                splitNetTotal: splitNet,
-            };
-            setCardLiabilitiesTotal(
-                cardLiabRes.success && cardLiabRes.data
-                    ? cardLiabRes.data.reduce((s, c) => s + c.outstanding, 0)
-                    : 0
-            );
-            // Available credit vs total limit across cards (only cards where the
-            // bank exposes a limit contribute, so the ratio stays meaningful).
-            if (cardLiabRes.success && cardLiabRes.data) {
-                const withLimit = cardLiabRes.data.filter((c) => typeof c.creditLimit === 'number' && c.creditLimit! > 0);
-                const limit = withLimit.reduce((s, c) => s + (c.creditLimit ?? 0), 0);
-                const available = withLimit.reduce(
-                    (s, c) => s + (c.availableCredit ?? Math.max(0, (c.creditLimit ?? 0) - c.outstanding)),
-                    0
-                );
-                setCardCredit(limit > 0 ? { available, limit } : null);
-            } else {
-                setCardCredit(null);
-            }
-
-            const endDate = getLatestEndDate(wealthData, 60);
-
-            let dueBanner: { name: string; lastResetDate: Date } | null = null;
-            if (activeMortgages.length > 0) {
-                const inputs = await Promise.all(
-                    activeMortgages.map((m) => getMortgageProjectionInputs(m.id))
-                );
-                inputs.forEach((res, idx) => {
-                    if (res.success && res.data) {
-                        mortgageProjections.push(calculateMortgageProjection(res.data, endDate));
-                        mortgageNames.push(activeMortgages[idx].name);
-                        // Surface a reminder if this mortgage's yearly Euribor reset is due.
-                        const due = isEuriborUpdateDue(res.data.mortgage, res.data.rates);
-                        if (due.due && !dueBanner) dueBanner = { name: activeMortgages[idx].name, lastResetDate: due.lastResetDate };
-                    }
-                });
-            }
-            setEuriborDue(dueBanner);
-
-            const projectionMonths = calculateWealthProjection(wealthData, startDate, endDate);
-            setProjection(projectionMonths);
-
-            // Current-month mortgage slice for the logged-in member (drives the KPIs + net worth).
-            if (mortgageProjections.length > 0 && userId) {
-                let equity = 0, liability = 0, stake = 0;
-                for (const proj of mortgageProjections) {
-                    const row = proj.find((p) => p.yearMonth === startDate) ?? proj[proj.length - 1];
-                    const pos = row?.members.find((p) => p.userId === userId);
-                    if (pos) { equity += pos.equity; liability += pos.liability; stake += pos.stake; }
-                }
-                setMortgageSummary({ equity, liability, stake });
-            } else {
-                setMortgageSummary(null);
-            }
+            const assembly = assembleWealthProjection(res.data.wealth, userId, startDate, 60, now);
+            setSnapshot({ data: res.data, assembly });
+            setLoadError(null);
         } catch (err) {
             console.error('Failed to fetch data:', err);
+            setLoadError("Couldn't load the overview. Check your connection and try again.");
         } finally {
             if (!hasLoadedOnce.current) {
                 hasLoadedOnce.current = true;
@@ -323,13 +142,6 @@ export default function OverviewPage() {
         fetchData();
     }, [fetchData]);
 
-    // Bank consent-expiry check (cheap, cache-first) — feeds the reconnect banner.
-    useEffect(() => {
-        getBankConnectionsNeedingAttention().then((res) => {
-            if (res.success && res.data) setBankAttention(res.data);
-        });
-    }, []);
-
     // Register refresh callback
     useEffect(() => {
         if (appContext) {
@@ -337,11 +149,53 @@ export default function OverviewPage() {
         }
     }, [appContext, fetchData]);
 
+    const handleRetry = useCallback(async () => {
+        setRetrying(true);
+        try {
+            await fetchData();
+        } finally {
+            setRetrying(false);
+        }
+    }, [fetchData]);
+
+    // Everything below derives from the last successful snapshot.
+    const wealth = snapshot?.data.wealth;
+    const accounts = useMemo(() => wealth?.accounts ?? [], [wealth]);
+    const investments = useMemo(() => wealth?.investments ?? [], [wealth]);
+    const receivables = useMemo(() => wealth?.receivables ?? [], [wealth]);
+    const debts = useMemo(() => wealth?.debts ?? [], [wealth]);
+    const projection = useMemo(() => snapshot?.assembly.months ?? [], [snapshot]);
+    const cashCurrentBalances = useMemo(() => (wealth ? currentCashBalances(wealth) : new Map<string, number>()), [wealth]);
+    const { outstandingTotal: cardLiabilitiesTotal, credit: cardCredit } = useMemo(
+        () => summarizeCardCredit(wealth?.cardLiabilities ?? []),
+        [wealth]
+    );
+    const splitNetTotal = (wealth?.splitNetCents ?? 0) / 100;
+    const mortgageSummary = snapshot?.assembly.mortgageSlice ?? null;
+    const euriborDue = snapshot?.assembly.euriborDue ?? null;
+    const lastReconciled = snapshot?.data.lastReconciledMonth ?? null;
+    const bankAttention = snapshot?.data.bankAttention ?? [];
+    const checkInRemindersEnabled = snapshot?.data.checkInRemindersEnabled ?? true;
+    // The "Plan check" card compares the primary account's plan against its
+    // bank-actual history (the aggregate only reconstructs it for that account).
+    const planCheck = useMemo(() => {
+        const primaryId = wealth?.accounts[0]?.id;
+        return primaryId ? wealth?.cashProjections[primaryId] ?? null : null;
+    }, [wealth]);
+
+    const displayCurrency = useMemo(() => getPrimaryCurrency(accounts), [accounts]);
+    const isMixedCurrency = useMemo(() => hasMixedCurrencies(accounts), [accounts]);
+
     // Current month
     const currentYearMonth = useMemo(() => {
         const now = new Date();
         return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     }, []);
+
+    const budgetBanner = useMemo(
+        () => pickBudgetBanner(snapshot?.data.budgets ?? [], currentYearMonth),
+        [snapshot, currentYearMonth]
+    );
 
     // While the check-in reminder banner shows, it is the single check-in entry
     // point — the header button hides to avoid duplicate affordances.
@@ -375,17 +229,13 @@ export default function OverviewPage() {
 
     // Calculate KPI values
     const kpiValues = useMemo(() => {
-        const prevMonth = projection.find(p => {
-            const [year, month] = currentYearMonth.split('-').map(Number);
-            const prevDate = new Date(year, month - 2, 1);
-            return p.yearMonth === `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}`;
-        });
         const endMonth = filteredProjection[filteredProjection.length - 1];
 
         // Prefer the latest real balance (bank sync / reconciliation) over the
         // manually-entered starting value, so the bank value is the source of truth.
         const cashTotal = accounts.reduce((sum, a) => sum + (cashCurrentBalances.get(a.id) ?? a.startingBalance), 0);
-        const investmentsTotal = investments.reduce((sum, i) => sum + (i.currentValuation || i.startingValuation), 0);
+        // `??`, not `||`: an investment reconciled to exactly 0 is worth 0.
+        const investmentsTotal = investments.reduce((sum, i) => sum + (i.currentValuation ?? i.startingValuation), 0);
         const receivablesTotal = receivables.reduce((sum, r) => sum + r.currentBalance, 0);
         const debtsTotal = debts.reduce((sum, d) => sum + d.initialPrincipal, 0);
 
@@ -396,14 +246,14 @@ export default function OverviewPage() {
         // Linked credit-card outstanding is a real liability (read live from the bank).
         // Split balance (Splitwise replacement) adds when owed, subtracts when owing.
         const netWorth = cashTotal + investmentsTotal + receivablesTotal - debtsTotal - cardLiabilitiesTotal + mortgageEquity + splitNetTotal;
-        const prevNetWorth = prevMonth?.netWorth || netWorth;
-        const projectedNetWorth = endMonth?.netWorth || netWorth;
+        const projectedNetWorth = endMonth?.netWorth ?? netWorth;
 
         const liquidAssets = cashTotal + investmentsTotal;
 
         return {
             netWorth,
-            netWorthChange: netWorth - prevNetWorth,
+            // undefined (badge hidden) when there is no previous-month row to compare with.
+            netWorthChange: netWorthChangeVsLastMonth(projection, currentYearMonth, netWorth),
             projectedNetWorth,
             cashTotal,
             investmentsTotal,
@@ -417,17 +267,18 @@ export default function OverviewPage() {
         };
     }, [accounts, investments, receivables, debts, projection, currentYearMonth, filteredProjection, mortgageSummary, cardLiabilitiesTotal, splitNetTotal, cashCurrentBalances]);
 
-    // Hero card projections: find current and previous month from the first account's cash projection
-    const heroProjections = useMemo(() => {
-        if (projection.length === 0) return { current: undefined, previous: undefined };
-        // Use the wealth projection's cash totals to approximate per-month data
-        const currentMonth = projection.find(p => p.yearMonth === currentYearMonth);
-        const prevMonthDate = new Date();
-        prevMonthDate.setMonth(prevMonthDate.getMonth() - 1);
-        const prevYM = `${prevMonthDate.getFullYear()}-${String(prevMonthDate.getMonth() + 1).padStart(2, '0')}`;
-        const prevMonth = projection.find(p => p.yearMonth === prevYM);
-        return { current: currentMonth, previous: prevMonth };
-    }, [projection, currentYearMonth]);
+    // Hero card: this month's real cash numbers from the per-account forecasts
+    // (the wealth projection starts at the current month, so it has no
+    // previous month to compare against — see src/lib/overview-hero.ts).
+    const heroSummary = useMemo(() => {
+        if (!wealth) return null;
+        return deriveHeroSummary({
+            accountIds: wealth.accounts.map((a) => a.id),
+            cashProjections: wealth.cashProjections,
+            currentYearMonth,
+            wealthCurrentMonth: projection.find((p) => p.yearMonth === currentYearMonth),
+        });
+    }, [wealth, projection, currentYearMonth]);
 
     // Utilization ratio for the credit-card KPI's progress bar; drives its
     // color (green/yellow/red) independently of the tile's own `severity`.
@@ -435,6 +286,34 @@ export default function OverviewPage() {
 
     if (isLoading) {
         return <KpiGridSkeleton />;
+    }
+
+    const errorBanner = loadError && (
+        <AlertBanner
+            severity="error"
+            icon={<MdErrorOutline />}
+            action={{ label: retrying ? 'Retrying…' : 'Retry', onClick: handleRetry }}
+        >
+            {snapshot
+                ? <>{loadError} Showing the balances from the last successful load.</>
+                : loadError}
+        </AlertBanner>
+    );
+
+    // First load failed: never show totals computed from missing data.
+    if (!snapshot) {
+        return (
+            <div className="space-y-4 lg:space-y-6 max-w-360 mx-auto py-4 lg:py-8">
+                <h1 className={`text-3xl sm:text-4xl font-bold ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
+                    Overview
+                </h1>
+                {errorBanner || (
+                    <AlertBanner severity="error" icon={<MdErrorOutline />} action={{ label: 'Retry', onClick: handleRetry }}>
+                        Couldn&apos;t load the overview. Try again.
+                    </AlertBanner>
+                )}
+            </div>
+        );
     }
 
     return (
@@ -464,6 +343,8 @@ export default function OverviewPage() {
                 )}
             </div>
 
+            {errorBanner}
+
             <BannerStack
                 checkInRemindersEnabled={checkInRemindersEnabled}
                 lastReconciled={lastReconciled}
@@ -480,30 +361,7 @@ export default function OverviewPage() {
             {/* Hero Card */}
             <StatusHeroCard
                 userName={session?.user?.name || 'there'}
-                currentMonthProjection={heroProjections.current ? {
-                    yearMonth: currentYearMonth,
-                    year: parseInt(currentYearMonth.split('-')[0]),
-                    month: parseInt(currentYearMonth.split('-')[1]),
-                    startingBalance: heroProjections.current.cashAccountsTotal,
-                    totalIncome: 0,
-                    totalExpenses: 0,
-                    netChange: heroProjections.current.netWorth - (heroProjections.previous?.netWorth ?? heroProjections.current.netWorth),
-                    endingBalance: heroProjections.current.cashAccountsTotal,
-                    incomeBreakdown: [],
-                    expenseBreakdown: [],
-                } : undefined}
-                previousMonthProjection={heroProjections.previous ? {
-                    yearMonth: '',
-                    year: 0,
-                    month: 0,
-                    startingBalance: 0,
-                    totalIncome: 0,
-                    totalExpenses: 0,
-                    netChange: 0,
-                    endingBalance: heroProjections.previous.cashAccountsTotal,
-                    incomeBreakdown: [],
-                    expenseBreakdown: [],
-                } : undefined}
+                summary={heroSummary}
                 currency={displayCurrency}
             />
 
@@ -789,12 +647,14 @@ export default function OverviewPage() {
                 />
             </div>
 
+            {entityDrawerMounted && (
             <EntityListDrawer
                 visible={entityDrawer.visible}
                 category={entityDrawer.category}
                 onClose={() => setEntityDrawer(prev => ({ ...prev, visible: false }))}
                 onRefresh={fetchData}
             />
+            )}
 
             <NetWorthExplainDialog
                 visible={explainNetWorthVisible}

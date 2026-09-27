@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo, useRef, startTransition } from 'react';
+import { useState, useEffect, useCallback, useMemo, startTransition } from 'react';
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import { Card } from 'primereact/card';
@@ -28,7 +28,6 @@ const ExpenseTreemapChart = dynamic(
     () => import('@/components/charts/expense-treemap-chart').then((m) => m.ExpenseTreemapChart),
     { ssr: false, loading: ChartLoading },
 );
-import { getAccounts } from '@/lib/actions/accounts';
 import { getProjection } from '@/lib/actions/projection';
 import { getCardStatementBreakdownForAccount } from '@/lib/actions/bank';
 import { getReconciliationSessions } from '@/lib/actions/reconciliation';
@@ -48,10 +47,20 @@ export default function CashflowPage() {
     const { theme } = useTheme();
     const isDark = theme === 'dark';
 
-    const [isLoading, setIsLoading] = useState(true);
-    const hasLoadedOnce = useRef(false);
-    const [accounts, setAccounts] = useState<FinancialAccount[]>([]);
-    const [selectedAccountId, setSelectedAccountId] = useState<string>('');
+    // Accounts come from AppLayout's context (it already fetches them) — no
+    // second getAccounts round trip from this page.
+    const contextAccounts = appContext?.accounts;
+    const accounts = useMemo(
+        () => (contextAccounts ?? []).filter((a: FinancialAccount) => !a.isArchived),
+        [contextAccounts]
+    );
+    const isLoading = !(appContext?.accountsLoaded ?? false);
+    // The user's explicit pick; the effective selection falls back to the first
+    // active account (and re-picks if the chosen one is archived/deleted).
+    const [pickedAccountId, setSelectedAccountId] = useState<string>('');
+    const selectedAccountId = accounts.some((a) => a.id === pickedAccountId)
+        ? pickedAccountId
+        : (accounts[0]?.id ?? '');
     const [projection, setProjection] = useState<MonthlyProjection[]>([]);
     // Past months reconstructed from real bank transactions (rendered to the left
     // of the forecast). Empty unless a bank cash/savings account is linked.
@@ -73,35 +82,6 @@ export default function CashflowPage() {
     const [editChoiceVisible, setEditChoiceVisible] = useState(false);
     const [editChoiceItemId, setEditChoiceItemId] = useState('');
     const [editChoiceItemType, setEditChoiceItemType] = useState('');
-
-    // Fetch accounts
-    useEffect(() => {
-        async function fetchAccounts() {
-            const result = await getAccounts();
-            if (result.success && result.data) {
-                const active = result.data.filter((a: FinancialAccount) => !a.isArchived);
-                if (hasLoadedOnce.current) {
-                    // Smooth update without flash for refreshes
-                    startTransition(() => {
-                        setAccounts(active);
-                        if (active.length > 0 && !selectedAccountId) {
-                            setSelectedAccountId(active[0].id);
-                        }
-                    });
-                } else {
-                    setAccounts(active);
-                    if (active.length > 0 && !selectedAccountId) {
-                        setSelectedAccountId(active[0].id);
-                    }
-                }
-            }
-            if (!hasLoadedOnce.current) {
-                hasLoadedOnce.current = true;
-                setIsLoading(false);
-            }
-        }
-        fetchAccounts();
-    }, [selectedAccountId]);
 
     // Fetch projection when account changes
     const fetchProjection = useCallback(async () => {

@@ -46,7 +46,7 @@ export function SidebarNav({
 
     return (
         <aside
-            className={`hidden lg:flex fixed left-0 top-0 h-screen z-50 flex-col transition-all duration-300 border-r glass-chrome pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] ${expanded ? 'w-64' : 'w-16'}`}
+            className={`hidden lg:flex fixed left-0 top-0 h-screen z-50 flex-col transition-[width] duration-(--motion-slow) ease-fluid motion-reduce:transition-none border-r glass-chrome pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] ${expanded ? 'w-64' : 'w-16'}`}
         >
             {/* Logo */}
             <div className={`flex items-center h-16 px-4 border-b ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>

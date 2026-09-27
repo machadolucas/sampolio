@@ -2,14 +2,14 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef, createContext, useContext, startTransition } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
+import dynamic from 'next/dynamic';
 import { SidebarNav } from './sidebar-nav';
 import { MobileTopBar } from './mobile-top-bar';
 import { BottomNav } from './bottom-nav';
 import { MobileNavDrawer } from './mobile-nav-drawer';
 import { CommandPalette, useCommandPalette } from '@/components/ui/command-palette';
-import { ReconcileWizard } from '@/components/reconcile/reconcile-wizard';
-import { OnboardingWizard } from '@/components/onboarding/onboarding-wizard';
 import { EntityModalRouter } from '@/components/ui/entity-modal-router';
+import { DelayedSpinner } from '@/components/ui/delayed-loading';
 import { ConfirmDialog } from 'primereact/confirmdialog';
 import { ToastProvider } from '@/components/providers/toast-provider';
 import { CelebrationProvider } from '@/components/providers/celebration-provider';
@@ -19,6 +19,19 @@ import { getUserPreferences } from '@/lib/actions/user-preferences';
 import { MdAdd, MdVisibilityOff } from 'react-icons/md';
 import { setDemoMask, DEMO_MODE_STORAGE_KEY } from '@/lib/demo-mode';
 import type { FinancialAccount, DrawerState, DisplayMode } from '@/types';
+
+// Both wizards are large and rarely open — lazy-load them out of the shared
+// first-load bundle (same pattern as EntityModalRouter's modals) and mount
+// each only once it has been opened (see `reconcileMounted`/`onboardingMounted`).
+const wizardLoading = () => <DelayedSpinner className="fixed inset-0 z-50 flex items-center justify-center" />;
+const ReconcileWizard = dynamic(
+    () => import('@/components/reconcile/reconcile-wizard').then((m) => m.ReconcileWizard),
+    { ssr: false, loading: wizardLoading },
+);
+const OnboardingWizard = dynamic(
+    () => import('@/components/onboarding/onboarding-wizard').then((m) => m.OnboardingWizard),
+    { ssr: false, loading: wizardLoading },
+);
 
 interface AppLayoutProps {
     children: React.ReactNode;
@@ -31,6 +44,8 @@ interface AppContextValue {
     selectedAccountId: string;
     setSelectedAccountId: (id: string) => void;
     accounts: FinancialAccount[];
+    /** True once the first accounts fetch has settled (success or failure). */
+    accountsLoaded: boolean;
     // Drawer control
     drawerState: DrawerState;
     openDrawer: (options: Partial<DrawerState>) => void;
@@ -83,6 +98,7 @@ export function AppLayout({ children }: AppLayoutProps) {
     const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
     const [accounts, setAccounts] = useState<FinancialAccount[]>([]);
+    const [accountsLoaded, setAccountsLoaded] = useState(false);
     const [selectedAccountId, setSelectedAccountId] = useState<string>('');
     const [refreshCallback, setRefreshCallback] = useState<(() => void) | null>(null);
     const [drawerState, setDrawerState] = useState<DrawerState>(initialDrawerState);
@@ -189,6 +205,13 @@ export function AppLayout({ children }: AppLayoutProps) {
     // Onboarding wizard state
     const [showOnboarding, setShowOnboarding] = useState(false);
 
+    // Lazy wizards mount on first open and stay mounted afterwards (derived
+    // during render — React's "adjust state on prop change" pattern).
+    const [reconcileMounted, setReconcileMounted] = useState(false);
+    if (reconcileVisible && !reconcileMounted) setReconcileMounted(true);
+    const [onboardingMounted, setOnboardingMounted] = useState(false);
+    if (showOnboarding && !onboardingMounted) setOnboardingMounted(true);
+
     useEffect(() => {
         getUserPreferences().then(result => {
             if (result.success && result.data) {
@@ -209,32 +232,34 @@ export function AppLayout({ children }: AppLayoutProps) {
         });
     }, []);
 
-    // Fetch accounts
+    // Fetch accounts. Stable identity (no selectedAccountId dep): the default
+    // selection uses a functional update, so picking the first account no
+    // longer re-creates this callback and re-runs the mount effect (which
+    // used to call getAccounts twice on every page load).
     const fetchAccounts = useCallback(async () => {
         try {
             const result = await getAccounts();
             if (result.success && result.data) {
                 const activeAccounts = result.data.filter((a: FinancialAccount) => !a.isArchived);
+                // `accountsLoaded` flips in the SAME transition as the list, so
+                // no consumer ever sees "loaded" with a still-empty list.
                 startTransition(() => {
                     setAccounts(result.data!);
-                    if (activeAccounts.length > 0 && !selectedAccountId) {
-                        setSelectedAccountId(activeAccounts[0].id);
+                    setAccountsLoaded(true);
+                    if (activeAccounts.length > 0) {
+                        setSelectedAccountId((prev) => prev || activeAccounts[0].id);
                     }
                 });
+                return;
             }
         } catch (err) {
             console.error('Failed to fetch accounts:', err);
         }
-    }, [selectedAccountId]);
+        setAccountsLoaded(true);
+    }, []);
 
     useEffect(() => {
-        let isMounted = true;
-        if (isMounted) {
-            fetchAccounts();
-        }
-        return () => {
-            isMounted = false;
-        };
+        fetchAccounts();
     }, [fetchAccounts]);
 
     const handleDataChange = useCallback(() => {
@@ -272,6 +297,7 @@ export function AppLayout({ children }: AppLayoutProps) {
         selectedAccountId,
         setSelectedAccountId,
         accounts,
+        accountsLoaded,
         drawerState,
         openDrawer,
         closeDrawer,
@@ -293,6 +319,7 @@ export function AppLayout({ children }: AppLayoutProps) {
         selectedAccountId,
         setSelectedAccountId,
         accounts,
+        accountsLoaded,
         drawerState,
         openDrawer,
         closeDrawer,
@@ -362,7 +389,7 @@ export function AppLayout({ children }: AppLayoutProps) {
                     )}
 
                     <main
-                        className={`transition-all duration-300 pt-[calc(3.5rem+env(safe-area-inset-top))] pb-[calc(4rem+env(safe-area-inset-bottom))] lg:pt-[env(safe-area-inset-top)] lg:pb-[env(safe-area-inset-bottom)] ${sidebarCollapsed ? 'lg:ml-16' : 'lg:ml-64'}`}
+                        className={`transition-[margin-left] duration-(--motion-slow) ease-fluid motion-reduce:transition-none pt-[calc(3.5rem+env(safe-area-inset-top))] pb-[calc(4rem+env(safe-area-inset-bottom))] lg:pt-[env(safe-area-inset-top)] lg:pb-[env(safe-area-inset-bottom)] ${sidebarCollapsed ? 'lg:ml-16' : 'lg:ml-64'}`}
                     >
                         <div className="px-2 sm:px-4 lg:px-6">
                             {children}
@@ -389,21 +416,27 @@ export function AppLayout({ children }: AppLayoutProps) {
                         onAccountChange={setSelectedAccountId}
                     />
 
-                    {/* Reconcile Wizard */}
-                    <ReconcileWizard
-                        visible={reconcileVisible}
-                        onHide={() => setReconcileVisible(false)}
-                        onComplete={handleDataChange}
-                    />
+                    {/* Reconcile Wizard — lazy; mounted from its first open on so
+                        the dialog keeps its close animation (it resets on open). */}
+                    {reconcileMounted && (
+                        <ReconcileWizard
+                            visible={reconcileVisible}
+                            onHide={() => setReconcileVisible(false)}
+                            onComplete={handleDataChange}
+                        />
+                    )}
 
-                    {/* Onboarding Wizard */}
-                    <OnboardingWizard
-                        visible={showOnboarding}
-                        onComplete={() => {
-                            setShowOnboarding(false);
-                            handleDataChange();
-                        }}
-                    />
+                    {/* Onboarding Wizard — lazy; only ever mounted for users who
+                        haven't completed onboarding. */}
+                    {onboardingMounted && (
+                        <OnboardingWizard
+                            visible={showOnboarding}
+                            onComplete={() => {
+                                setShowOnboarding(false);
+                                handleDataChange();
+                            }}
+                        />
+                    )}
 
                     {/* Global quick-add FAB for shared (split) expenses — the daily-driver
                         action, reachable from any page. Sits above the mobile bottom nav and

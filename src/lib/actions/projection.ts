@@ -1,29 +1,15 @@
 'use server';
 
+import { z } from 'zod';
 import { auth } from '@/lib/auth';
-import {
-  calculateProjection,
-  calculateYearlyRollups,
-  getUniqueCategories,
-  resolveAnchor,
-} from '@/lib/projection';
-import {
-  gatherProjectionInputs,
-  computeCardBillTransfersForAccount,
-  getLinkedCashBankTransactions,
-  getCardPaymentSourcesForAccount,
-  type BankDataLoader,
-} from '@/lib/projection-inputs';
-import { calculateRetrospective } from '@/lib/retrospective';
+import { computeAccountProjection } from '@/lib/account-projection';
+import { idSchema, yearMonthSchema } from '@/lib/schemas/id.schema';
 import type {
   ApiResponse,
   MonthlyProjection,
-  YearlyRollup,
   ProjectionFilters,
   SalaryConfig,
   TaxedIncome,
-  FinancialAccount,
-  BalanceSnapshot,
 } from '@/types';
 
 interface ProjectionResponse {
@@ -32,7 +18,6 @@ interface ProjectionResponse {
   // Sampolio forecast items). Empty unless a bank cash/savings account is linked
   // and has synced data. Rendered to the LEFT of `monthly` on the cashflow page.
   retrospective: MonthlyProjection[];
-  yearly: YearlyRollup[];
   categories: string[];
   salaryConfigs: SalaryConfig[];
   // Full taxed-income entities for the selected account — the cashflow page
@@ -47,6 +32,16 @@ interface ProjectionResponse {
   };
 }
 
+const projectionFiltersSchema = z
+  .object({
+    startDate: yearMonthSchema.optional(),
+    endDate: yearMonthSchema.optional(),
+    categories: z.array(z.string().max(200)).max(500).optional(),
+    itemTypes: z.array(z.enum(['income', 'expense'])).optional(),
+    itemKinds: z.array(z.enum(['recurring', 'one-off', 'repeating'])).optional(),
+  })
+  .optional();
+
 export async function getProjection(
   accountId: string,
   filters?: ProjectionFilters
@@ -56,53 +51,29 @@ export async function getProjection(
     if (!session?.user?.id) {
       return { success: false, error: 'Unauthorized' };
     }
+    const parsedId = idSchema.safeParse(accountId);
+    const parsedFilters = projectionFiltersSchema.safeParse(filters);
+    if (!parsedId.success || !parsedFilters.success) {
+      return { success: false, error: 'Invalid projection request' };
+    }
 
-    // Account, items, anchor snapshot, and the injected mortgage/budget
-    // transfer lines — shared with the scenario action via projection-inputs.
-    const inputs = await gatherProjectionInputs(session.user.id, accountId);
-    if (!inputs) {
+    const result = await computeAccountProjection(session.user.id, parsedId.data, {
+      filters: parsedFilters.data,
+      withRetrospective: true,
+    });
+    if (!result) {
       return { success: false, error: 'Account not found' };
     }
-    const {
-      account,
-      recurringItems,
-      plannedItems,
-      salaryConfigs,
-      taxedIncomes,
-      latestSnapshot,
-      mortgageTransfers,
-      budgetTransfers,
-      goalTransfers,
-      tripTransfers,
-      currentMonthActuals,
-      anchorLiveAsOf,
-      bankData,
-      directRecurring,
-      directPlanned,
-    } = inputs;
-
-    // Computed read-only credit-card bill lines (from the FULL item lists —
-    // tagged card spend feeds the forecast cycles) plus the bank-actuals
-    // retrospective. Both reuse the inputs' memoized bank reads, so each
-    // linked ledger is decoded once per projection.
-    const [cardBillTransfers, retrospective] = await Promise.all([
-      computeCardBillTransfersForAccount(session.user.id, accountId, account, recurringItems, plannedItems, bankData),
-      getRetrospectiveForAccount(session.user.id, accountId, account, latestSnapshot, anchorLiveAsOf, bankData),
-    ]);
-
-    const monthly = calculateProjection(account, directRecurring, directPlanned, taxedIncomes, filters, latestSnapshot, mortgageTransfers, budgetTransfers, cardBillTransfers, currentMonthActuals, goalTransfers, tripTransfers);
-    const yearly = calculateYearlyRollups(monthly);
-    const categories = getUniqueCategories(recurringItems, plannedItems);
+    const { account } = result;
 
     return {
       success: true,
       data: {
-        monthly,
-        retrospective,
-        yearly,
-        categories,
-        salaryConfigs,
-        taxedIncomes,
+        monthly: result.monthly,
+        retrospective: result.retrospective,
+        categories: result.categories,
+        salaryConfigs: result.salaryConfigs,
+        taxedIncomes: result.taxedIncomes,
         account: {
           id: account.id,
           name: account.name,
@@ -115,44 +86,5 @@ export async function getProjection(
   } catch (error) {
     console.error('Get projection error:', error);
     return { success: false, error: 'Failed to calculate projection' };
-  }
-}
-
-/**
- * Reconstruct up to `RETROSPECTIVE_MONTHS_BACK` (24) past months purely from
- * real booked bank transactions for
- * the cash/savings bank accounts that anchor this cash account. These sit to the
- * LEFT of the forecast on the cashflow page. Returns [] when no bank cash/savings
- * account is linked (so non-bank accounts are unaffected) or when there's no
- * usable history. A live bank-sync anchor (`anchorLiveAsOf`) is converted to
- * the anchor month's opening balance before chaining backward. A bank problem
- * must never break the core cashflow projection.
- */
-async function getRetrospectiveForAccount(
-  userId: string,
-  accountId: string,
-  account: FinancialAccount,
-  latestSnapshot: BalanceSnapshot | null,
-  anchorLiveAsOf: string | null,
-  bankData: BankDataLoader
-): Promise<MonthlyProjection[]> {
-  try {
-    const [transactions, cardPayments] = await Promise.all([
-      getLinkedCashBankTransactions(userId, accountId, bankData),
-      getCardPaymentSourcesForAccount(userId, accountId, bankData),
-    ]);
-    if (transactions.length === 0) return [];
-
-    const anchor = resolveAnchor(account.startingDate, account.startingBalance, latestSnapshot);
-    return calculateRetrospective({
-      accountId,
-      transactions,
-      anchor,
-      cardPayments,
-      anchorLiveAsOf,
-    });
-  } catch (error) {
-    console.error('Retrospective reconstruction failed:', error);
-    return [];
   }
 }

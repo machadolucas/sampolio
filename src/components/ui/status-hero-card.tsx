@@ -4,12 +4,17 @@ import { useMemo } from 'react';
 import { Card } from 'primereact/card';
 import { useTheme } from '@/components/providers/theme-provider';
 import { formatCurrency, MONTHS } from '@/lib/constants';
-import type { Currency, MonthlyProjection } from '@/types';
+import { isZeroMoney, type HeroSummary } from '@/lib/overview-hero';
+import type { Currency } from '@/types';
 
 interface StatusHeroCardProps {
     userName: string;
-    currentMonthProjection?: MonthlyProjection;
-    previousMonthProjection?: MonthlyProjection;
+    /**
+     * This month's real cash numbers (see `deriveHeroSummary` in
+     * `src/lib/overview-hero.ts`), or null when there is no current-month
+     * forecast yet. `trend` null ⇒ the "vs last month" row is hidden.
+     */
+    summary: HeroSummary | null;
     currency: Currency;
 }
 
@@ -44,8 +49,7 @@ const SENTIMENT_COLORS: Record<Sentiment, { bg: string; text: string; border: st
 
 export function StatusHeroCard({
     userName,
-    currentMonthProjection,
-    previousMonthProjection,
+    summary,
     currency,
 }: StatusHeroCardProps) {
     const { theme } = useTheme();
@@ -58,23 +62,25 @@ export function StatusHeroCard({
 
     const firstName = userName.split(' ')[0] || userName;
 
-    const netChange = currentMonthProjection?.netChange ?? 0;
-    const totalIncome = currentMonthProjection?.totalIncome ?? 0;
-    const endBalance = currentMonthProjection?.endingBalance ?? 0;
-    const prevEndBalance = previousMonthProjection?.endingBalance ?? endBalance;
-    const balanceTrend = endBalance - prevEndBalance;
+    const netChange = summary?.netChange ?? 0;
+    const trend = summary?.trend ?? null;
+    // Never render a zero-delta arrow: no comparison data, or a delta that
+    // rounds to €0,00, hides the row entirely.
+    const showTrend = trend !== null && !isZeroMoney(trend);
 
-    const sentiment = getSentiment(netChange, totalIncome);
+    const sentiment = getSentiment(netChange, summary?.totalIncome ?? 0);
     const colors = SENTIMENT_COLORS[sentiment];
 
-    const summaryText = useMemo(() => {
-        if (netChange > 0) {
-            return `You're projected to save ${formatCurrency(netChange, currency)} this month`;
-        } else if (netChange < 0) {
-            return `Expenses exceed income by ${formatCurrency(Math.abs(netChange), currency)}`;
-        }
-        return 'Income and expenses are balanced this month';
-    }, [netChange, currency]);
+    // Plain render-time strings (no useMemo): formatCurrency reads the
+    // demo-mode mask flag, so a memo keyed only on the numbers would keep
+    // showing real amounts after Demo mode is switched on (docs/features.md §10).
+    const summaryText = !summary
+        ? 'Add your income and bills to see how this month is shaping up'
+        : isZeroMoney(netChange)
+            ? 'Income and expenses are balanced this month'
+            : netChange > 0
+                ? `You're projected to save ${formatCurrency(netChange, currency)} this month`
+                : `Expenses exceed income by ${formatCurrency(Math.abs(netChange), currency)}`;
 
     return (
         <Card className={`border ${colors.border} ${colors.bg}`}>
@@ -88,24 +94,28 @@ export function StatusHeroCard({
                     </p>
                 </div>
 
+                {summary && (
                 <div className="flex items-center gap-6">
                     <div className="text-right">
                         <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
                             Projected end balance
                         </p>
                         <p className={`text-2xl font-bold ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
-                            {formatCurrency(endBalance, currency)}
+                            {formatCurrency(summary.endBalance, currency)}
                         </p>
-                        <div className="flex items-center gap-1 justify-end">
-                            <span className={balanceTrend >= 0 ? 'text-green-500' : 'text-red-500'}>
-                                {balanceTrend >= 0 ? '\u25B2' : '\u25BC'}
-                            </span>
-                            <span className={`text-sm ${balanceTrend >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                                {formatCurrency(Math.abs(balanceTrend), currency)} vs last month
-                            </span>
-                        </div>
+                        {showTrend && trend !== null && (
+                            <div className="flex items-center gap-1 justify-end">
+                                <span className={trend > 0 ? 'text-green-500' : 'text-red-500'} aria-hidden>
+                                    {trend > 0 ? '\u25B2' : '\u25BC'}
+                                </span>
+                                <span className={`text-sm ${trend > 0 ? 'text-green-500' : 'text-red-500'}`}>
+                                    {trend > 0 ? '+' : '\u2212'}{formatCurrency(Math.abs(trend), currency)} vs last month
+                                </span>
+                            </div>
+                        )}
                     </div>
                 </div>
+                )}
             </div>
         </Card>
     );

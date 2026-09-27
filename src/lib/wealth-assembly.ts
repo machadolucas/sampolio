@@ -1,119 +1,203 @@
-'use client';
-
 /**
- * Client-side assembly of the full wealth projection: fetches every input the
- * engine needs (accounts + cash projections, investments + contributions,
- * receivables + repayments, debts + rates/extra payments, latest snapshots,
- * shared-mortgage projections, card liabilities, split net) via server actions
- * and runs `calculateWealthProjection`. Mirrors the Overview page's assembly so
- * other consumers (e.g. net-worth goals) can't drift from what Overview shows.
+ * Pure assembly of the full wealth projection from the raw inputs that the
+ * dashboard aggregate reads return (`getOverviewData` / `getGoalsPageData` in
+ * `src/lib/actions/dashboard-data.ts`, gathered server-side by
+ * `gatherWealthInputs` in `src/lib/wealth-inputs.ts`).
+ *
+ * Client-safe (no server imports): the engines (`calculateWealthProjection`,
+ * `calculateMortgageProjection`) still run in the browser exactly as before —
+ * only the data fetching moved server-side. Overview and net-worth goals share
+ * this so they can't drift apart.
  */
 
-import { getAccounts } from '@/lib/actions/accounts';
-import { getInvestmentAccounts, getContributions } from '@/lib/actions/investments';
-import { getReceivables, getRepayments } from '@/lib/actions/receivables';
-import { getDebts, getReferenceRates, getExtraPayments } from '@/lib/actions/debts';
-import { getMyMortgages, getMortgageProjectionInputs } from '@/lib/actions/shared-mortgages';
-import { getProjection } from '@/lib/actions/projection';
-import { getLatestSnapshot } from '@/lib/actions/reconciliation';
-import { getCardLiabilities } from '@/lib/actions/bank';
-import { getMySplitNetBalance } from '@/lib/actions/split-groups';
-import { calculateWealthProjection, getLatestEndDate } from '@/lib/wealth-projection';
+import { calculateWealthProjection, getLatestEndDate, type WealthProjectionData } from '@/lib/wealth-projection';
 import { calculateMortgageProjection } from '@/lib/mortgage-projection';
+import { isEuriborUpdateDue } from '@/lib/mortgage-utils';
+import { addMonths, compareYearMonths } from '@/lib/projection';
+import { computeActualsRollup } from '@/lib/budget-utils';
+import { snapshotEntityKey } from '@/lib/latest-snapshots';
+import type { CardLiability } from '@/lib/actions/bank';
+import type { MortgageProjectionInputsResult } from '@/lib/actions/shared-mortgages';
 import type {
+  BalanceSnapshot,
+  Budget,
+  Debt,
+  DebtExtraPayment,
+  DebtReferenceRate,
   FinancialAccount,
   InvestmentAccount,
   InvestmentContribution,
+  MonthlyProjection,
   Receivable,
   ReceivableRepayment,
-  Debt,
-  DebtReferenceRate,
-  DebtExtraPayment,
-  MonthlyProjection,
-  BalanceSnapshot,
-  MortgageProjectionMonth,
   WealthProjectionMonth,
+  YearMonth,
 } from '@/types';
 
-export async function fetchWealthProjectionMonths(
-  currentUserId: string | undefined,
-  horizonMonths = 60
-): Promise<WealthProjectionMonth[]> {
-  const [accountsRes, investmentsRes, receivablesRes, debtsRes, mortgagesRes, cardLiabRes, splitRes] =
-    await Promise.all([
-      getAccounts(),
-      getInvestmentAccounts(),
-      getReceivables(),
-      getDebts(),
-      getMyMortgages(),
-      getCardLiabilities(),
-      getMySplitNetBalance(),
-    ]);
+/** One cash account's projection as the wealth engine consumes it. */
+export interface CashProjectionSlice {
+  monthly: MonthlyProjection[];
+  /** Bank-actual past months — only filled for the account(s) that asked for it. */
+  retrospective: MonthlyProjection[];
+}
 
-  const activeAccounts = accountsRes.success && accountsRes.data
-    ? accountsRes.data.filter((a: FinancialAccount) => !a.isArchived)
-    : [];
-  const activeInvestments = investmentsRes.success && investmentsRes.data
-    ? investmentsRes.data.filter((i: InvestmentAccount) => !i.isArchived)
-    : [];
-  const activeReceivables = receivablesRes.success && receivablesRes.data
-    ? receivablesRes.data.filter((r: Receivable) => !r.isArchived)
-    : [];
-  const activeDebts = debtsRes.success && debtsRes.data
-    ? debtsRes.data.filter((d: Debt) => !d.isArchived)
-    : [];
+export interface WealthMortgageInput {
+  name: string;
+  inputs: MortgageProjectionInputsResult;
+}
 
-  const [contributionsResults, repaymentsResults, ratesResults, extraPaymentsResults, cashProjectionsResults, investmentSnapshotResults, receivableSnapshotResults, debtSnapshotResults] = await Promise.all([
-    Promise.all(activeInvestments.map((inv) => getContributions(inv.id).then(r => [inv.id, r.success && r.data ? r.data : []] as [string, InvestmentContribution[]]))),
-    Promise.all(activeReceivables.map((rec) => getRepayments(rec.id).then(r => [rec.id, r.success && r.data ? r.data : []] as [string, ReceivableRepayment[]]))),
-    Promise.all(activeDebts.map((d) => getReferenceRates(d.id).then(r => [d.id, r.success && r.data ? r.data : []] as [string, DebtReferenceRate[]]))),
-    Promise.all(activeDebts.map((d) => getExtraPayments(d.id).then(r => [d.id, r.success && r.data ? r.data : []] as [string, DebtExtraPayment[]]))),
-    Promise.all(activeAccounts.map((a) => getProjection(a.id).then(r => [a.id, r.success && r.data ? r.data.monthly : []] as [string, MonthlyProjection[]]))),
-    Promise.all(activeInvestments.map((inv) => getLatestSnapshot('investment', inv.id).then(r => [inv.id, r.success && r.data ? r.data : null] as [string, BalanceSnapshot | null]))),
-    Promise.all(activeReceivables.map((rec) => getLatestSnapshot('receivable', rec.id).then(r => [rec.id, r.success && r.data ? r.data : null] as [string, BalanceSnapshot | null]))),
-    Promise.all(activeDebts.map((d) => getLatestSnapshot('debt', d.id).then(r => [d.id, r.success && r.data ? r.data : null] as [string, BalanceSnapshot | null]))),
-  ]);
+/**
+ * Everything the wealth projection needs, as plain serializable data. Entity
+ * lists hold ACTIVE (non-archived) entities only; child rows are keyed by the
+ * parent id; `latestSnapshots` is keyed by `snapshotEntityKey`.
+ */
+export interface WealthInputs {
+  accounts: FinancialAccount[];
+  investments: InvestmentAccount[];
+  receivables: Receivable[];
+  debts: Debt[];
+  contributions: Record<string, InvestmentContribution[]>;
+  repayments: Record<string, ReceivableRepayment[]>;
+  referenceRates: Record<string, DebtReferenceRate[]>;
+  extraPayments: Record<string, DebtExtraPayment[]>;
+  latestSnapshots: Record<string, BalanceSnapshot>;
+  cashProjections: Record<string, CashProjectionSlice>;
+  mortgages: WealthMortgageInput[];
+  cardLiabilities: CardLiability[];
+  splitNetCents: number;
+}
 
-  const now = new Date();
-  const startDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+export interface WealthAssembly {
+  months: WealthProjectionMonth[];
+  startDate: YearMonth;
+  endDate: YearMonth;
+  /** First active mortgage whose yearly Euribor reset is due (reminder banner). */
+  euriborDue: { name: string; lastResetDate: Date } | null;
+  /** The member's current-month slice across their mortgages, or null. */
+  mortgageSlice: { equity: number; liability: number; stake: number } | null;
+}
 
-  const mortgageProjections: MortgageProjectionMonth[][] = [];
-  const mortgageNames: string[] = [];
+function toMap<T>(record: Record<string, T>): Map<string, T> {
+  return new Map(Object.entries(record));
+}
 
-  const wealthData = {
-    cashAccounts: activeAccounts,
-    cashProjections: new Map<string, MonthlyProjection[]>(cashProjectionsResults),
-    investments: activeInvestments,
-    investmentContributions: new Map<string, InvestmentContribution[]>(contributionsResults),
-    receivables: activeReceivables,
-    receivableRepayments: new Map<string, ReceivableRepayment[]>(repaymentsResults),
-    debts: activeDebts,
-    debtReferenceRates: new Map<string, DebtReferenceRate[]>(ratesResults),
-    debtExtraPayments: new Map<string, DebtExtraPayment[]>(extraPaymentsResults),
-    investmentSnapshots: new Map<string, BalanceSnapshot | null>(investmentSnapshotResults),
-    receivableSnapshots: new Map<string, BalanceSnapshot | null>(receivableSnapshotResults),
-    debtSnapshots: new Map<string, BalanceSnapshot | null>(debtSnapshotResults),
-    mortgageProjections,
-    mortgageNames,
+function snapshotMap(inputs: WealthInputs, type: 'investment' | 'receivable' | 'debt', ids: string[]) {
+  return new Map<string, BalanceSnapshot | null>(
+    ids.map((id) => [id, inputs.latestSnapshots[snapshotEntityKey(type, id)] ?? null])
+  );
+}
+
+/** The engine's input shape, minus the mortgage series (added by `assembleWealthProjection`). */
+export function buildWealthProjectionData(inputs: WealthInputs, currentUserId: string | undefined): WealthProjectionData {
+  return {
+    cashAccounts: inputs.accounts,
+    cashProjections: new Map(
+      Object.entries(inputs.cashProjections).map(([id, p]) => [id, p.monthly] as [string, MonthlyProjection[]])
+    ),
+    investments: inputs.investments,
+    investmentContributions: toMap(inputs.contributions),
+    receivables: inputs.receivables,
+    receivableRepayments: toMap(inputs.repayments),
+    debts: inputs.debts,
+    debtReferenceRates: toMap(inputs.referenceRates),
+    debtExtraPayments: toMap(inputs.extraPayments),
+    investmentSnapshots: snapshotMap(inputs, 'investment', inputs.investments.map((i) => i.id)),
+    receivableSnapshots: snapshotMap(inputs, 'receivable', inputs.receivables.map((r) => r.id)),
+    debtSnapshots: snapshotMap(inputs, 'debt', inputs.debts.map((d) => d.id)),
+    mortgageProjections: [],
+    mortgageNames: [],
     currentUserId,
-    cardLiabilities: cardLiabRes.success && cardLiabRes.data ? cardLiabRes.data : [],
-    splitNetTotal: splitRes.success && splitRes.data ? splitRes.data.netCents / 100 : 0,
+    cardLiabilities: inputs.cardLiabilities,
+    splitNetTotal: inputs.splitNetCents / 100,
   };
+}
 
-  const endDate = getLatestEndDate(wealthData, horizonMonths);
+/**
+ * Project mortgages to the wealth horizon, fold them in, and run the wealth
+ * engine from `startDate` (the current month).
+ */
+export function assembleWealthProjection(
+  inputs: WealthInputs,
+  currentUserId: string | undefined,
+  startDate: YearMonth,
+  horizonMonths = 60,
+  now: Date = new Date()
+): WealthAssembly {
+  const data = buildWealthProjectionData(inputs, currentUserId);
+  const endDate = getLatestEndDate(data, horizonMonths);
 
-  const activeMortgages = mortgagesRes.success && mortgagesRes.data
-    ? mortgagesRes.data.filter((m) => !m.isArchived)
-    : [];
-  if (activeMortgages.length > 0) {
-    const inputs = await Promise.all(activeMortgages.map((m) => getMortgageProjectionInputs(m.id)));
-    inputs.forEach((res, idx) => {
-      if (res.success && res.data) {
-        mortgageProjections.push(calculateMortgageProjection(res.data, endDate));
-        mortgageNames.push(activeMortgages[idx].name);
-      }
-    });
+  let euriborDue: WealthAssembly['euriborDue'] = null;
+  for (const { name, inputs: m } of inputs.mortgages) {
+    data.mortgageProjections!.push(calculateMortgageProjection(m, endDate));
+    data.mortgageNames!.push(name);
+    const due = isEuriborUpdateDue(m.mortgage, m.rates, now);
+    if (due.due && !euriborDue) euriborDue = { name, lastResetDate: due.lastResetDate };
   }
 
-  return calculateWealthProjection(wealthData, startDate, endDate);
+  let mortgageSlice: WealthAssembly['mortgageSlice'] = null;
+  if (data.mortgageProjections!.length > 0 && currentUserId) {
+    let equity = 0, liability = 0, stake = 0;
+    for (const proj of data.mortgageProjections!) {
+      const row = proj.find((p) => p.yearMonth === startDate) ?? proj[proj.length - 1];
+      const pos = row?.members.find((p) => p.userId === currentUserId);
+      if (pos) { equity += pos.equity; liability += pos.liability; stake += pos.stake; }
+    }
+    mortgageSlice = { equity, liability, stake };
+  }
+
+  return {
+    months: calculateWealthProjection(data, startDate, endDate),
+    startDate,
+    endDate,
+    euriborDue,
+    mortgageSlice,
+  };
+}
+
+/**
+ * Each active cash account's current value: its latest real balance (bank-sync
+ * or check-in snapshot) when one exists, else the manual starting balance.
+ */
+export function currentCashBalances(inputs: WealthInputs): Map<string, number> {
+  return new Map(
+    inputs.accounts.map((a) => [
+      a.id,
+      inputs.latestSnapshots[snapshotEntityKey('cash-account', a.id)]?.actualBalance ?? a.startingBalance,
+    ] as [string, number])
+  );
+}
+
+/** Card outstanding total + available-of-limit (only cards with a known limit count toward the ratio). */
+export function summarizeCardCredit(cards: CardLiability[]): {
+  outstandingTotal: number;
+  credit: { available: number; limit: number } | null;
+} {
+  const outstandingTotal = cards.reduce((s, c) => s + c.outstanding, 0);
+  const withLimit = cards.filter((c) => typeof c.creditLimit === 'number' && c.creditLimit > 0);
+  const limit = withLimit.reduce((s, c) => s + (c.creditLimit ?? 0), 0);
+  const available = withLimit.reduce(
+    (s, c) => s + (c.availableCredit ?? Math.max(0, (c.creditLimit ?? 0) - c.outstanding)),
+    0
+  );
+  return { outstandingTotal, credit: limit > 0 ? { available, limit } : null };
+}
+
+export type BudgetBanner = { type: 'upcoming' | 'over-budget'; budget: Budget; category?: string };
+
+/**
+ * At most one budget reminder: an over-budget category on an active confirmed
+ * budget beats a confirmed budget starting this or next month.
+ */
+export function pickBudgetBanner(budgets: Budget[], currentYearMonth: YearMonth): BudgetBanner | null {
+  const confirmed = budgets.filter((b) => b.status === 'confirmed' && !b.isArchived);
+  for (const b of confirmed) {
+    const isActive = compareYearMonths(b.startMonth, currentYearMonth) <= 0 && compareYearMonths(currentYearMonth, b.endMonth) <= 0;
+    if (!isActive) continue;
+    const over = computeActualsRollup(b).perCategory.find((c) => c.planned > 0 && c.actual > c.planned);
+    if (over) return { type: 'over-budget', budget: b, category: over.category };
+  }
+  const next = addMonths(currentYearMonth, 1);
+  const upcoming = confirmed.find((b) => b.startMonth === currentYearMonth || b.startMonth === next);
+  if (upcoming && compareYearMonths(currentYearMonth, upcoming.endMonth) <= 0) return { type: 'upcoming', budget: upcoming };
+  return null;
 }
