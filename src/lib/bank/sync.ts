@@ -33,7 +33,9 @@ import { getRecurringItems } from '@/lib/db/recurring-items';
 import { getPlannedItems } from '@/lib/db/planned-items';
 import { getTaxedIncomes } from '@/lib/db/taxed-income';
 import { getLatestSnapshot, createBalanceSnapshot } from '@/lib/db/reconciliation';
-import { calculateProjection, getCurrentYearMonth } from '@/lib/projection';
+import { format } from 'date-fns';
+import { getCurrentYearMonth } from '@/lib/projection';
+import { expectedLiveBalance } from '@/lib/live-anchor';
 import {
   getAccountBalances,
   getSession,
@@ -755,12 +757,37 @@ async function doRunSync(
 }
 
 /**
+ * Booked+pending ledger rows of every non-excluded cash/savings link anchoring
+ * `financialAccountId` (uncached reads — this runs in the background tick).
+ */
+async function getLinkedCashLedger(userId: string, financialAccountId: string): Promise<BankTransaction[]> {
+  const connections = await getBankConnections(userId);
+  const links = connections.flatMap((c) =>
+    c.linkedAccounts.filter(
+      (l) =>
+        (l.accountRole === 'cash' || l.accountRole === 'savings') &&
+        l.linkedFinancialAccountId === financialAccountId &&
+        !l.isExcluded
+    )
+  );
+  const groups = await Promise.all(links.map((l) => getBankTransactions(userId, l.id)));
+  return groups.flat();
+}
+
+/**
  * Write a `source:'bank-sync'` BalanceSnapshot for the current month so the
  * forecast re-anchors on the real balance via `resolveAnchor`. Snapshots are
  * last-write-wins per entity/month: this overwrites a same-month manual
  * reconciliation (and a later manual reconciliation overwrites this until the
  * next sync). Only the CURRENT month is ever written, so historical manual
  * reconciliations are never touched. Returns true when a snapshot was written.
+ *
+ * The stored `actualBalance` is the LIVE balance (it already includes this
+ * month's bookings through today — see src/lib/live-anchor.ts); consumers that
+ * need the month's opening balance convert it. `expectedBalance` is the planned
+ * opening balance plus this month's booked net so far (`expectedLiveBalance`),
+ * so the variance is the start-of-month drift, not a mid-month vs end-of-month
+ * comparison.
  */
 async function autoAnchorAccount(
   userId: string,
@@ -771,25 +798,26 @@ async function autoAnchorAccount(
   if (!account) return false;
 
   const currentMonth = getCurrentYearMonth();
+  const asOf = format(new Date(), 'yyyy-MM-dd');
 
-  // Baseline projection (anchored on the latest EXISTING snapshot) to estimate
-  // what the system expected for the current month → variance for the record.
-  const [recurringItems, plannedItems, taxedIncomes, priorSnapshot] = await Promise.all([
+  const [recurringItems, plannedItems, taxedIncomes, priorSnapshot, transactions] = await Promise.all([
     getRecurringItems(userId, financialAccountId),
     getPlannedItems(userId, financialAccountId),
     getTaxedIncomes(userId, financialAccountId),
     getLatestSnapshot(userId, 'cash-account', financialAccountId),
+    getLinkedCashLedger(userId, financialAccountId),
   ]);
-  const monthly = calculateProjection(
-    account,
-    recurringItems,
-    plannedItems,
-    taxedIncomes,
-    undefined,
-    priorSnapshot
-  );
-  const row = monthly.find((m) => m.yearMonth === currentMonth);
-  const expected = row?.endingBalance ?? priorSnapshot?.actualBalance ?? account.startingBalance;
+  const expected =
+    expectedLiveBalance({
+      account,
+      recurringItems,
+      plannedItems,
+      taxedIncomes,
+      priorSnapshot,
+      transactions,
+      month: currentMonth,
+      asOf,
+    }) ?? actualBalance; // no planned row for this month ⇒ record no variance
 
   const snapshot = await createBalanceSnapshot(
     userId,

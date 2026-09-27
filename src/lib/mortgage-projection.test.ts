@@ -16,6 +16,8 @@ import {
   createMockMortgageCost,
   createMockMortgageExtraPayment,
   createMockMortgageSnapshot,
+  createMockMortgageLoan,
+  createMockMortgageMember,
 } from '@/test/mocks';
 import type { MortgageRateEntry } from '@/types';
 
@@ -233,4 +235,60 @@ describe('mortgage-projection engine', () => {
     });
   });
 
+
+  describe('payoff month and fees after payoff', () => {
+    // One €1,000 loan at 0% paying a fixed €600/month: €600 in Jan, €400 left for Feb.
+    const mortgage = createMockSharedMortgage({
+      loans: [
+        createMockMortgageLoan({
+          id: 'loan-small',
+          initialPrincipal: 1000,
+          startDate: '2026-01',
+          originalTermMonths: 12,
+          paymentMode: 'fixed-payment',
+          currentMonthlyPayment: 600,
+          margin: 0,
+          dayCount: '30E/360',
+        }),
+      ],
+      members: [
+        createMockMortgageMember({ userId: 'alex', name: 'Alex', loanSharePercent: 0.5 }),
+        createMockMortgageMember({ userId: 'sam', name: 'Sam', email: 'sam@example.com', role: 'member', loanSharePercent: 0.5 }),
+      ],
+    });
+    const months = calculateMortgageProjection(
+      {
+        mortgage,
+        rates: [createMockMortgageRate({ effectiveDate: '2025-12', euriborRate: 0 })],
+        costs: [
+          createMockMortgageCost({ type: 'invoicing-fee', effectiveDate: '2026-01', amount: 5 }),
+          createMockMortgageCost({ type: 'service-fee', effectiveDate: '2026-01', amount: 2.5 }),
+        ],
+        extraPayments: [],
+        snapshots: [],
+      },
+      '2026-06'
+    );
+    const at = (ym: string) => months.find((m) => m.yearMonth === ym)!;
+
+    it('charges only the remaining balance plus interest in the payoff month', () => {
+      const feb = at('2026-02').loans[0];
+      expect(at('2026-01').loans[0].scheduledPayment).toBeCloseTo(600, 6);
+      expect(feb.scheduledPayment).toBeCloseTo(400, 6);
+      expect(feb.principalPaid).toBeCloseTo(400, 6);
+      expect(feb.monthlyCharge).toBeCloseTo(405, 6); // 400 + invoicing fee
+      const alex = at('2026-02').members.find((p) => p.userId === 'alex')!;
+      expect(alex.monthlyDeposit).toBeCloseTo(0.5 * 405 + 2.5, 6);
+    });
+
+    it('stops the invoicing and service fees once every loan is paid off', () => {
+      for (const ym of ['2026-03', '2026-04', '2026-06']) {
+        const m = at(ym);
+        expect(m.totalRemaining).toBe(0);
+        expect(m.serviceFee).toBe(0);
+        expect(m.invoicingFee).toBe(0);
+        for (const p of m.members) expect(p.monthlyDeposit).toBe(0);
+      }
+    });
+  });
 });

@@ -18,6 +18,7 @@ import {
   updateBankConnection,
   getBankConnectionById,
   writeBankSessionSecret,
+  getBankSessionSecret,
   findConnectionByState,
 } from '@/lib/db/bank-connections';
 import { startAuthorization, createSession, BankApiError, type StartAuthorizationInput } from './client';
@@ -148,6 +149,11 @@ export async function beginConnection(
  * `reconcileLinks` also clears the backfill marker, so the post-SCA sync re-runs a
  * full deep backfill within the fresh-consent window — deepening history for an
  * already-connected account (see `reconcile-links.ts`).
+ *
+ * The still-valid live `sessionId` is kept in the secret file next to the new
+ * pending `state`/`authorizationId`: syncs keep working while the user is at
+ * the bank, and a cancelled or failed SCA leaves the old consent usable. Only a
+ * successful callback (`completeConnection`) replaces the session.
  */
 export async function beginReconnect(
   userId: string,
@@ -174,10 +180,12 @@ export async function beginReconnect(
     language: 'en',
   });
 
+  const previous = await getBankSessionSecret(userId, connection.id);
   await writeBankSessionSecret(userId, {
     connectionId: connection.id,
     state,
     authorizationId: authorization_id,
+    ...(previous?.sessionId ? { sessionId: previous.sessionId } : {}),
     createdAt: new Date().toISOString(),
   });
 

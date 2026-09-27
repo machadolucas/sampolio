@@ -12,6 +12,7 @@ import {
   computeCardBillTransfersForAccount,
   getLinkedCashBankTransactions,
   getCardPaymentSourcesForAccount,
+  type BankDataLoader,
 } from '@/lib/projection-inputs';
 import { calculateRetrospective } from '@/lib/retrospective';
 import type {
@@ -74,16 +75,19 @@ export async function getProjection(
       goalTransfers,
       tripTransfers,
       currentMonthActuals,
+      anchorLiveAsOf,
+      bankData,
       directRecurring,
       directPlanned,
     } = inputs;
 
     // Computed read-only credit-card bill lines (from the FULL item lists —
     // tagged card spend feeds the forecast cycles) plus the bank-actuals
-    // retrospective.
+    // retrospective. Both reuse the inputs' memoized bank reads, so each
+    // linked ledger is decoded once per projection.
     const [cardBillTransfers, retrospective] = await Promise.all([
-      computeCardBillTransfersForAccount(session.user.id, accountId, account, recurringItems, plannedItems),
-      getRetrospectiveForAccount(session.user.id, accountId, account, latestSnapshot),
+      computeCardBillTransfersForAccount(session.user.id, accountId, account, recurringItems, plannedItems, bankData),
+      getRetrospectiveForAccount(session.user.id, accountId, account, latestSnapshot, anchorLiveAsOf, bankData),
     ]);
 
     const monthly = calculateProjection(account, directRecurring, directPlanned, taxedIncomes, filters, latestSnapshot, mortgageTransfers, budgetTransfers, cardBillTransfers, currentMonthActuals, goalTransfers, tripTransfers);
@@ -120,18 +124,22 @@ export async function getProjection(
  * the cash/savings bank accounts that anchor this cash account. These sit to the
  * LEFT of the forecast on the cashflow page. Returns [] when no bank cash/savings
  * account is linked (so non-bank accounts are unaffected) or when there's no
- * usable history. A bank problem must never break the core cashflow projection.
+ * usable history. A live bank-sync anchor (`anchorLiveAsOf`) is converted to
+ * the anchor month's opening balance before chaining backward. A bank problem
+ * must never break the core cashflow projection.
  */
 async function getRetrospectiveForAccount(
   userId: string,
   accountId: string,
   account: FinancialAccount,
-  latestSnapshot: BalanceSnapshot | null
+  latestSnapshot: BalanceSnapshot | null,
+  anchorLiveAsOf: string | null,
+  bankData: BankDataLoader
 ): Promise<MonthlyProjection[]> {
   try {
     const [transactions, cardPayments] = await Promise.all([
-      getLinkedCashBankTransactions(userId, accountId),
-      getCardPaymentSourcesForAccount(userId, accountId),
+      getLinkedCashBankTransactions(userId, accountId, bankData),
+      getCardPaymentSourcesForAccount(userId, accountId, bankData),
     ]);
     if (transactions.length === 0) return [];
 
@@ -141,6 +149,7 @@ async function getRetrospectiveForAccount(
       transactions,
       anchor,
       cardPayments,
+      anchorLiveAsOf,
     });
   } catch (error) {
     console.error('Retrospective reconstruction failed:', error);

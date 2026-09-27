@@ -10,6 +10,7 @@ import {
   parseYearMonth,
   type ProjectionAnchor,
 } from '@/lib/projection';
+import { startOfMonthFromLive } from '@/lib/live-anchor';
 import {
   matchCardPaymentsWithFingerprints,
   type CardPaymentMatch,
@@ -44,6 +45,14 @@ export interface RetrospectiveInput {
    * yields the plain counterparty grouping (backward compatible).
    */
   cardPayments?: CardPaymentSource[];
+  /**
+   * Set when the anchor is a LIVE bank-sync balance (`liveAnchorAsOf`, its
+   * as-of date): that balance already includes the anchor month's bookings
+   * through this date, so the chain is seeded with the start-of-month value
+   * (anchor balance − that booked net) instead of the raw anchor balance.
+   * Null/omitted for a manual or genesis anchor (already start-of-month).
+   */
+  anchorLiveAsOf?: string | null;
 }
 
 /** Pick a stable, human-readable group key for a transaction. Exported for
@@ -149,8 +158,10 @@ function buildBreakdown(
  * It deliberately does NOT stop at the account's Sampolio genesis (`startingDate`):
  * real bank history is valid regardless of when the account was created here, so the
  * only bounds are available data + `monthsBack`. Balances are chained backward from
- * the anchor so the newest past month's endingBalance equals the anchor's startBalance
- * — i.e. it meets the forecast's first month exactly.
+ * the anchor's START-of-month balance: `anchor.startBalance` for a manual/genesis
+ * anchor, or — for a live bank-sync anchor (`anchorLiveAsOf`) — the live balance minus
+ * the anchor month's booked net through its as-of date. So the newest past month's
+ * endingBalance is the balance the anchor month opened with.
  *
  * Returns [] when there is no usable history, so non-bank accounts are unaffected.
  */
@@ -200,7 +211,10 @@ export function calculateRetrospective(input: RetrospectiveInput): MonthlyProjec
   // Walk backward from the month before the anchor, newest first, taking only the
   // contiguous run of months with data (up to monthsBack).
   const built: MonthlyProjection[] = [];
-  let nextStartingBalance = anchor.startBalance; // the month-after's startingBalance
+  // The anchor month's opening balance (= the month-before's endingBalance).
+  let nextStartingBalance = input.anchorLiveAsOf
+    ? startOfMonthFromLive(anchor.startBalance, transactions, anchor.startMonth, input.anchorLiveAsOf)
+    : anchor.startBalance;
   let cursor = addMonths(anchor.startMonth, -1);
 
   for (let i = 0; i < monthsBack; i++) {

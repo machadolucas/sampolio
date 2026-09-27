@@ -44,7 +44,9 @@ import { goalInjectsIntoCashflow } from '@/lib/goal-utils';
 import { calculatePerDiem } from '@/lib/per-diem-utils';
 import { computeCardBilling, getOpenCycleMonths, toCardTxn, isCardPayment } from '@/lib/bank/card-billing';
 import type { CardPaymentSource } from '@/lib/bank/card-payment-match';
+import { liveAnchorAsOf, bookedInMonthThrough } from '@/lib/live-anchor';
 import type {
+  BankConnection,
   FinancialAccount,
   RecurringItem,
   PlannedItem,
@@ -54,6 +56,37 @@ import type {
   BankTransaction,
   YearMonth,
 } from '@/types';
+
+/**
+ * Per-request memo of the user's bank connections and linked-account ledgers.
+ * One projection needs the connection list in several helpers and the same
+ * ledgers twice (cash: actuals + retrospective; cards: payment sources + bills);
+ * a `'use cache'` hit still decodes the whole stored entry, so every helper
+ * takes this loader and each connection list / ledger is read at most once.
+ */
+export interface BankDataLoader {
+  connections(): Promise<BankConnection[]>;
+  ledger(linkId: string): Promise<BankTransaction[]>;
+}
+
+export function createBankDataLoader(userId: string): BankDataLoader {
+  let connectionsPromise: Promise<BankConnection[]> | null = null;
+  const ledgers = new Map<string, Promise<BankTransaction[]>>();
+  return {
+    connections() {
+      connectionsPromise ??= cachedGetBankConnections(userId);
+      return connectionsPromise;
+    },
+    ledger(linkId: string) {
+      let p = ledgers.get(linkId);
+      if (!p) {
+        p = cachedGetBankTransactions(userId, linkId);
+        ledgers.set(linkId, p);
+      }
+      return p;
+    },
+  };
+}
 
 export interface ProjectionInputs {
   account: FinancialAccount;
@@ -67,12 +100,19 @@ export interface ProjectionInputs {
   goalTransfers: GoalTransfer[];
   tripTransfers: TripTransfer[];
   /**
-   * Booked bank transactions for the anchor month, when that month is the
-   * current calendar month — feed this straight into `calculateProjection`'s
-   * `currentMonthActuals` param. Null when the account has no linked bank
-   * data, the anchor isn't the current month, or nothing booked yet.
+   * Booked bank transactions for the anchor month — feed this straight into
+   * `calculateProjection`'s `currentMonthActuals` param. See
+   * `getCurrentMonthActualsForAccount` for when the anchor month is actualized.
    */
   currentMonthActuals: CurrentMonthActuals | null;
+  /**
+   * The as-of date of a live bank-sync anchor (`liveAnchorAsOf`), else null.
+   * Pass it to `calculateRetrospective` so the past months chain from the
+   * anchor month's opening balance.
+   */
+  anchorLiveAsOf: string | null;
+  /** Memoized bank reads — reuse it for the card-bill and retrospective helpers. */
+  bankData: BankDataLoader;
   /**
    * The item lists with expenses tagged "paid by card" excluded — those don't
    * hit cash directly, they roll into the card's injected bill line instead.
@@ -110,12 +150,14 @@ export async function gatherProjectionInputs(
   // The anchor's month only depends on `latestSnapshot` (already available),
   // so the actuals fetch can run alongside the mortgage/budget transfers.
   const anchor = resolveAnchor(account.startingDate, account.startingBalance, latestSnapshot);
+  const anchorLiveAsOf = liveAnchorAsOf(account.startingDate, latestSnapshot);
+  const bankData = createBankDataLoader(userId);
   const [mortgageTransfers, budgetTransfers, goalTransfers, tripTransfers, currentMonthActuals] = await Promise.all([
     getMortgageTransfersForAccount(userId, accountId),
     getBudgetTransfersForAccount(userId, accountId),
     getGoalTransfersForAccount(userId, accountId),
     getTripTransfersForAccount(userId, accountId),
-    getCurrentMonthActualsForAccount(userId, accountId, anchor.startMonth),
+    getCurrentMonthActualsForAccount(userId, accountId, anchor.startMonth, anchorLiveAsOf, bankData),
   ]);
 
   // Expenses tagged "paid by card" don't hit cash directly — they roll into
@@ -136,6 +178,8 @@ export async function gatherProjectionInputs(
     goalTransfers,
     tripTransfers,
     currentMonthActuals,
+    anchorLiveAsOf,
+    bankData,
     directRecurring,
     directPlanned,
   };
@@ -148,9 +192,10 @@ export async function gatherProjectionInputs(
  */
 export async function getLinkedCashBankTransactions(
   userId: string,
-  accountId: string
+  accountId: string,
+  bankData: BankDataLoader = createBankDataLoader(userId)
 ): Promise<BankTransaction[]> {
-  const connections = await cachedGetBankConnections(userId);
+  const connections = await bankData.connections();
   const cashLinks = connections.flatMap((conn) =>
     conn.linkedAccounts.filter(
       (link) =>
@@ -161,7 +206,7 @@ export async function getLinkedCashBankTransactions(
   );
   if (cashLinks.length === 0) return [];
 
-  const txGroups = await Promise.all(cashLinks.map((link) => cachedGetBankTransactions(userId, link.id)));
+  const txGroups = await Promise.all(cashLinks.map((link) => bankData.ledger(link.id)));
   return txGroups.flat();
 }
 
@@ -176,10 +221,11 @@ export async function getLinkedCashBankTransactions(
  */
 export async function getCardPaymentSourcesForAccount(
   userId: string,
-  accountId: string
+  accountId: string,
+  bankData: BankDataLoader = createBankDataLoader(userId)
 ): Promise<CardPaymentSource[]> {
   try {
-    const connections = await cachedGetBankConnections(userId);
+    const connections = await bankData.connections();
     const cardLinks = connections.flatMap((conn) =>
       conn.linkedAccounts
         .filter(
@@ -194,7 +240,7 @@ export async function getCardPaymentSourcesForAccount(
 
     const sources = await Promise.all(
       cardLinks.map(async ({ link, aspspName }) => {
-        const txs = await cachedGetBankTransactions(userId, link.id);
+        const txs = await bankData.ledger(link.id);
         const cardName = link.customName || link.name || `${aspspName} card`;
         const credits = txs
           .filter((t) => t.status === 'booked' && isCardPayment(toCardTxn(t)))
@@ -210,23 +256,42 @@ export async function getCardPaymentSourcesForAccount(
 }
 
 /**
- * Booked transactions dated within `anchorMonth`, for reconciling the
- * projection's anchor month against real bank activity. Returns null unless
- * `anchorMonth` is the current calendar month (the engine only actualizes the
- * anchor month, and only when it's "now" does live-synced data make sense to
- * apply) or when there's nothing booked yet. A bank problem must never break
- * the core cashflow projection.
+ * Whether the anchor month gets actualized against booked bank activity:
+ *  - the anchor month is the current calendar month (a same-month anchor for a
+ *    bank-linked account is normally the live sync balance), or
+ *  - the anchor is a live bank-sync balance (`anchorLiveAsOf` set) from an
+ *    EARLIER month — the sync went stale (consent expired, sync failing). That
+ *    balance already includes the month's bookings through its as-of date, so
+ *    re-adding the month's full forecast would double-count them.
+ * Pure; exported for tests.
+ */
+export function shouldActualizeAnchorMonth(
+  anchorMonth: YearMonth,
+  anchorLiveAsOf: string | null,
+  currentMonth: YearMonth
+): boolean {
+  if (anchorMonth === currentMonth) return true;
+  return anchorLiveAsOf !== null && compareYearMonths(anchorMonth, currentMonth) < 0;
+}
+
+/**
+ * Booked transactions dated within `anchorMonth` (and, for a live bank-sync
+ * anchor, on or before its as-of date — later rows are not in that balance),
+ * for reconciling the projection's anchor month against real bank activity.
+ * Returns null when `shouldActualizeAnchorMonth` says no, or when there's
+ * nothing booked. A bank problem must never break the core cashflow projection.
  */
 export async function getCurrentMonthActualsForAccount(
   userId: string,
   accountId: string,
-  anchorMonth: YearMonth
+  anchorMonth: YearMonth,
+  anchorLiveAsOf: string | null = null,
+  bankData: BankDataLoader = createBankDataLoader(userId)
 ): Promise<CurrentMonthActuals | null> {
-  if (anchorMonth !== getCurrentYearMonth()) return null;
+  if (!shouldActualizeAnchorMonth(anchorMonth, anchorLiveAsOf, getCurrentYearMonth())) return null;
   try {
-    const transactions = await getLinkedCashBankTransactions(userId, accountId);
-    const booked = transactions
-      .filter((t) => t.status === 'booked' && t.bookingDate.slice(0, 7) === anchorMonth)
+    const transactions = await getLinkedCashBankTransactions(userId, accountId, bankData);
+    const booked = bookedInMonthThrough(transactions, anchorMonth, anchorLiveAsOf)
       .map((t) => ({
         id: t.id,
         amount: t.amount,
@@ -285,8 +350,15 @@ export async function getMortgageTransfersForAccount(userId: string, accountId: 
   return transfers;
 }
 
-/** Sum of expenses tagged "paid by this card" that occur in a given month. */
-function taggedSpendForMonth(
+/**
+ * Sum of expenses tagged "paid by this card" that occur in a given month.
+ * A recurring item's occurrence override (a planned row with
+ * `isRecurringOverride`, keyed by `linkedRecurringItemId` + `scheduledDate`)
+ * applies exactly as in `calculateProjection`: `skipOccurrence` drops that
+ * month, an override `amount` replaces the item's amount.
+ * Exported for tests.
+ */
+export function taggedSpendForMonth(
   recurring: RecurringItem[],
   planned: PlannedItem[],
   month: YearMonth,
@@ -294,12 +366,23 @@ function taggedSpendForMonth(
 ): number {
   const eff = (amount: number, isShared?: boolean, ratio?: number) =>
     isShared ? amount * (ratio ?? 0.5) : amount;
+  const overrides = new Map<string, PlannedItem>();
+  for (const p of planned) {
+    if (p.isRecurringOverride && p.linkedRecurringItemId && p.scheduledDate === month) {
+      overrides.set(p.linkedRecurringItemId, p);
+    }
+  }
   let total = 0;
   for (const item of recurring) {
     if (item.paidByCardLinkId !== cardLinkId || item.type !== 'expense') continue;
-    if (isRecurringItemActiveInMonth(item, month)) total += eff(item.amount, item.isShared, item.shareRatio);
+    if (!isRecurringItemActiveInMonth(item, month)) continue;
+    const override = overrides.get(item.id);
+    if (override?.skipOccurrence) continue;
+    total += eff(override?.amount ?? item.amount, item.isShared, item.shareRatio);
   }
   for (const item of planned) {
+    // Override rows only modify their recurring item (above), never add spend.
+    if (item.isRecurringOverride) continue;
     if (item.paidByCardLinkId !== cardLinkId || item.type !== 'expense') continue;
     if (item.kind === 'one-off') {
       if (item.scheduledDate === month) total += eff(item.amount, item.isShared, item.shareRatio);
@@ -327,21 +410,32 @@ export async function computeCardBillTransfersForAccount(
   accountId: string,
   account: FinancialAccount,
   recurring: RecurringItem[],
-  planned: PlannedItem[]
+  planned: PlannedItem[],
+  bankData: BankDataLoader = createBankDataLoader(userId)
 ): Promise<CardBillTransfer[]> {
-  const transfers: CardBillTransfer[] = [];
   try {
-    const connections = await cachedGetBankConnections(userId);
+    const connections = await bankData.connections();
     const currentYM = getCurrentYearMonth();
     const horizonEnd = addMonths(currentYM, Math.max(account.planningHorizonMonths ?? 120, 1));
 
-    for (const conn of connections) {
-      for (const link of conn.linkedAccounts) {
-        if (link.accountRole !== 'credit-card' || link.isExcluded) continue;
-        if (link.linkedFinancialAccountId !== accountId) continue;
+    const cardLinks = connections.flatMap((conn) =>
+      conn.linkedAccounts
+        .filter(
+          (link) =>
+            link.accountRole === 'credit-card' &&
+            !link.isExcluded &&
+            link.linkedFinancialAccountId === accountId
+        )
+        .map((link) => ({ link, aspspName: conn.aspspName }))
+    );
 
-        const txs = await cachedGetBankTransactions(userId, link.id);
-        const cardName = link.customName || link.name || `${conn.aspspName} card`;
+    // Cards are independent — load and bill them in parallel, then flatten in
+    // connection/link order so the output order stays deterministic.
+    const perCard = await Promise.all(
+      cardLinks.map(async ({ link, aspspName }) => {
+        const transfers: CardBillTransfer[] = [];
+        const txs = await bankData.ledger(link.id);
+        const cardName = link.customName || link.name || `${aspspName} card`;
         const buffer = link.expectedMonthlySpend ?? 0;
 
         // Expected total for the open cycle: tagged items for the cycle's
@@ -390,12 +484,14 @@ export async function computeCardBillTransfersForAccount(
             due = addMonths(due, 1);
           }
         }
-      }
-    }
+        return transfers;
+      })
+    );
+    return perCard.flat();
   } catch (error) {
     console.error('Card bill injection failed:', error);
+    return [];
   }
-  return transfers;
 }
 
 /**

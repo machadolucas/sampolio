@@ -30,6 +30,7 @@ import {
 } from '@/lib/db/cached';
 import { detectRecurringCandidates, type RecurringSuggestion, type ExistingItemLike } from '@/lib/recurring-detection';
 import { getMortgageTransfersForAccount, getLinkedCashBankTransactions } from '@/lib/projection-inputs';
+import { getCurrentYearMonth } from '@/lib/projection';
 import { matchCardPaymentsWithFingerprints } from '@/lib/bank/card-payment-match';
 import { beginConnection, beginReconnect } from '@/lib/bank/connect';
 import { runSync } from '@/lib/bank/sync';
@@ -395,40 +396,51 @@ export async function getHomeBankGlance(): Promise<ApiResponse<HomeBankAccountGl
     const ordered = sortConnectionsByAccountOrder(connections, prefs?.bankAccountOrder);
     const cutoff = format(subDays(new Date(), HOME_GLANCE_ACTIVITY_DAYS), 'yyyy-MM-dd');
 
-    const out: HomeBankAccountGlance[] = [];
-    for (const conn of ordered) {
-      for (const link of conn.linkedAccounts) {
-        if (link.isExcluded) continue;
+    // Activity check per link: the sync cursor's newest booked date answers it
+    // without decoding the ledger; only links whose cursor is older (or
+    // missing) fall back to scanning their ledger — in parallel — so a
+    // pending-only hold or a late-booked purchase still counts.
+    const links = ordered.flatMap((conn) => conn.linkedAccounts.filter((l) => !l.isExcluded));
+    const active = await Promise.all(
+      links.map(async (link) => {
+        const lastBooked = link.syncCursor?.lastBookingDate?.slice(0, 10);
+        if (lastBooked && lastBooked >= cutoff) return true;
         const txs = await cachedGetBankTransactions(userId, link.id);
-        if (!txs.some((t) => txDisplayDate(t) >= cutoff)) continue;
-        const label =
-          link.customName ||
-          link.name ||
-          maskIban(link.iban) ||
-          (link.accountRole === 'credit-card' ? 'Credit card' : 'Account');
-        if (link.accountRole === 'credit-card') {
-          const eff = effectiveCardNumbers(link);
-          // A card the bank tells us nothing about is noise, not information.
-          if (typeof eff.outstanding !== 'number' && typeof eff.availableCredit !== 'number') continue;
-          out.push({
-            linkId: link.id,
-            label,
-            role: link.accountRole,
-            currency: link.currency,
-            used: eff.outstanding ?? undefined,
-            creditLimit: eff.creditLimit ?? undefined,
-            availableCredit: eff.availableCredit ?? undefined,
-          });
-        } else {
-          if (typeof link.lastBalance !== 'number') continue;
-          out.push({
-            linkId: link.id,
-            label,
-            role: link.accountRole,
-            currency: link.currency,
-            balance: link.lastBalance,
-          });
-        }
+        return txs.some((t) => txDisplayDate(t) >= cutoff);
+      })
+    );
+
+    const out: HomeBankAccountGlance[] = [];
+    for (let i = 0; i < links.length; i++) {
+      const link = links[i];
+      if (!active[i]) continue;
+      const label =
+        link.customName ||
+        link.name ||
+        maskIban(link.iban) ||
+        (link.accountRole === 'credit-card' ? 'Credit card' : 'Account');
+      if (link.accountRole === 'credit-card') {
+        const eff = effectiveCardNumbers(link);
+        // A card the bank tells us nothing about is noise, not information.
+        if (typeof eff.outstanding !== 'number' && typeof eff.availableCredit !== 'number') continue;
+        out.push({
+          linkId: link.id,
+          label,
+          role: link.accountRole,
+          currency: link.currency,
+          used: eff.outstanding ?? undefined,
+          creditLimit: eff.creditLimit ?? undefined,
+          availableCredit: eff.availableCredit ?? undefined,
+        });
+      } else {
+        if (typeof link.lastBalance !== 'number') continue;
+        out.push({
+          linkId: link.id,
+          label,
+          role: link.accountRole,
+          currency: link.currency,
+          balance: link.lastBalance,
+        });
       }
     }
     return { success: true, data: out };
@@ -454,19 +466,13 @@ export async function getRecurringSuggestions(accountId: string): Promise<ApiRes
     const session = await auth();
     if (!session?.user?.id) return { success: false, error: 'Unauthorized' };
     const userId = session.user.id;
-    const connections = await cachedGetBankConnections(userId);
-    const txs = [];
-    for (const conn of connections) {
-      for (const link of conn.linkedAccounts) {
-        if (link.isExcluded || link.linkedFinancialAccountId !== accountId) continue;
-        if (link.accountRole !== 'cash' && link.accountRole !== 'savings') continue;
-        txs.push(...(await cachedGetBankTransactions(userId, link.id)));
-      }
-    }
+    const txs = await getLinkedCashBankTransactions(userId, accountId);
     if (txs.length === 0) return { success: true, data: [] };
     const { recurringItems } = await cachedGetAccountProjectionData(userId, accountId);
     const existing: ExistingItemLike[] = recurringItems.map((r) => ({ name: r.name, amount: r.amount, type: r.type }));
-    const currentYearMonth = new Date().toISOString().slice(0, 7);
+    // Server-local month (Helsinki), not UTC — on the 1st before ~03:00 the
+    // UTC month is still the previous one.
+    const currentYearMonth = getCurrentYearMonth();
     // The plan isn't only stored items: a shared mortgage paid from this account
     // injects a monthly `mortgage-payment` line, so the bank transfer that pays
     // it is already covered — feed those amounts in so the detector's

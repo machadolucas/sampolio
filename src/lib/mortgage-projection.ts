@@ -263,6 +263,10 @@ function projectLoan(
         loan.paymentMode === 'fixed-payment'
           ? loan.currentMonthlyPayment ?? levelPayment
           : levelPayment;
+      // The payoff month only charges what is left: the remaining balance plus
+      // this month's interest (after a shorten-term extra payment, in
+      // fixed-payment mode, or with the actual/360 residual at maturity).
+      scheduledPayment = Math.min(scheduledPayment, Math.max(0, balance + interestPaid));
       principalPaid = Math.min(balance, Math.max(0, scheduledPayment - interestPaid));
 
       const extras = extrasByMonth.get(currentDate);
@@ -402,9 +406,6 @@ export function calculateMortgageProjection(
   while (compareYearMonths(currentDate, endDate) <= 0) {
     const { year, month } = parseYearMonth(currentDate);
 
-    const invoicingFee = getEffectiveCost(costs, 'invoicing-fee', undefined, currentDate);
-    const serviceFee = getEffectiveCost(costs, 'service-fee', undefined, currentDate);
-
     // Per-loan rows for this month (active loans only).
     const activeLoanIds: string[] = [];
     const perLoan: MortgageLoanProjectionMonth[] = loans.map((loan) => {
@@ -416,6 +417,12 @@ export function calculateMortgageProjection(
       // Before this loan started → not yet borrowed; after payoff → 0.
       return zeroLoanRow(loan.id);
     });
+
+    // Mortgage-level fees are only charged while some loan is running — never
+    // before the first loan starts or after the last one is paid off.
+    const anyLoanActive = activeLoanIds.length > 0;
+    const invoicingFee = anyLoanActive ? getEffectiveCost(costs, 'invoicing-fee', undefined, currentDate) : 0;
+    const serviceFee = anyLoanActive ? getEffectiveCost(costs, 'service-fee', undefined, currentDate) : 0;
 
     // projectLoan already set each row's invoicingFeeShare and monthlyCharge.
     const isAllActual = activeLoanIds.length > 0 && perLoan.every((r) => !activeLoanIds.includes(r.loanId) || r.isActual);

@@ -67,6 +67,7 @@ export async function runScenarioProjection(
       goalTransfers,
       tripTransfers,
       currentMonthActuals,
+      bankData,
       directRecurring,
       directPlanned,
     } = inputs;
@@ -75,7 +76,7 @@ export async function runScenarioProjection(
     // the forecast cycles), projection from the card-filtered direct lists —
     // exactly like getProjection.
     const baselineCardBills = await computeCardBillTransfersForAccount(
-      session.user.id, accountId, account, recurringItems, plannedItems
+      session.user.id, accountId, account, recurringItems, plannedItems, bankData
     );
     const current = calculateProjection(
       account, directRecurring, directPlanned, taxedIncomes,
@@ -91,7 +92,7 @@ export async function runScenarioProjection(
       recurringItems, plannedItems, modifications, accountId, new Date().toISOString()
     );
     const modifiedCardBills = await computeCardBillTransfersForAccount(
-      session.user.id, accountId, account, modifiedRecurring, modifiedPlanned
+      session.user.id, accountId, account, modifiedRecurring, modifiedPlanned, bankData
     );
     const modifiedDirectRecurring = modifiedRecurring.filter((i) => !i.paidByCardLinkId);
     const modifiedDirectPlanned = modifiedPlanned.filter((i) => !i.paidByCardLinkId);

@@ -110,7 +110,10 @@ export interface EuriborDueInfo {
   nextResetDate: Date;
   /** Whole days until the next reset (negative if it just passed). */
   daysUntilNext: number;
-  /** The YYYY-MM the current reset cycle belongs to (what a new rate entry should target). */
+  /**
+   * The YYYY-MM of the reset cycle a new rate entry should target: the upcoming
+   * reset during the week before it, otherwise the most recent reset.
+   */
   resetYearMonth: YearMonth;
 }
 
@@ -146,17 +149,21 @@ export function isEuriborUpdateDue(
       ? resetDateInYear(now.getFullYear() + 1, rateResetMonth, rateResetDay)
       : thisYearReset;
 
-  const resetYearMonth = toYearMonth(lastResetDate);
   const MS_PER_DAY = 86_400_000;
   const daysUntilNext = Math.ceil((nextResetDate.getTime() - now.getTime()) / MS_PER_DAY);
   const daysSinceLast = Math.floor((now.getTime() - lastResetDate.getTime()) / MS_PER_DAY);
 
-  // Has the current cycle's rate already been entered?
+  // In the week BEFORE a reset the cycle being asked for is the upcoming one
+  // (its rate is published before the reset); otherwise it is the last reset.
+  const inPreWindow = daysUntilNext <= 7;
+  const resetYearMonth = toYearMonth(inPreWindow ? nextResetDate : lastResetDate);
+
+  // Has that cycle's rate already been entered?
   const hasCurrentCycleRate = rates.some(
     (r) => compareYearMonths(r.effectiveDate, resetYearMonth) >= 0
   );
 
-  const withinWindow = (daysUntilNext <= 7 || (daysSinceLast >= 0 && daysSinceLast <= 60));
+  const withinWindow = inPreWindow || (daysSinceLast >= 0 && daysSinceLast <= 60);
   const due = withinWindow && !hasCurrentCycleRate;
 
   return { due, lastResetDate, nextResetDate, daysUntilNext, resetYearMonth };

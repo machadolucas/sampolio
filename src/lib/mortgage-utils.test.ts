@@ -102,6 +102,25 @@ describe('isEuriborUpdateDue', () => {
     expect(info.due).toBe(false);
   });
 
+  it('is due in the week before the reset and targets the upcoming cycle', () => {
+    const now = new Date(2026, 11, 9); // 9 Dec 2026, five days before the 14 Dec reset
+    const info = isEuriborUpdateDue(mortgage, [createMockMortgageRate({ effectiveDate: '2025-12' })], now);
+    expect(info.due).toBe(true);
+    expect(info.resetYearMonth).toBe('2026-12');
+  });
+
+  it('is not due in the pre-reset week once the upcoming rate is entered', () => {
+    const now = new Date(2026, 11, 9);
+    const info = isEuriborUpdateDue(mortgage, [createMockMortgageRate({ effectiveDate: '2026-12' })], now);
+    expect(info.due).toBe(false);
+  });
+
+  it('is not due two weeks before the reset', () => {
+    const now = new Date(2026, 10, 30); // 30 Nov 2026
+    const info = isEuriborUpdateDue(mortgage, [createMockMortgageRate({ effectiveDate: '2025-12' })], now);
+    expect(info.due).toBe(false);
+  });
+
   it('is not due mid-year (far from the reset date)', () => {
     const now = new Date(2026, 5, 1); // June
     const info = isEuriborUpdateDue(mortgage, [createMockMortgageRate({ effectiveDate: '2025-12' })], now);

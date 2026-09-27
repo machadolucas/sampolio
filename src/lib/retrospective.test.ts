@@ -293,3 +293,35 @@ describe('calculateRetrospective', () => {
     expect(without[0].expenseBreakdown.every((i) => i.source === 'bank-actual')).toBe(true);
   });
 });
+
+describe('calculateRetrospective with a live bank-sync anchor', () => {
+  it("seeds the chain with the anchor month's opening balance, not the live balance", () => {
+    // Live balance €1,000 on Sept 27 after a €3,000 salary and €500 of spending.
+    const liveAnchor: ProjectionAnchor = { startMonth: '2026-09', startBalance: 1000 };
+    const transactions = [
+      tx({ bookingDate: '2026-08-10', amount: -200, counterpartyName: 'Shop' }),
+      tx({ bookingDate: '2026-09-02', amount: -500, counterpartyName: 'Shop' }),
+      tx({ bookingDate: '2026-09-25', amount: 3000, counterpartyName: 'Employer' }),
+      tx({ bookingDate: '2026-09-28', amount: -99, counterpartyName: 'Later' }), // after the read
+    ];
+    const [aug] = calculateRetrospective({
+      accountId: 'acc-1',
+      transactions,
+      anchor: liveAnchor,
+      anchorLiveAsOf: '2026-09-27',
+    });
+    expect(aug.yearMonth).toBe('2026-08');
+    expect(aug.endingBalance).toBe(-1500); // 1000 − (3000 − 500)
+    expect(aug.startingBalance).toBe(-1300);
+  });
+
+  it('keeps seeding with the raw anchor balance for a manual anchor', () => {
+    const manualAnchor: ProjectionAnchor = { startMonth: '2026-09', startBalance: 1000 };
+    const transactions = [
+      tx({ bookingDate: '2026-08-10', amount: -200, counterpartyName: 'Shop' }),
+      tx({ bookingDate: '2026-09-25', amount: 3000, counterpartyName: 'Employer' }),
+    ];
+    const [aug] = calculateRetrospective({ accountId: 'acc-1', transactions, anchor: manualAnchor, anchorLiveAsOf: null });
+    expect(aug.endingBalance).toBe(1000);
+  });
+});
