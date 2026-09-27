@@ -35,11 +35,18 @@ import {
 import {
   deleteSplitGroup as dbDeleteSplitGroup,
   removeSplitGroupMember as dbRemoveSplitGroupMember,
+  getSplitGroupById as dbGetSplitGroupById,
+  getSplitGroupsForUser as dbGetSplitGroupsForUser,
+  getSplitGroupSummary as dbGetSplitGroupSummary,
 } from '@/lib/db/split-groups';
 import {
   deleteMortgage as dbDeleteMortgage,
   removeMortgageMember as dbRemoveMortgageMember,
+  getMortgageById as dbGetMortgageById,
+  getMortgagesForUser as dbGetMortgagesForUser,
 } from '@/lib/db/shared-mortgages';
+import { getAllUsers as dbGetAllUsers } from '@/lib/db/users';
+import { withGroupLock } from '@/lib/split-group-lock';
 import { teardownBankConnection } from '@/lib/bank/teardown';
 
 /** Change the current user's password after re-verifying the current one.
@@ -119,10 +126,29 @@ export async function updateMyAvatar(avatarDataUri: string | null): Promise<ApiR
   return { success: true };
 }
 
+type SharedMembers = { members: Array<{ userId: string; role: string }> };
+
+/** True when `userId` is an owner and nobody else in a multi-member entity is. */
+function isSoleOwnerOfShared(entity: SharedMembers, userId: string): boolean {
+  return (
+    entity.members.length > 1 &&
+    entity.members.some((m) => m.userId === userId && m.role === 'owner') &&
+    !entity.members.some((m) => m.userId !== userId && m.role === 'owner')
+  );
+}
+
+const splitSoleOwnerMessage = (name: string) => `Make another member an owner of "${name}", or delete the group first`;
+const splitNotSettledMessage = (name: string) => `Settle up to €0 in "${name}" first`;
+const mortgageSoleOwnerMessage = (name: string) => `Make another member an owner of "${name}", or delete it first`;
+
 /** Shared preflight logic between the read-only check (getAccountDeletionPreflight)
  * and the server-side re-check inside deleteMyAccount — never trust the client's
- * copy of this at delete time. */
-async function buildDeletionPreflight(userId: string): Promise<AccountDeletionPreflight> {
+ * copy of this at delete time. `fresh` reads the shared entities and users
+ * uncached (the delete path must see what is on disk, not a cached copy). */
+async function buildDeletionPreflight(
+  userId: string,
+  { fresh = false }: { fresh?: boolean } = {}
+): Promise<AccountDeletionPreflight> {
   const blockers: AccountDeletionBlocker[] = [];
 
   const [accounts, goals, budgets, trips, bankConnections, splitGroups, mortgages, allUsers] = await Promise.all([
@@ -131,28 +157,25 @@ async function buildDeletionPreflight(userId: string): Promise<AccountDeletionPr
     cachedGetBudgets(userId),
     cachedGetTrips(userId),
     cachedGetBankConnections(userId),
-    cachedGetSplitGroupsForUser(userId),
-    cachedGetMortgagesForUser(userId),
-    cachedGetAllUsers(),
+    fresh ? dbGetSplitGroupsForUser(userId) : cachedGetSplitGroupsForUser(userId),
+    fresh ? dbGetMortgagesForUser(userId) : cachedGetMortgagesForUser(userId),
+    fresh ? dbGetAllUsers() : cachedGetAllUsers(),
   ]);
 
   let splitGroupsToLeave = 0;
   let splitGroupsToDelete = 0;
   for (const group of splitGroups) {
-    const summary = await cachedGetSplitGroupSummary(group.id);
+    const summary = fresh ? await dbGetSplitGroupSummary(group.id) : await cachedGetSplitGroupSummary(group.id);
     if ((summary.netByUserId[userId] ?? 0) !== 0) {
-      blockers.push({ message: `Settle up to €0 in "${group.name}" first` });
+      blockers.push({ message: splitNotSettledMessage(group.name) });
     }
     if (group.members.length === 1) {
       splitGroupsToDelete += 1;
       continue;
     }
     splitGroupsToLeave += 1;
-    const isSoleOwner =
-      group.members.some((m) => m.userId === userId && m.role === 'owner') &&
-      !group.members.some((m) => m.userId !== userId && m.role === 'owner');
-    if (isSoleOwner) {
-      blockers.push({ message: `Make another member an owner of "${group.name}", or delete the group first` });
+    if (isSoleOwnerOfShared(group, userId)) {
+      blockers.push({ message: splitSoleOwnerMessage(group.name) });
     }
   }
 
@@ -164,11 +187,8 @@ async function buildDeletionPreflight(userId: string): Promise<AccountDeletionPr
       continue;
     }
     mortgagesToLeave += 1;
-    const isSoleOwner =
-      mortgage.members.some((m) => m.userId === userId && m.role === 'owner') &&
-      !mortgage.members.some((m) => m.userId !== userId && m.role === 'owner');
-    if (isSoleOwner) {
-      blockers.push({ message: `Make another member an owner of "${mortgage.name}", or delete it first` });
+    if (isSoleOwnerOfShared(mortgage, userId)) {
+      blockers.push({ message: mortgageSoleOwnerMessage(mortgage.name) });
     }
   }
 
@@ -206,10 +226,6 @@ export async function getAccountDeletionPreflight(): Promise<ApiResponse<Account
   return { success: true, data: preflight };
 }
 
-/** Permanently deletes the current user's account: leaves/deletes every shared
- * split group and mortgage they belong to, tears down bank connections
- * (best-effort consent revoke), then hard-deletes the user directory + index
- * entry. Irreversible — gated by typing the account's own email. */
 /** Wiping data or deleting the account needs a session younger than the
  * passkey-registration window, so a stolen long-lived cookie (or injected
  * script riding one) cannot erase everything in one call. Returns an error
@@ -220,6 +236,10 @@ async function requireRecentSignIn(): Promise<string | null> {
   return null;
 }
 
+/** Permanently deletes the current user's account: leaves/deletes every shared
+ * split group and mortgage they belong to, tears down bank connections
+ * (best-effort consent revoke), then hard-deletes the user directory + index
+ * entry. Irreversible — gated by typing the account's own email. */
 export async function deleteMyAccount(input: { confirmationText: string }): Promise<ApiResponse<null>> {
   const session = await auth();
   if (!session?.user?.id || !session.user.email) return { success: false, error: 'Not authenticated' };
@@ -233,41 +253,59 @@ export async function deleteMyAccount(input: { confirmationText: string }): Prom
     return { success: false, error: 'Confirmation text does not match your account email' };
   }
 
-  // Re-run the preflight server-side — never trust a client-supplied "no blockers".
-  const preflight = await buildDeletionPreflight(userId);
+  // Re-run the preflight server-side on uncached reads — never trust a
+  // client-supplied "no blockers" or a cached group/mortgage list.
+  const preflight = await buildDeletionPreflight(userId, { fresh: true });
   if (preflight.blockers.length > 0) {
     return { success: false, error: preflight.blockers.map((b) => b.message).join(' ') };
   }
 
-  // (a) Bank teardown — best-effort revoke, never fails the deletion.
-  const connections = await cachedGetBankConnections(userId);
-  for (const connection of connections) {
-    try {
-      await teardownBankConnection(userId, connection);
-    } catch (err) {
-      console.error('[account] bank teardown failed during account deletion (continuing):', err);
-    }
-  }
+  // Shared entities go first (they can still refuse); bank teardown and the
+  // hard delete only run once every group/mortgage has been left or deleted.
 
-  // (b) Split groups: delete outright if the user is the sole member, else just leave.
+  // (a) Split groups: under the group lock, re-read the doc + summary uncached
+  // (same guards as leaveSplitGroup), then delete outright if the user is the
+  // sole member, else leave. A group that changed since the preflight (e.g.
+  // the other owner left) refuses instead of orphaning the group.
+  type SplitOutcome = { ok: true } | { ok: false; error: string };
   const touchedSplitGroupMemberIds = new Set<string>();
-  const splitGroups = await cachedGetSplitGroupsForUser(userId);
-  for (const group of splitGroups) {
-    for (const m of group.members) touchedSplitGroupMemberIds.add(m.userId);
-    if (group.members.length === 1) {
-      await dbDeleteSplitGroup(group.id);
-    } else {
-      await dbRemoveSplitGroupMember(group.id, userId);
+  const splitGroups = await dbGetSplitGroupsForUser(userId);
+  for (const listed of splitGroups) {
+    const outcome = await withGroupLock(listed.id, async (): Promise<SplitOutcome> => {
+      const group = await dbGetSplitGroupById(listed.id);
+      if (!group || !group.members.some((m) => m.userId === userId)) return { ok: true };
+      if (group.members.length === 1) {
+        await dbDeleteSplitGroup(group.id);
+        updateTag(`split-group:${group.id}:expense-chunks`);
+      } else {
+        const summary = await dbGetSplitGroupSummary(group.id);
+        if ((summary.netByUserId[userId] ?? 0) !== 0) return { ok: false, error: splitNotSettledMessage(group.name) };
+        if (isSoleOwnerOfShared(group, userId)) return { ok: false, error: splitSoleOwnerMessage(group.name) };
+        await dbRemoveSplitGroupMember(group.id, userId);
+      }
+      for (const m of group.members) touchedSplitGroupMemberIds.add(m.userId);
+      updateTag(`split-group:${group.id}`);
+      updateTag(`split-group:${group.id}:summary`);
+      updateTag(`split-group:${group.id}:expenses`);
+      return { ok: true };
+    });
+    if (!outcome.ok) {
+      for (const uid of touchedSplitGroupMemberIds) updateTag(`user:${uid}:split-groups`);
+      return { success: false, error: outcome.error };
     }
-    updateTag(`split-group:${group.id}`);
-    updateTag(`split-group:${group.id}:summary`);
-    updateTag(`split-group:${group.id}:expenses`);
   }
 
-  // (c) Shared mortgages: same rule.
+  // (b) Shared mortgages: same rule, re-read uncached right before the write.
   const touchedMortgageMemberIds = new Set<string>();
-  const mortgages = await cachedGetMortgagesForUser(userId);
-  for (const mortgage of mortgages) {
+  const mortgages = await dbGetMortgagesForUser(userId);
+  for (const listed of mortgages) {
+    const mortgage = await dbGetMortgageById(listed.id);
+    if (!mortgage || !mortgage.members.some((m) => m.userId === userId)) continue;
+    if (isSoleOwnerOfShared(mortgage, userId)) {
+      for (const uid of touchedSplitGroupMemberIds) updateTag(`user:${uid}:split-groups`);
+      for (const uid of touchedMortgageMemberIds) updateTag(`user:${uid}:mortgages`);
+      return { success: false, error: mortgageSoleOwnerMessage(mortgage.name) };
+    }
     for (const m of mortgage.members) touchedMortgageMemberIds.add(m.userId);
     if (mortgage.members.length === 1) {
       await dbDeleteMortgage(mortgage.id);
@@ -275,6 +313,16 @@ export async function deleteMyAccount(input: { confirmationText: string }): Prom
       await dbRemoveMortgageMember(mortgage.id, userId);
     }
     updateTag(`mortgage:${mortgage.id}`);
+  }
+
+  // (c) Bank teardown — best-effort revoke, never fails the deletion.
+  const connections = await cachedGetBankConnections(userId);
+  for (const connection of connections) {
+    try {
+      await teardownBankConnection(userId, connection);
+    } catch (err) {
+      console.error('[account] bank teardown failed during account deletion (continuing):', err);
+    }
   }
 
   // (d) Hard delete: remove from the users index, then rm the whole user dir.

@@ -51,6 +51,7 @@ import {
 } from '@/lib/split-utils';
 import { monthsWindow, computeSplitInsights, type SplitInsights, type SplitInsightsGroupInput } from '@/lib/split-insights';
 import { notifySplitActivity } from '@/lib/split-notify';
+import { withGroupLock } from '@/lib/split-group-lock';
 import { buildNetByUserId, paymentParties } from '@/lib/split-csv';
 import { findSplitDuplicateCandidates } from '@/lib/bank-split-match';
 import {
@@ -134,23 +135,8 @@ function invalidateGroup(group: SplitGroup, touched?: { months?: Iterable<string
   for (const m of group.members) updateTag(`user:${m.userId}:split-groups`);
 }
 
-// ============================================================
-// PER-GROUP IN-PROCESS MUTEX
-// Serializes read-modify-write of a group's chunks/summary on this single node,
-// so two devices adding/importing at once can't clobber each other.
-// ============================================================
-
-const chains = new Map<string, Promise<unknown>>();
-
-function withGroupLock<T>(groupId: string, fn: () => Promise<T>): Promise<T> {
-  const prev = chains.get(groupId) ?? Promise.resolve();
-  const run = prev.then(fn, fn);
-  chains.set(
-    groupId,
-    run.catch(() => {}),
-  );
-  return run;
-}
+// Per-group in-process mutex: `withGroupLock` (src/lib/split-group-lock.ts),
+// shared with account deletion.
 
 // ============================================================
 // BUILDERS

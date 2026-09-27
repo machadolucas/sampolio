@@ -1,7 +1,7 @@
 'use server';
 
 import { z } from 'zod';
-import { isSafeId } from '@/lib/safe-id';
+import { isSafeId, isYearMonth } from '@/lib/safe-id';
 import { CURRENCY_VALUES } from '@/lib/constants';
 import { auth } from '@/lib/auth';
 import { updateTag } from 'next/cache';
@@ -155,6 +155,18 @@ async function loadMortgageForMember(
   return { ok: true, mortgage, userId: session.user.id };
 }
 
+/** Turn anything a member-scoped action throws (I/O, an `UnsafePathError`
+ * from the DB path guard) into an `ApiResponse` error instead of a thrown
+ * server action. */
+async function guarded<T>(label: string, fallback: string, fn: () => Promise<ApiResponse<T>>): Promise<ApiResponse<T>> {
+  try {
+    return await fn();
+  } catch (error) {
+    console.error(`${label} error:`, error);
+    return { success: false, error: fallback };
+  }
+}
+
 function invalidateForMembers(mortgage: SharedMortgage): void {
   updateTag(`mortgage:${mortgage.id}`);
   for (const m of mortgage.members) updateTag(`user:${m.userId}:mortgages`);
@@ -177,9 +189,11 @@ export async function getMyMortgages(): Promise<ApiResponse<SharedMortgage[]>> {
 }
 
 export async function getMortgage(mortgageId: string): Promise<ApiResponse<SharedMortgage>> {
-  const loaded = await loadMortgageForMember(mortgageId);
-  if (!loaded.ok) return { success: false, error: loaded.error };
-  return { success: true, data: loaded.mortgage };
+  return guarded('Get mortgage', 'Failed to load mortgage', async () => {
+    const loaded = await loadMortgageForMember(mortgageId);
+    if (!loaded.ok) return { success: false, error: loaded.error };
+    return { success: true, data: loaded.mortgage };
+  });
 }
 
 export type MortgageProjectionInputsResult = {
@@ -194,11 +208,13 @@ export type MortgageProjectionInputsResult = {
 export async function getMortgageProjectionInputs(
   mortgageId: string
 ): Promise<ApiResponse<MortgageProjectionInputsResult>> {
-  const loaded = await loadMortgageForMember(mortgageId);
-  if (!loaded.ok) return { success: false, error: loaded.error };
-  const data = await cachedGetMortgageProjectionData(mortgageId);
-  if (!data) return { success: false, error: 'Mortgage not found' };
-  return { success: true, data };
+  return guarded('Get mortgage projection inputs', 'Failed to load mortgage', async () => {
+    const loaded = await loadMortgageForMember(mortgageId);
+    if (!loaded.ok) return { success: false, error: loaded.error };
+    const data = await cachedGetMortgageProjectionData(mortgageId);
+    if (!data) return { success: false, error: 'Mortgage not found' };
+    return { success: true, data };
+  });
 }
 
 /** Aggregated equity/liability for the logged-in member across all their mortgages (for Overview KPIs). */
@@ -442,18 +458,21 @@ export async function setMyMortgageLinkedAccount(
   mortgageId: string,
   accountId: string | null
 ): Promise<ApiResponse<SharedMortgage>> {
-  const session = await auth();
-  if (!session?.user?.id) return { success: false, error: 'Not authenticated' };
-  const loaded = await loadMortgageForMember(mortgageId);
-  if (!loaded.ok) return { success: false, error: loaded.error };
-  const updated = await dbUpdateMortgageMember(mortgageId, session.user.id, {
-    linkedAccountId: accountId ?? undefined,
+  return guarded('Set mortgage linked account', 'Failed to update mortgage', async () => {
+    const session = await auth();
+    if (!session?.user?.id) return { success: false, error: 'Not authenticated' };
+    const loaded = await loadMortgageForMember(mortgageId);
+    if (!loaded.ok) return { success: false, error: loaded.error };
+    if (accountId !== null && !isSafeId(accountId)) return { success: false, error: 'Account not found' };
+    const updated = await dbUpdateMortgageMember(mortgageId, session.user.id, {
+      linkedAccountId: accountId ?? undefined,
+    });
+    if (!updated) return { success: false, error: 'Mortgage not found' };
+    invalidateForMembers(updated);
+    // The cashflow projection (getProjection) recomputes fresh each call and will
+    // pick up / drop this transfer on the next load — no extra cache tag needed.
+    return { success: true, data: updated };
   });
-  if (!updated) return { success: false, error: 'Mortgage not found' };
-  invalidateForMembers(updated);
-  // The cashflow projection (getProjection) recomputes fresh each call and will
-  // pick up / drop this transfer on the next load — no extra cache tag needed.
-  return { success: true, data: updated };
 }
 
 // ---------- Rates ----------
@@ -482,11 +501,14 @@ export async function deleteMortgageRate(
   mortgageId: string,
   rateId: string
 ): Promise<ApiResponse<void>> {
-  const loaded = await loadMortgageForMember(mortgageId);
-  if (!loaded.ok) return { success: false, error: loaded.error };
-  await dbDeleteRate(mortgageId, rateId);
-  updateTag(`mortgage:${mortgageId}:rates`);
-  return { success: true };
+  return guarded('Delete mortgage rate', 'Failed to delete rate', async () => {
+    const loaded = await loadMortgageForMember(mortgageId);
+    if (!loaded.ok) return { success: false, error: loaded.error };
+    if (!isSafeId(rateId)) return { success: false, error: 'Rate not found' };
+    await dbDeleteRate(mortgageId, rateId);
+    updateTag(`mortgage:${mortgageId}:rates`);
+    return { success: true };
+  });
 }
 
 // ---------- Costs ----------
@@ -518,11 +540,14 @@ export async function deleteMortgageCost(
   mortgageId: string,
   costId: string
 ): Promise<ApiResponse<void>> {
-  const loaded = await loadMortgageForMember(mortgageId);
-  if (!loaded.ok) return { success: false, error: loaded.error };
-  await dbDeleteCost(mortgageId, costId);
-  updateTag(`mortgage:${mortgageId}:costs`);
-  return { success: true };
+  return guarded('Delete mortgage cost', 'Failed to delete cost', async () => {
+    const loaded = await loadMortgageForMember(mortgageId);
+    if (!loaded.ok) return { success: false, error: loaded.error };
+    if (!isSafeId(costId)) return { success: false, error: 'Cost not found' };
+    await dbDeleteCost(mortgageId, costId);
+    updateTag(`mortgage:${mortgageId}:costs`);
+    return { success: true };
+  });
 }
 
 // ---------- Extra payments ----------
@@ -554,11 +579,14 @@ export async function deleteMortgageExtraPayment(
   mortgageId: string,
   paymentId: string
 ): Promise<ApiResponse<void>> {
-  const loaded = await loadMortgageForMember(mortgageId);
-  if (!loaded.ok) return { success: false, error: loaded.error };
-  await dbDeleteExtraPayment(mortgageId, paymentId);
-  updateTag(`mortgage:${mortgageId}:payments`);
-  return { success: true };
+  return guarded('Delete mortgage extra payment', 'Failed to delete payment', async () => {
+    const loaded = await loadMortgageForMember(mortgageId);
+    if (!loaded.ok) return { success: false, error: loaded.error };
+    if (!isSafeId(paymentId)) return { success: false, error: 'Payment not found' };
+    await dbDeleteExtraPayment(mortgageId, paymentId);
+    updateTag(`mortgage:${mortgageId}:payments`);
+    return { success: true };
+  });
 }
 
 // ---------- Drift snapshots ----------
@@ -590,11 +618,14 @@ export async function deleteMortgageBalanceSnapshot(
   mortgageId: string,
   snapshotId: string
 ): Promise<ApiResponse<void>> {
-  const loaded = await loadMortgageForMember(mortgageId);
-  if (!loaded.ok) return { success: false, error: loaded.error };
-  await dbDeleteSnapshot(mortgageId, snapshotId);
-  updateTag(`mortgage:${mortgageId}:snapshots`);
-  return { success: true };
+  return guarded('Delete mortgage snapshot', 'Failed to delete snapshot', async () => {
+    const loaded = await loadMortgageForMember(mortgageId);
+    if (!loaded.ok) return { success: false, error: loaded.error };
+    if (!isSafeId(snapshotId)) return { success: false, error: 'Snapshot not found' };
+    await dbDeleteSnapshot(mortgageId, snapshotId);
+    updateTag(`mortgage:${mortgageId}:snapshots`);
+    return { success: true };
+  });
 }
 
 // ---------- Actual monthly history (import) ----------
@@ -602,10 +633,12 @@ export async function deleteMortgageBalanceSnapshot(
 export async function getMortgageActuals(
   mortgageId: string
 ): Promise<ApiResponse<MortgageActualEntry[]>> {
-  const loaded = await loadMortgageForMember(mortgageId);
-  if (!loaded.ok) return { success: false, error: loaded.error };
-  const actuals = await cachedGetMortgageActuals(mortgageId);
-  return { success: true, data: actuals };
+  return guarded('Get mortgage actuals', 'Failed to load actuals', async () => {
+    const loaded = await loadMortgageForMember(mortgageId);
+    if (!loaded.ok) return { success: false, error: loaded.error };
+    const actuals = await cachedGetMortgageActuals(mortgageId);
+    return { success: true, data: actuals };
+  });
 }
 
 export async function importMortgageActuals(
@@ -633,11 +666,13 @@ export async function importMortgageActuals(
 }
 
 export async function clearMortgageActuals(mortgageId: string): Promise<ApiResponse<void>> {
-  const loaded = await loadMortgageForMember(mortgageId);
-  if (!loaded.ok) return { success: false, error: loaded.error };
-  await dbDeleteAllActuals(mortgageId);
-  updateTag(`mortgage:${mortgageId}:actuals`);
-  return { success: true };
+  return guarded('Clear mortgage actuals', 'Failed to clear actuals', async () => {
+    const loaded = await loadMortgageForMember(mortgageId);
+    if (!loaded.ok) return { success: false, error: loaded.error };
+    await dbDeleteAllActuals(mortgageId);
+    updateTag(`mortgage:${mortgageId}:actuals`);
+    return { success: true };
+  });
 }
 
 /**
@@ -675,9 +710,12 @@ export async function revertMortgageMonth(
   mortgageId: string,
   yearMonth: string
 ): Promise<ApiResponse<{ removed: number }>> {
-  const loaded = await loadMortgageForMember(mortgageId);
-  if (!loaded.ok) return { success: false, error: loaded.error };
-  const removed = await dbDeleteActualsForMonth(mortgageId, yearMonth);
-  updateTag(`mortgage:${mortgageId}:actuals`);
-  return { success: true, data: { removed } };
+  return guarded('Revert mortgage month', 'Failed to revert month', async () => {
+    const loaded = await loadMortgageForMember(mortgageId);
+    if (!loaded.ok) return { success: false, error: loaded.error };
+    if (!isYearMonth(yearMonth)) return { success: false, error: 'Invalid month' };
+    const removed = await dbDeleteActualsForMonth(mortgageId, yearMonth);
+    updateTag(`mortgage:${mortgageId}:actuals`);
+    return { success: true, data: { removed } };
+  });
 }
