@@ -128,10 +128,10 @@ export async function computeAccountProjection(
  * real booked bank transactions for the cash/savings bank accounts that anchor
  * this cash account. These sit to the LEFT of the forecast on the cashflow
  * page. Returns [] when no bank cash/savings account is linked (so non-bank
- * accounts are unaffected) or when there's no usable history. A live bank-sync
- * anchor chains backward from the anchor month's opening balance — its stored
- * `anchorMonthStartBalance`, else reconstructed from `anchorLiveAsOf` (legacy
- * snapshot). A bank problem must never break the core cashflow projection.
+ * accounts are unaffected) or when there's no usable history. The chain runs
+ * backward from the anchor month's start-of-month balance
+ * (`anchorMonthStartBalance`, the same O the forecast starts from). A bank
+ * problem must never break the core cashflow projection.
  */
 async function getRetrospectiveForAccount(
   userId: string,

@@ -74,14 +74,23 @@ export interface TripTransfer {
 }
 
 /**
- * Booked bank activity for the anchor (current) month of a bank-linked
+ * Booked bank activity for the actualized anchor month of a bank-linked
  * account, used to reconcile forecast lines against what's already happened
  * (see calculateProjection's `currentMonthActuals` param and
- * `src/lib/current-month-actuals.ts`).
+ * `src/lib/current-month-actuals.ts`). Built by `anchorMonthActuals`
+ * (`src/lib/live-anchor.ts`).
  */
 export interface CurrentMonthActuals {
   /** Booked transactions dated within the anchor month, from the account's linked (non-excluded) cash/savings bank accounts. */
   transactions: ActualTxLike[];
+  /**
+   * The anchor month's START-of-month balance O. When set, the engine starts
+   * the anchor month at O + Σ `transactions` (which must then be EVERY booked
+   * row of the month) instead of the anchor snapshot's balance, and reports O
+   * as the actualized row's `openingBalance`. Omitted: the anchor balance is
+   * taken as already containing `transactions` (engine-level callers/tests).
+   */
+  openingBalance?: number;
 }
 
 // Year-Month utility functions
@@ -351,6 +360,13 @@ export function calculateProjection(
   }
 
   let runningBalance = anchor.startBalance;
+  // Actualized anchor month: start from its month-start balance plus every
+  // booked row of the month (the same rows actualized below), so a booking
+  // after the anchor balance's as-of date is neither lost nor counted twice.
+  if (currentMonthActuals?.openingBalance !== undefined && months[0] === anchor.startMonth) {
+    const bookedNet = currentMonthActuals.transactions.reduce((sum, t) => sum + t.amount, 0);
+    runningBalance = Math.round((currentMonthActuals.openingBalance + bookedNet) * 100) / 100;
+  }
 
   // Separate recurring-override PlannedItems from regular ones
   // Skip overrides older than 2 months before the projection start to keep the override map clean
@@ -707,10 +723,11 @@ export function calculateProjection(
       }
     }
 
-    // For the anchor month of a bank-linked account, the anchor balance is the
-    // LIVE synced balance — it already reflects everything paid so far this
-    // month. Reconcile forecast lines against booked activity so only the
-    // still-outstanding remainder is added on top, instead of double-counting.
+    // For the actualized anchor month of a bank-linked account, the starting
+    // balance already reflects everything booked so far this month (month-start
+    // balance + booked rows). Reconcile forecast lines against that booked
+    // activity so only the still-outstanding remainder is added on top,
+    // instead of double-counting.
     if (currentMonthActuals && currentMonthActuals.transactions.length > 0 && yearMonth === anchor.startMonth) {
       const actualizableLines: ActualizableLine[] = [
         ...incomeBreakdown.map((line): ActualizableLine => ({ line, type: 'income', policy: 'exact-only' })),
@@ -769,6 +786,9 @@ export function calculateProjection(
         isActualized: true,
         plannedTotalIncome,
         plannedTotalExpenses,
+        ...(currentMonthActuals.openingBalance !== undefined
+          ? { openingBalance: currentMonthActuals.openingBalance }
+          : {}),
       });
 
       runningBalance = endingBalance;

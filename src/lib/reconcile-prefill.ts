@@ -7,7 +7,7 @@
  * value). So the expected/prefilled value for month M must be the same
  * engine's start-of-month value for M — then confirming an untouched row
  * re-anchors at exactly the value the projection already had, and nothing
- * moves. Cash accounts follow the same rule via `MonthlyProjection.startingBalance`.
+ * moves. Cash accounts follow the same rule via `expectedCashBalance`.
  *
  * When M lies before the entity's current anchor (a check-in for an older
  * month than the latest snapshot/genesis), the engines have no row for M and
@@ -24,6 +24,7 @@ import type {
   DebtReferenceRate,
   DebtExtraPayment,
   BalanceSnapshot,
+  MonthlyProjection,
 } from '@/types';
 import { compareYearMonths, getCurrentYearMonth, resolveAnchor } from './projection';
 import {
@@ -31,6 +32,20 @@ import {
   calculateReceivableProjection,
   calculateDebtAmortization,
 } from './wealth-projection';
+
+/**
+ * Start-of-month balance of a cash account for `yearMonth` from its forecast
+ * rows, or null when the forecast has no row for it. An actualized month's
+ * `startingBalance` already contains the month's booked rows (the live booked
+ * balance), so its month-start `openingBalance` is used instead: confirming
+ * the untouched row then re-anchors at the same opening and the booked rows
+ * are counted once, not twice.
+ */
+export function expectedCashBalance(monthly: MonthlyProjection[], yearMonth: YearMonth): number | null {
+  const row = monthly.find((m) => m.yearMonth === yearMonth);
+  if (!row) return null;
+  return row.isActualized && row.openingBalance !== undefined ? row.openingBalance : row.startingBalance;
+}
 
 /** Start-of-month valuation of an investment for `yearMonth`. */
 export function expectedInvestmentBalance(

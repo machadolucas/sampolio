@@ -787,11 +787,13 @@ async function getLinkedCashLedger(userId: string, financialAccountId: string): 
  * src/lib/live-anchor.ts). Alongside it the snapshot records the balance type,
  * the as-of date (the bank's reference date when given) and the booked-basis
  * opening balance of the month, computed here from the ledger this sync just
- * wrote (`bankSnapshotProvenance`) — consumers prefer that stored opening
- * over reconstructing it from a later, mutated ledger. `expectedBalance` is the
+ * wrote (`bankSnapshotProvenance`) — the forecast, retrospective and later
+ * variances use that stored opening (the month-start balance O), never a
+ * reconstruction from a later, mutated ledger. `expectedBalance` is the
  * planned opening balance plus what the balance holds on top of its opening
  * (`expectedLiveBalance`), so the variance is the start-of-month drift, not a
- * mid-month vs end-of-month comparison.
+ * mid-month vs end-of-month comparison; a historical available balance (an
+ * estimated opening) records no variance.
  */
 async function autoAnchorAccount(
   userId: string,
@@ -818,18 +820,21 @@ async function autoAnchorAccount(
     month: currentMonth,
     transactions,
   });
-  const expected =
-    expectedLiveBalance({
-      account,
-      recurringItems,
-      plannedItems,
-      taxedIncomes,
-      priorSnapshot,
-      transactions,
-      month: currentMonth,
-      actualBalance,
-      monthStartBalance: provenance.monthStartBalance,
-    }) ?? actualBalance; // no planned row for this month ⇒ record no variance
+  // A historical available balance's opening is only an estimate (its
+  // pending set is unknown, `bankSnapshotProvenance`): record no variance.
+  const expected = provenance.openingIsEstimate
+    ? actualBalance
+    : (expectedLiveBalance({
+        account,
+        recurringItems,
+        plannedItems,
+        taxedIncomes,
+        priorSnapshot,
+        transactions,
+        month: currentMonth,
+        actualBalance,
+        monthStartBalance: provenance.monthStartBalance,
+      }) ?? actualBalance); // no planned row for this month ⇒ record no variance
 
   const snapshot = await createBalanceSnapshot(
     userId,
@@ -839,7 +844,11 @@ async function autoAnchorAccount(
     expected,
     actualBalance,
     'bank-sync',
-    provenance
+    {
+      balanceType: provenance.balanceType,
+      balanceAsOf: provenance.balanceAsOf,
+      monthStartBalance: provenance.monthStartBalance,
+    }
   );
   return snapshot.source === 'bank-sync';
 }

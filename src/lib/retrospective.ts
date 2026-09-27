@@ -54,11 +54,11 @@ export interface RetrospectiveInput {
    */
   anchorLiveAsOf?: string | null;
   /**
-   * A live bank-sync anchor's STORED start-of-month balance
-   * (`BalanceSnapshot.monthStartBalance`, computed at sync time from the
-   * ledger of that sync). Preferred over reconstructing it from
-   * `anchorLiveAsOf` and today's ledger; null/omitted for manual/genesis
-   * anchors and legacy bank-sync snapshots.
+   * The anchor month's start-of-month balance O, as the forecast uses it
+   * (`anchorMonthOpeningBalance` in src/lib/live-anchor.ts: a bank-sync
+   * snapshot's stored `monthStartBalance` or legacy reconstruction, else the
+   * manual/genesis balance). `gatherProjectionInputs` always supplies it;
+   * when omitted the seed falls back to `anchorLiveAsOf`/`anchor.startBalance`.
    */
   anchorMonthStartBalance?: number | null;
 }
@@ -166,11 +166,11 @@ function buildBreakdown(
  * It deliberately does NOT stop at the account's Sampolio genesis (`startingDate`):
  * real bank history is valid regardless of when the account was created here, so the
  * only bounds are available data + `monthsBack`. Balances are chained backward from
- * the anchor's START-of-month balance: `anchor.startBalance` for a manual/genesis
- * anchor; for a live bank-sync anchor its stored `anchorMonthStartBalance`, or — legacy
- * snapshot without one (`anchorLiveAsOf` only) — the live balance minus the anchor
- * month's booked net through its as-of date. So the newest past month's endingBalance
- * is the balance the anchor month opened with.
+ * the anchor's START-of-month balance O: `anchorMonthStartBalance` (the same O the
+ * forecast starts its actualized anchor month from), else — callers that omit it —
+ * the live balance minus the anchor month's booked net through `anchorLiveAsOf` for a
+ * live anchor, or `anchor.startBalance` for a manual/genesis anchor. So the newest
+ * past month's endingBalance is the balance the anchor month opened with.
  *
  * Returns [] when there is no usable history, so non-bank accounts are unaffected.
  */

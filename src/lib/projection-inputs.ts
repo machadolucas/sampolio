@@ -44,7 +44,12 @@ import { goalInjectsIntoCashflow } from '@/lib/goal-utils';
 import { calculatePerDiem } from '@/lib/per-diem-utils';
 import { computeCardBilling, getOpenCycleMonths, toCardTxn, isCardPayment } from '@/lib/bank/card-billing';
 import type { CardPaymentSource } from '@/lib/bank/card-payment-match';
-import { liveAnchorAsOf, bookedInMonthThrough, effectiveLiveAnchor } from '@/lib/live-anchor';
+import {
+  liveAnchorAsOf,
+  anchorMonthActuals,
+  anchorMonthOpeningBalance,
+  shouldActualizeAnchorMonth,
+} from '@/lib/live-anchor';
 import type {
   BankConnection,
   FinancialAccount,
@@ -56,6 +61,9 @@ import type {
   BankTransaction,
   YearMonth,
 } from '@/types';
+
+// Re-exported for existing importers; the rule lives with the other anchor helpers.
+export { shouldActualizeAnchorMonth };
 
 /**
  * Per-request memo of the user's bank connections and linked-account ledgers.
@@ -95,12 +103,9 @@ export interface ProjectionInputs {
   salaryConfigs: SalaryConfig[];
   taxedIncomes: TaxedIncome[];
   /**
-   * The anchor snapshot to hand to `calculateProjection`: the latest stored
-   * snapshot, except that a live bank-sync snapshot carrying a stored
-   * `monthStartBalance` is re-based by `effectiveLiveAnchor` (its
-   * `actualBalance` becomes the booked-basis balance through its as-of date
-   * per the current ledger, matching `currentMonthActuals`). Manual and legacy
-   * bank-sync snapshots are passed through unchanged.
+   * The latest stored snapshot (the anchor), unchanged. For an actualized
+   * anchor month the engine starts from `currentMonthActuals.openingBalance`
+   * plus the month's booked rows instead of its `actualBalance`.
    */
   latestSnapshot: BalanceSnapshot | null;
   mortgageTransfers: MortgageTransfer[];
@@ -108,24 +113,25 @@ export interface ProjectionInputs {
   goalTransfers: GoalTransfer[];
   tripTransfers: TripTransfer[];
   /**
-   * Booked bank transactions for the anchor month — feed this straight into
-   * `calculateProjection`'s `currentMonthActuals` param. See
-   * `getCurrentMonthActualsForAccount` for when the anchor month is actualized.
+   * The actualized anchor month's inputs — EVERY booked row of that month in
+   * the linked ledger plus its month-start balance O (`openingBalance`); feed
+   * this straight into `calculateProjection`'s `currentMonthActuals` param.
+   * Null when the anchor month is not actualized
+   * (`getCurrentMonthActualsForAccount`).
    */
   currentMonthActuals: CurrentMonthActuals | null;
   /**
    * The as-of date of a live bank-sync anchor (`liveAnchorAsOf`), else null.
-   * Pass it to `calculateRetrospective` so the past months chain from the
-   * anchor month's opening balance.
+   * Pass it to `calculateRetrospective` alongside `anchorMonthStartBalance`.
    */
   anchorLiveAsOf: string | null;
   /**
-   * A live bank-sync anchor's stored start-of-month balance
-   * (`BalanceSnapshot.monthStartBalance`), else null (manual/genesis anchor,
-   * or a legacy bank-sync snapshot — `calculateRetrospective` then
-   * reconstructs it from `anchorLiveAsOf`).
+   * The anchor month's start-of-month balance O (`anchorMonthOpeningBalance`:
+   * a bank-sync snapshot's stored `monthStartBalance` or legacy
+   * reconstruction, else the manual/genesis balance) — the same O the forecast
+   * starts the actualized month from. `calculateRetrospective` seeds from it.
    */
-  anchorMonthStartBalance: number | null;
+  anchorMonthStartBalance: number;
   /** Memoized bank reads — reuse it for the card-bill and retrospective helpers. */
   bankData: BankDataLoader;
   /**
@@ -167,23 +173,17 @@ export async function gatherProjectionInputs(
   // transfers.
   const anchor = resolveAnchor(account.startingDate, account.startingBalance, storedSnapshot);
   const anchorLiveAsOf = liveAnchorAsOf(account.startingDate, storedSnapshot);
-  const anchorMonthStartBalance =
-    anchorLiveAsOf && storedSnapshot?.monthStartBalance !== undefined ? storedSnapshot.monthStartBalance : null;
   const bankData = createBankDataLoader(userId);
-  const [mortgageTransfers, budgetTransfers, goalTransfers, tripTransfers, currentMonthActuals, latestSnapshot] =
-    await Promise.all([
-      getMortgageTransfersForAccount(userId, accountId),
-      getBudgetTransfersForAccount(userId, accountId),
-      getGoalTransfersForAccount(userId, accountId),
-      getTripTransfersForAccount(userId, accountId),
-      getCurrentMonthActualsForAccount(userId, accountId, anchor.startMonth, anchorLiveAsOf, bankData),
-      // Same memoized ledger as the actuals — no extra decode.
-      anchorMonthStartBalance !== null
-        ? getLinkedCashBankTransactions(userId, accountId, bankData)
-            .catch(() => [] as BankTransaction[])
-            .then((txs) => effectiveLiveAnchor(account.startingDate, storedSnapshot, txs))
-        : Promise.resolve(storedSnapshot),
-    ]);
+  const [mortgageTransfers, budgetTransfers, goalTransfers, tripTransfers, currentMonthActuals] = await Promise.all([
+    getMortgageTransfersForAccount(userId, accountId),
+    getBudgetTransfersForAccount(userId, accountId),
+    getGoalTransfersForAccount(userId, accountId),
+    getTripTransfersForAccount(userId, accountId),
+    getCurrentMonthActualsForAccount(userId, accountId, account, storedSnapshot, bankData),
+  ]);
+  // Not actualized ⇒ no live anchor (a manual/genesis anchor of an earlier
+  // month), whose own balance is already the month-start balance.
+  const anchorMonthStartBalance = currentMonthActuals?.openingBalance ?? anchor.startBalance;
 
   // Expenses tagged "paid by card" don't hit cash directly — they roll into
   // the card's statement/forecast bill (injected separately), so exclude them
@@ -197,7 +197,7 @@ export async function gatherProjectionInputs(
     plannedItems,
     salaryConfigs,
     taxedIncomes,
-    latestSnapshot,
+    latestSnapshot: storedSnapshot,
     mortgageTransfers,
     budgetTransfers,
     goalTransfers,
@@ -282,56 +282,33 @@ export async function getCardPaymentSourcesForAccount(
 }
 
 /**
- * Whether the anchor month gets actualized against booked bank activity:
- *  - the anchor month is the current calendar month (a same-month anchor for a
- *    bank-linked account is normally the live sync balance), or
- *  - the anchor is a live bank-sync balance (`anchorLiveAsOf` set) from an
- *    EARLIER month — the sync went stale (consent expired, sync failing). That
- *    balance already includes the month's bookings through its as-of date, so
- *    re-adding the month's full forecast would double-count them.
- * Pure; exported for tests.
- */
-export function shouldActualizeAnchorMonth(
-  anchorMonth: YearMonth,
-  anchorLiveAsOf: string | null,
-  currentMonth: YearMonth
-): boolean {
-  if (anchorMonth === currentMonth) return true;
-  return anchorLiveAsOf !== null && compareYearMonths(anchorMonth, currentMonth) < 0;
-}
-
-/**
- * Booked transactions dated within `anchorMonth` (and, for a live bank-sync
- * anchor, on or before its as-of date — later rows are not in that balance),
- * for reconciling the projection's anchor month against real bank activity.
- * Returns null when `shouldActualizeAnchorMonth` says no, or when there's
- * nothing booked. A bank problem must never break the core cashflow projection.
+ * The actualized anchor month's `currentMonthActuals` (see
+ * `shouldActualizeAnchorMonth` and `anchorMonthActuals` in
+ * src/lib/live-anchor.ts): every booked row of the anchor month from the
+ * account's linked cash/savings ledgers plus the month-start balance O. The
+ * engine starts that month at O + Σ rows and marks matching forecast lines
+ * paid. Returns null when the month is not actualized. A bank problem must
+ * never break the core cashflow projection: a failed ledger read yields no
+ * rows (a stored `monthStartBalance` is still honoured).
  */
 export async function getCurrentMonthActualsForAccount(
   userId: string,
   accountId: string,
-  anchorMonth: YearMonth,
-  anchorLiveAsOf: string | null = null,
+  account: FinancialAccount,
+  storedSnapshot: BalanceSnapshot | null,
   bankData: BankDataLoader = createBankDataLoader(userId)
 ): Promise<CurrentMonthActuals | null> {
-  if (!shouldActualizeAnchorMonth(anchorMonth, anchorLiveAsOf, getCurrentYearMonth())) return null;
+  const anchor = resolveAnchor(account.startingDate, account.startingBalance, storedSnapshot);
+  const asOf = liveAnchorAsOf(account.startingDate, storedSnapshot);
+  if (!shouldActualizeAnchorMonth(anchor.startMonth, asOf, getCurrentYearMonth())) return null;
+  let transactions: BankTransaction[] = [];
   try {
-    const transactions = await getLinkedCashBankTransactions(userId, accountId, bankData);
-    const booked = bookedInMonthThrough(transactions, anchorMonth, anchorLiveAsOf)
-      .map((t) => ({
-        id: t.id,
-        amount: t.amount,
-        bookingDate: t.bookingDate,
-        counterpartyName: t.counterpartyName,
-        remittanceInfo: t.remittanceInfo,
-        bankTransactionCode: t.bankTransactionCode,
-      }));
-    if (booked.length === 0) return null;
-    return { transactions: booked };
+    transactions = await getLinkedCashBankTransactions(userId, accountId, bankData);
   } catch (error) {
     console.error('Current-month actuals gathering failed:', error);
-    return null;
   }
+  const opening = anchorMonthOpeningBalance(account.startingDate, account.startingBalance, storedSnapshot, transactions);
+  return anchorMonthActuals(anchor.startMonth, opening, transactions);
 }
 
 /**

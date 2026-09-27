@@ -243,6 +243,14 @@ export interface MonthlyProjection {
   /** When isActualized: the month's planned totals (Σ line.amount), for "€X of €Y planned" UI. totalIncome/totalExpenses hold the REMAINING totals. */
   plannedTotalIncome?: number;
   plannedTotalExpenses?: number;
+  /**
+   * When isActualized (bank-linked, anchor-month actuals applied): the balance
+   * at the START of the month (the anchor's month-start balance). Here
+   * `startingBalance` is that opening plus every booked row of the month so
+   * far (the live booked balance). The check-in prefills this, not
+   * `startingBalance`, since a check-in snapshot is a start-of-month balance.
+   */
+  openingBalance?: number;
 }
 
 export interface ProjectionLineItem {

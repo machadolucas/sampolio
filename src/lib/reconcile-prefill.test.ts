@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  expectedCashBalance,
   expectedInvestmentBalance,
   expectedReceivableBalance,
   expectedDebtState,
@@ -16,7 +17,12 @@ import {
   createMockRepayment,
   createMockDebt,
   createMockSnapshot,
+  createMockAccount,
+  createMockRecurringItem,
 } from '@/test/mocks';
+import { calculateProjection } from './projection';
+import { anchorMonthActuals, anchorMonthOpeningBalance } from './live-anchor';
+import type { BalanceSnapshot, BankTransaction } from '@/types';
 
 // The invariant under test: confirming a prefilled (untouched) check-in row
 // writes a snapshot at month M with the prefilled value, and re-anchoring on
@@ -125,5 +131,44 @@ describe('expectedDebtState', () => {
   it('is 0 once paid off', () => {
     const debt = createMockDebt({ initialPrincipal: 1000, startDate: '2026-01', fixedInterestRate: 0, monthlyPayment: 500 });
     expect(expectedDebtState(debt, [], [], null, '2026-06').principal).toBe(0);
+  });
+});
+
+describe('expectedCashBalance (actualized month)', () => {
+  const account = createMockAccount({ id: 'acc', startingDate: '2026-01', startingBalance: 0, planningHorizonMonths: 6 });
+  const rent = createMockRecurringItem({ type: 'expense', name: 'Rent', amount: 100, category: 'Housing', startDate: '2026-01', isFixedAmount: true });
+  const salary = createMockRecurringItem({ type: 'income', name: 'Salary', amount: 2000, startDate: '2026-01', isFixedAmount: true });
+  const ledger: BankTransaction[] = [
+    {
+      id: 'tx-rent', linkedAccountId: 'link-1', dedupKey: 'dk-rent', currency: 'EUR', status: 'booked',
+      bookingDate: '2026-09-03', amount: -100, counterpartyName: 'Rent',
+      firstSeenAt: '2026-09-03T00:00:00Z', lastSeenAt: '2026-09-03T00:00:00Z',
+    },
+  ];
+  const project = (snapshot: BalanceSnapshot) =>
+    calculateProjection(account, [rent, salary], [], [], undefined, snapshot, [], [], [],
+      anchorMonthActuals('2026-09', anchorMonthOpeningBalance('2026-01', 0, snapshot, ledger), ledger));
+
+  it("prefills the month-start opening, not the live booked balance, and confirming it changes nothing", () => {
+    // Bank-sync snapshot: live €900 after the rent, opening €1,000.
+    const synced = createMockSnapshot({
+      entityId: 'acc', yearMonth: '2026-09', actualBalance: 900, source: 'bank-sync',
+      createdAt: '2026-09-10T11:00:00.000Z', balanceType: 'ITBD', balanceAsOf: '2026-09-10', monthStartBalance: 1000,
+    });
+    const before = project(synced);
+    expect(before[0].startingBalance).toBe(900);
+    const prefill = expectedCashBalance(before, '2026-09');
+    expect(prefill).toBe(1000); // startingBalance €900 would double count the rent
+
+    // Confirming the untouched row writes a manual start-of-month snapshot.
+    const confirmed = createMockSnapshot({ entityId: 'acc', yearMonth: '2026-09', actualBalance: prefill!, source: 'manual' });
+    const after = project(confirmed);
+    expect(after.map((m) => m.endingBalance)).toEqual(before.map((m) => m.endingBalance));
+  });
+
+  it('uses startingBalance for a forecast month and null when there is no row', () => {
+    const rows = project(createMockSnapshot({ entityId: 'acc', yearMonth: '2026-09', actualBalance: 1000, source: 'manual' }));
+    expect(expectedCashBalance(rows, '2026-10')).toBe(rows[1].startingBalance);
+    expect(expectedCashBalance(rows, '2027-09')).toBeNull();
   });
 });

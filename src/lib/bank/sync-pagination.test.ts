@@ -10,7 +10,7 @@ import { getRecurringItems } from '@/lib/db/recurring-items';
 import { getPlannedItems } from '@/lib/db/planned-items';
 import { getTaxedIncomes } from '@/lib/db/taxed-income';
 import { createBalanceSnapshot, getLatestSnapshot } from '@/lib/db/reconciliation';
-import { createMockAccount } from '@/test/mocks';
+import { createMockAccount, createMockSnapshot } from '@/test/mocks';
 import { TRANSIENT_BACKOFF_MS } from './constants';
 
 vi.mock('./client', async (importOriginal) => ({
@@ -281,6 +281,51 @@ describe('runSync auto-anchor provenance (R2-1)', () => {
       expect(args[6]).toBe('bank-sync');
       // The Sept 9 debit is after the Sept 8 close, so it is not netted out.
       expect(args[7]).toEqual({ balanceType: 'CLBD', balanceAsOf: '2026-09-08', monthStartBalance: 958 });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('R5-3: a historical available balance records no variance (its opening is only an estimate)', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 8, 9, 13, 0, 0)); // Sept 9, local
+    try {
+      primary = connection('primary', 'alex', { ...link('cash-a', 'primary'), linkedFinancialAccountId: 'acc' });
+      primary.linkedAccounts[0].syncCursor = { lastBookingDate: '2026-09-07', backfilledThrough: '2026-09-08' };
+      vi.mocked(getBankConnectionById).mockResolvedValue(primary);
+      vi.mocked(getBankConnections).mockResolvedValue([primary]);
+      const ledgers = new Map<string, BankTransaction[]>();
+      vi.mocked(getBankTransactions).mockImplementation(async (_user, id) => ledgers.get(id) ?? []);
+      vi.mocked(writeBankTransactions).mockImplementation(async (_user, id, rows) => {
+        ledgers.set(id, rows);
+      });
+      vi.mocked(getAccountTransactions).mockResolvedValue({ transactions: [rawTx('cash-row')] });
+      // Only an opening available balance: as of Sept 8, its pending set unknown.
+      vi.mocked(getAccountBalances).mockResolvedValue({
+        balances: [{ balance_type: 'OPAV', balance_amount: { amount: '900.00', currency: 'EUR' } }],
+      });
+      vi.mocked(getAccountById).mockResolvedValue(
+        createMockAccount({ id: 'acc', startingDate: '2026-01', startingBalance: 0, planningHorizonMonths: 12 })
+      );
+      vi.mocked(getRecurringItems).mockResolvedValue([]);
+      vi.mocked(getPlannedItems).mockResolvedValue([]);
+      vi.mocked(getTaxedIncomes).mockResolvedValue([]);
+      // Planned September opening €1,000 (manual check-in).
+      vi.mocked(getLatestSnapshot).mockResolvedValue(
+        createMockSnapshot({ entityId: 'acc', yearMonth: '2026-09', actualBalance: 1000, source: 'manual' })
+      );
+      vi.mocked(createBalanceSnapshot).mockImplementation(async (userId, entityType, entityId, yearMonth, expected, actual, source) => ({
+        id: 's1', userId, entityType, entityId, yearMonth, expectedBalance: expected, actualBalance: actual,
+        variance: actual - expected, source, createdAt: new Date().toISOString(),
+      }));
+
+      await runSync('alex', 'primary', 'manual', {}, now);
+
+      const args = vi.mocked(createBalanceSnapshot).mock.calls[0];
+      expect(args[4]).toBe(900); // expected = actual ⇒ no false −€100 variance
+      expect(args[5]).toBe(900);
+      // The estimate flag itself is not persisted.
+      expect(args[7]).toEqual({ balanceType: 'OPAV', balanceAsOf: '2026-09-08', monthStartBalance: 900 });
     } finally {
       vi.useRealTimers();
     }

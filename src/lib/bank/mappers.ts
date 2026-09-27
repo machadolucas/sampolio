@@ -7,6 +7,7 @@
  * mappers deliberately produce id-less `MappedBankAccount` records.
  */
 
+import { format } from 'date-fns';
 import type {
   BankAccountRole,
   BankTransaction,
@@ -338,6 +339,12 @@ function bankCodeOf(t: RawTransaction): string | undefined {
   return c.description ?? c.code ?? undefined;
 }
 
+/** Server-local 'yyyy-MM-dd' of an ISO timestamp (its UTC date if unparseable). */
+function localDateOf(iso: string): string {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? iso.slice(0, 10) : format(d, 'yyyy-MM-dd');
+}
+
 function mapStatus(raw?: string): BankTransactionStatus {
   const s = (raw ?? '').toUpperCase();
   if (s === 'BOOK' || s === 'BOOKED') return 'booked';
@@ -365,8 +372,10 @@ export function mapTransactions(
       const transactionDate = t.transaction_date || undefined;
       // Prefer the real transaction date over "today" when the bank gives neither
       // a booking nor a value date (OP returns only `transaction_date` for cards),
-      // so history doesn't collapse onto the sync day.
-      const bookingDate = t.booking_date || valueDate || transactionDate || nowIso.slice(0, 10);
+      // so history doesn't collapse onto the sync day. The "today" fallback is
+      // the server-LOCAL date, like snapshot months and as-of dates (the UTC
+      // date would put a just-after-midnight row in the previous month).
+      const bookingDate = t.booking_date || valueDate || transactionDate || localDateOf(nowIso);
       const counterpartyName = counterpartyOf(t, signedAmount);
       // Counterparty account is the creditor's for money out, debtor's for money in.
       const counterpartyAccount =

@@ -8,8 +8,11 @@ import {
   resolveBalanceAsOf,
   bankSnapshotProvenance,
   liveAnchorOpeningBalance,
-  effectiveLiveAnchor,
+  anchorMonthOpeningBalance,
+  anchorMonthActuals,
+  shouldActualizeAnchorMonth,
 } from './live-anchor';
+import { calculateProjection } from './projection';
 import { createMockAccount, createMockRecurringItem, createMockSnapshot } from '@/test/mocks';
 import type { BankTransaction } from '@/types';
 
@@ -228,6 +231,37 @@ describe('bankSnapshotProvenance (write-time opening balance)', () => {
     expect(p).toEqual({ balanceType: 'ITAV', balanceAsOf: '2026-09-10', monthStartBalance: 2000 });
   });
 
+  it('R5-3: a historical OPAV does not subtract today\'s pendings and flags its opening as an estimate', () => {
+    // Sep 30: booked €1,000 with a €100 hold ⇒ available €900. The Oct 1 sync
+    // returns OPAV €900 (as of Sep 30); the hold has since booked on Oct 1, so
+    // the ledger holds no pending row any more.
+    const p = bankSnapshotProvenance({
+      balance: { amount: 900, type: 'OPAV', referenceDate: '2026-10-01' },
+      syncDate: '2026-10-01',
+      month: '2026-10',
+      transactions: [
+        tx({ bookingDate: '2026-10-01', amount: -100, counterpartyName: 'Hold' }),
+        tx({ bookingDate: '2026-10-01', amount: -30, status: 'pending' }), // a new hold, not in the Sep 30 balance
+      ],
+    });
+    expect(p.balanceAsOf).toBe('2026-09-30');
+    // The Sep 30 pending set is unknowable: today's €30 hold is NOT stripped,
+    // and the opening (€900, truly €1,000) is flagged as an estimate.
+    expect(p.monthStartBalance).toBe(900);
+    expect(p.openingIsEstimate).toBe(true);
+  });
+
+  it('a same-day available balance is authoritative (no estimate flag)', () => {
+    const p = bankSnapshotProvenance({
+      balance: { amount: 1050, type: 'CLAV', referenceDate: '2026-09-10' },
+      syncDate: '2026-09-10',
+      month: '2026-09',
+      transactions: [...ledger, tx({ bookingDate: '2026-09-09', amount: -50, status: 'pending' })],
+    });
+    expect(p.monthStartBalance).toBe(2000);
+    expect(p.openingIsEstimate).toBeUndefined();
+  });
+
   it('an ITBD keeps every booking through the sync day', () => {
     const p = bankSnapshotProvenance({
       balance: { amount: 1100, type: 'ITBD' },
@@ -296,13 +330,20 @@ describe('same-day second sync (R2-2)', () => {
     // Reconstructed from today's ledger: the afternoon debit is (wrongly but
     // compatibly) treated as part of the morning balance.
     expect(liveAnchorOpeningBalance(legacy, [rent, afternoonDebit], '2026-09-10')).toBe(2100);
-    // …and the forecast anchor is left untouched.
-    expect(effectiveLiveAnchor('2026-01', legacy, [rent, afternoonDebit])).toBe(legacy);
+    expect(anchorMonthOpeningBalance('2026-01', 0, legacy, [rent, afternoonDebit])).toBe(2100);
   });
 });
 
-describe('effectiveLiveAnchor', () => {
-  it('prefers the stored as-of date and re-bases on the stored opening + the current ledger', () => {
+describe('anchorMonthOpeningBalance / anchorMonthActuals (one actualized-month rule)', () => {
+  const ledger = [
+    tx({ bookingDate: '2026-08-31', amount: -40 }), // previous month
+    tx({ bookingDate: '2026-09-03', amount: -800 }),
+    tx({ bookingDate: '2026-09-10', amount: -100 }),
+    tx({ bookingDate: '2026-09-09', amount: -50, status: 'pending' }),
+    tx({ bookingDate: '2026-09-11', amount: -25 }), // after the as-of date
+  ];
+
+  it('O is the stored monthStartBalance for a bank-sync snapshot', () => {
     const snap = createMockSnapshot({
       yearMonth: '2026-09',
       actualBalance: 1050, // ITAV, a €50 hold inside
@@ -312,22 +353,52 @@ describe('effectiveLiveAnchor', () => {
       balanceAsOf: '2026-09-10',
       monthStartBalance: 2000,
     });
-    const ledger = [
-      tx({ bookingDate: '2026-09-03', amount: -800 }),
-      tx({ bookingDate: '2026-09-10', amount: -100 }),
-      tx({ bookingDate: '2026-09-09', amount: -50, status: 'pending' }),
-      tx({ bookingDate: '2026-09-11', amount: -25 }), // after the as-of date
-    ];
-    const eff = effectiveLiveAnchor('2026-01', snap, ledger);
-    expect(eff.actualBalance).toBe(1100); // booked basis through Sept 10
-    expect(eff.monthStartBalance).toBe(2000);
-    expect(snap.actualBalance).toBe(1050); // input not mutated
+    expect(anchorMonthOpeningBalance('2026-01', 0, snap, ledger)).toBe(2000);
   });
 
-  it('leaves manual snapshots and null alone', () => {
+  it('O is the balance itself for a manual snapshot or the genesis', () => {
     const manual = createMockSnapshot({ yearMonth: '2026-09', actualBalance: 500, source: 'manual', monthStartBalance: 1 });
-    expect(effectiveLiveAnchor('2026-01', manual, [])).toBe(manual);
-    expect(effectiveLiveAnchor('2026-01', null, [])).toBeNull();
+    expect(anchorMonthOpeningBalance('2026-01', 0, manual, ledger)).toBe(500);
+    expect(anchorMonthOpeningBalance('2026-09', 750, null, ledger)).toBe(750);
+  });
+
+  it('actuals carry O and EVERY booked row of the month — no as-of cutoff, no pendings', () => {
+    const a = anchorMonthActuals('2026-09', 2000, ledger);
+    expect(a.openingBalance).toBe(2000);
+    expect(a.transactions.map((t) => t.amount)).toEqual([-800, -100, -25]);
+  });
+
+  it('shouldActualizeAnchorMonth: current month for any anchor, earlier month only when live', () => {
+    expect(shouldActualizeAnchorMonth('2026-09', null, '2026-09')).toBe(true);
+    expect(shouldActualizeAnchorMonth('2026-08', '2026-08-20', '2026-09')).toBe(true);
+    expect(shouldActualizeAnchorMonth('2026-08', null, '2026-09')).toBe(false);
+  });
+});
+
+describe('R5-1: a booking after the balance cutoff is kept in the forecast', () => {
+  it('Oct 1 sync with a Sep 30 CLBD €1,000 and an Oct 1 unplanned debit €100 ends October at €900', () => {
+    const account = createMockAccount({ id: 'acc', startingDate: '2026-01', startingBalance: 0, planningHorizonMonths: 3 });
+    const ledger = [tx({ bookingDate: '2026-10-01', amount: -100, counterpartyName: 'Kiosk' })];
+    const provenance = bankSnapshotProvenance({
+      balance: { amount: 1000, type: 'CLBD', referenceDate: '2026-09-30' },
+      syncDate: '2026-10-01',
+      month: '2026-10',
+      transactions: ledger,
+    });
+    expect(provenance.monthStartBalance).toBe(1000);
+    const snap = createMockSnapshot({
+      entityId: 'acc',
+      yearMonth: '2026-10',
+      actualBalance: 1000,
+      source: 'bank-sync',
+      createdAt: '2026-10-01T06:00:00.000Z',
+      ...provenance,
+    });
+    const actuals = anchorMonthActuals('2026-10', anchorMonthOpeningBalance('2026-01', 0, snap, ledger), ledger);
+    const oct = calculateProjection(account, [], [], [], undefined, snap, [], [], [], actuals)[0];
+    expect(oct.startingBalance).toBe(900); // O €1,000 + the €100 debit
+    expect(oct.openingBalance).toBe(1000);
+    expect(oct.endingBalance).toBe(900); // was €1,000 (debit dropped)
   });
 });
 

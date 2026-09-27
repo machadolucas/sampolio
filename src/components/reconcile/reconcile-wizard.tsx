@@ -26,7 +26,7 @@ import {
     applyReconciliationBalances,
     getLatestSnapshot,
 } from '@/lib/actions/reconciliation';
-import { expectedInvestmentBalance, expectedReceivableBalance, expectedDebtState } from '@/lib/reconcile-prefill';
+import { expectedCashBalance, expectedInvestmentBalance, expectedReceivableBalance, expectedDebtState } from '@/lib/reconcile-prefill';
 import { useAppContext } from '@/components/layout/app-layout';
 import type { FinancialAccount, InvestmentAccount, Receivable, Debt, EntityType, Currency } from '@/types';
 
@@ -249,8 +249,8 @@ export function ReconcileWizard({
             ...cashRows.map(row => safe(async () => {
                 const res = await getProjection(row.entityId);
                 if (res.success && res.data) {
-                    const month = res.data.monthly.find(m => m.yearMonth === selectedYearMonth);
-                    if (month) expectedById.set(row.entityId, { expected: month.startingBalance });
+                    const expected = expectedCashBalance(res.data.monthly, selectedYearMonth);
+                    if (expected !== null) expectedById.set(row.entityId, { expected });
                 }
             })),
             ...investments.map(inv => safe(async () => {

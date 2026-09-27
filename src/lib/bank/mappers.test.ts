@@ -516,3 +516,29 @@ describe('mapTransactions', () => {
     expect(transactions[0].bookingDate).toBe('2026-06-10'); // nowIso date
   });
 });
+
+describe('mapTransactions missing-date fallback (R5-5)', () => {
+  it('falls back to the server-LOCAL date of the sync, not its UTC date', () => {
+    // 00:30 local on Oct 1 (in any zone): the UTC date may still be Sep 30.
+    const local = new Date(2026, 9, 1, 0, 30, 0);
+    const { transactions } = mapTransactions(
+      {
+        transactions: [
+          { transaction_amount: { amount: '100', currency: 'EUR' }, credit_debit_indicator: 'DBIT', status: 'BOOK' },
+          // A genuine bank calendar date is kept verbatim.
+          {
+            transaction_amount: { amount: '5', currency: 'EUR' },
+            credit_debit_indicator: 'DBIT',
+            status: 'BOOK',
+            booking_date: '2026-09-30',
+          },
+        ],
+      },
+      'link-1',
+      local.toISOString(),
+      () => 'id'
+    );
+    expect(transactions[0].bookingDate).toBe('2026-10-01');
+    expect(transactions[1].bookingDate).toBe('2026-09-30');
+  });
+});
