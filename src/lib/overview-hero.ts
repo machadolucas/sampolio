@@ -15,9 +15,10 @@ import type { MonthlyProjection, WealthProjectionMonth, YearMonth } from '@/type
 
 export interface HeroSummary {
   /**
-   * This month's net for all active cash accounts: Σ of each account's
-   * current-month `netChange` — the same number Cashflow shows as "Net"
-   * (or "Net left" once the month is actualized from bank data).
+   * This month's whole-month net for all active cash accounts. For a normal
+   * forecast row that is its `netChange`; for a row actualized from bank data
+   * `netChange` only holds what is still to come ("Net left"), so the month's
+   * planned totals are used instead — the hero describes the whole month.
    */
   netChange: number;
   /** Σ current-month income (drives the "caution" sentiment). */
@@ -60,8 +61,10 @@ export function deriveHeroSummary({ accountIds, cashProjections, currentYearMont
       slice?.retrospective?.find((m) => m.yearMonth === prevYearMonth);
     if (current) {
       found++;
-      netChange += current.netChange;
-      totalIncome += current.totalIncome;
+      const monthIncome = current.isActualized ? (current.plannedTotalIncome ?? current.totalIncome) : current.totalIncome;
+      const monthExpenses = current.isActualized ? (current.plannedTotalExpenses ?? current.totalExpenses) : current.totalExpenses;
+      netChange += current.isActualized ? monthIncome - monthExpenses : current.netChange;
+      totalIncome += monthIncome;
       rowsEnd += current.endingBalance;
     }
     if (current && previous) prevEnd += previous.endingBalance;

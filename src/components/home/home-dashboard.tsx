@@ -99,12 +99,13 @@ export function HomeDashboard() {
       setRegionLoaded(true);
 
       // Materialize any due split recurrences (a MUTATION, so it stays a
-      // separate call and runs after the first paint). Only when a rule
-      // actually generated rows is the aggregate re-read.
+      // separate call and runs after the first paint). The aggregate is
+      // re-read whenever catch-up wrote any occurrence (new rows, or an
+      // overwrite that repaired a stale summary).
       const due = res.data.splitGroups.map((l) => l.group).filter(hasActiveRecurrence);
       if (due.length === 0) return;
       const results = await Promise.all(due.map((g) => catchUpGroupRecurrences(g.id)));
-      if (results.some((r) => r.success && (r.data?.generated ?? 0) > 0)) {
+      if (results.some((r) => r.success && r.data?.changed)) {
         const fresh = await getHomeData();
         if (fresh.success && fresh.data) applyHomeData(fresh.data);
       }

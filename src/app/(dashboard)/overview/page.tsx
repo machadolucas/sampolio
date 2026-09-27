@@ -652,7 +652,9 @@ export default function OverviewPage() {
                 visible={entityDrawer.visible}
                 category={entityDrawer.category}
                 onClose={() => setEntityDrawer(prev => ({ ...prev, visible: false }))}
-                onRefresh={fetchData}
+                // Through AppLayout so its shared account list (Cashflow's
+                // source) refreshes too; it then calls fetchData.
+                onRefresh={appContext ? appContext.refreshData : fetchData}
             />
             )}
 

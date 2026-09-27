@@ -1054,7 +1054,10 @@ export async function deleteSplitRecurrenceRule(groupId: string, ruleId: string)
  * A rule whose split can no longer resolve (e.g. its payer left) is skipped
  * without blocking the other rules.
  */
-export async function catchUpGroupRecurrences(groupId: string): Promise<ApiResponse<{ generated: number }>> {
+/** `generated` counts new rows; `changed` is true whenever any occurrence was
+ * written (new or overwritten — an overwrite can repair a stale summary), i.e.
+ * whenever callers should re-read balances. */
+export async function catchUpGroupRecurrences(groupId: string): Promise<ApiResponse<{ generated: number; changed: boolean }>> {
   const loaded = await loadGroupForMember(groupId);
   if (!loaded.ok) return { success: false, error: loaded.error };
   return withGroupLock(groupId, async () => {
@@ -1101,7 +1104,7 @@ export async function catchUpGroupRecurrences(groupId: string): Promise<ApiRespo
         }
       }
       if (wroteRule || touchedMonths.size > 0) invalidateGroup(group, { months: touchedMonths });
-      return { success: true, data: { generated } };
+      return { success: true, data: { generated, changed: touchedMonths.size > 0 } };
     } catch (error) {
       console.error('Catch-up recurrences error:', error);
       return { success: false, error: 'Failed to generate recurring expenses' };

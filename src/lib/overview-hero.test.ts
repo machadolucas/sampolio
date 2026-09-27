@@ -32,6 +32,23 @@ describe('deriveHeroSummary', () => {
     expect(summary).toEqual({ netChange: 6000, totalIncome: 7100, endBalance: 15000, trend: null });
   });
 
+  it('describes the whole month for a bank-actualized row, not just what is still to come', () => {
+    // €3,000 income and €1,000 expenses already settled, €500 expenses remaining:
+    // netChange holds only the remaining −€500; the month's plan is +€1,500.
+    const summary = deriveHeroSummary({
+      accountIds: ['alex-main'],
+      cashProjections: {
+        'alex-main': { monthly: [row('2026-09', {
+          isActualized: true, totalIncome: 0, totalExpenses: 500, netChange: -500,
+          plannedTotalIncome: 3000, plannedTotalExpenses: 1500, endingBalance: 4000,
+        })] },
+      },
+      currentYearMonth: '2026-09',
+    });
+    expect(summary?.netChange).toBe(1500);
+    expect(summary?.totalIncome).toBe(3000);
+  });
+
   it('never reports a zero net just because the wealth projection lacks a previous month', () => {
     // The old hero compared the wealth projection's current vs previous month,
     // which never existed — so it always said "balanced" with a €0 delta.
