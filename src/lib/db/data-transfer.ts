@@ -9,6 +9,19 @@ import {
   entityDir,
   assertSafeId,
 } from './encryption';
+import { getAccounts } from './accounts';
+import { getRecurringItems } from './recurring-items';
+import { getPlannedItems } from './planned-items';
+import { getSalaryConfigs } from './salary-configs';
+import { getTaxedIncomes } from './taxed-income';
+import { getInvestmentAccounts, getContributions } from './investments';
+import { getDebts, getReferenceRates, getExtraPayments } from './debts';
+import { getReceivables, getRepayments } from './receivables';
+import { getGoals } from './goals';
+import { getBudgets } from './budgets';
+import { getTrips } from './trips';
+import { getUserPreferences } from './user-preferences';
+import { getBalanceSnapshots, getAllAdjustments, getReconciliationSessions } from './reconciliation';
 import { mergeById } from '@/lib/data-transfer-utils';
 import type { DataExport } from '@/lib/schemas/data-transfer.schema';
 import type { BalanceSnapshot, ReconciliationAdjustment, ReconciliationSession } from '@/types';
@@ -21,7 +34,68 @@ import type { BalanceSnapshot, ReconciliationAdjustment, ReconciliationSession }
 // state is tied to this instance's consents and is not part of the backup.
 
 // Dirs owned by the export payload — the ONLY ones replace mode may remove.
+// `trips` is removed only when the payload carries a `trips` array (export
+// v2+): a v1 backup predates trips, so replacing from it keeps existing trips.
 const EXPORTED_DIRS = ['accounts', 'investments', 'receivables', 'debts', 'goals', 'budgets', 'reconciliation'];
+
+/**
+ * Read every user-scoped entity for a backup straight from disk (never the
+ * `'use cache'` wrappers — a backup must match what is stored right now, and
+ * some nested writes don't invalidate the aggregate caches' tags).
+ */
+export async function readUserDataForExport(userId: string): Promise<DataExport['entities']> {
+  const [accounts, investments, debts, receivables, goals, budgets, trips, snapshots, adjustments, sessions, preferences] =
+    await Promise.all([
+      getAccounts(userId),
+      getInvestmentAccounts(userId),
+      getDebts(userId),
+      getReceivables(userId),
+      getGoals(userId),
+      getBudgets(userId),
+      getTrips(userId),
+      getBalanceSnapshots(userId),
+      getAllAdjustments(userId),
+      getReconciliationSessions(userId),
+      getUserPreferences(userId),
+    ]);
+
+  const [accountsWithItems, investmentsWithDetails, debtsWithDetails, receivablesWithDetails] = await Promise.all([
+    Promise.all(
+      accounts.map(async (account) => {
+        const [recurringItems, plannedItems, salaryConfigs, taxedIncomes] = await Promise.all([
+          getRecurringItems(userId, account.id),
+          getPlannedItems(userId, account.id),
+          getSalaryConfigs(userId, account.id),
+          getTaxedIncomes(userId, account.id),
+        ]);
+        return { ...account, recurringItems, plannedItems, salaryConfigs, taxedIncomes };
+      })
+    ),
+    Promise.all(investments.map(async (inv) => ({ ...inv, contributions: await getContributions(userId, inv.id) }))),
+    Promise.all(
+      debts.map(async (debt) => {
+        const [referenceRates, extraPayments] = await Promise.all([
+          getReferenceRates(userId, debt.id),
+          getExtraPayments(userId, debt.id),
+        ]);
+        return { ...debt, referenceRates, extraPayments };
+      })
+    ),
+    Promise.all(receivables.map(async (rec) => ({ ...rec, repayments: await getRepayments(userId, rec.id) }))),
+  ]);
+
+  return {
+    accounts: accountsWithItems,
+    investments: investmentsWithDetails,
+    debts: debtsWithDetails,
+    receivables: receivablesWithDetails,
+    goals,
+    budgets,
+    trips,
+    reconciliation: { snapshots, adjustments, sessions },
+    preferences,
+  };
+}
 
 type Row = { id: string } & Record<string, unknown>;
 
@@ -52,6 +126,7 @@ function assertExportIds(data: DataExport): void {
   for (const r of e.receivables) { check([r]); check(r.repayments); }
   check(e.goals);
   check(e.budgets);
+  check(e.trips ?? []);
 }
 
 async function mergeAggregateFile<T extends { id: string }>(
@@ -73,6 +148,8 @@ export interface ImportCounts {
   receivables: number;
   goals: number;
   budgets: number;
+  /** Trips restored; null when the backup predates trips (v1) and existing trips were left untouched. */
+  trips: number | null;
   snapshots: number;
 }
 
@@ -84,9 +161,11 @@ export async function writeUserDataFromExport(
   const userDir = getUserDir(userId);
   assertExportIds(data);
 
+  const e = data.entities;
   if (mode === 'replace') {
+    const dirs = e.trips !== undefined ? [...EXPORTED_DIRS, 'trips'] : EXPORTED_DIRS;
     await Promise.all(
-      EXPORTED_DIRS.map((d) => fs.rm(path.join(userDir, d), { recursive: true, force: true }))
+      dirs.map((d) => fs.rm(path.join(userDir, d), { recursive: true, force: true }))
     );
   }
 
@@ -98,9 +177,9 @@ export async function writeUserDataFromExport(
     receivables: 0,
     goals: 0,
     budgets: 0,
+    trips: null,
     snapshots: 0,
   };
-  const e = data.entities;
 
   for (const account of e.accounts) {
     const { recurringItems, plannedItems, salaryConfigs, taxedIncomes, ...accountRow } = account;
@@ -137,6 +216,10 @@ export async function writeUserDataFromExport(
 
   counts.goals = await writeRows(path.join(userDir, 'goals'), e.goals as unknown as Row[], userId);
   counts.budgets = await writeRows(path.join(userDir, 'budgets'), e.budgets as unknown as Row[], userId);
+  // Trip ids are preserved, so budget funding sources' `linkedTripId` still resolve.
+  if (e.trips !== undefined) {
+    counts.trips = await writeRows(path.join(userDir, 'trips'), e.trips as unknown as Row[], userId);
+  }
 
   // Reconciliation lives in three aggregate files, not one file per row.
   const reconDir = path.join(userDir, 'reconciliation');

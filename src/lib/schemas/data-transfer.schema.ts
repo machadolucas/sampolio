@@ -15,6 +15,7 @@ import type {
   ReceivableRepayment,
   Goal,
   Budget,
+  Trip,
   BalanceSnapshot,
   ReconciliationAdjustment,
   ReconciliationSession,
@@ -84,12 +85,37 @@ const budgetRow = entityRow.extend({
   lines: rows(budgetLineRow).optional(),
 });
 
+// Trips (export v2+). The per-diem engine iterates one slice per 24 h between
+// `startDateTime` and `endDateTime` (`computeTripHours` / `generateTripDays`),
+// so both must be real local date-times, in order, and at most
+// MAX_IMPORT_TRIP_DAYS apart. `rates` must carry the country-rate map the
+// engine reads. Unknown fields still round-trip (loose objects).
+export const MAX_IMPORT_TRIP_DAYS = 1830; // 5 years — far beyond any business trip
+const tripDateTime = z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/, 'Invalid date/time');
+const tripRow = entityRow
+  .extend({
+    startDateTime: tripDateTime,
+    endDateTime: tripDateTime,
+    expectedReimbursementMonth: yearMonthSchema,
+    days: z.array(z.looseObject({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Invalid date') }))
+      .max(MAX_IMPORT_TRIP_DAYS + 1),
+    rates: z.looseObject({ countryRates: z.record(z.string(), z.number()) }),
+  })
+  .refine((t) => {
+    const start = Date.parse(`${t.startDateTime}:00`);
+    const end = Date.parse(`${t.endDateTime}:00`);
+    return Number.isFinite(start) && Number.isFinite(end) && end > start
+      && end - start <= MAX_IMPORT_TRIP_DAYS * 24 * 60 * 60 * 1000;
+  }, { message: `Trip must end after it starts and last at most ${MAX_IMPORT_TRIP_DAYS} days`, path: ['endDateTime'] });
+
 const investmentRow = entityRow.extend({ contributions: rows(entityRow) });
 const debtRow = entityRow.extend({ referenceRates: rows(entityRow), extraPayments: rows(entityRow) });
 const receivableRow = entityRow.extend({ repayments: rows(entityRow) });
 
 export const EXPORT_FORMAT = 'sampolio-export';
-export const EXPORT_VERSION = 1;
+// v2 added `entities.trips`. v1 backups (no trips key) still import; the
+// importer then leaves existing trips untouched, even in replace mode.
+export const EXPORT_VERSION = 2;
 
 export const dataExportSchema = z.object({
   format: z.literal(EXPORT_FORMAT),
@@ -104,6 +130,7 @@ export const dataExportSchema = z.object({
     receivables: rows(receivableRow),
     goals: rows(entityRow),
     budgets: rows(budgetRow),
+    trips: rows(tripRow).optional(),
     reconciliation: z.object({
       snapshots: rows(entityRow),
       adjustments: rows(entityRow),
@@ -124,9 +151,10 @@ function countImportRows(e: {
   receivables: Array<{ repayments: RowList }>;
   goals: RowList;
   budgets: RowList;
+  trips?: RowList;
   reconciliation: { snapshots: RowList; adjustments: RowList; sessions: RowList };
 }): number {
-  let n = e.goals.length + e.budgets.length
+  let n = e.goals.length + e.budgets.length + (e.trips?.length ?? 0)
     + e.reconciliation.snapshots.length + e.reconciliation.adjustments.length + e.reconciliation.sessions.length;
   for (const a of e.accounts) {
     n += 1 + a.recurringItems.length + a.plannedItems.length + a.salaryConfigs.length + a.taxedIncomes.length;
@@ -158,6 +186,8 @@ export interface DataExport {
     receivables: Array<Receivable & { repayments: ReceivableRepayment[] }>;
     goals: Goal[];
     budgets: Budget[];
+    /** Absent in v1 backups (made before trips were exported). */
+    trips?: Trip[];
     reconciliation: {
       snapshots: BalanceSnapshot[];
       adjustments: ReconciliationAdjustment[];

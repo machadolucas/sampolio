@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { computeCompactionPlan } from './maintenance-utils';
-import { resolveAnchor } from './projection';
-import type { BalanceSnapshot, ReconciliationAdjustment, ReconciliationSession } from '@/types';
+import { computeCompactionPlan, expiredOverrideCutoff } from './maintenance-utils';
+import { resolveAnchor, calculateProjection } from './projection';
+import { createMockAccount, createMockPlannedItem, createMockRecurringItem } from '@/test/mocks';
+import type { BalanceSnapshot, PlannedItem, ReconciliationAdjustment, ReconciliationSession } from '@/types';
 
 function snap(over: Partial<BalanceSnapshot> & { id: string; entityId: string; yearMonth: string }): BalanceSnapshot {
   return {
@@ -49,7 +50,7 @@ describe('computeCompactionPlan', () => {
 
   it('is a no-op when there is no history', () => {
     const plan = computeCompactionPlan([], [], []);
-    expect(plan).toEqual({ snapshotIds: [], adjustmentIds: [], sessionIds: [], keptAnchorIds: [] });
+    expect(plan).toEqual({ snapshotIds: [], adjustmentIds: [], sessionIds: [], keptAnchorIds: [], overrides: [] });
   });
 
   it('INVARIANT: the projection anchor is identical before and after compaction', () => {
@@ -69,5 +70,46 @@ describe('computeCompactionPlan', () => {
     const before = resolveAnchor('2025-01', 0, latestBefore);
     const after = resolveAnchor('2025-01', 0, latestAfter);
     expect(after).toEqual(before); // same anchor month + balance → identical forecast
+  });
+
+  describe('expired occurrence overrides', () => {
+    const account = createMockAccount({ id: 'acc-A', startingDate: '2025-01', startingBalance: 1000, planningHorizonMonths: 24 });
+    const recurring = createMockRecurringItem({ id: 'rec-1', accountId: 'acc-A', startDate: '2025-01', amount: 100, type: 'expense' });
+    const override = (id: string, scheduledDate: string, extra: Partial<PlannedItem> = {}): PlannedItem =>
+      createMockPlannedItem({
+        id, accountId: 'acc-A', kind: 'one-off', scheduledDate, amount: 250, type: 'expense',
+        isRecurringOverride: true, linkedRecurringItemId: 'rec-1', ...extra,
+      });
+    const planned = [
+      override('o-old', '2026-01'),
+      override('o-edge', '2026-02'), // anchor 2026-04 − 2 → still inside the engine's window
+      override('o-new', '2026-05'),
+      createMockPlannedItem({ id: 'p-one-off', accountId: 'acc-A', kind: 'one-off', scheduledDate: '2025-06', amount: 5 }),
+    ];
+    const anchorSnap = snap({ id: 's-anchor', entityId: 'acc-A', yearMonth: '2026-04', actualBalance: 900 });
+
+    it('prunes only overrides before the anchor month − 2 (never regular planned items)', () => {
+      const plan = computeCompactionPlan([anchorSnap], [], [], [{ account, plannedItems: planned }], '2026-09');
+      expect(plan.overrides).toEqual([{ accountId: 'acc-A', itemId: 'o-old' }]);
+    });
+
+    it('uses genesis as the anchor without a snapshot, and ignores other entities\' snapshots', () => {
+      const other = snap({ id: 's-inv', entityType: 'investment', entityId: 'acc-A', yearMonth: '2026-08' });
+      const plan = computeCompactionPlan([other], [], [], [{ account, plannedItems: planned }], '2026-09');
+      expect(plan.overrides).toEqual([]); // genesis 2025-01 − 2 → nothing expired
+    });
+
+    it('clamps a future-dated anchor to the current month', () => {
+      expect(expiredOverrideCutoff('2027-01', '2026-09')).toBe('2026-07');
+      expect(expiredOverrideCutoff('2026-04', '2026-09')).toBe('2026-02');
+    });
+
+    it('INVARIANT: removing the pruned overrides leaves the projection identical', () => {
+      const plan = computeCompactionPlan([anchorSnap], [], [], [{ account, plannedItems: planned }], '2026-09');
+      const pruned = new Set(plan.overrides.map((o) => o.itemId));
+      const before = calculateProjection(account, [recurring], planned, [], undefined, anchorSnap);
+      const after = calculateProjection(account, [recurring], planned.filter((p) => !pruned.has(p.id)), [], undefined, anchorSnap);
+      expect(after).toEqual(before);
+    });
   });
 });

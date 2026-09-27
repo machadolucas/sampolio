@@ -1,6 +1,9 @@
 import * as crypto from 'crypto';
+import * as fs from 'fs/promises';
+import * as os from 'os';
+import * as path from 'path';
 import { describe, it, expect, beforeAll } from 'vitest';
-import { encrypt, decrypt } from './encryption';
+import { encrypt, decrypt, writeEncryptedFile, readEncryptedFile } from './encryption';
 
 // Format + KDF constants — must mirror encryption.ts. The legacy helper below
 // reproduces the pre-migration PBKDF2 format so we can prove old files still
@@ -76,5 +79,22 @@ describe('encryption', () => {
     const d2 = crypto.createDecipheriv(ALGORITHM, pbkdf2Key, iv);
     d2.setAuthTag(tag);
     expect(() => Buffer.concat([d2.update(ct), d2.final()])).toThrow();
+  });
+
+  it('writes compact JSON and still reads older pretty-printed files', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'sampolio-enc-compact-'));
+    process.env.DATA_DIR = dir;
+    try {
+      const data = { id: 'acc-1', name: 'Alex', nested: { a: [1, 2] } };
+      const file = path.join(dir, 'compact.enc');
+      await writeEncryptedFile(file, data);
+      expect(decrypt(await fs.readFile(file, 'utf8'))).toBe(JSON.stringify(data));
+
+      const legacy = path.join(dir, 'pretty.enc');
+      await fs.writeFile(legacy, encrypt(JSON.stringify(data, null, 2)), 'utf8');
+      expect(await readEncryptedFile(legacy)).toEqual(data);
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
   });
 });

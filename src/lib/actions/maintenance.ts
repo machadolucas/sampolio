@@ -10,6 +10,8 @@ import {
   deleteAdjustmentsByIds,
   deleteSessionsByIds,
 } from '@/lib/db/reconciliation';
+import { getAccounts } from '@/lib/db/accounts';
+import { getPlannedItems, deletePlannedItem } from '@/lib/db/planned-items';
 import { computeCompactionPlan } from '@/lib/maintenance-utils';
 import type { ApiResponse } from '@/types';
 
@@ -18,15 +20,21 @@ export interface HistoryCompactionStats {
   adjustments: number; // adjustments orphaned by the pruned snapshots
   sessions: number; // reconciliation sessions older than the latest reconciliation month
   keptAnchors: number; // latest-per-entity snapshots that are always retained
+  overrides: number; // expired per-occurrence overrides the projection already ignores
 }
 
+// Uncached reads: the plan must describe what is on disk right now.
 async function buildPlan(userId: string) {
-  const [snapshots, adjustments, sessions] = await Promise.all([
+  const [snapshots, adjustments, sessions, accounts] = await Promise.all([
     getBalanceSnapshots(userId),
     getAllAdjustments(userId),
     getReconciliationSessions(userId),
+    getAccounts(userId),
   ]);
-  return computeCompactionPlan(snapshots, adjustments, sessions);
+  const accountInputs = await Promise.all(
+    accounts.map(async (account) => ({ account, plannedItems: await getPlannedItems(userId, account.id) }))
+  );
+  return computeCompactionPlan(snapshots, adjustments, sessions, accountInputs);
 }
 
 /** Report what a compaction would remove, without deleting anything. */
@@ -42,6 +50,7 @@ export async function previewHistoryCompaction(): Promise<ApiResponse<HistoryCom
         adjustments: plan.adjustmentIds.length,
         sessions: plan.sessionIds.length,
         keptAnchors: plan.keptAnchorIds.length,
+        overrides: plan.overrides.length,
       },
     };
   } catch (error) {
@@ -50,7 +59,8 @@ export async function previewHistoryCompaction(): Promise<ApiResponse<HistoryCom
   }
 }
 
-/** Prune pre-anchor reconciliation history. Idempotent; never changes a forecast. */
+/** Prune pre-anchor reconciliation history and expired occurrence overrides.
+ * Idempotent; never changes a forecast. */
 export async function compactHistory(): Promise<ApiResponse<HistoryCompactionStats>> {
   const session = await auth();
   if (!session?.user?.id) return { success: false, error: 'Not authenticated' };
@@ -64,7 +74,18 @@ export async function compactHistory(): Promise<ApiResponse<HistoryCompactionSta
     if (snapshots + sessions + adjustments > 0) {
       updateTag(`user:${userId}:reconciliation`);
     }
-    return { success: true, data: { snapshots, adjustments, sessions, keptAnchors: plan.keptAnchorIds.length } };
+    const touchedAccounts = new Set<string>();
+    for (const { accountId, itemId } of plan.overrides) {
+      await deletePlannedItem(userId, accountId, itemId);
+      touchedAccounts.add(accountId);
+    }
+    for (const accountId of touchedAccounts) {
+      updateTag(`user:${userId}:account:${accountId}:planned`);
+    }
+    return {
+      success: true,
+      data: { snapshots, adjustments, sessions, keptAnchors: plan.keptAnchorIds.length, overrides: plan.overrides.length },
+    };
   } catch (error) {
     console.error('Compact history error:', error);
     return { success: false, error: 'Failed to compact history' };

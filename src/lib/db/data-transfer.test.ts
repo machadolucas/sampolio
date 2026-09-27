@@ -2,16 +2,17 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import * as os from 'os';
 import * as path from 'path';
 import * as fs from 'fs/promises';
-import { writeUserDataFromExport } from './data-transfer';
+import { writeUserDataFromExport, readUserDataForExport } from './data-transfer';
 import { getAccounts } from './accounts';
 import { getRecurringItems } from './recurring-items';
 import { getGoals } from './goals';
+import { getTrips } from './trips';
 import { getBalanceSnapshots } from './reconciliation';
 import { getUserDir, writeEncryptedFile } from './encryption';
 import { dataExportSchema, MAX_IMPORT_ROWS_PER_ARRAY } from '@/lib/schemas/data-transfer.schema';
 import type { DataExport } from '@/lib/schemas/data-transfer.schema';
 import { createMockAccount, createMockRecurringItem, createMockPlannedItem } from '@/test/mocks';
-import type { BalanceSnapshot, Goal } from '@/types';
+import type { BalanceSnapshot, Goal, Trip } from '@/types';
 
 /** Real disk round-trips of the JSON backup writer (encrypted write → decrypt read). */
 describe('data-transfer db layer', () => {
@@ -112,6 +113,75 @@ describe('data-transfer db layer', () => {
     const goals = await getGoals(userId);
     expect(goals.map((g) => g.id)).toEqual(['goal-1']); // goal-keep wiped by replace
     await expect(fs.readFile(bankFile, 'utf8')).resolves.toBe('sentinel');
+  });
+
+  describe('trips (export v2)', () => {
+    const trip: Trip = {
+      id: 'trip-1', userId: 'export-user', name: 'Berlin conference', destinationCountry: 'DE',
+      startDateTime: '2026-05-04T07:00', endDateTime: '2026-05-06T21:00',
+      days: [
+        { date: '2026-05-04', countryCode: 'DE', freeMeals: 0 },
+        { date: '2026-05-05', countryCode: 'DE', freeMeals: 0 },
+        { date: '2026-05-06', countryCode: 'DE', freeMeals: 0 },
+      ],
+      rates: { domesticFull: 54, domesticPartial: 25, defaultForeign: 80, countryRates: { DE: 69 } },
+      linkedAccountId: 'acc-1', expectedReimbursementMonth: '2026-06', status: 'planned',
+      createdAt: '2026-04-01T00:00:00.000Z', updatedAt: '2026-04-01T00:00:00.000Z',
+    };
+    const budget = {
+      id: 'budget-1', startMonth: '2026-05', endMonth: '2026-05',
+      fundingSources: [{ id: 'f-1', kind: 'per-diem', amount: 1, linkedTripId: 'trip-1' }],
+    };
+    const v2 = (trips: unknown[] | undefined): DataExport => ({
+      ...payload,
+      version: 2,
+      entities: { ...payload.entities, budgets: [budget] as unknown as DataExport['entities']['budgets'], trips: trips as Trip[] | undefined },
+    });
+    const tripUser = 'trip-import-user';
+
+    it('restores trips with their ids so budget trip links still resolve', async () => {
+      expect(dataExportSchema.safeParse(v2([trip])).success).toBe(true);
+      const counts = await writeUserDataFromExport(tripUser, v2([trip]), 'replace');
+      expect(counts.trips).toBe(1);
+      const trips = await getTrips(tripUser);
+      expect(trips.map((t) => [t.id, t.userId])).toEqual([['trip-1', tripUser]]);
+      const exported = await readUserDataForExport(tripUser);
+      const linked = (exported.budgets[0] as unknown as typeof budget).fundingSources[0].linkedTripId;
+      expect(exported.trips?.map((t) => t.id)).toContain(linked);
+    });
+
+    it('a v1 backup (no trips key) imports and never wipes existing trips, even in replace mode', async () => {
+      const v1 = { ...payload, version: 1 } as DataExport;
+      expect(dataExportSchema.safeParse(v1).success).toBe(true);
+      const counts = await writeUserDataFromExport(tripUser, v1, 'replace');
+      expect(counts.trips).toBeNull();
+      expect((await getTrips(tripUser)).map((t) => t.id)).toEqual(['trip-1']);
+    });
+
+    it('a v2 replace with an empty trips array does remove existing trips', async () => {
+      await writeUserDataFromExport(tripUser, v2([]), 'replace');
+      expect(await getTrips(tripUser)).toEqual([]);
+    });
+
+    it('export reads fresh from disk (no cache) and round-trips through the schema', async () => {
+      await writeUserDataFromExport(tripUser, v2([trip]), 'merge');
+      await writeEncryptedFile(path.join(getUserDir(tripUser), 'trips', 'trip-2.enc'), { ...trip, id: 'trip-2' });
+      const entities = await readUserDataForExport(tripUser);
+      expect(entities.trips?.map((t) => t.id).sort()).toEqual(['trip-1', 'trip-2']);
+      expect(entities.accounts[0].recurringItems.map((i) => i.id)).toEqual(['rec-1']);
+      expect(dataExportSchema.safeParse({ ...payload, version: 2, entities }).success).toBe(true);
+    });
+
+    it('rejects trip rows the per-diem engine would choke on', () => {
+      const bad = (o: Record<string, unknown>) => dataExportSchema.safeParse(v2([{ ...trip, ...o }])).success;
+      expect(bad({ id: '../x' })).toBe(false);
+      expect(bad({ startDateTime: '2026-05-04' })).toBe(false);
+      expect(bad({ endDateTime: '2026-05-03T07:00' })).toBe(false); // ends before it starts
+      expect(bad({ startDateTime: '0001-01-01T00:00', endDateTime: '9999-12-31T23:59' })).toBe(false); // unbounded span
+      expect(bad({ expectedReimbursementMonth: '2026-13' })).toBe(false);
+      expect(bad({ rates: {} })).toBe(false);
+      expect(bad({ futureField: 1 })).toBe(true); // unknown fields still round-trip
+    });
   });
 
   describe('hostile payloads', () => {

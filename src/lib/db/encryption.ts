@@ -215,7 +215,9 @@ export async function writeEncryptedFile<T>(filePath: string, data: T): Promise<
   const dirPath = path.dirname(filePath);
   await ensureDir(dirPath);
 
-  const jsonData = JSON.stringify(data, null, 2);
+  // Compact JSON: whitespace would only inflate every encrypt/decrypt/parse
+  // (reads are whitespace-agnostic; older pretty-printed files still read).
+  const jsonData = JSON.stringify(data);
   const encrypted = encrypt(jsonData);
   await fs.writeFile(filePath, encrypted, 'utf8');
 }

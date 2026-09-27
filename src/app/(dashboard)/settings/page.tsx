@@ -53,6 +53,11 @@ const SPLIT_NOTIFY_TOGGLES: { key: SplitNotifyEvent; label: string }[] = [
     { key: 'expense.generated', label: 'Recurring expenses' },
 ];
 
+/** Records a history compaction would remove (kept anchors excluded). */
+function compactableCount(s: HistoryCompactionStats): number {
+    return s.snapshots + s.sessions + s.adjustments + s.overrides;
+}
+
 function SettingsPageInner() {
     const uid = useId();
     const { data: session } = useSession();
@@ -102,7 +107,7 @@ function SettingsPageInner() {
     // Data export / import
     const [isExporting, setIsExporting] = useState(false);
     const [isImporting, setIsImporting] = useState(false);
-    const [importCandidate, setImportCandidate] = useState<{ fileName: string; payload: unknown; accountCount: number } | null>(null);
+    const [importCandidate, setImportCandidate] = useState<{ fileName: string; payload: unknown; accountCount: number; hasTrips: boolean } | null>(null);
     const [importReplaceMode, setImportReplaceMode] = useState(false);
     const importInputRef = useRef<HTMLInputElement>(null);
 
@@ -232,7 +237,7 @@ function SettingsPageInner() {
                 const c = result.data.counts;
                 toast.success(
                     'Import complete',
-                    `${c.accounts} account(s), ${c.accountSubItems} item(s), ${c.investments} investment(s), ${c.debts} debt(s), ${c.receivables} receivable(s), ${c.goals} goal(s), ${c.budgets} budget(s).`
+                    `${c.accounts} account(s), ${c.accountSubItems} item(s), ${c.investments} investment(s), ${c.debts} debt(s), ${c.receivables} receivable(s), ${c.goals} goal(s), ${c.budgets} budget(s)${c.trips !== null ? `, ${c.trips} trip(s)` : ''}.`
                 );
                 for (const warning of result.data.warnings) {
                     toast.show({ severity: 'warn', summary: 'Import note', detail: warning, life: 8000 });
@@ -260,7 +265,9 @@ function SettingsPageInner() {
         const entities = (payload as { entities?: Record<string, unknown[]> })?.entities;
         const accountCount = Array.isArray(entities?.accounts) ? entities.accounts.length : 0;
         setImportReplaceMode(false);
-        setImportCandidate({ fileName: file.name, payload, accountCount });
+        // v1 backups predate trips: importing one leaves current trips untouched.
+        const hasTrips = Array.isArray(entities?.trips);
+        setImportCandidate({ fileName: file.name, payload, accountCount, hasTrips });
     };
 
     const handleConfirmImport = () => {
@@ -271,7 +278,9 @@ function SettingsPageInner() {
                 icon: 'pi pi-exclamation-triangle',
                 acceptClassName: 'p-button-danger',
                 acceptLabel: 'Delete and replace',
-                message: 'This deletes ALL your current accounts, items, investments, debts, receivables, goals, budgets and reconciliation history, then restores the backup. It cannot be undone.',
+                message: importCandidate.hasTrips
+                    ? 'This deletes ALL your current accounts, items, investments, debts, receivables, goals, budgets, trips and reconciliation history, then restores the backup. It cannot be undone.'
+                    : 'This deletes ALL your current accounts, items, investments, debts, receivables, goals, budgets and reconciliation history, then restores the backup. Your trips are kept (this backup has none). It cannot be undone.',
                 accept: () => runImport(importCandidate.payload, 'replace'),
             });
         } else {
@@ -293,7 +302,7 @@ function SettingsPageInner() {
 
     const handleCompact = () => {
         if (!compactPreview) return;
-        const total = compactPreview.snapshots + compactPreview.sessions + compactPreview.adjustments;
+        const total = compactableCount(compactPreview);
         if (total === 0) return;
         confirmDialog({
             header: 'Remove old history?',
@@ -308,7 +317,7 @@ function SettingsPageInner() {
                 try {
                     const res = await compactHistory();
                     if (res.success && res.data) {
-                        setCompactMessage({ type: 'success', text: `Removed ${res.data.snapshots} snapshots, ${res.data.sessions} check-in logs, ${res.data.adjustments} adjustments.` });
+                        setCompactMessage({ type: 'success', text: `Removed ${res.data.snapshots} snapshots, ${res.data.sessions} check-in logs, ${res.data.adjustments} adjustments, ${res.data.overrides} expired one-time changes.` });
                         setCompactPreview(null);
                     } else {
                         setCompactMessage({ type: 'error', text: res.error || 'Failed to compact history' });
@@ -755,11 +764,11 @@ function SettingsPageInner() {
             </p>
             {compactPreview && (
                 <Message
-                    severity={compactPreview.snapshots + compactPreview.sessions + compactPreview.adjustments > 0 ? 'info' : 'success'}
+                    severity={compactableCount(compactPreview) > 0 ? 'info' : 'success'}
                     className="mb-3 block"
                     text={
-                        compactPreview.snapshots + compactPreview.sessions + compactPreview.adjustments > 0
-                            ? `Can remove ${compactPreview.snapshots} old snapshot(s), ${compactPreview.sessions} check-in log(s) and ${compactPreview.adjustments} adjustment(s). ${compactPreview.keptAnchors} current balance anchor(s) will be kept.`
+                        compactableCount(compactPreview) > 0
+                            ? `Can remove ${compactPreview.snapshots} old snapshot(s), ${compactPreview.sessions} check-in log(s), ${compactPreview.adjustments} adjustment(s) and ${compactPreview.overrides} expired one-time change(s) to repeating items. ${compactPreview.keptAnchors} current balance anchor(s) will be kept.`
                             : `Nothing to clean up — your history is already compact (${compactPreview.keptAnchors} anchor(s) kept).`
                     }
                 />
@@ -783,7 +792,7 @@ function SettingsPageInner() {
                     size="small"
                     onClick={handleCompact}
                     loading={isCompacting}
-                    disabled={!compactPreview || compactPreview.snapshots + compactPreview.sessions + compactPreview.adjustments === 0}
+                    disabled={!compactPreview || compactableCount(compactPreview) === 0}
                 />
             </div>
         </Card>
@@ -905,6 +914,12 @@ function SettingsPageInner() {
                         By default it is <strong>merged</strong> into your current data: entries with the same ids are
                         overwritten, everything else is kept. Bank connections are never touched.
                     </p>
+                    {!importCandidate.hasTrips && (
+                        <p className={`text-sm ${isDark ? 'text-amber-300' : 'text-amber-700'}`}>
+                            This backup was made before trips were included. No trips will be restored, and your
+                            current trips are kept in either mode.
+                        </p>
+                    )}
                     <div className="flex items-start gap-2">
                         <Checkbox
                             inputId="import-replace"

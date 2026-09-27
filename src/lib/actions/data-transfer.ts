@@ -3,19 +3,8 @@
 import { updateTag } from 'next/cache';
 import packageJson from '../../../package.json';
 import { auth } from '@/lib/auth';
-import {
-  cachedGetAccounts,
-  cachedGetAccountProjectionData,
-  cachedGetWealthData,
-  cachedGetGoals,
-  cachedGetBudgets,
-  cachedGetBalanceSnapshots,
-  cachedGetReconciliationSessions,
-  cachedGetUserPreferences,
-  cachedGetBankConnections,
-} from '@/lib/db/cached';
-import { getAllAdjustments } from '@/lib/db/reconciliation';
-import { writeUserDataFromExport, type ImportCounts } from '@/lib/db/data-transfer';
+import { cachedGetBankConnections } from '@/lib/db/cached';
+import { readUserDataForExport, writeUserDataFromExport, type ImportCounts } from '@/lib/db/data-transfer';
 import { stripOrphanCardLinks } from '@/lib/data-transfer-utils';
 import {
   dataExportSchema,
@@ -50,25 +39,8 @@ export async function exportUserData(): Promise<ApiResponse<DataExport>> {
     }
     const userId = session.user.id;
 
-    const [accounts, wealth, goals, budgets, snapshots, adjustments, sessions, preferences] =
-      await Promise.all([
-        cachedGetAccounts(userId),
-        cachedGetWealthData(userId),
-        cachedGetGoals(userId),
-        cachedGetBudgets(userId),
-        cachedGetBalanceSnapshots(userId),
-        getAllAdjustments(userId),
-        cachedGetReconciliationSessions(userId),
-        cachedGetUserPreferences(userId),
-      ]);
-
-    const accountsWithItems = await Promise.all(
-      accounts.map(async (account) => {
-        const { recurringItems, plannedItems, salaryConfigs, taxedIncomes } =
-          await cachedGetAccountProjectionData(userId, account.id);
-        return { ...account, recurringItems, plannedItems, salaryConfigs, taxedIncomes };
-      })
-    );
+    // Fresh DB reads, never the 'use cache' wrappers: a backup must match disk.
+    const entities = await readUserDataForExport(userId);
 
     const payload: DataExport = {
       format: EXPORT_FORMAT,
@@ -76,16 +48,7 @@ export async function exportUserData(): Promise<ApiResponse<DataExport>> {
       exportedAt: new Date().toISOString(),
       appVersion: packageJson.version,
       userId,
-      entities: {
-        accounts: accountsWithItems,
-        investments: wealth.investments,
-        debts: wealth.debts,
-        receivables: wealth.receivables,
-        goals,
-        budgets,
-        reconciliation: { snapshots, adjustments, sessions },
-        preferences,
-      },
+      entities,
       notIncluded: NOT_INCLUDED,
     };
 
@@ -129,6 +92,9 @@ export async function importUserData(
     }
 
     const warnings: string[] = [];
+    if (data.entities.trips === undefined) {
+      warnings.push('This backup was made before trips were included, so no trips were restored. Your existing trips were left unchanged.');
+    }
 
     // Card-tagged expenses reference this instance's bank links; strip refs
     // that don't exist here so the items keep hitting cash instead of vanishing.

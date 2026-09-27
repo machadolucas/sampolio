@@ -9,7 +9,8 @@ import {
   updatePlannedItem as dbUpdatePlannedItem,
   deletePlannedItem as dbDeletePlannedItem,
 } from '@/lib/db/planned-items';
-import { resolveAnchor, addMonths, compareYearMonths } from '@/lib/projection';
+import { resolveAnchor, compareYearMonths } from '@/lib/projection';
+import { expiredOverrideCutoff } from '@/lib/maintenance-utils';
 import { updateTag } from 'next/cache';
 import { clearNullsInPatch } from '@/lib/patch-utils';
 import type { ApiResponse, PlannedItem, YearMonth } from '@/types';
@@ -363,7 +364,7 @@ export async function cleanupExpiredOverrides(
     // delete overrides the projection already ignores, so forecasts never change.
     const latestSnapshot = await cachedGetLatestSnapshot(session.user.id, 'cash-account', accountId);
     const anchor = resolveAnchor(account.startingDate, account.startingBalance, latestSnapshot);
-    const cutoffYM = addMonths(anchor.startMonth, -2);
+    const cutoffYM = expiredOverrideCutoff(anchor.startMonth);
 
     const expired = allPlanned.filter(
       p => p.isRecurringOverride && p.scheduledDate && compareYearMonths(p.scheduledDate, cutoffYM) < 0
