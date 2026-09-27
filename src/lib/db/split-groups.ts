@@ -365,6 +365,16 @@ export async function addExpense(groupId: string, expense: SplitExpense): Promis
 }
 
 /**
+ * Recurrence period (YYYY-MM) of a generated row: the date encoded in its
+ * `occurrenceKey` (`<ruleId>:<YYYY-MM-DD>`, immutable even if the row is moved),
+ * falling back to the row's own date.
+ */
+function occurrencePeriod(row: SplitExpense): string {
+  const keyDate = row.occurrenceKey?.split(':').pop();
+  return keyDate && /^\d{4}-\d{2}/.test(keyDate) ? keyDate.slice(0, 7) : ymOf(row.date);
+}
+
+/**
  * Upsert a recurrence-generated row by its `occurrenceKey` (idempotent re-run):
  * an existing occurrence is overwritten in place (preserving id/createdAt), a new
  * one is appended. Returns whether it was newly created.
@@ -385,7 +395,11 @@ export async function upsertExpenseByOccurrence(
     ? rows.findIndex((r) => r.occurrenceKey && r.occurrenceKey === expense.occurrenceKey)
     : -1;
   if (idx < 0 && opts?.onePerMonth && expense.generatedFromRuleId) {
-    const sibling = rows.find((r) => r.generatedFromRuleId === expense.generatedFromRuleId);
+    // Compare recurrence periods, not storage months: a generated row the user
+    // moved into this month keeps its original occurrenceKey and must not
+    // suppress this month's own occurrence.
+    const period = occurrencePeriod(expense);
+    const sibling = rows.find((r) => r.generatedFromRuleId === expense.generatedFromRuleId && occurrencePeriod(r) === period);
     if (sibling) return { expense: sibling, created: false, skipped: true };
   }
   if (idx >= 0) {
@@ -394,7 +408,10 @@ export async function upsertExpenseByOccurrence(
     expense.createdAt = prev.createdAt;
     rows[idx] = expense;
     await writeMonthChunk(groupId, ym, rows);
-    await applySummaryDelta(groupId, prev, expense);
+    // Overwrites happen on catch-up re-runs, including a retry after a run was
+    // interrupted between the chunk and summary writes — a delta would leave
+    // that stale summary as is, so rebuild (rare path).
+    await rebuildSummary(groupId);
     return { expense, created: false };
   }
   rows.push(expense);

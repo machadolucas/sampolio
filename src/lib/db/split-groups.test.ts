@@ -127,7 +127,7 @@ describe('split-groups db layer', () => {
     expect(await locateExpense(groupId, 'missing', '2026-06')).toBeNull();
   });
 
-  it('overwrites an occurrence with a delta and skips a second row for the same rule in a month', async () => {
+  it('overwrites an occurrence in place and skips a second row for the same rule in a month', async () => {
     const drifted = row('2026-07-28', 1000, { source: 'recurring', generatedFromRuleId: 'rule-1', occurrenceKey: 'rule-1:2026-07-28' });
     const first = await upsertExpenseByOccurrence(groupId, drifted, { onePerMonth: true });
     expect(first.created).toBe(true);
@@ -153,6 +153,33 @@ describe('split-groups db layer', () => {
     // Without the flag (daily/weekly rules) a second row in the month is normal.
     const weekly = await upsertExpenseByOccurrence(groupId, corrected);
     expect(weekly.created).toBe(true);
+    await expectSummaryMatchesRebuild();
+  });
+
+  it('a generated row moved into another month does not suppress that month\'s occurrence', async () => {
+    // January's occurrence was moved by the user to Feb 1; it keeps its Jan key.
+    const moved = row('2027-02-01', 1000, { source: 'recurring', generatedFromRuleId: 'rule-2', occurrenceKey: 'rule-2:2027-01-15' });
+    await addExpense(groupId, moved);
+    const feb = row('2027-02-15', 1000, { source: 'recurring', generatedFromRuleId: 'rule-2', occurrenceKey: 'rule-2:2027-02-15' });
+    const res = await upsertExpenseByOccurrence(groupId, feb, { onePerMonth: true });
+    expect(res.created).toBe(true);
+    expect((await getExpensesForMonth(groupId, '2027-02')).filter((r) => r.generatedFromRuleId === 'rule-2')).toHaveLength(2);
+    await expectSummaryMatchesRebuild();
+  });
+
+  it('an occurrence re-run repairs a summary left stale by an interrupted write', async () => {
+    const occ = row('2027-03-10', 800, { source: 'recurring', generatedFromRuleId: 'rule-3', occurrenceKey: 'rule-3:2027-03-10' });
+    // Simulate a crash after the chunk write but before the summary write:
+    // create the occurrence, then restore the summary file from before it.
+    const summaryFile = (await fs.readdir(dataDir, { recursive: true }))
+      .map((f) => path.join(dataDir, String(f)))
+      .find((f) => f.endsWith(path.join(groupId, 'summary.enc')));
+    expect(summaryFile).toBeTruthy();
+    const staleSummary = await fs.readFile(summaryFile!);
+    await upsertExpenseByOccurrence(groupId, { ...occ }, { onePerMonth: true });
+    await fs.writeFile(summaryFile!, staleSummary);
+    const res = await upsertExpenseByOccurrence(groupId, { ...occ }, { onePerMonth: true });
+    expect(res.created).toBe(false);
     await expectSummaryMatchesRebuild();
   });
 });
