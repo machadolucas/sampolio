@@ -22,18 +22,27 @@ data/shared/split-group-members/{userId}.enc          # { groupIds: string[] } r
 ```
 
 Access control lives in the action layer: `loadGroupForMember` in
-`src/lib/actions/split-groups.ts` checks `group.members[].userId` against the session;
-`requireOwner` gates `updateSplitGroup`, `deleteSplitGroup`, `addSplitGroupMember`,
-`removeSplitGroupMember` (which also refuses while the member's net ≠ 0),
-`updateSplitGroupMemberRole` (which also refuses demoting the group's only owner —
-promote another member first to transfer ownership), and `importSplitwiseCsv`. Members
-are account-only, added by email via `findUserByEmail`; the creator is an `owner`.
+`src/lib/actions/split-groups.ts` rejects an unsafe id (`isSafeId`), then checks
+`group.members[].userId` against the session; `requireOwner` gates `updateSplitGroup`,
+`deleteSplitGroup`, `addSplitGroupMember`, `removeSplitGroupMember`,
+`updateSplitGroupMemberRole`, and `importSplitwiseCsv`. Member removal
+(`removeSplitGroupMember`, owner-only) and self-service exit (`leaveSplitGroup`, any
+member) share `removeMemberLocked`, which re-reads the group doc and summary uncached
+**under the group lock** and refuses while that member's net ≠ 0 or when the member is
+the group's last owner; `updateSplitGroupMemberRole` likewise refuses demoting the only
+owner under the lock (promote another member first to transfer ownership). Members are
+account-only, added by email via `findUserByEmail`; an unknown or inactive email returns
+the generic `MEMBER_LOOKUP_ERROR` from both `createSplitGroup` and `addSplitGroupMember`.
+The creator is an `owner`. Group, member, and rule writes all run under `withGroupLock`.
 `setDefaultSplitGroup` stores `defaultSplitGroupId` in the user's preferences (used by
 the quick-add modal).
 
 **Cache tags** (`invalidateGroup`): `split-group:{id}`, `split-group:{id}:summary`,
-`split-group:{id}:expenses`, plus each member's `user:{userId}:split-groups` — one
-invalidation reaches every member. Cached readers in `src/lib/db/cached.ts`.
+`split-group:{id}:expenses` (whole-history readers), plus each member's
+`user:{userId}:split-groups` — one invalidation reaches every member. Month chunks are
+cached per month (`split-group:{id}:expenses:{YYYY-MM}`), so a write passes the months it
+touched; bulk writes (import, prune, group delete) pass `allMonths`, which fires
+`split-group:{id}:expense-chunks`. Cached readers in `src/lib/db/cached.ts`.
 
 ### Money model — INTEGER CENTS, Splitwise-compatible signs
 
@@ -50,40 +59,58 @@ directly. A member's running balance = Σ net across rows.
 
 - `resolveSplit(memberIds, amountCents, spec)` reduces a `SplitSpec`
   (`paidByUserId` + `splitMode` + optional `splitConfig` / `participantUserIds`) to
-  `{ netByUserId, paidBy, owed }`. Single-payer model. Modes:
+  `{ netByUserId, paidBy, owed }`. Single-payer model. It throws on a non-positive or
+  fractional amount, a payer outside the group, or a negative split value, and checks
+  its result with `assertBalancedSplit` (paid and owed shares each total the amount, no
+  negative share, nets sum to 0) so nothing unsettleable reaches the chunk files.
+  `splitSpecSchema` (`src/lib/schemas/split.schema.ts`) additionally requires a non-empty
+  `splitConfig` for `exact`/`percent`/`shares`, weights summing above 0, and unique
+  `participantUserIds`. Modes:
   - `equal` — even split with the remainder cents handed to the first ids in order
     (deterministic: 10.00 / 3 → 3.34 / 3.33 / 3.33);
   - `full` — payer owes nothing; the other participants split the whole amount;
   - `exact` — `splitConfig` is cents per member and **must sum exactly** to the total
     (throws otherwise);
-  - `percent` / `shares` — `splitConfig` values are weights; allocation uses the
-    **largest-remainder method** (ties broken by index) so parts sum exactly.
+  - `percent` / `shares` — `splitConfig` values are weights (a positive total is
+    required); allocation uses the **largest-remainder method** (ties broken by index)
+    so parts sum exactly.
 - `paymentNet(from, to, amount)` → `{ [from]: +amount, [to]: -amount }` (a settle-up
   raises the payer's balance).
 - `computeMemberBalances(members, rows)` sums `netByUserId` per member.
 - `suggestSettleUp(balances)` — greedy debt simplification: largest debtor pays largest
   creditor until all balances zero out (fewest transfers for 2 members; general for n).
 - `generateOccurrenceDates(rule, upToInclusive)` — date-grained recurrence
-  (`daily | weekly | biweekly | monthly | yearly` from `anchorDate`), resumes exactly
-  after `lastGeneratedThrough`, honors `endDate`, hard guard at 10 000 iterations.
+  (`daily | weekly | biweekly | monthly | yearly` from `anchorDate`). The n-th
+  occurrence is computed **from the anchor** (`occurrenceAt`), never chained from the
+  previous one, so month-end anchors clamp per month (Jan 31 → Feb 28 → Mar 31) and
+  Feb 29 per year. Resumes exactly after `lastGeneratedThrough`, honors `endDate`, hard
+  guard at 10 000 iterations.
 - `guessCategory(title)` — keyword lookup (Finnish + English merchant words), fallback
   `'General'`. Used by `quickAddSplitExpense` when no category is given.
 
 ### Storage strategy & concurrency
 
 - **Monthly chunks**: one encrypted file holds the array of a month's rows — not one
-  file per row (thousands of per-file decrypts per cache miss otherwise). `addExpense`
-  (hot path) appends to one chunk and **delta-updates** `summary.enc`
-  (`bumpSummaryForAdd`: O(1), no other chunks read; `monthsWithData` is refreshed from
-  chunk **filenames**, no decrypt). `updateExpense` (may move a row across chunks),
-  `deleteExpense`, `bulkImportExpenses`, and occurrence overwrites call
-  `rebuildSummary` (full recompute from all chunks). Empty chunks are deleted.
+  file per row (thousands of per-file decrypts per cache miss otherwise). Add, edit
+  (which may move a row across chunks) and delete **delta-update** `summary.enc`
+  (`applySummaryDelta` in `src/lib/db/split-groups.ts`: subtract the removed row's
+  contribution, add the new one; O(1), no other chunks read; `monthsWithData` is
+  refreshed from chunk **filenames**, no decrypt). `rebuildSummary` (full recompute from
+  all chunks) runs for `bulkImportExpenses`, occurrence pruning
+  (`deleteGeneratedOccurrencesAfter`), an occurrence overwrite on a catch-up re-run
+  (repairs a summary left stale by an interrupted run), a missing summary file, and a
+  delete of the row that set `lastActivityAt`. Empty chunks are deleted.
+  `updateSplitExpense` / `deleteSplitExpense` take an optional `monthHint` (the row's
+  current `YYYY-MM`, validated with `chunkMonthSchema`; anything else is ignored) that
+  `locateExpense` scans first before falling back to every chunk newest-first.
 - `SplitGroupSummary` = `{ netByUserId, expenseCount, paymentCount, lastActivityAt?,
   monthsWithData, updatedAt }` — the hot reads (balances, month index) never decrypt
   history.
 - **Per-group in-process mutex**: `withGroupLock(groupId, fn)` in
-  `src/lib/actions/split-groups.ts` chains promises per group id, serializing
-  read-modify-write of chunks/summary/rule cursors. Correct only because the app is a
+  `src/lib/split-group-lock.ts` chains promises per group id (the chain map lives on
+  `globalThis`, so every server-action bundle shares one lock per group), serializing
+  read-modify-write of the group doc, chunks, summary and rule cursors. Shared by the
+  split actions and `deleteMyAccount`. Non-reentrant. Correct only because the app is a
   single node (`next start`); there is no on-disk locking anywhere in the codebase.
 
 ### Recurrence — materialized, not computed
@@ -93,18 +120,30 @@ recurrence **writes real rows**. `SplitRecurrenceRule`s are embedded in the grou
 (`addRecurrenceRule` / `updateRecurrenceRule` / `deleteRecurrenceRule`).
 `catchUpGroupRecurrences(groupId)`:
 
+- runs under `withGroupLock` and re-reads the group doc **uncached** inside it;
 - generates one expense per due occurrence with the deterministic
   `occurrenceKey = ${ruleId}:${YYYY-MM-DD}`; `upsertExpenseByOccurrence` overwrites an
   existing occurrence in place (preserving `id`/`createdAt`) so re-runs never duplicate;
-- advances each rule's `lastGeneratedThrough` monotonically;
-- skips `invalidateGroup` entirely when nothing was generated;
-- runs under `withGroupLock`.
+- for `monthly`/`yearly` rules passes `onePerMonth`: a new occurrence is skipped when the
+  chunk already holds a row from the same rule for the same **recurrence period** — the
+  month encoded in each row's `occurrenceKey` (`occurrencePeriod`), not its storage
+  month, so a generated row the user moved into this month never suppresses this month's
+  own occurrence;
+- sends the `expense.generated` notification only for newly created rows;
+- advances each rule's `lastGeneratedThrough` monotonically (a rule that throws keeps
+  its cursor and retries later, without blocking the other rules);
+- invalidates only when a rule cursor or an occurrence was written, passing the touched
+  months;
+- returns `{ generated, changed }` — `generated` counts new rows, `changed` is true
+  whenever any occurrence was written (new or overwritten), i.e. whenever callers should
+  re-read balances.
 
 It is a **server action**, triggered from client effects — the Home dashboard calls it
-for every group on mount (`home-dashboard.tsx` `fetchData`), and
-`createSplitRecurrenceRule` calls it immediately (back-dated anchors materialize at
-once). It must **not** run from the background bank scheduler: `updateTag` only works in
-request scope. Stopping a rule = `isActive: false` or an `endDate`; pausing keeps
+after the first paint, only for groups with an active rule, and re-reads `getHomeData`
+when any result reports `changed` (`home-dashboard.tsx`); the group detail page calls it
+before its first load; and `createSplitRecurrenceRule` calls it immediately (back-dated
+anchors materialize at once). It must **not** run from the background bank scheduler:
+`updateTag` only works in request scope. Stopping a rule = `isActive: false` or an `endDate`; pausing keeps
 already-generated rows.
 
 **End date editing**: `updateSplitRecurrenceRuleSchema` is a partial extended with
@@ -203,7 +242,8 @@ the member, bank, date, amount, and counterparty.
 ### Overview fold-in
 
 `getMySplitNetBalance()` sums the logged-in user's net across non-archived groups —
-**summaries only**, no chunk reads. The Overview page passes it as
+**summaries only**, no chunk reads. `gatherWealthInputs` reads it (`splitNetCents`) and
+`buildWealthProjectionData` (`src/lib/wealth-assembly.ts`) passes it as
 `WealthProjectionData.splitNetTotal` (`src/lib/wealth-projection.ts` adds it flat to net
 worth, mirroring the card-liability fold-in) and shows a **"Split balance" KPI** when
 non-zero (green when owed, red when owing). It replaces any manually-kept receivable
@@ -213,7 +253,9 @@ is double-counted. Split balances are *not* injected into the cashflow projectio
 ### UI map
 
 - `/split` (`src/app/(dashboard)/split/page.tsx`, nav "Split") — group list;
-  `group-form-dialog.tsx` creates/edits groups. Group cards render in a responsive
+  `group-form-dialog.tsx` creates/edits groups; in edit mode every member sees a
+  **"Leave group"** button (global `confirmDialog`, then `leaveSplitGroup`; the server
+  errors — unsettled balance, last owner — surface as a toast). Group cards render in a responsive
   grid (`grid-cols-1 md:grid-cols-2`, single column on mobile) with equal-height
   cards; each is a clickable `<Link>` with a hover tint/border affordance. A group
   card shows a "new activity" dot when `summary.lastActivityAt >
@@ -619,13 +661,17 @@ wealthProjections)`:
 Archived goals are **not** planned jointly (no claims to reason about) and keep
 the standalone `calculateGoalProgress` path.
 
-**Progress data is assembled client-side**: `getProjection(accountId)` is called
-for every account an active goal links, and `fetchWealthProjectionMonths`
-(`src/lib/wealth-assembly.ts` — the Overview wealth assembly extracted into a
-reusable client helper) runs whenever **any** active non-manual goal exists (an
-account-balance goal's claim needs the net-worth pool too, not just net-worth
-goals). A goal whose linked account no longer exists shows a warning on its card
-(progress 0). Amounts display in the goal's currency, no conversion. The backend:
+**Progress data comes from one aggregate read**, `getGoalsPageData`
+(`src/lib/actions/dashboard-data.ts`): goals, all accounts (archived included, for the
+picker and the missing-account warning), and — whenever **any** active non-manual goal
+exists (an account-balance goal's claim needs the net-worth pool too, not just
+net-worth goals) — the wealth inputs from `gatherWealthInputs`, which also project every
+(archived) goal-linked account (`extraProjectionAccountIds`) without adding it to the
+wealth totals. The page reuses those per-account series for account-balance goals and
+runs `assembleWealthProjection` (`src/lib/wealth-assembly.ts`, shared with Overview) in
+the browser. A failed load shows an error `AlertBanner` with Retry and keeps the last
+loaded goals (never an empty "no goals" state). A goal whose linked account no longer
+exists shows a warning on its card (progress 0). Amounts display in the goal's currency, no conversion. The backend:
 
 - **Type** `Goal` (`src/types/index.ts`): `targetAmount`, `currency`,
   `targetDate?: string` (**`YYYY-MM`**), `trackingMethod`, `linkedAccountId?`,
@@ -776,30 +822,35 @@ computation rather than a pool claim.
 `src/app/page.tsx` is a server component: it `auth()`-guards (redirects to
 `/auth/signin`) and **wraps `AppLayout` itself** — the root route sits outside the
 `(dashboard)` route group, so it doesn't get the group layout's wrapper. It renders
-`HomeDashboard` (`src/components/home/home-dashboard.tsx`, client), which shows:
+`HomeDashboard` (`src/components/home/home-dashboard.tsx`, client). Its data comes from
+**one** aggregate read, `getHomeData` (`src/lib/actions/dashboard-data.ts`): glance,
+bank strip, bank attention, split groups with balances, and split activity, each part
+resolving empty (logged) on failure instead of failing the page. It shows:
 
 - a **bank-connection attention banner** (`BankAttentionBanner`, shared with Overview's
   `BannerStack` — see [bank-sync.md](bank-sync.md) §11) when a connection needs attention
-  (expired/expiring consent or a failing sync), fetched independently via
-  `getBankConnectionsNeedingAttention` so it never delays the glance; its action button
-  routes to `/bank`, where the "Renew consent" button lives;
+  (expired/expiring consent or a failing sync), from `getBankConnectionsNeedingAttention`;
+  its action button routes to `/bank`, where the "Renew consent" button lives;
 - a **top glance row** — bank balances first, the projection beside them:
   - an **"Accounts & cards" strip**: compact per-account tiles (2-col grid) from the
     `getHomeBankGlance` action — every non-excluded bank link with at least one
-    transaction in the last 30 days (`txDisplayDate`, any status — a pending row counts
-    as activity); cash/savings tiles show `lastBalance` (negative in red), card tiles
+    transaction in the last 30 days (the link's `syncCursor.lastBookingDate` answers
+    it without decoding the ledger; an older or missing cursor falls back to scanning
+    the ledger by `txDisplayDate`, any status — a pending row counts as activity); cash/savings tiles show `lastBalance` (negative in red), card tiles
     show live used amount `/ limit` (`effectiveCardNumbers`) with a thin used-ratio bar
     (amber at ≥80%; no bar when no limit is known). Tiles link to `/bank`, follow the
     user's `bankAccountOrder`, format each in its own currency (no aggregate), and the
     strip disappears entirely when bank sync is unconfigured or nothing was active;
   - the **"this month" glance tile**: the primary account's projected end-of-month
     balance + a one-line sentiment ("You're on track" / spending-more-than-earning /
-    ends-in-the-red), computed from `getProjection` for the first non-archived account
-    (fetched independently so it never blocks the split data). Beside the strip it
+    ends-in-the-red), from `computeHomeGlance` for the first non-archived account: the
+    projection runs only up to the current month (`endDate`; never `startDate`, which
+    does not carry balances forward) and skips the bank retrospective. Beside the strip it
     renders compact (`sm:w-64`); with no strip it reverts to full width. Tapping it
     opens a **plain-words breakdown dialog** (starting balance + income − spending =
     expected end balance, with an Overview link inside). The region's skeleton waits
-    for the bank fetch too — the row's geometry depends on whether bank rows exist;
+    for the first `getHomeData` result — the row's geometry depends on whether bank rows
+    exist;
 - a greeting (adding a shared expense happens via the global quick-add FAB — see
   §1 — which is always visible on Home);
 - one merged **Split card**: an overall-position line from `aggregatePairwiseNets`'
@@ -814,13 +865,16 @@ computation rather than a pool claim.
   its group;
 - a **feature grid** built from the shared `navItems` (minus `home`).
 
-On mount it also runs `catchUpGroupRecurrences` for every group (cheap no-op when
-nothing is due) and registers itself as the AppContext refresh callback.
+After the first paint it runs `catchUpGroupRecurrences` (a mutation, so a separate
+call) only for groups with an active recurrence rule and re-reads `getHomeData` when any
+result reports `changed` (§1); it registers itself as the AppContext refresh callback.
 
 ## 6. Overview (`/overview`)
 
 `src/app/(dashboard)/overview/page.tsx` (client component) is the wealth dashboard; its
-own `AGENTS.md` in the same directory has the full breakdown. Summary:
+own `AGENTS.md` in the same directory has the full breakdown, including the data flow
+(one `getOverviewData` read, the error/Retry behavior, and the hero derivation in
+`src/lib/overview-hero.ts`). Summary:
 
 - **KPI tiles**: net worth = cash + investments + receivables − debts − card
   liabilities + mortgage equity + split net. Rendered with the shared `KpiTile`
@@ -834,9 +888,9 @@ own `AGENTS.md` in the same directory has the full breakdown. Summary:
   opens `NetWorthExplainDialog` (`src/components/overview/net-worth-explain-dialog.tsx`),
   a plain-words row-by-row breakdown whose rows mirror the net-worth sum exactly.
   Cash uses each
-  account's **latest snapshot balance** (bank-sync or manual reconciliation, via
-  `getLatestSnapshot('cash-account', …)`) with `startingBalance` as fallback
-  (`cashCurrentBalances`). A **"Credit cards"** tile (negative, from
+  account's **latest snapshot balance** (bank-sync or manual reconciliation, from the
+  aggregate's `latestSnapshots` map, `cachedGetLatestSnapshotsByEntity`) with
+  `startingBalance` as fallback (`currentCashBalances` in `src/lib/wealth-assembly.ts`). A **"Credit cards"** tile (negative, from
   `getCardLiabilities`) appears when outstanding > 0, with an available-of-limit
   subline + utilization bar when the bank exposes limits; a **"Split balance"** tile
   appears when the net ≠ 0 (see §1) — under Assets when positive, under Debts when
@@ -874,7 +928,7 @@ own `AGENTS.md` in the same directory has the full breakdown. Summary:
   exports from `wealth-chart.tsx`; its tooltip enumerates every in-scope
   non-zero category.
 - **This-month impact panel**: top income/expense lines for the current month; account
-  balance lines use the same `cashCurrentBalances` values as the Cash KPI.
+  balance lines use the same `currentCashBalances` values as the Cash KPI.
 - Mortgage equity/liability come from running `calculateMortgageProjection` for the
   member's active mortgages and folding positions into the wealth projection
   (`mortgageProjections` + `currentUserId` guard in `src/lib/wealth-projection.ts`).
@@ -965,8 +1019,8 @@ current-vs-modified delta view on top, plus:
   corresponding flag pill.
 - **Plan check card** (Overview): `PlanCheckCard`
   (`src/components/overview/forecast-vs-actual-card.tsx`, purely presentational — the
-  page passes the primary account's `monthly` + `retrospective` from its existing
-  `getProjection` calls) with two views behind a month toggle, default via
+  page passes the primary account's `monthly` + `retrospective` from the
+  `getOverviewData` aggregate) with two views behind a month toggle, default via
   `pickDefaultView`. **Last month**: `comparePlanToActual`
   (`src/lib/forecast-vs-actual.ts`, pure/tested) joins the *recurring* part of the
   current plan (one-off planned items and injected card/mortgage/budget lines
@@ -1030,6 +1084,11 @@ only their axis/label/tooltip text masks. Mechanism (`src/lib/demo-mode.ts`):
   expense-treemap, scenario-comparison, split-spend, split-net, mortgage-sankey (Chart.js charts
   rebuild options during render and their tooltip callbacks read the flag at hover time — no key
   needed).
+- **No money strings in number-keyed memos** (future code must follow): a `useMemo` whose
+  deps are only the numbers must not call `formatCurrency` — the result would keep real
+  amounts after a toggle. Either list `demoMasked` in the deps or format at render time,
+  as `StatusHeroCard` (`src/components/ui/status-hero-card.tsx`) does for the Overview
+  hero's summary text.
 - **Memoized-widget remount-key rule** (future code must follow): PrimeReact components with
   memoized internals won't re-run `formatCurrency` on a bare re-render, so any long-lived widget
   that bakes money into cells or templates remounts via `key={demoMasked ? 'masked' : 'plain'}` —
@@ -1038,8 +1097,10 @@ only their axis/label/tooltip text masks. Mechanism (`src/lib/demo-mode.ts`):
   account-selector `Dropdown` (money in its `valueTemplate`); modals mount fresh so they need no
   key.
 - **Toggle surfaces**: the user-menu item (`nav-config.tsx`) and the command palette
-  (`action-demo-mode`); AppLayout renders a fixed "Demo" indicator pill (z-45, above mobile
-  chrome, below overlays — eye-off icon, click to exit). Context exposes
+  (`action-demo-mode`). A "Demo" indicator pill (eye-off icon, click to exit) shows while it
+  is on: at `lg`+ AppLayout renders it fixed at the top right (z-45, above the chrome,
+  below overlays); below `lg` it sits inside `MobileTopBar`'s own flow before the Search
+  button (44px tap target), so it never covers Search. Context exposes
   `demoMode`/`demoMasked`/`setDemoMode`.
 
 ## 11. Simple vs Advanced display mode

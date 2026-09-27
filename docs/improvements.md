@@ -13,15 +13,16 @@ retired-ideas note at the bottom. What remains:
 ## Open items
 
 ### 13.1 Broader UI test coverage
-Component tests now cover the shared primitives (AlertBanner/KpiTile/EmptyState),
+Component tests cover the shared primitives (AlertBanner/KpiTile/EmptyState/HelpHint),
 the cashflow item modal, the split editor, and the reconcile wizard. Natural next
 targets: the budget verdict card (per-month strip math at the DOM level), the
 month strip / projection table, the bank ledger (search + month grouping), and
 eventually a thin e2e smoke (sign-in → add expense → see it in the projection).
-There is still no coverage for most server actions or the bank
-client/connect/sync modules ([architecture.md](architecture.md) §15).
+Most server actions and the bank client/sync modules still have no coverage
+([architecture.md](architecture.md) §15).
 
-### 13.2 Held-back dependency majors (checked 2026-07-23)
+### 13.2 Held-back dependency majors (checked 2026-09-27)
+Every other dependency is on its latest release; `pnpm outdated` lists only these four.
 - **PrimeReact 11 / primeicons 8 — evaluated in depth and deliberately declined
   (2026-07-23)**: v11 is a ground-up rewrite under NEW packages (`@primereact/ui`,
   `@primereact/core`, `@primeuix/themes`) with a **proprietary dual license** — a
@@ -34,16 +35,29 @@ client/connect/sync modules ([architecture.md](architecture.md) §15).
   files would change; the theme pipeline (`copy-themes.mjs` over `lara-*-green` +
   ~90 `.p-*` selectors in globals.css/glass-overrides.css) must be rebuilt as a
   design-token preset. v11.0.0 shipped with no changelog/migration guide (promised
-  from 11.0.1). **Revisit when**: a migration guide + component parity exist
-  (≥11.1), and the maintainer has decided the licensing question (obtain a
-  Community key, or migrate to a permanently-MIT stack instead).
-- **TypeScript 7**: blocked by typescript-eslint (supports TS ≤6; tracking
-  typescript-eslint/typescript-eslint#10940). `tsc --noEmit` itself passed on 7.0.2.
-- **eslint 10**: `eslint-plugin-react` (via eslint-config-next) crashes at
-  rule-creation under 10.x; retry when the Next lint stack catches up. Note
+  from 11.0.1). 11.1.0 is out (2026-09-27 check); the licensing question is
+  unchanged and the maintainer chose to stay on v10 (10.9.9 / primeicons 7).
+  **Revisit when**: the maintainer decides the licensing question (obtain a
+  Community key, or migrate to a permanently-MIT stack instead); the migration
+  is then its own project.
+- **TypeScript 7**: blocked by typescript-eslint — 8.70.1 still peers
+  `typescript >=4.8.4 <6.1.0` (tracking typescript-eslint/typescript-eslint#10940).
+  `tsc --noEmit` itself passed on 7.0.2.
+- **eslint 10**: `eslint-plugin-react` (via eslint-config-next 16.3.6) crashes at
+  rule-creation under 10.x, and 7.37.5 still peers `eslint ≤9.7`; retry when the
+  Next lint stack catches up. Note
   eslint-config-next 16.2.11 promoted the React Compiler hook rules to `error`;
   `eslint.config.mjs` pins them back to `warn` (the codebase's fetch-effect
   patterns trip them by design).
+
+### 13.3 Form and mobile polish follow-ups
+- **Enter-to-submit** (`useFormSubmit`, [architecture.md](architecture.md) §17 Forms) is
+  not wired into `trip-dialog.tsx`, `cashflow-item-modal.tsx` or `settle-up-dialog.tsx`
+  (no `<form>` there), so Enter does not save in those dialogs.
+- **Admin users modal** (`src/components/modals/users-modal.tsx`) has no `lg:hidden`
+  stacked list; its table is the only layout on a phone.
+- **Budget setup wizard line rows** (`src/components/budgets/budget-setup-wizard.tsx`)
+  label their inputs by placeholder only ("What is it?"), with no `<label>`/`aria-label`.
 
 ### Future ideas (unvetted)
 - **Remote/push check-in notification**: the local opt-in notification only fires

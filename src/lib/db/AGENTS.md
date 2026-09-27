@@ -9,7 +9,7 @@ Encrypted storage layer. Financial data is individually encrypted JSON files on 
 - **Per-file security**: each file gets a random 64-byte salt and 16-byte IV (HKDF derives a distinct per-file key from `ENCRYPTION_KEY` + salt, so identical plaintext still yields distinct ciphertext).
 - **Backward-compatible reads**: the file format (`salt + iv + authTag + ciphertext`, base64) is unchanged, so old and new files are byte-identical in shape — only the derivation differs. `decrypt()` tries HKDF first and, on GCM auth failure, falls back to the legacy `pbkdf2Sync(…, 100000, …, 'sha512')` key. GCM authentication makes the key choice unambiguous (forging a tag is infeasible); the wasted HKDF attempt on a legacy file costs microseconds. New writes always use HKDF.
 - **Migration** (`scripts/reencrypt-data.mjs`): one-shot walk of `DATA_DIR` that decrypts (compat reader) → re-encrypts (HKDF) → atomic temp+rename per file. Idempotent, never deletes; `--dry-run` reports counts. Reads `ENCRYPTION_KEY` from env or `<DATA_DIR>/.encryption_key`. Run once after deploy (backup first) so every read hits the fast path; correctness does not depend on it (reads stay backward-compatible).
-- **Storage format**: Base64-encoded string containing `salt + iv + authTag + ciphertext`
+- **Storage format**: Base64-encoded string containing `salt + iv + authTag + ciphertext`; the plaintext is **compact** JSON (`JSON.stringify` without indentation — older pretty-printed files still read, since parsing is whitespace-agnostic)
 - **Key source**: `ENCRYPTION_KEY` environment variable (64-char hex string). **Missing key is a hard failure in production** (throws on first use); development falls back to a known default with a console warning.
 - **Key rotation** (`scripts/rotate-encryption-key.mjs`): decrypts with `OLD_ENCRYPTION_KEY` (HKDF + PBKDF2 fallback), re-encrypts with the new `ENCRYPTION_KEY`; refuses identical keys, `--dry-run` supported, resumable. See `docs/operations.md` §8.
 - **Performance**: LRU cache (max 500 entries) retained for the legacy PBKDF2 fallback keys only (HKDF is fast enough to skip caching). See `encryption.test.ts` for round-trip + legacy-compat coverage.
@@ -17,14 +17,24 @@ Encrypted storage layer. Financial data is individually encrypted JSON files on 
 ### Core Functions
 
 ```typescript
-readEncryptedFile<T>(filePath: string): Promise<T>
+readEncryptedFile<T>(filePath: string): Promise<T | null>   // null on ENOENT
 writeEncryptedFile<T>(filePath: string, data: T): Promise<void>
-getDataDir(): string              // ~/.sampolio/data/ or custom
-getUserDir(userId: string): string // ~/.sampolio/data/users/{userId}
+getDataDir(): string              // $DATA_DIR or <cwd>/data
+getUserDir(userId: string): string // {dataDir}/users/{userId} — userId passes assertSafeId
+entityPath(dir: string, id: string, suffix = '.enc'): string // {dir}/{id}{suffix}, id validated
+entityDir(dir: string, id: string): string                   // {dir}/{id}, id validated
+assertSafeId(id: unknown, label?: string): string            // [A-Za-z0-9_-]{1,64} else UnsafePathError
+assertChunkMonth(yearMonth: unknown, label?: string): string // YYYY-MM shape (split chunk names)
+assertInsideDataDir(targetPath: string, opts?): string       // resolved path must stay inside DATA_DIR
 ensureDir(dir: string): Promise<void>
 listFiles(dir: string): Promise<string[]>
 deleteFile(filePath: string): Promise<void>
+fileExists(filePath: string): Promise<boolean>
 ```
+
+### Path guards
+
+Ids reach this layer straight from action arguments and import payloads, and `path.join` resolves `..`, so every id that becomes a path segment goes through `assertSafeId` — build per-entity paths only with `entityPath` / `entityDir` / `getUserDir`, never by interpolating an id into `path.join`. Split chunk months go through `assertChunkMonth`. Every file primitive above re-checks `assertInsideDataDir` (files strictly inside; `ensureDir`/`listFiles` may target the root). A violation throws `UnsafePathError`; actions validate the same patterns first (`idSchema` / `yearMonthSchema` / `chunkMonthSchema` in `src/lib/schemas/id.schema.ts`, `isSafeId` in `src/lib/safe-id.ts`) so callers normally see a clean validation error. Tests: `path-guard.test.ts`.
 
 ## SQLCipher database (`sqlite/`)
 
@@ -94,7 +104,11 @@ Driver: `better-sqlite3` is a **pnpm alias** for `better-sqlite3-multiple-cipher
 
 > Most entities are **user-scoped** (`users/{userId}/…`). The exceptions are the **shared mortgage** and the **split groups** (`split-groups.ts`), which live under `shared/` because they are co-owned by multiple members; the encryption key is global, so member access control is enforced in the action layer (`loadMortgageForMember` / `loadGroupForMember`), not by the filesystem.
 >
-> **Split-group storage is monthly-chunked, not one-file-per-row**: at ~2,500 expenses/group, one file per row would mean thousands of separate decrypts (and, pre-HKDF, thousands of PBKDF2 runs) on every cache miss. Even with fast HKDF derivation, chunking keeps file counts and I/O bounded. Each `{YYYY-MM}.enc` holds a month's array, and a `summary.enc` (delta-maintained on add, rebuilt on edit/delete/import) holds running balances so the hot paths never decrypt full history. The per-group in-process mutex lives in the action layer.
+> **Split-group storage is monthly-chunked, not one-file-per-row**: at ~2,500 expenses/group, one file per row would mean thousands of separate decrypts (and, pre-HKDF, thousands of PBKDF2 runs) on every cache miss. Even with fast HKDF derivation, chunking keeps file counts and I/O bounded. Each `{YYYY-MM}.enc` holds a month's array, and a `summary.enc` holds running balances so the hot paths never decrypt full history. The summary is **delta-maintained** on add, edit and delete (`applySummaryDelta`: subtract the old row, add the new one, no other chunk read) and **rebuilt** (`rebuildSummary`) only for bulk import, occurrence pruning, an occurrence overwrite on a catch-up re-run, a missing summary, or a delete of the row that set `lastActivityAt`. `upsertExpenseByOccurrence(groupId, row, { onePerMonth })` skips a new occurrence when the chunk already holds a row from the same rule for the same recurrence period (the month in `occurrenceKey`, `occurrencePeriod`) and reports `{ created, skipped }`; `locateExpense`/`updateExpense`/`deleteExpense` accept an optional `monthHint` scanned first. The per-group in-process mutex is `withGroupLock` in `src/lib/split-group-lock.ts`; callers hold it around these writes.
+>
+> **Balance snapshots** (`reconciliation.ts`): `createBalanceSnapshot(userId, entityType, entityId, yearMonth, expected, actual, source = 'manual', bankProvenance?)` upserts per entity/month (last write wins). `bankProvenance` sets the optional `balanceType` / `balanceAsOf` / `monthStartBalance` fields on a bank-sync snapshot; a write without it drops them. Semantics: `docs/projections-and-reconciliation.md` §3/§9.
+>
+> **Backup export** (`data-transfer.ts`): `readUserDataForExport` reads every exported entity straight from disk (no `'use cache'`), trips included; `writeUserDataFromExport` preserves ids/timestamps, rewrites only `userId`, never touches bank data, and in replace mode removes `trips/` only when the payload carries a `trips` array (v2).
 >
 > **Avatars are the one unencrypted file** (`users/{id}/avatar.webp`, 256×256 WebP). `users.ts` owns them: `setUserAvatar(userId, Buffer | null)` writes/removes the file and bumps `user.avatarVersion` (DB column); `getAvatarPath(userId)` resolves the path (used by the `/api/avatars/[userId]` route); `avatarUrlFor(user)` / `toPublicUser(user)` produce the versioned URL (`?v={avatarVersion}` cache-buster). Deliberately plaintext — it's low-sensitivity and this enables zero-decrypt streaming + immutable HTTP caching — and deliberately outside the JSON backup (`data-transfer.ts` never touches it).
 
@@ -105,26 +119,26 @@ Each entity type has its own file in this directory. They all follow the same pa
 ```typescript
 // List all entities
 export async function getItems(userId: string): Promise<Item[]> {
-  const dir = path.join(getUserDir(userId), 'items');
+  const dir = itemsDir(userId);
   await ensureDir(dir);
   const files = await listFiles(dir);
   const encFiles = files.filter(f => f.endsWith('.enc'));
   return Promise.all(encFiles.map(f => readEncryptedFile<Item>(path.join(dir, f))));
 }
 
+// Path builders — ids always go through entityPath/entityDir (assertSafeId)
+const itemsDir = (userId: string) => path.join(getUserDir(userId), 'items');
+const itemPath = (userId: string, itemId: string) => entityPath(itemsDir(userId), itemId);
+
 // Get single entity
 export async function getItemById(userId: string, itemId: string): Promise<Item | null> {
-  const filePath = path.join(getUserDir(userId), 'items', `${itemId}.enc`);
-  try { return await readEncryptedFile<Item>(filePath); }
-  catch { return null; }
+  return readEncryptedFile<Item>(itemPath(userId, itemId)); // null when missing
 }
 
 // Create entity
 export async function createItem(userId: string, data: CreateItemRequest): Promise<Item> {
   const item: Item = { id: uuidv4(), ...data, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
-  const filePath = path.join(getUserDir(userId), 'items', `${item.id}.enc`);
-  await ensureDir(path.dirname(filePath));
-  await writeEncryptedFile(filePath, item);
+  await writeEncryptedFile(itemPath(userId, item.id), item); // creates the directory
   return item;
 }
 
@@ -133,19 +147,19 @@ export async function updateItem(userId: string, itemId: string, updates: Partia
   const existing = await getItemById(userId, itemId);
   if (!existing) throw new Error('Not found');
   const updated = { ...existing, ...updates, updatedAt: new Date().toISOString() };
-  await writeEncryptedFile(path.join(getUserDir(userId), 'items', `${itemId}.enc`), updated);
+  await writeEncryptedFile(itemPath(userId, itemId), updated);
   return updated;
 }
 
 // Delete entity
 export async function deleteItem(userId: string, itemId: string): Promise<void> {
-  await deleteFile(path.join(getUserDir(userId), 'items', `${itemId}.enc`));
+  await deleteFile(itemPath(userId, itemId));
 }
 ```
 
 ## Cached Queries (`cached.ts`)
 
-Wraps DB read functions with Next.js `cacheLife('indefinite')` and `cacheTag()`:
+Wraps DB read functions with Next.js `cacheLife` and `cacheTag()` — `'indefinite'` for data only request-scoped actions mutate, `'synced'` for anything the background bank scheduler writes (bank connections/ledgers/runs and **every** balance-snapshot read, incl. the batch `cachedGetLatestSnapshotsByEntity`; see `docs/architecture.md` §8):
 
 ```typescript
 export async function cachedGetAccounts(userId: string) {

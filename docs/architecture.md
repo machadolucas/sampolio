@@ -9,21 +9,21 @@ mechanics live in [`features.md`](features.md), [`projections-and-reconciliation
 
 | Layer | Package | Version (package.json) |
 |---|---|---|
-| Framework | `next` | 16.3.4 (App Router, `cacheComponents: true`) |
-| UI runtime | `react` / `react-dom` | 19.2.8 |
+| Framework | `next` | 16.3.6 (App Router, `cacheComponents: true`) |
+| UI runtime | `react` / `react-dom` | 19.3.0 |
 | Language | `typescript` | ^6.0.3 (strict) |
-| Components | `primereact` | ^10.9.9 (+ `primeicons` ^7.0.0, `react-icons` ^5.7.0, `lucide-react` 1.42.0) |
+| Components | `primereact` | ^10.9.9 (+ `primeicons` ^7.0.0, `react-icons` ^5.7.0, `lucide-react` 1.48.0) |
 | Styling | `tailwindcss` | ^4.3.3 (via `@tailwindcss/postcss`) |
-| Auth | `better-auth` + `@better-auth/passkey` | 1.7.5 exact (scrypt hashes; `bcryptjs` ^3.0.3 only verifies legacy imported hashes) |
+| Auth | `better-auth` + `@better-auth/passkey` | 1.7.6 exact (scrypt hashes; `bcryptjs` ^3.0.3 only verifies legacy imported hashes) |
 | Auth DB | `drizzle-orm` 0.45.3 + `better-sqlite3` → `npm:better-sqlite3-multiple-ciphers@13.0.3` | SQLCipher-encrypted SQLite (`drizzle-kit` 0.31.11 generates migrations only) |
-| Validation | `zod` | ^4.5.4 |
-| Forms | `react-hook-form` ^7.87.0 + `@hookform/resolvers` ^5.9.1 |
+| Validation | `zod` | ^4.6.5 |
+| Forms | `react-hook-form` ^7.89.0 + `@hookform/resolvers` ^5.9.1 |
 | Charts | `echarts` ^6.1.0 (+ `echarts-for-react` ^3.0.6), `chart.js` ^4.5.1 |
 | Avatar crop | `react-easy-crop` | ^6.2.3 (lazy-loaded in the avatar editor) |
 | Dates | `date-fns` | ^4.4.0 |
 | JWT (bank API) | `jose` | ^6.2.12 (RS256 for Enable Banking) |
 | IDs | `uuid` | ^14.0.2 |
-| Tests | `vitest` ^5.0.0, `@testing-library/react` ^16.3.3, `jsdom` ^30.0.1 |
+| Tests | `vitest` ^5.0.2, `@testing-library/react` ^16.3.3, `jsdom` ^30.1.1 |
 
 Package manager: **pnpm 12.3.4** (`packageManager` field). Node: **>= 26** (`engines`; `.nvmrc` = `v26`).
 Persistence is encrypted JSON files on disk, plus one SQLCipher-encrypted SQLite file
@@ -33,7 +33,7 @@ database server.
 Compatibility bounds: PrimeReact 10 preserves the resource-based themes used by
 `scripts/copy-themes.mjs`; PrimeIcons 7 retains its MIT license. ESLint 9 and
 TypeScript 6 remain within the lint plugins' supported peer ranges. Lucide is
-pinned to 1.42.0 to satisfy pnpm's minimum release-age policy.
+pinned to an exact version (1.48.0).
 
 ## 2. Runtime topology
 
@@ -63,7 +63,7 @@ runbook: [`operations.md`](operations.md).
 | `/settings` | `src/app/(dashboard)/settings/page.tsx` | Preferences, banking, JSON export/import, admin panel, data maintenance, account self-service (password change, start fresh, delete account) (TabView; deep-link `?tab=banking`). |
 | `/auth/signin`, `/auth/signup` | `src/app/auth/…` | Password + passkey sign-in (button and conditional-UI autofill) / sign-up (pass-through `auth/layout.tsx`). |
 | `/auth/error` | `src/app/auth/error/page.tsx` | Better Auth redirect-error target (`onAPIError.errorURL`); fixed messages only. |
-| `/dev-login` | `src/app/dev-login/route.ts` | GET handler: dev-only password-less sign-in as `DEV_AUTH_BYPASS`; returns 404 in production or when the flag is unset. |
+| `/dev-login` | `src/app/dev-login/route.ts` | GET handler: dev-only password-less sign-in as `DEV_AUTH_BYPASS`; returns 404 in production, when the flag is unset, or for a non-loopback request (§9). |
 | `/api/auth/[...all]` | `src/app/api/auth/[...all]/route.ts` | Better Auth HTTP handler (`getAuth().handler`). |
 | `/api/bank/callback` | `src/app/api/bank/callback/route.ts` | Enable Banking consent callback (one of two non-auth API routes). |
 | `/api/avatars/[userId]` | `src/app/api/avatars/[userId]/route.ts` | User avatar image (session-gated; serves the plain-binary `avatar.webp`; `Cache-Control: private, max-age=31536000, immutable` with a `?v={avatarVersion}` buster). Node runtime. |
@@ -99,7 +99,9 @@ client page ('use client')
 Every action returns `ApiResponse<T> = { success: boolean; data?: T; error?: string }`
 (`src/types/index.ts`). There are **no REST endpoints** besides the Better Auth handler and the
 bank consent callback — all reads and mutations are server actions invoked from client
-components.
+components. Next runs client-invoked server actions one at a time, so the heaviest pages
+(Overview, Home, Goals) load through one page-level aggregate read each
+(`src/lib/actions/dashboard-data.ts`) that fans out in parallel on the server.
 
 ## 5. Server-action inventory (`src/lib/actions/`)
 
@@ -111,22 +113,23 @@ components.
 | `app-info.ts` | `getAppVersion` |
 | `auth.ts` | `signUp` (`auth.api.signUpEmail`; signs the user in), `checkSignupEnabled` |
 | `bank.ts` | `getBankFeatureStatus`, `getBankConnections`, `listBankAspsps`, `startBankConnection`, `reconnectBankConnection`, `refreshBankConnection`, `disconnectBankConnection`, `updateBankAccountLink`, `getBankConnectionsNeedingAttention`, `getCardLiabilities`, `getHomeBankGlance`, `getCreditCardOptions`, `getCardStatementBreakdownForAccount`, `getBankSyncRuns`, `getBankTransactionsForLink`, `getBankConnection` |
+| `dashboard-data.ts` | `getOverviewData`, `getHomeData`, `getGoalsPageData` — page-level aggregate **reads** (auth once, Zod-validated empty args, parallel server-side fan-out over cached readers, one `ApiResponse`; no cache tags of their own) — see [`src/lib/actions/AGENTS.md`](../src/lib/actions/AGENTS.md) |
 | `budgets.ts` | `getBudgets`, `getBudgetById`, `createBudget`, `updateBudget`, `deleteBudget`, `confirmBudget`, `unconfirmBudget`, `addBudgetLine`, `updateBudgetLine`, `deleteBudgetLine`, `addBudgetFundingSource`, `updateBudgetFundingSource`, `deleteBudgetFundingSource`, `addBudgetExpenseEntry`, `updateBudgetExpenseEntry`, `deleteBudgetExpenseEntry` |
 | `debts.ts` | `getDebts`, `getDebtById`, `createDebt`, `updateDebt`, `deleteDebt`, `getReferenceRates`, `setReferenceRate`, `deleteReferenceRate`, `getExtraPayments`, `createExtraPayment`, `deleteExtraPayment` |
-| `data-transfer.ts` | `exportUserData`, `importUserData` (Settings JSON backup; merge/replace) |
+| `data-transfer.ts` | `exportUserData`, `importUserData` (Settings JSON backup, `EXPORT_VERSION` 2 incl. trips; merge/replace — details in the settings `AGENTS.md`) |
 | `euribor.ts` | `fetchCurrentEuribor12m` (ECB Data Portal fetch, in-memory TTL cache, graceful failure; prefills the mortgage rate-update dialog) |
 | `goals.ts` | `getGoals`, `getGoalById`, `createGoal`, `updateGoal`, `deleteGoal` |
 | `investments.ts` | `getInvestmentAccounts`, `getInvestmentAccountById`, `createInvestmentAccount`, `updateInvestmentAccount`, `deleteInvestmentAccount`, `getContributions`, `createContribution`, `updateContribution`, `deleteContribution` |
 | `maintenance.ts` | `previewHistoryCompaction`, `compactHistory` |
 | `planned.ts` | `getPlannedItems`, `getPlannedItemById`, `createPlannedItem`, `updatePlannedItem`, `deletePlannedItem`, `upsertRecurringItemOccurrenceOverride`, `deleteRecurringItemOccurrenceOverride`, `cleanupExpiredOverrides` |
-| `projection.ts` | `getProjection` |
+| `projection.ts` | `getProjection` (Zod-validated id + filters; logic in `computeAccountProjection`, `src/lib/account-projection.ts`) |
 | `receivables.ts` | `getReceivables`, `getReceivableById`, `createReceivable`, `updateReceivable`, `deleteReceivable`, `getRepayments`, `createRepayment`, `deleteRepayment` |
 | `reconciliation.ts` | `getBalanceSnapshots`, `getSnapshotsForEntity`, `getSnapshotsForMonth`, `getLatestSnapshot`, `createBalanceSnapshot`, `deleteBalanceSnapshot`, `getAdjustmentsForSnapshot`, `createAdjustment`, `deleteAdjustment`, `getReconciliationSessions`, `getSessionForMonth`, `getLatestCompletedSession`, `startReconciliationSession`, `completeReconciliationSession`, `updateSessionSnapshots`, `getReconciliationSummary`, `applyReconciliationBalances` |
 | `recurring.ts` | `getRecurringItems`, `getRecurringItemById`, `createRecurringItem`, `updateRecurringItem`, `deleteRecurringItem` |
 | `salary.ts` | `getSalaryConfigs`, `getSalaryConfigById`, `createSalaryConfig`, `updateSalaryConfig`, `deleteSalaryConfig` |
 | `scenario.ts` | `runScenarioProjection` |
 | `shared-mortgages.ts` | `getMyMortgages`, `getMortgage`, `getMortgageProjectionInputs`, `getMyMortgageEquity`, `createMortgage`, `updateMortgage`, `updateMortgageLoan`, `deleteMortgage`, `addMortgageMemberByEmail`, `removeMortgageMember`, `updateMortgageMember`, `setMyMortgageLinkedAccount`, `setMortgageRate`, `deleteMortgageRate`, `setMortgageCost`, `deleteMortgageCost`, `addMortgageExtraPayment`, `deleteMortgageExtraPayment`, `recordMortgageBalanceSnapshot`, `deleteMortgageBalanceSnapshot`, `getMortgageActuals`, `importMortgageActuals`, `clearMortgageActuals`, `reconcileMortgageMonth`, `revertMortgageMonth` |
-| `split-groups.ts` | `getMySplitGroups`, `getSplitGroupView`, `getSplitExpenses`, `getSplitActivity`, `getSplitInsights`, `getMySplitNetBalance`, `getMySplitLinkCandidates`, `getSettleUpSuggestions`, `createSplitGroup`, `updateSplitGroup`, `deleteSplitGroup`, `addSplitGroupMember`, `removeSplitGroupMember`, `setDefaultSplitGroup`, `createSplitExpense`, `quickAddSplitExpense`, `updateSplitExpense`, `deleteSplitExpense`, `recordSettleUp`, `createSplitRecurrenceRule`, `updateSplitRecurrenceRule`, `deleteSplitRecurrenceRule`, `catchUpGroupRecurrences`, `importSplitwiseCsv`, `markSplitGroupSeen` — every mutating action additionally calls `notifySplitActivity` (`src/lib/split-notify.ts`) after its write + cache invalidation, which schedules a Home Assistant webhook POST for after the response (§11) |
+| `split-groups.ts` | `getMySplitGroups`, `getSplitGroupView`, `getSplitExpenses`, `getSplitActivity`, `getSplitInsights`, `getMySplitNetBalance`, `getMySplitLinkCandidates`, `getSettleUpSuggestions`, `createSplitGroup`, `updateSplitGroup`, `deleteSplitGroup`, `addSplitGroupMember`, `removeSplitGroupMember`, `leaveSplitGroup`, `updateSplitGroupMemberRole`, `setDefaultSplitGroup`, `createSplitExpense`, `quickAddSplitExpense`, `confirmSplitBankLink`, `updateSplitExpense`, `deleteSplitExpense`, `recordSettleUp`, `createSplitRecurrenceRule`, `updateSplitRecurrenceRule`, `deleteSplitRecurrenceRule`, `catchUpGroupRecurrences`, `importSplitwiseCsv`, `markSplitGroupSeen` — every mutating action additionally calls `notifySplitActivity` (`src/lib/split-notify.ts`) after its write + cache invalidation, which schedules a Home Assistant webhook POST for after the response (§11) |
 | `taxed-income.ts` | `getTaxedIncomes`, `getTaxedIncomeById`, `createTaxedIncome`, `updateTaxedIncome`, `deleteTaxedIncome` |
 | `trips.ts` | `getTrips`, `getTripById`, `createTrip`, `updateTrip`, `deleteTrip` |
 | `user-preferences.ts` | `getUserPreferences`, `completeOnboarding`, `updateCategories`, `updateCheckInReminders`, `updateCheckInNotifications`, `updateSplitNotificationPrefs` (five-key opt-out record for the split webhook events), `getSplitNotifyStatus` (is `HA_WEBHOOK_URL` configured), `updateBankAccountOrder`, `updateSplitGroupOrder`, `updateBottomNavIds` (mobile bottom-nav tabs; `null` resets to the per-display-mode defaults), `updateDisplayMode`, `updateTaxDefaults` |
@@ -196,7 +199,18 @@ Storage granularity is deliberately mixed: **one file per entity** (accounts, it
 goals, trips…), **one file per collection** (reconciliation snapshots/adjustments/sessions, bank
 transaction ledgers, user preferences), and **monthly chunks** (split expenses). There is no
 file locking; split groups get a per-group in-process mutex (`withGroupLock` in
-`src/lib/actions/split-groups.ts`), everything else relies on the single-user assumption.
+`src/lib/split-group-lock.ts`, on `globalThis` so every server-action bundle shares one lock per
+group; used by the split actions and `deleteMyAccount`), everything else relies on the single-user
+assumption.
+
+**Path guards** (`src/lib/db/encryption.ts`, patterns in `src/lib/safe-id.ts`): every id that
+becomes a path segment passes `assertSafeId` (`[A-Za-z0-9_-]{1,64}`) through `entityPath` /
+`entityDir` / `getUserDir`, split chunk months pass `assertChunkMonth`, and every file primitive
+(`readEncryptedFile`, `writeEncryptedFile`, `deleteFile`, `listFiles`, `fileExists`,
+`ensureDir`) re-checks `assertInsideDataDir`; a violation throws `UnsafePathError`. The action
+boundary validates the same patterns with `idSchema` / `yearMonthSchema` / `chunkMonthSchema`
+(`src/lib/schemas/id.schema.ts`), and the shared-entity loaders (`loadGroupForMember`,
+`loadMortgageForMember`, `loadOwnBudget`) reject an unsafe id up front (`isSafeId`).
 
 ## 7. Encryption
 
@@ -231,7 +245,7 @@ All cached reads live in `src/lib/db/cached.ts` (`cachedGet*` wrappers using the
 | Profile | stale / revalidate / expire | Used for |
 |---|---|---|
 | `indefinite` | 1y / 1y / 1y | Everything mutated only via request-scoped server actions — invalidated purely by `updateTag`. |
-| `synced` | 60s / 300s / 3600s | Data the **background bank scheduler** writes outside request scope: `cachedGetBankConnections`, `cachedGetBankConnectionById`, `cachedGetBankTransactions`, `cachedGetBankSyncRuns`, `cachedGetLatestBankSyncRun`, and `cachedGetLatestSnapshot` (bank-sync anchor snapshots). |
+| `synced` | 60s / 300s / 3600s | Data the **background bank scheduler** writes outside request scope: `cachedGetBankConnections`, `cachedGetBankConnectionById`, `cachedGetBankTransactions`, `cachedGetBankSyncRuns`, `cachedGetLatestBankSyncRun`, and every balance-snapshot read (bank-sync anchor snapshots): `cachedGetBalanceSnapshots`, `cachedGetSnapshotsForEntity`, `cachedGetSnapshotsForMonth`, `cachedGetLatestSnapshot`, `cachedGetLatestSnapshotsByEntity`. |
 
 The scheduler caveat: `updateTag` throws outside request scope, so background sync writes
 cannot invalidate the cache (`safeUpdateTags` in `src/lib/bank/sync.ts` swallows it) — the
@@ -245,15 +259,19 @@ Every wrapper tags `all-data` plus a specific tag; mutations call `updateTag`. T
 - `user:{userId}:goals`, `:trips`, `:budgets`, `:preferences`, `:reconciliation`
 - `user:{userId}:bank-connections`, `:bank-connection:{connectionId}`, `:bank-connection:{connectionId}:runs`, `:bank-account:{linkedAccountId}:transactions`
 - `user:{userId}:mortgages` (membership), `mortgage:{id}` + `:rates|costs|payments|snapshots|actuals` (member-agnostic)
-- `user:{userId}:split-groups` (membership), `split-group:{id}` + `:summary`, `:expenses`
+- `user:{userId}:split-groups` (membership), `split-group:{id}` + `:summary`, `:expenses` (whole-history readers), `:expenses:{YYYY-MM}` (one month chunk), `:expense-chunks` (every per-month entry — bulk import/prune/delete)
 - `users`, `app-settings`, `all-data` (admin "revalidate all")
 
 Batch wrappers (`cachedGetAccountProjectionData`, `cachedGetWealthData`, the mortgage-inputs
-batch) fetch a page's whole dataset in one cached call with the union of tags.
+batch, `cachedGetLatestSnapshotsByEntity` — latest snapshot per `"{entityType}:{entityId}"`
+from one decrypt) fetch a page's whole dataset in one cached call with the union of tags. Child
+mutations (investment contributions, debt reference rates and extra payments) also invalidate
+their parent collection tag (`user:{userId}:investments` / `:debts`), because the batch wrappers
+embed child rows.
 
 ## 9. Auth
 
-**Better Auth 1.7.5** (`src/lib/auth/server.ts`, lazy `getAuth()` singleton on `globalThis`)
+**Better Auth 1.7.6** (`src/lib/auth/server.ts`, lazy `getAuth()` singleton on `globalThis`)
 on the SQLCipher DB via the drizzle adapter; tables in `src/lib/db/sqlite/schema/auth.ts`
 (`user`, `session`, `account`, `verification`, `passkey`, `rateLimit`). Config:
 
@@ -286,15 +304,26 @@ on the SQLCipher DB via the drizzle adapter; tables in `src/lib/db/sqlite/schema
   only on a truly fresh install (`isFirstUserSetup`: no user rows, no legacy `.enc` users).
   `hooks.before`: `/sign-up/email` enforces `selfSignupEnabled` (unless first user), the name
   rule and `passwordPolicySchema` (`src/lib/schemas/auth.schema.ts`; `disableSignUp` stays
-  false because it would also block the server-side `auth.api.signUpEmail`); `/change-password`
-  enforces the same policy; `/sign-in/email` returns **429 `ACCOUNT_LOCKED` + `retryAfter`**
+  false because it would also block the server-side `auth.api.signUpEmail`). The sign-up gate
+  **fails closed**: a missing `app-settings.enc` reads as `selfSignupEnabled: isFirstUserSetup()`
+  (`defaultSettings` in `src/lib/db/app-settings.ts`), i.e. disabled once any user exists.
+  `/change-password` (reached only through `auth.api.changePassword`) enforces the same policy; `/sign-in/email` returns **429 `ACCOUNT_LOCKED` + `retryAfter`**
   from the in-memory lockout (`isAccountLocked` in `src/lib/db/users.ts`, 10 failures / 15 min);
   `/passkey/generate-register-options` returns **403 `PASSKEY_REAUTH_REQUIRED`** when the
   session is older than `PASSKEY_REGISTRATION_MAX_SESSION_AGE_MS` (10 min,
   `src/lib/auth/constants.ts`). `hooks.after` on `/sign-in/email` records failures (401 only,
   also for unknown emails) / successes and performs the bcrypt → scrypt rehash; on
   `/passkey/verify-authentication` it stamps `passkey.lastUsedAt` (see Passkeys).
-  `disabledPaths: ['/update-user']` (profile edits go through our own actions).
+  `disabledPaths: ['/update-user', '/change-password']`: profile edits go through our own
+  actions, and password changes only through `changeMyPassword`, whose per-user lockout the
+  raw endpoint lacks (`disabledPaths` is enforced by the HTTP router only, so the server-side
+  `auth.api.changePassword` keeps working). Admin-set passwords (`createUser`/`updateUser` in
+  `src/lib/actions/admin.ts`) use the same `passwordPolicySchema`.
+- **Recent sign-in for destructive self-service**: `resetMyData` and `deleteMyAccount`
+  (`src/lib/actions/account.ts`, `requireRecentSignIn`) refuse with
+  `RECENT_SIGN_IN_REQUIRED_MESSAGE` unless the session is younger than
+  `PASSKEY_REGISTRATION_MAX_SESSION_AGE_MS` (10 min), so a stolen long-lived cookie cannot wipe
+  everything in one call.
 - **Action-level limits** (Better Auth's rate limiter only runs on its HTTP router, not for
   `auth.api.*`): `changeMyPassword` uses the lockout map keyed `pw:<userId>` (10 wrong
   current passwords / 15 min → refused with a retry time); `signUp` allows 5 per client IP per
@@ -319,7 +348,12 @@ on the SQLCipher DB via the drizzle adapter; tables in `src/lib/db/sqlite/schema
   (`removeUserPasskeys`) or self-service delete.
 - **Dev bypass**: a server-only endpoint (`createAuthEndpoint.serverOnly`, never on the HTTP
   router) registered only when `NODE_ENV !== 'production'` **and** `DEV_AUTH_BYPASS` is set;
-  `/dev-login` calls it and forwards the session cookie. `src/proxy.ts` additionally redirects
+  `/dev-login` (`src/app/dev-login/route.ts`) calls it and forwards the session cookie. The
+  route answers only loopback requests (`isLoopbackDevRequest`, `src/lib/auth/dev-loopback.ts`):
+  a loopback `Host`, `x-forwarded-host`/`x-forwarded-for` (which Next itself sets) accepted only
+  when every value is loopback, and any `forwarded`/`x-real-ip`/`cf-connecting-ip` header
+  refused; anything else gets 404. The primary control is the dev server's `127.0.0.1` bind
+  ([`operations.md`](operations.md)). `src/proxy.ts` additionally redirects
   cookie-less dev requests for `/` and the auth pages straight to `/dev-login`.
 
 Post-sign-in `?callbackUrl=` goes through `safeCallbackPath` (`src/lib/safe-redirect.ts`):
@@ -369,10 +403,10 @@ lookup on the auth pages). Matcher: everything **except** `_next/static`, `_next
 
 Security headers are set for every route in `next.config.ts` (`headers()`):
 `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`,
-`Referrer-Policy: strict-origin-when-cross-origin`, `X-DNS-Prefetch-Control`,
+`Referrer-Policy: strict-origin-when-cross-origin`, `X-DNS-Prefetch-Control: off`,
 `Permissions-Policy` (camera/mic/geo/topics off), `Strict-Transport-Security`, and a CSP
-(key directives: `default-src 'self'`; `script-src` allows `unsafe-inline`/`unsafe-eval`
-for Next; `style-src 'unsafe-inline'` for PrimeReact; `worker-src 'self'` for the service
+(key directives: `default-src 'self'`; `script-src` allows `unsafe-inline` for Next, and
+`unsafe-eval` only outside production — `next dev` needs it for HMR/React Refresh; `style-src 'unsafe-inline'` for PrimeReact; `worker-src 'self'` for the service
 worker; `frame-ancestors 'none'`; plus `img-src`/`font-src`/`connect-src`/`base-uri`/
 `form-action` all `'self'`-scoped and `upgrade-insecure-requests` — full list in
 `next.config.ts`). `/sw.js` is additionally served `no-cache, no-store` with
@@ -405,8 +439,12 @@ Installable PWA: `src/app/manifest.ts` (static manifest, `display: standalone`, 
 `<ServiceWorkerRegister>` in the root layout (production-only, no-op on localhost).
 `sw.js` strategies: GET + same-origin only; never intercepts `/api/`, `/auth/`, or RSC
 requests; **network-first** for navigations with `public/offline.html` fallback;
-**cache-first** for hashed `/_next/static/*`; **stale-while-revalidate** for `/themes/*` and
-`/icons/*`; everything else uncached. `CACHE_VERSION` (currently `'v7'`) must be bumped on
+**cache-first** for hashed `/_next/static/*` — storing only successful same-origin responses
+(`res.ok && res.type === 'basic'`, never a 404/5xx from a deploy restart or an opaque/redirected
+one) and trimming the oldest entries beyond `MAX_STATIC_ENTRIES` (300, ~3 builds of chunks)
+after each put; **stale-while-revalidate** for `/themes/*` and `/icons/*`; everything else
+uncached. The service worker disables itself on `localhost`/`127.0.0.1`.
+`src/test/service-worker.test.ts` runs `sw.js` in a sandbox to pin these rules. `CACHE_VERSION` (currently `'v11'`) must be bumped on
 any deploy that changes cached assets. Responsive/PWA UI rules: root `AGENTS.md`
 and [`src/components/AGENTS.md`](../src/components/AGENTS.md).
 
@@ -418,7 +456,7 @@ and [`src/components/AGENTS.md`](../src/components/AGENTS.md).
 |---|---|
 | `layout/` | `AppLayout` (AppContext + ToastProvider host; no session provider — `useSession` is the Better Auth store), `SidebarNav`, `MobileTopBar`, `BottomNav` (1–4 user-chosen tabs + fixed "More"; resolved by `src/lib/bottom-nav-prefs.ts` from `UserPreferences.bottomNavIds`, customizable in Settings → General), `MobileNavDrawer`, shared `nav-config.tsx` (single source for all four nav surfaces) |
 | `providers/` | `PrimeProvider`, `ThemeProvider`, `ToastProvider`, `CelebrationProvider`, `ServiceWorkerRegister` |
-| `charts/` | ECharts/Chart.js components (cashflow waterfall, treemap, monthly flow, net-worth, wealth, scenario comparison) |
+| `charts/` | ECharts/Chart.js components (cashflow waterfall, treemap, monthly flow, net-worth, wealth, scenario comparison, split spend/net); no barrel — import each module directly |
 | `modals/` | Cashflow item modal, occurrence-override dialog, users (admin) modal |
 | `home/` | `HomeDashboard` (bank glance strip, projected-month tile, merged split balances + activity card) |
 | `bank/` | Connections settings panel, account picker, transaction ledger table, account-order dialog |
@@ -434,9 +472,10 @@ and [`src/components/AGENTS.md`](../src/components/AGENTS.md).
 | `ui/` | `CommandPalette`, `EntityListDrawer`, `EntityModalRouter`, `KpiTile`, `AlertBanner`, `HelpHint`, `EmptyState`, skeletons, delayed-loading primitives, form primitives |
 
 State management is React Context only — `AppContext` in
-`src/components/layout/app-layout.tsx` (drawer state, selected account, refresh callbacks,
-sidebar state); no Redux/Zustand. Hooks (`src/lib/hooks/`): `use-delayed-flag.ts` (spinner
-debounce), `use-media-query.ts` (SSR-safe `useIsMobile`), `use-month-selection.ts`
+`src/components/layout/app-layout.tsx` (drawer state, the shared `accounts` list +
+`accountsLoaded`, refresh callbacks, sidebar state); no Redux/Zustand. Hooks
+(`src/lib/hooks/`): `use-delayed-flag.ts` (spinner debounce), `use-form-submit.ts` (Enter
+submits dialog forms, §17), `use-media-query.ts` (SSR-safe `useIsMobile`), `use-month-selection.ts`
 (cashflow month selection), `use-reduced-motion.ts`, and `use-dwell-seen.ts` (split
 "seen" dwell tracking). Forms use React Hook Form +
 Zod resolvers with PrimeReact inputs wrapped in `Controller`. Pure calculation engines live
@@ -458,7 +497,7 @@ Entity IDs are `uuid` v4 strings (Better Auth rows too, via `generateId: 'uuid'`
 
 Vitest (`vitest.config` + `src/test/setup.ts` with jest-dom + jsdom stubs for
 localStorage/matchMedia; mock factories in `src/test/mocks.ts`; `src/test/render.tsx`
-wraps components in ThemeProvider). ~50 test files:
+wraps components in ThemeProvider). ~100 test files:
 
 - **Pure engines** (`src/lib/*.test.ts`): `projection`, `wealth-projection`,
   `mortgage-projection` (exact-match reference-spreadsheet reproduction), `mortgage-utils`,
@@ -469,12 +508,15 @@ wraps components in ThemeProvider). ~50 test files:
   `split-notify` (pure payload builder + opt-out gate + the fire-and-forget transport
   with a stubbed `fetch`; `notifySplitActivity` itself is out of scope — `after()`
   needs a request scope), `bank-split-match`, `data-transfer-utils`, `scenario-utils`,
-  `chart-descriptions`
+  `chart-descriptions`, `live-anchor`, `projection-inputs`, `reconcile-prefill`,
+  `wealth-assembly`, `wealth-inputs`, `overview-hero`, `latest-snapshots`, `html-escape`,
+  `date-format`
 - **Bank engine** (`src/lib/bank/*.test.ts`): `card-billing`, `dedup`, `mappers`,
   `reconcile-links`, `link-identity`, `apply-link-balances`, `scheduler`,
-  `card-payment-match`, `repair-booking-dates`
+  `card-payment-match`, `repair-booking-dates`, `connect` (renewal keeps the live session)
 - **DB layer** (`src/lib/db/*.test.ts`): `encryption`, `budgets`, `planned-items`,
-  `reconciliation`, `data-transfer`, `taxed-income`; `src/lib/db/sqlite/sqlite.test.ts`
+  `reconciliation`, `data-transfer`, `taxed-income`, `split-groups`, `app-settings`,
+  `path-guard` (id/path guards); `src/lib/db/sqlite/sqlite.test.ts`
   (temp SQLCipher DB: plaintext header absent, wrong/no key fails, idempotent migrations,
   legacy `.enc` import incl. soft-deleted user, verified encrypted snapshot)
 - **Auth** (`src/lib/auth/server.test.ts`, temp DB via `src/test/temp-data-dir.ts`): sign-up
@@ -486,6 +528,12 @@ wraps components in ThemeProvider). ~50 test files:
   `occurrence-override.schema`
 - **Convenience engines** (`src/lib/*.test.ts`): `category-utils`,
   `recurring-detection`, `forecast-vs-actual`, `bottom-nav-prefs`
+- **Actions** (`src/lib/actions/*.test.ts`, temp `DATA_DIR`, `auth()` and `next/cache`
+  mocked): `goals`, `trips`, `user-preferences`, `dashboard-data`, `split-groups`,
+  `split-groups-bank`, `auth-actions` (real Better Auth on a temp DB), `partial-updates`
+  (absent key keeps, `null` clears); `src/lib/auth/dev-loopback.test.ts`
+- **Guards** (`src/test/`): `no-native-confirm` (no `window.confirm` in `src/`),
+  `service-worker` (runs `public/sw.js` in a sandbox with fake Cache Storage)
 - **Local-only parity suites** (`*.local.test.ts`, **gitignored**): mirror a
   committed suite but assert against the maintainer's real financial records
   (`mortgage-projection.local`, `split-csv.local`). Vitest's default glob picks
@@ -494,12 +542,13 @@ wraps components in ThemeProvider). ~50 test files:
   and you update both halves.
 - **Components** (`src/components/**/*.test.tsx`, jsdom via a
   `// @vitest-environment jsdom` docblock per file): the shared UI primitives
-  (`alert-banner`, `kpi-tile`, `empty-state`) plus the highest-state components —
+  (`alert-banner`, `kpi-tile`, `empty-state`, `help-hint`), `use-form-submit`,
+  `split-spend-chart`, plus the highest-state components —
   the cashflow item modal, the split editor, and the reconcile wizard (server
   actions mocked with `vi.mock`)
 
-**No coverage exists for**: most pages, server actions (auth/validation/cache-tag
-behavior — except a representative goals/trips/user-preferences slice), the bank client/connect/sync
+**No coverage exists for**: most pages, most server actions (auth/validation/cache-tag
+behavior — except the action slice listed above), the bank client/sync
 modules, and there are no e2e/browser tests. `src/proxy.test.ts` covers the auth-page session
 handling (redirect / clear / render, plus a redirect-following loop check) against a real temp
 DB; `src/lib/auth/passkey-registration.test.ts` and `passkey-sign-in.test.ts` run full passkey
@@ -536,7 +585,7 @@ live in [`features.md`](features.md#10-demo-mode-ui-only-money-masking).
 Every mutation should confirm; every load should feel instant. The primitives:
 
 - **Global toast** — one `<Toast>` is mounted by `ToastProvider` (`src/components/providers/toast-provider.tsx`, wrapping the app in `AppLayout`). Use `useToast()` → `success/error/info/show`; **do not** mount per-component `<Toast>` refs. Fire a toast after every create/update/delete/settle/import so the user knows it worked.
-- **Global confirm dialog** — likewise, exactly ONE `<ConfirmDialog />` receiver is mounted in `AppLayout`; components call PrimeReact's imperative `confirmDialog({...})` and **never mount their own `<ConfirmDialog />`** — every mounted receiver answers every `confirmDialog()` call, so a second receiver produces a stacked duplicate that stays open after accept/reject.
+- **Global confirm dialog** — likewise, exactly ONE `<ConfirmDialog />` receiver is mounted in `AppLayout`; components call PrimeReact's imperative `confirmDialog({...})` and **never mount their own `<ConfirmDialog />`** — every mounted receiver answers every `confirmDialog()` call, so a second receiver produces a stacked duplicate that stays open after accept/reject. Never use the browser's native `confirm()`: `src/test/no-native-confirm.test.ts` fails on any call in `src/`.
 - **Delayed loading** — `useDelayedFlag(active, 300)` (`src/lib/hooks/use-delayed-flag.ts`) reveals a flag only after `active` holds for ~300ms and drops it instantly when false, so fast ops (the norm after the HKDF encryption fix) never flash a spinner. `DelayedSpinner` / `DelayedSkeleton` (`src/components/ui/delayed-loading.tsx`) build on it.
 - **Instant shell + skeletons** — heavy pages render their chrome immediately and show a content-shaped, delayed skeleton for the data region instead of a full-page `ProgressSpinner`. Reusable layouts in `src/components/ui/skeletons.tsx` (`KpiGridSkeleton`, `ChartsPageSkeleton`, `ListPageSkeleton`, `HomeSkeleton` — Home's glance/balances/activity region, `SplitDetailSkeleton`). Skeletons must match the real content's position AND height — a skeleton taller than what it replaces makes content jump on load. Pages fetch with a first-load-only `loaded` flag: refetches update silently and never re-show the skeleton; register the AppContext refresh callback in a **separate** effect from the fetch effect (goals/page.tsx is the reference pattern).
 - **Optimistic UI** — on daily-driver hot paths (e.g. split-expense delete, recurring pause/resume in `split/[id]/page.tsx`), apply the change to local state immediately + toast + reconcile with a background refresh; on failure, roll back the snapshot and toast the error. Server actions/schemas are unchanged.
@@ -638,7 +687,7 @@ motion library), and it must never gate input. The primitives:
 - **Overlay safe-area insets (installed PWA)**: portalled overlays render at the viewport edges (`viewport-fit=cover`), so `globals.css` pads them for `env(safe-area-inset-*)`. Off-canvas drawers (PrimeReact `Sidebar`) get top/bottom/side padding so the header clears the island and the footer clears the home indicator — **the position class lives on the `.p-sidebar-mask`, the panel is its child**, so target `.p-sidebar-mask.p-sidebar-left > .p-sidebar` (not `.p-sidebar.p-sidebar-left`, which matches nothing). Top-anchored `Toast`s drop below the island. Sticky in-page headers must pin **below** the mobile top bar (`sticky top-[calc(3.5rem+env(safe-area-inset-top))] lg:top-[env(safe-area-inset-top)]`), never `top-0` — the `lg:` offset matters because a **desktop-breakpoint installed PWA (iPad)** also runs edge-to-edge under the OS status bar with no mobile top bar to clear it. For the same reason `<main>` keeps `lg:pt-[env(safe-area-inset-top)]`/`lg:pb-[env(safe-area-inset-bottom)]` (not `lg:pt-0`), the desktop `SidebarNav` aside pads itself with both insets, and `AppLayout` paints a fixed `hidden lg:block` glass strip of height `env(safe-area-inset-top)` under the status bar so scrolled content never shows through it (all of these are 0 in a normal desktop browser).
 - **Tables (mixed strategy)**: lighter tables (e.g. cashflow projection, bank ledger) render a `lg:hidden` card/list view beside a `hidden lg:block` DataTable; the wide mortgage ledger keeps a single DataTable with a **frozen first column** (`frozen alignFrozen="left"` + `scrollable`) for horizontal scroll. Don't let a raw wide table overflow the viewport.
 - **Charts**: containers must be width-fluid (`width:100%`) with responsive heights (e.g. `h-72 lg:h-96`); Chart.js charts set `maintainAspectRatio:false` and fill the wrapper (don't also pass a fixed `height` prop — they fight). ECharts/Sankey resize to the container; pass a shorter mobile height where it helps.
-- **Toolbars / page headers**: stack on mobile (`flex-col sm:flex-row`), full-width controls (`w-full sm:w-auto` / `flex-1 sm:flex-none`). Full-bleed sticky bars that use negative margins must match the responsive content padding (`-mx-2 px-2 sm:-mx-4 sm:px-4 lg:-mx-6 lg:px-6`). Keep tap targets ≥44px. `TabView`s with many tabs use `scrollable`.
+- **Toolbars / page headers**: stack on mobile (`flex-col sm:flex-row`), full-width controls (`w-full sm:w-auto` / `flex-1 sm:flex-none`). Full-bleed sticky bars that use negative margins must match the responsive content padding (`-mx-2 px-2 sm:-mx-4 sm:px-4 lg:-mx-6 lg:px-6`). Keep tap targets ≥44px. On touch screens `glass-overrides.css` enlarges small icon-only buttons (`p-button-icon-only p-button-sm`) and sortable DataTable headers to 44px inside `@media (pointer: coarse)`, keeping the compact size for mouse/trackpad. `TabView`s with many tabs use `scrollable`.
 
 PWA manifest, service-worker caching, and registration details live in §12.
 
@@ -658,11 +707,23 @@ const { control, handleSubmit, formState: { errors } } = useForm<SomeFormData>({
 - Zod schemas live in `src/lib/schemas/`
 - PrimeReact inputs require `Controller` wrapper (they use value/onChange, not ref-based)
 - Legacy forms may still use raw `useState` — migrate when touching them
+- **Dialog forms submit on Enter**: wrap the fields in `<form onSubmit={useFormSubmit(save, { disabled })}>`
+  (`src/lib/hooks/use-form-submit.ts`), make the primary button `type="submit"` and every
+  other button `type="button"`. The hook blurs a focused `InputNumber` first (PrimeReact
+  commits typed text only on blur/Enter) and runs the latest `save` on the next tick.
+- **Partial updates**: an absent key keeps the stored value; to clear an optional field a form
+  sends `null` (React drops `undefined` keys from server-action payloads). Actions map a
+  present `null` to `undefined` with `clearNullsInPatch` (`src/lib/patch-utils.ts`), which the
+  DB layer's `{ ...stored, ...patch }` merge then clears — see
+  [`src/lib/actions/AGENTS.md`](../src/lib/actions/AGENTS.md).
 
 ### Dates, IDs, and salary calculations
 
 Use `date-fns` for dates, `YYYY-MM` (`YearMonth`) for month values, `uuid.v4`
-for entity IDs, and Finnish `fi-FI` display formatting. Use `calculateNetSalary`
+for entity IDs, and Finnish `fi-FI` display formatting through the shared helpers in
+`src/lib/constants.ts`: `formatDate` ("27.9.2026"), `formatDateTime` ("27.9.2026 14.05")
+and `formatDayMonth` ("15 March", optional `year`/`short`) — a bare `YYYY-MM-DD` is parsed
+as a local date so the day never shifts through UTC. Use `calculateNetSalary`
 from `src/lib/salary-utils.ts` rather than inline salary math. Taxed income uses
 `calculateTaxedIncomeNet` from `src/lib/taxed-income-utils.ts`: salary taxes gross
 plus taxable benefits; taxed income taxes raw gross. The DB freezes the taxed

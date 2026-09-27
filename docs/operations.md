@@ -314,7 +314,7 @@ Every variable the code reads (`grep -r "process.env" src scripts next.config.ts
 | `DATA_DIR` | no (default `./data`) | `db/encryption.ts`, scripts | Root of the encrypted data tree. Prod: `~/.sampolio/data`. |
 | `OLD_ENCRYPTION_KEY` | rotation only | `rotate-encryption-key.mjs` | The previous master key when rotating to a new `ENCRYPTION_KEY` (§8). Never read by the app. |
 | `NEXT_DIST_DIR` | no (default `.next`) | `next.config.ts` | Build output dir; prod sets `.next-prod` to isolate from dev. |
-| `DEV_AUTH_BYPASS` | dev only | `lib/auth/server.ts`, `app/dev-login/` | Email of an existing user; visiting `/dev-login` signs in as them without a password. Never set in prod. |
+| `DEV_AUTH_BYPASS` | dev only | `lib/auth/server.ts`, `app/dev-login/` | Email of an existing user; visiting `/dev-login` from the machine itself (loopback only) signs in as them without a password. Never set in prod. |
 | `ENABLE_BANKING_APP_ID` | bank sync only | `lib/bank/*` | Enable Banking application id (JWT `kid`). All three `ENABLE_BANKING_*` must be present or the feature hard-disables. |
 | `ENABLE_BANKING_REDIRECT_URL` | bank sync only | `lib/bank/*` | Consent callback URL (`https://<your-domain>/api/bank/callback`). |
 | `ENABLE_BANKING_PRIVATE_KEY_FILE` | bank sync only | `lib/bank/jwt.ts` | Path to the 0600 RS256 PKCS#8 PEM (outside the repo). |
@@ -325,11 +325,16 @@ Every variable the code reads (`grep -r "process.env" src scripts next.config.ts
 
 ## 10. Dev workflow against a copy of production data
 
-Covered in detail in [`AGENTS.md`](../AGENTS.md) §"Testing With a Copy of
-Production Data". Short version: `rsync -a ~/.sampolio/data/ ./data/` (one
+The rules are in [`AGENTS.md`](../AGENTS.md) §"Safety, testing, and operations".
+Short version: `rsync -a ~/.sampolio/data/ ./data/` (one
 direction only — never back), then the `sampolio-preview` config in
-`.claude/launch.json` starts `next dev -p 4999` with the dot-file secrets
-exported, `DATA_DIR=$PWD/data`, and `DEV_AUTH_BYPASS` enabled (`/dev-login`).
+`.claude/launch.json` starts `next dev -H 127.0.0.1 -p 4999` with the dot-file
+secrets exported, `DATA_DIR=$PWD/data`, and `DEV_AUTH_BYPASS` enabled (`/dev-login`).
+The dev server binds to loopback only — `pnpm dev` / `pnpm dev:preview` in
+`package.json` pass the same `-H 127.0.0.1` — because the preview serves a copy of real
+data. `/dev-login` additionally answers only loopback requests without proxy
+forwarding headers (`isLoopbackDevRequest`, `src/lib/auth/dev-loopback.ts`; details in
+[`architecture.md`](architecture.md) §9) and returns 404 otherwise.
 Port 3999 belongs to production (launchd `KeepAlive` restarts it if killed) —
 never point a dev server at prod's port or data dir.
 

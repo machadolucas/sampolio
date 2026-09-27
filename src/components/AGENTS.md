@@ -37,8 +37,12 @@ Data visualization components:
 
 Charts mix ECharts (`echarts-for-react`, preferred for Sankey/waterfall/treemap) and Chart.js (`primereact/chart`, used by the two net-worth charts above). Feature-specific charts live with their feature: see `mortgage/mortgage-charts.tsx` + `mortgage/mortgage-sankey.tsx` and `budgets/budget-month-chart.tsx`.
 
+- **No barrel**: there is no `charts/index.ts` — import each chart from its own module (a barrel would drag the ECharts charts' side effects into every importer and defeat `next/dynamic` code-splitting).
+- **Escape tooltip HTML**: an ECharts `tooltip.formatter` string is assigned to `innerHTML`, so every user-controlled value in it (names, categories, labels, axis values) must go through `escapeHtml` (`src/lib/html-escape.ts`) — a co-member's name like `<img onerror=…>` would otherwise run as script. Canvas-rendered label/axis formatters do not need it. Every ECharts chart above plus `mortgage-sankey.tsx` does this.
+
 ### `layout/`
-- `app-layout.tsx` — Main layout wrapper with AppContext provider. Manages drawer state, selected account, refresh callbacks, sidebar state. This is the central state hub.
+- `app-layout.tsx` — Main layout wrapper with AppContext provider. Manages drawer state, the shared account list (`accounts` + `accountsLoaded`, flipped in the same transition as the list — pages such as Cashflow read accounts from here instead of fetching their own), refresh callbacks, sidebar state. This is the central state hub. `ReconcileWizard` and `OnboardingWizard` are `next/dynamic` and mount only once first opened (`reconcileMounted`/`onboardingMounted`), then stay mounted. The lg+ Demo indicator pill is rendered here (fixed, z-45); below `lg` it lives inside `MobileTopBar`.
+- `mobile-top-bar.tsx` — Mobile (< lg) top bar: hamburger, brand, search; while demo mode is on, a 44px "Demo" pill sits in the bar's own flow **before** Search (tap turns demo mode off), so it never covers the Search button.
 - `sidebar-nav.tsx` — Left navigation sidebar with the app routes (from the shared `nav-config.tsx` via `useVisibleNavItems()`, which filters to `simpleModeVisible` entries in Simple display mode), a search quick action (the monthly check-in lives on Overview + ⌘M/palette, not in the chrome), user menu (`useUserMenuItems` in `nav-config.tsx`: a single non-interactive name+email template item, full-contrast name + one opacity-70 truncated email; theme/display-mode/sign-out items use an icon+label template with `flex items-center gap-2`), theme toggle, collapse button.
 - `bottom-nav.tsx` — Mobile (< lg) fixed bottom tab bar: N+1 equal cells — the user's 1–4 chosen tabs (resolved by `resolveBottomNavIds` from `src/lib/bottom-nav-prefs.ts`, i.e. `UserPreferences.bottomNavIds` or the per-display-mode defaults) plus a fixed "More" cell that opens the drawer. Labels/icons come from `navItems`; the sliding active pill positions itself from `100 / cells`.
 - `brand-logo.tsx` — Inline-SVG brand mark (euro coin + rising chart, money-green) mirroring `public/icons/icon.svg`; gradient id scoped with `useId()` since the sidebar/top-bar/drawer are all mounted at once. Used as the logo in all nav surfaces and the auth pages (replaced the old 💰 emoji).
@@ -56,7 +60,7 @@ Investment / debt / receivable create-edit forms are no longer standalone modal 
 Shared-mortgage UI: `mortgage-setup-wizard.tsx`, `mortgage-ledger-table.tsx`, `mortgage-charts.tsx`, `mortgage-sankey.tsx`, `mortgage-history-strips.tsx`, `mortgage-panels.tsx`, `mortgage-dialogs.tsx`, `mortgage-reconcile-dialog.tsx`, `mortgage-import-dialog.tsx`.
 
 ### `budgets/`
-Trip/project budget UI: `budgets-section.tsx` (the Budgets half of the merged "Trips & Budgets" page at `/budgets`, `<section id="budgets">`), `budget-setup-wizard.tsx`, `budget-card.tsx`, `budget-verdict-card.tsx`, `budget-coverage-bars.tsx`, `budget-vs-actual-bars.tsx`, `budget-expense-log.tsx`, `budget-month-chart.tsx`, `budget-panels.tsx`, `budget-dialogs.tsx`, `budget-confirm-dialog.tsx`, `budget-export-dialog.tsx`, `budget-templates.ts`.
+Trip/project budget UI (`budget-card.tsx` is a `next/link` to `/budgets/{id}`; `budget-expense-log.tsx` renders a stacked `lg:hidden` list beside its desktop table): `budgets-section.tsx` (the Budgets half of the merged "Trips & Budgets" page at `/budgets`, `<section id="budgets">`), `budget-setup-wizard.tsx`, `budget-card.tsx`, `budget-verdict-card.tsx`, `budget-coverage-bars.tsx`, `budget-vs-actual-bars.tsx`, `budget-expense-log.tsx`, `budget-month-chart.tsx`, `budget-panels.tsx`, `budget-dialogs.tsx`, `budget-confirm-dialog.tsx`, `budget-export-dialog.tsx`, `budget-templates.ts`.
 
 ### `split/`
 Split-group UI (Splitwise replacement): quick-add sheet (amount field first + autofocused), expense/settle/recurrence/import dialogs, activity feed, category icons, `group-period-card.tsx` — the detail page's "Last 30 days" insights card (default-open `.collapse-grid` details with two CSS mini-treemaps — "By category" on `getCategoryColor`, "Who paid" on `getAvatarColor`, rects from the pure `computeTreemapLayout` in `src/lib/treemap-layout.ts`; each is `role="img"` labelled with names+percentages, money in legends/tooltips only — plus top expenses / `describeGroupPeriod` sentences; pure math in `computeGroupPeriodInsights`, deliberately no ECharts import) — and `bank-link-details-dialog.tsx` — display-only dialog showing another member's linked bank transaction (member, bank, date, amount, counterparty; never an IBAN). Member displays (balance banner, settle-up dropdowns, activity actors, detail rows) show `<UserAvatar>`s; detail/activity rows are whole-row clickable (expense → edit dialog, payment → row menu).
@@ -105,7 +109,7 @@ Pieces of the `/overview` wealth dashboard:
 - `forecast-vs-actual-card.tsx` — `PlanCheckCard`: "Plan vs reality" (pure engine in `src/lib/forecast-vs-actual.ts`)
 
 ### `reconcile/`
-- `reconcile-wizard.tsx` — Monthly check-in. Advanced mode: 3 steps (Select month → Enter actual balances for all entities → Review variances and confirm), with special handling for debt installments. **Simple mode**: one screen — auto-starts a session on the current month, shows the pre-filled balances list with reassurance copy, and a single "Save check-in" button.
+- `reconcile-wizard.tsx` — Monthly check-in. Advanced mode: 3 steps (Select month → Enter actual balances for all entities → Review variances and confirm), with special handling for debt installments. **Simple mode**: one screen — auto-starts a session on the current month, shows the pre-filled balances list with reassurance copy, and a single "Save check-in" button. Expected/actual values prefill from the engines' start-of-month values (`src/lib/reconcile-prefill.ts`; `docs/projections-and-reconciliation.md` §9). The dialog has no `dismissableMask` (a stray outside click must not discard entered balances). Snapshots are written sequentially; any failure stops before balances are applied, names the failed rows in an error + toast, and never shows "Check-in saved".
 
 ### `ui/`
 Shared UI components:
@@ -117,11 +121,11 @@ Shared UI components:
 - `entity-modal-router.tsx` — Routes entity types to the correct create/edit form
 - `kpi-tile.tsx` — `KpiTile`: the shared KPI card (title/value/change badge/subline/progress bar); zero-delta changes render as muted "unchanged" text instead of a "+€0,00" badge; optional `help` prop renders a `HelpHint`
 - `alert-banner.tsx` — `AlertBanner`: shared reminder/attention banner (check-in, Euribor, bank consent, budget warnings) with optional action button and dismiss
-- `help-hint.tsx` — `HelpHint`: tap/hover "?" affordance showing plain-language help text (`src/lib/plain-language.ts`)
+- `help-hint.tsx` — `HelpHint`: tap/hover "?" affordance showing plain-language help text (`src/lib/plain-language.ts`). A `::before` pseudo-element grows the hit area around the 16px glyph without changing layout — 44px on coarse pointers (`pointer-coarse:`), 24px for mouse so it never covers neighboring labels/inputs (tight callers add spacing on coarse pointers). The text is also rendered sr-only and linked via `aria-describedby`, because screen readers never announce the tooltip.
 - `empty-state.tsx` — `EmptyState`: shared icon + title + body + action block for empty lists
-- `debt-progress-card.tsx` — Compact debt payoff progress card (uses `getDebtPayoffInfo` from `lib/debt-utils.ts`)
-- `status-hero-card.tsx` — Headline status/summary card
-- `form-primitives.tsx` — Shared form field building blocks
+- `debt-progress-card.tsx` — Compact debt payoff progress card (uses `getDebtPayoffInfo` from `lib/debt-utils.ts`). "% paid" is measured against `getDebtOriginalPrincipal` (the max of `initialPrincipal`, `Debt.originalPrincipal` — captured before the first check-in overwrites `initialPrincipal` — and the debt's snapshot balances), with "remaining" read at the current month (`currentMonth`), not the last amortization row.
+- `status-hero-card.tsx` — `StatusHeroCard` props `{ userName, summary: HeroSummary | null, currency }`; `summary` comes from `deriveHeroSummary` (`src/lib/overview-hero.ts`); money strings are built at render time so demo masking applies (see the Overview `AGENTS.md`)
+- `form-primitives.tsx` — Shared form field building blocks (`MonthPicker` takes an `inputId` so a `<label htmlFor>` can target it; `HelpTip`, `ItemCard`, `SubEntityList`)
 - `delayed-loading.tsx` — `DelayedSpinner` / `DelayedSkeleton`: loading indicators that appear only after ~300ms (via `useDelayedFlag` in `lib/hooks/use-delayed-flag.ts`), so fast loads never flash a spinner
 - `chart-explain.tsx` — the "Explain this chart" system: `ChartExplain` wrapper (button + inline `.collapse-grid` panel + sr-only description via `aria-describedby`), `ChartExplainButton`/`ChartExplainPanel` (canned `ReadCue[]` rows with `ChartCueSwatch` shapes + a generated "in plain words" list), `useChartExplain` (panel state; defaults open in Simple mode), and `useChartTour`/`ChartTourBar` (step tours with ECharts `dispatchAction` highlights — cashflow trio only). Descriptions come from the pure `src/lib/chart-descriptions.ts` (unit-tested); money formatting is demo-mask-aware (`demoMasked` in describe `useMemo` deps). Every canvas chart must integrate this — see `docs/architecture.md` §17 chart guidance.
 - `skeletons.tsx` — content-shaped page skeletons (`KpiGridSkeleton`, `ChartsPageSkeleton`, `ListPageSkeleton`, `HomeSkeleton` (Home's glance/balances/activity region), `SplitDetailSkeleton`) used in place of full-page spinners on heavy pages (instant-shell pattern); size each block to the real content so the swap never shifts layout
@@ -148,3 +152,18 @@ const { register, handleSubmit, formState: { errors } } = useForm<FormData>({
   defaultValues: { ... }
 });
 ```
+
+Dialog forms submit on Enter through `useFormSubmit` (`src/lib/hooks/use-form-submit.ts`):
+```tsx
+const onFormSubmit = useFormSubmit(save, { disabled: saving });
+<form onSubmit={onFormSubmit} noValidate>
+  …fields…
+  <Button type="button" label="Cancel" onClick={onClose} />
+  <Button type="submit" label="Save" loading={saving} />
+</form>
+```
+Only the primary button is `type="submit"`; every other button inside the form is `type="button"`. The hook blurs a focused `InputNumber` (PrimeReact commits typed text only on blur/Enter) and runs the latest `save` on the next tick. To clear an optional field, send `null` (an absent key keeps the stored value — see `src/lib/actions/AGENTS.md`). Stateful dialogs that stay mounted reset their fields on the closed→open transition during render (e.g. `mortgage-dialogs.tsx`).
+
+### Confirmations, dates
+- Destructive prompts use the imperative `confirmDialog({...})` answered by the one `<ConfirmDialog />` in `AppLayout`; never mount another receiver and never call the browser's `confirm()` (`src/test/no-native-confirm.test.ts` fails on it).
+- Display dates through the fi-FI helpers in `src/lib/constants.ts` — `formatDate`, `formatDateTime`, `formatDayMonth` (bare `YYYY-MM-DD` parsed as a local date) — and months through `formatYearMonth`, never ad-hoc `toLocaleDateString` calls.

@@ -92,12 +92,17 @@ where `input = { mortgage, rates, costs, extraPayments, snapshots, actuals? }`.
   before the first entry). `loan-insurance` is per-loan (`loanId` required, validated in
   `setMortgageCost`); `invoicing-fee` and `service-fee` are mortgage-level — the
   invoicing fee is split evenly across the loans (`invoicingFeeShare`), the service fee
-  is per-person (see §4).
+  is per-person (see §4). `calculateMortgageProjection` charges both mortgage-level fees
+  only in months where at least one loan is active (`anyLoanActive`) — never before the
+  first loan starts or after the last is paid off.
 - **ASP subsidy** (`computeAspSubsidy`): only for `kind === 'asp'` loans with
   `aspSubsidy.enabled`, within `eligibilityYears × 12` months of the loan start, and only
   when the effective rate exceeds `thresholdRate`. Then
   `subsidy = interestAccrued × ((rate − threshold) / rate) × subsidyShare`;
   `interestPaid = interestAccrued − subsidy`.
+- **Payoff month**: `projectLoan` caps `scheduledPayment` at `balance + interestPaid`,
+  so the final month charges only what is left (after a shorten-term extra payment, in
+  `fixed-payment` mode, or with an `actual/360` residual at maturity).
 - **Extra payments** (`MortgageExtraPayment`): applied in their month on top of the
   scheduled principal, capped so the balance never goes negative. `mode: 'shorten-term'`
   keeps the installment (loan finishes earlier); `'lower-payment'` re-annuitizes the
@@ -185,19 +190,23 @@ affects that member's private cashflow, never the shared mortgage math.
 finds non-archived mortgages whose membership row links to the account, runs the engine
 from genesis to `maxTerm + 24` months, and emits one `MortgageTransfer`
 (`{ yearMonth, mortgageId, mortgageName, amount }`, type in `src/lib/projection.ts`) per
-month where the member's `monthlyDeposit > 0.005`. `getProjection` passes these as the
-7th parameter of `calculateProjection`, which renders each as a **read-only expense line
-with `source: 'mortgage-payment'`**. The line is not a stored entity; clicking it in the
+month where the member's `monthlyDeposit > 0.005`. `computeAccountProjection` passes
+these as the 7th parameter of `calculateProjection`, which renders each as a **read-only
+expense line with `source: 'mortgage-payment'`**. The line is not a stored entity; clicking it in the
 cashflow UI deep-links to `/mortgage`. Errors in the mortgage path are caught and logged
 so they never break the core cashflow projection. Details of transfer injection:
 [projections-and-reconciliation.md](projections-and-reconciliation.md).
 
-**Euribor reminder**: the Overview page (`src/app/(dashboard)/overview/page.tsx`) calls
-`isEuriborUpdateDue(mortgage, rates)` (`src/lib/mortgage-utils.ts`) and shows a banner
+**Euribor reminder**: the Overview wealth assembly (`assembleWealthProjection` in
+`src/lib/wealth-assembly.ts`) and the mortgage page call
+`isEuriborUpdateDue(mortgage, rates)` (`src/lib/mortgage-utils.ts`) and show a banner
 when due. "Due" = inside the window around the reset anchor
 (`rateResetMonth`/`rateResetDay`): ≤ 7 days before the next reset or 0–60 days after the
 last one, **and** no rate entry exists with `effectiveDate >= resetYearMonth` — so the
-banner appears once a year and disappears as soon as the new rate is entered.
+banner appears once a year and disappears as soon as the new rate is entered. In the
+week before a reset the cycle asked for is the **upcoming** one (its rate is published
+before the reset), otherwise the most recent reset; `resetYearMonth` in the returned
+`EuriborDueInfo` names that cycle.
 
 ## 6. Workflows (UI)
 
@@ -237,8 +246,19 @@ Data; per-month **Reconcile** stays on the ledger rows.
   (`1 234,56`); values are taken as absolute magnitudes. A "Replace all existing imported
   history" checkbox (default **on**) maps to `importMortgageActuals`'s `replaceAll`,
   which clears all actuals before writing. `clearMortgageActuals` drops everything.
+- **Correct a balance** (`DriftAdjustmentDialog` in `mortgage-dialogs.tsx`): records a
+  drift snapshot (`recordMortgageBalanceSnapshot`, §3) for a loan and month. The balance
+  input starts **empty** and Save stays disabled until a value is typed, so a habitual
+  tap never records a €0 snapshot.
 - **Extra payments**: `addMortgageExtraPayment` / `deleteMortgageExtraPayment` with
-  `mode: 'shorten-term' | 'lower-payment'` (engine behavior in §2).
+  `mode: 'shorten-term' | 'lower-payment'` (engine behavior in §2). The extra-payment
+  and correct-a-balance dialogs stay mounted and reset their fields on every opening
+  (closed→open transition during render).
+- **Confirmations**: every destructive mortgage action goes through the global
+  `confirmDialog` — deleting the mortgage (for all members), reverting a month to
+  forecast, clearing imported history, removing a member, and deleting a rate or fee
+  entry (`mortgage-history-strips.tsx`; the message notes every member's projection is
+  recalculated).
 - **Members dialog**: owner-gated add/remove/update (`addMortgageMemberByEmail`,
   `removeMortgageMember`, `updateMortgageMember`) — an owner sees a role dropdown
   (Owner/Member) on every member row instead of a static tag, so ownership transfer is

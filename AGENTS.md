@@ -1,7 +1,7 @@
 # Sampolio — AI Agent Instructions
 
 This is a self-hosted personal-finance app: Next.js 16 App Router, TypeScript
-strict, PrimeReact, Tailwind v4, Better Auth 1.7.5 (password + passkeys),
+strict, PrimeReact, Tailwind v4, Better Auth 1.7.6 (password + passkeys),
 Zod/RHF, ECharts/Chart.js, and `date-fns`. Use `pnpm`. Financial data is
 encrypted JSON files; users/auth live in a SQLCipher SQLite DB
 (`src/lib/db/sqlite/`). Enable Banking is optional, read-only, and documented in
@@ -63,7 +63,8 @@ wrappers where appropriate. Use tags such as
 full inventory is in `src/lib/actions/AGENTS.md` and `docs/architecture.md`.
 
 DB files use `getDataDir`, `getUserDir`, `ensureDir`, encrypted per-entity files,
-and read-modify-write CRUD. Users are the exception: `src/lib/db/users.ts` keeps
+and read-modify-write CRUD; build id paths only with `entityPath`/`entityDir`
+(path-guarded ids, `UnsafePathError`). Users are the exception: `src/lib/db/users.ts` keeps
 its signatures over the SQLCipher DB; move further entities with the pattern in
 `src/lib/db/AGENTS.md`. Server code reads the session only through `auth()`
 (`src/lib/auth.ts`, old `{ user: { id, email, name, role } }` shape); clients use
@@ -116,7 +117,8 @@ The dashboard group already wraps/authenticates pages; `/` is Home and
 `calculateProjection` is the sole cashflow engine; full rules are in
 [`docs/projections-and-reconciliation.md`](docs/projections-and-reconciliation.md).
 Taxed income projects at frozen `netAmount`; snapshots are last-write-wins per
-entity/month; occurrence overrides replace that occurrence; card-paid expenses
+entity/month (a manual one is the month's opening balance, a bank-sync one a live
+balance carrying its stored `monthStartBalance`); occurrence overrides replace that occurrence; card-paid expenses
 enter the card bill once; injected mortgage/budget/card/goal/trip lines are
 read-only. Scenarios reuse the same gathered inputs and are never persisted.
 

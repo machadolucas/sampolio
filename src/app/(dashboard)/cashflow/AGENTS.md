@@ -14,7 +14,7 @@ Monthly cash flow management page — the core feature for tracking income and e
 ## Features
 
 ### Account Selector
-Dropdown in the page header to switch between cash accounts. Only shows active (non-archived) accounts. Renders a wallet icon + the account's **current balance** ("Everyday · €1 234") via `valueTemplate`/`itemTemplate` so it reads as an account picker. Selected account is stored in AppContext.
+Dropdown in the page header to switch between cash accounts. Only shows active (non-archived) accounts. Renders a wallet icon + the account's **current balance** ("Everyday · €1 234") via `valueTemplate`/`itemTemplate` so it reads as an account picker. The account list comes from AppLayout's context (`appContext.accounts`, filtered to non-archived; the page makes no `getAccounts` call of its own) and the page shows its loading state until `appContext.accountsLoaded`. The user's pick is page state; the effective selection falls back to the first active account and re-picks when the chosen one is archived or deleted.
 
 ### Month Strip Navigation
 Horizontal scrollable strip of months from the account's start date through its planning horizon. Clicking a month selects it and scrolls to show details. The current month is highlighted (blue); **retrospective "actual" months** (real bank data, before the anchor) render with a distinct purple/dashed style + a history icon (see "Retrospective" below).
@@ -30,7 +30,7 @@ When the selected cash account is linked to a synced bank account, `getProjectio
 Shows for the selected month: total income, total expenses, and net change (income - expenses). When the selected month is **actualized** (`selectedProjection.isActualized`, i.e. it's a bank-linked account's current calendar month — see "Current-month actualization" below), the tile labels switch to "Income left" / "Expenses left" / "Net left" (advanced mode) or stay "Money in" / "Money out" / "Left over" (simple mode, where a plain sentence covers the same idea), each with an "of {planned} planned" subline, and an `"adjusted for what's already happened"` tag appears next to the banner. A caption under the Monthly Flow chart notes that some items are already paid for that month.
 
 ### Current-month actualization
-For a bank-linked account, the current calendar month's row comes back from `getProjection` with `isActualized: true`: the anchor balance is the live synced balance, so the engine reconciles that month's forecast lines against booked bank transactions and reports only the still-outstanding remainder (see `docs/projections-and-reconciliation.md` §7). UI surfaces:
+For a bank-linked account, the actualized anchor month's row (normally the current calendar month) comes back from `getProjection` with `isActualized: true`: the engine starts it at the month-start balance O plus every booked row of the month, reconciles that month's forecast lines against those booked transactions, and reports only the still-outstanding remainder (see `docs/projections-and-reconciliation.md` §7). On that row `startingBalance` is the live booked balance ("Balance today") and `openingBalance` is O, the month's opening; the whole-month net is `endingBalance − openingBalance` (the Overview hero uses exactly that). UI surfaces:
 - **`month-details-panel.tsx`**: the balance-flow header reads "Balance today" → a "Still ahead" pill → "Projected end of month" (plain-language via `plainTerm('balanceToday'|'stillAhead', isSimple)`, `src/lib/plain-language.ts`) instead of "Starting" → "Ending". Matched line items (`item.isPaid`) get a green "Paid" tag and their planned `amount` renders struck-through; gap-reduced unmatched lines get an info tag showing `"{remainingAmount} left"`. Items flagged `isFixedAmount` (the item modal's "Fixed amount" checkbox, expense-only under "More options") never show the partial "left" tag — they are `'exact-only'`: either exact-matched Paid or the full amount stands.
 - **`projection-table.tsx`**: an actualized row gets an "in progress" tag next to its month label, on both the desktop DataTable and the mobile card list.
 - **Home dashboard**'s explain-the-number dialog switches to "right now" / "still left to come" wording when the underlying month is actualized.
@@ -75,16 +75,16 @@ Full monthly data table with columns: Month, Income, Expenses, Net Change, Balan
 - "This occurrence only" — creates an occurrence override (PlannedItem with `isRecurringOverride: true`)
 - "Entire series" — edits the RecurringItem itself
 
-**Occurrence Override Dialog** (`src/components/ui/occurrence-override-dialog.tsx`):
+**Occurrence Override Dialog** (`src/components/modals/occurrence-override-dialog.tsx`):
 - Allows changing the amount for a single month
-- Option to skip the occurrence entirely (`skipOccurrence: true`)
+- Option to skip the occurrence entirely (`skipOccurrence: true`); an amount of 0 is saved as a skip too (`toOccurrenceOverridePayload`, `src/lib/schemas/occurrence-override.schema.ts` — the server accepts only positive override amounts)
 
 **CashflowItemModal** (`src/components/modals/cashflow-item-modal.tsx`):
 - Unified modal for creating/editing income and expenses — **React Hook Form + `zodResolver(cashflowItemSchema)`** (`src/lib/schemas/cashflow-item.schema.ts`: one flat superset schema with a `recurrence` discriminator; `superRefine` enforces the per-variant required fields so RHF keeps a single object across recurrence switches)
 - Supports four recurrence types: Recurring, One-off, Salary, and **Gross income** (taxed income; income-only)
 - For Salary: shows gross salary, benefits, tax rate, contributions, deductions with live net calculation
 - For Gross income: gross amount, one-time or recurring schedule (yearly default frequency), a **"Use my salary's tax settings"** toggle (default on when an active salary config exists; disabled otherwise) vs custom rates, a live net preview via `calculateTaxedIncomeNet` (`src/lib/taxed-income-utils.ts`), and **skip-occurrence chips** (the next ~3 occurrence months via `getUpcomingTaxedIncomeOccurrences` — tap to skip a year, stored as `skippedOccurrences` on the entity). Saving a salary config cascade-recomputes salary-linked taxed incomes server-side (see `docs/projections-and-reconciliation.md`)
-- **List view is two sections** (the recurrence filter row is gone; the Income/Expense filter remains): "Regular items" — three summary cards (≈Monthly income / ≈Monthly expenses / ≈Net per month over ACTIVE items' monthly equivalents: quarterly ÷3, yearly ÷12) plus a sortable "≈ / month" DataTable column — and "One-time items" — a compact "Upcoming: +X / −Y" strip (scheduled month ≥ current) + a month-sorted table
+- **List view is two sections** (the recurrence filter row is gone; the Income/Expense filter remains): "Regular items" — three summary cards (≈Monthly income / ≈Monthly expenses / ≈Net per month over ACTIVE items' monthly equivalents: quarterly ÷3, yearly ÷12) plus a sortable "≈ / month" DataTable column — and "One-time items" — a compact "Upcoming: +X / −Y" strip (scheduled month ≥ current) + a month-sorted table. Below `lg` both sections render as stacked lists instead of DataTables, with 44px sort buttons (`sortMobileItems`: the same keys and default directions as the desktop tables' initial sort)
 - Clicking a `source: 'taxed-income'` projection line routes to entityType `'taxed-income'` (its own mapping in `entity-modal-router.tsx` → this modal with recurrence `'taxed-income'`), never to `'salary'`
 
 ## Data Flow
@@ -106,7 +106,7 @@ They are not stored cashflow items — clicking them deep-links to `/mortgage`, 
 
 ## Key Types
 
-- `MonthlyProjection` — Monthly income/expense breakdown with balances (`isActual: true` marks a bank-actual retrospective month; `isActualized: true` marks the current-month-actuals row for a bank-linked account, with `totalIncome`/`totalExpenses` holding REMAINING amounts and `plannedTotalIncome`/`plannedTotalExpenses` holding the original planned sums)
+- `MonthlyProjection` — Monthly income/expense breakdown with balances (`isActual: true` marks a bank-actual retrospective month; `isActualized: true` marks the actualized anchor-month row for a bank-linked account, with `totalIncome`/`totalExpenses` holding REMAINING amounts, `plannedTotalIncome`/`plannedTotalExpenses` holding the original planned sums, and `openingBalance` holding the month-start balance O while `startingBalance` is the live booked balance)
 - `MonthFlowData` — Processed flow data for visualization
 - `CashflowItem` — Individual income/expense item in a month
 - `ProjectionLineItem` — Line item in a projection with source tracking (`source`: `'bank-actual'` = a real-transaction retrospective line; `'mortgage-payment'`/`'budget'`/`'credit-card'`/`'goal'`/`'trip'` = injected lines; `remainingAmount`/`isPaid`/`matchedTxId` are set only on an actualized month's lines — `amount` always stays the planned/effective amount, `isPaid` means exact-matched to a booked transaction, `remainingAmount < amount` with `isPaid` false means a category-gap-blended partial)
