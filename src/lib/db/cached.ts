@@ -445,7 +445,7 @@ export async function cachedGetAllUsers(): Promise<User[]> {
 export async function cachedGetBalanceSnapshots(userId: string): Promise<BalanceSnapshot[]> {
   'use cache';
   cacheTag('all-data', `user:${userId}`, `user:${userId}:reconciliation`);
-  cacheLife('indefinite');
+  cacheLife('synced'); // bank-sync anchors are written in the background — see cachedGetLatestSnapshot
   return getBalanceSnapshots(userId);
 }
 
@@ -456,7 +456,7 @@ export async function cachedGetSnapshotsForEntity(
 ): Promise<BalanceSnapshot[]> {
   'use cache';
   cacheTag('all-data', `user:${userId}`, `user:${userId}:reconciliation`);
-  cacheLife('indefinite');
+  cacheLife('synced'); // bank-sync anchors are written in the background — see cachedGetLatestSnapshot
   return getSnapshotsForEntity(userId, entityType, entityId);
 }
 
@@ -466,7 +466,7 @@ export async function cachedGetSnapshotsForMonth(
 ): Promise<BalanceSnapshot[]> {
   'use cache';
   cacheTag('all-data', `user:${userId}`, `user:${userId}:reconciliation`);
-  cacheLife('indefinite');
+  cacheLife('synced'); // bank-sync anchors are written in the background — see cachedGetLatestSnapshot
   return getSnapshotsForMonth(userId, yearMonth);
 }
 

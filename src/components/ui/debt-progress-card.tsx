@@ -83,7 +83,7 @@ export function DebtProgressCard({ debt, payoffInfo, isSimpleMode }: DebtProgres
         <span className="font-medium">{displayPercent}% paid off</span>
         {' · '}
         {formatCurrency(payoffInfo.remaining, debt.currency)} remaining of{' '}
-        {formatCurrency(debt.initialPrincipal, debt.currency)}
+        {formatCurrency(payoffInfo.principalBase, debt.currency)}
       </p>
 
       {/* Details row */}

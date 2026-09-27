@@ -189,6 +189,8 @@ export async function createContribution(
     const contribution = await dbCreateContribution(session.user.id, investmentId, validated);
 
     updateTag(`user:${session.user.id}:investment:${investmentId}:contributions`);
+    // Parent tag too: aggregate reads (cachedGetWealthData → backups) embed these rows.
+    updateTag(`user:${session.user.id}:investments`);
     return { success: true, data: contribution };
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -223,6 +225,8 @@ export async function updateContribution(
     }
 
     updateTag(`user:${session.user.id}:investment:${investmentId}:contributions`);
+    // Parent tag too: aggregate reads (cachedGetWealthData → backups) embed these rows.
+    updateTag(`user:${session.user.id}:investments`);
     return { success: true, data: contribution };
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -245,6 +249,8 @@ export async function deleteContribution(
 
     await dbDeleteContribution(session.user.id, investmentId, contributionId);
     updateTag(`user:${session.user.id}:investment:${investmentId}:contributions`);
+    // Parent tag too: aggregate reads (cachedGetWealthData → backups) embed these rows.
+    updateTag(`user:${session.user.id}:investments`);
     return { success: true };
   } catch (error) {
     console.error('Delete contribution error:', error);

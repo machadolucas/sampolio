@@ -554,6 +554,12 @@ export function CashflowItemModal({
     const onValid = async (data: CashflowItemFormData) => {
         setIsSaving(true);
         try {
+            // Actions return `{ success: false }` instead of throwing, so every
+            // branch hands its ApiResponse back for one shared success check.
+            // On update, cleared optional fields are sent as `null` — an
+            // `undefined` key is dropped in transit and would leave the stored
+            // value untouched.
+            let res: { success: boolean; error?: string };
             if (data.recurrence === 'salary') {
                 const body = {
                     name: data.name,
@@ -568,9 +574,12 @@ export function CashflowItemModal({
                     isLinkedToRecurring: data.isLinkedToRecurring,
                 };
                 if (editingItem?.sourceType === 'salary') {
-                    await updateSalaryConfig(selectedAccountId, editingItem.id, body);
+                    res = await updateSalaryConfig(selectedAccountId, editingItem.id, {
+                        ...body,
+                        endDate: data.endDate || null,
+                    });
                 } else {
-                    await createSalaryConfig(selectedAccountId, body);
+                    res = await createSalaryConfig(selectedAccountId, body);
                 }
             } else if (data.recurrence === 'taxed-income') {
                 const kind = data.tiKind ?? 'one-off';
@@ -593,9 +602,9 @@ export function CashflowItemModal({
                     isActive: data.isActive,
                 };
                 if (editingItem?.sourceType === 'taxed-income') {
-                    await updateTaxedIncome(selectedAccountId, editingItem.id, body);
+                    res = await updateTaxedIncome(selectedAccountId, editingItem.id, body);
                 } else {
-                    await createTaxedIncome(selectedAccountId, body);
+                    res = await createTaxedIncome(selectedAccountId, body);
                 }
             } else if (data.recurrence === 'one-off') {
                 const wantsReimbursement = data.type === 'expense' && !!data.isReimbursable;
@@ -613,12 +622,15 @@ export function CashflowItemModal({
                     expectedReimbursementMonth: wantsReimbursement ? data.expectedReimbursementMonth : undefined,
                 };
                 if (editingItem?.sourceType === 'planned') {
-                    await updatePlannedItem(selectedAccountId, editingItem.id, {
+                    res = await updatePlannedItem(selectedAccountId, editingItem.id, {
                         ...body,
+                        category: data.category || null,
+                        paidByCardLinkId: data.type === 'expense' ? (data.paidByCardLinkId || null) : null,
+                        isFixedAmount: data.type === 'expense' && !!data.isFixedAmount,
                         reimbursementStatus: wantsReimbursement ? data.reimbursementStatus : undefined,
                     });
                 } else {
-                    await createPlannedItem(selectedAccountId, body);
+                    res = await createPlannedItem(selectedAccountId, body);
                 }
             } else {
                 const body = {
@@ -634,11 +646,36 @@ export function CashflowItemModal({
                     paidByCardLinkId: data.type === 'expense' ? (data.paidByCardLinkId || undefined) : undefined,
                     isFixedAmount: data.type === 'expense' ? (data.isFixedAmount || undefined) : undefined,
                 };
+                const clearedOnUpdate = {
+                    category: data.category || null,
+                    endDate: data.endDate || null,
+                    paidByCardLinkId: data.type === 'expense' ? (data.paidByCardLinkId || null) : null,
+                    isFixedAmount: data.type === 'expense' && !!data.isFixedAmount,
+                };
                 if (editingItem?.sourceType === 'recurring') {
-                    await updateRecurringItem(selectedAccountId, editingItem.id, body);
+                    res = await updateRecurringItem(selectedAccountId, editingItem.id, { ...body, ...clearedOnUpdate });
+                } else if (editingItem?.sourceType === 'planned') {
+                    // A legacy/imported repeating planned item opens in the
+                    // recurring form; update it in place instead of creating a
+                    // recurring copy next to it.
+                    res = await updatePlannedItem(selectedAccountId, editingItem.id, {
+                        type: body.type,
+                        kind: 'repeating',
+                        name: body.name,
+                        amount: body.amount,
+                        frequency: body.frequency,
+                        customIntervalMonths: body.customIntervalMonths,
+                        firstOccurrence: body.startDate,
+                        ...clearedOnUpdate,
+                    });
                 } else {
-                    await createRecurringItem(selectedAccountId, body);
+                    res = await createRecurringItem(selectedAccountId, body);
                 }
+            }
+
+            if (!res.success) {
+                toast.error(res.error || 'Failed to save item');
+                return;
             }
 
             await fetchAll();
@@ -658,21 +695,28 @@ export function CashflowItemModal({
     const performDelete = async (item: UnifiedItem) => {
         setIsDeleting(true);
         try {
+            let res: { success: boolean; error?: string } = { success: false, error: 'Unsupported item' };
             if (item.sourceType === 'recurring') {
-                await deleteRecurringItem(selectedAccountId, item.id);
+                res = await deleteRecurringItem(selectedAccountId, item.id);
             } else if (item.sourceType === 'planned') {
-                await deletePlannedItem(selectedAccountId, item.id);
+                res = await deletePlannedItem(selectedAccountId, item.id);
             } else if (item.sourceType === 'salary') {
-                await deleteSalaryConfig(selectedAccountId, item.id);
+                res = await deleteSalaryConfig(selectedAccountId, item.id);
             } else if (item.sourceType === 'taxed-income') {
-                await deleteTaxedIncome(selectedAccountId, item.id);
+                res = await deleteTaxedIncome(selectedAccountId, item.id);
+            }
+            if (!res.success) {
+                toast.error(res.error || 'Failed to delete item');
+                return false;
             }
             await fetchAll();
             onDataChange?.();
             toast.success('Item deleted');
+            return true;
         } catch (err) {
             console.error('Failed to delete:', err);
             toast.error('Failed to delete item');
+            return false;
         } finally {
             setIsDeleting(false);
         }
@@ -703,7 +747,7 @@ export function CashflowItemModal({
             icon: 'pi pi-trash',
             acceptClassName: 'p-button-danger',
             accept: async () => {
-                await performDelete(item);
+                if (!(await performDelete(item))) return;
                 setIsFormOpen(false);
                 resetForm();
                 if (isStandaloneFormMode) onHide();
@@ -713,12 +757,17 @@ export function CashflowItemModal({
 
     const handleToggleActive = async (item: UnifiedItem) => {
         try {
+            let res: { success: boolean; error?: string } = { success: false, error: 'Unsupported item' };
             if (item.sourceType === 'recurring') {
-                await updateRecurringItem(selectedAccountId, item.id, { isActive: !item.isActive });
+                res = await updateRecurringItem(selectedAccountId, item.id, { isActive: !item.isActive });
             } else if (item.sourceType === 'salary') {
-                await updateSalaryConfig(selectedAccountId, item.id, { isActive: !item.isActive });
+                res = await updateSalaryConfig(selectedAccountId, item.id, { isActive: !item.isActive });
             } else if (item.sourceType === 'taxed-income') {
-                await updateTaxedIncome(selectedAccountId, item.id, { isActive: !item.isActive });
+                res = await updateTaxedIncome(selectedAccountId, item.id, { isActive: !item.isActive });
+            }
+            if (!res.success) {
+                toast.error(res.error || 'Failed to update status');
+                return;
             }
             await fetchAll();
             onDataChange?.();

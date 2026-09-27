@@ -10,6 +10,7 @@ import {
 } from '@/lib/db/accounts';
 import { cachedGetAccounts, cachedGetAccountById } from '@/lib/db/cached';
 import { updateTag } from 'next/cache';
+import { clearNullsInPatch } from '@/lib/patch-utils';
 import type { ApiResponse, FinancialAccount } from '@/types';
 
 const createAccountSchema = z.object({
@@ -98,10 +99,8 @@ export async function updateAccount(
     }
 
     const parsedData = updateAccountSchema.parse(data);
-    const updateData = {
-      ...parsedData,
-      customEndDate: parsedData.customEndDate ?? undefined,
-    };
+    // Only keys the caller sent are touched; `null` clears the custom end date.
+    const updateData = clearNullsInPatch(parsedData, ['customEndDate']);
 
     const account = await dbUpdateAccount(session.user.id, accountId, updateData);
     if (!account) {

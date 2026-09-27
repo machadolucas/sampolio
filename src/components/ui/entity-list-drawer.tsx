@@ -15,7 +15,7 @@ import { Tooltip } from 'primereact/tooltip';
 import { MdAccountBalanceWallet, MdBarChart, MdGroup, MdCreditCard, MdAdd, MdCheck, MdInfo, MdVisibility, MdVisibilityOff } from 'react-icons/md';
 import { formatCurrency, formatYearMonth, CURRENCIES, FREQUENCIES, PLANNING_HORIZONS } from '@/lib/constants';
 import { getCurrentYearMonth, addMonths } from '@/lib/projection';
-import { getDebtPayoffInfo } from '@/lib/debt-utils';
+import { getDebtPayoffInfo, getDebtOriginalPrincipal } from '@/lib/debt-utils';
 import { calculateDebtAmortization } from '@/lib/wealth-projection';
 import { DebtProgressCard } from '@/components/ui/debt-progress-card';
 import { useAppContext } from '@/components/layout/app-layout';
@@ -58,7 +58,9 @@ import {
     createExtraPayment,
     deleteExtraPayment as deleteExtraPaymentAction,
 } from '@/lib/actions/debts';
+import { getSnapshotsForEntity } from '@/lib/actions/reconciliation';
 import type {
+    BalanceSnapshot,
     FinancialAccount,
     InvestmentAccount,
     InvestmentContribution,
@@ -116,7 +118,11 @@ function AccountForm({ account, onSave, onCancel }: {
         setIsSaving(true);
         try {
             const payload = { name, currency: currency as Currency, startingBalance, startingDate, planningHorizonMonths, customEndDate: planningHorizonMonths === -1 ? customEndDate : undefined };
-            const result = account ? await updateAccount(account.id, payload) : await createAccount(payload);
+            // On update a switch away from a custom end date sends `null` so it is
+            // cleared (an `undefined` key is dropped in transit and kept as-is).
+            const result = account
+                ? await updateAccount(account.id, { ...payload, customEndDate: payload.customEndDate ?? null })
+                : await createAccount(payload);
             if (!result.success) { setError(result.error || 'Failed to save'); return; }
             toast.success('Success', account ? 'Account updated successfully' : 'Account created successfully');
             onSave();
@@ -756,6 +762,7 @@ export function EntityListDrawer({ visible, category, onClose, onRefresh, editEn
     const [debts, setDebts] = useState<Debt[]>([]);
     const [referenceRates, setReferenceRates] = useState<Map<string, DebtReferenceRate[]>>(new Map());
     const [extraPayments, setExtraPayments] = useState<Map<string, DebtExtraPayment[]>>(new Map());
+    const [debtSnapshots, setDebtSnapshots] = useState<Map<string, BalanceSnapshot[]>>(new Map());
 
     const fetchData = useCallback(async () => {
         setIsLoading(true);
@@ -798,14 +805,18 @@ export function EntityListDrawer({ visible, category, onClose, onRefresh, editEn
                         setDebts(res.data);
                         const rrMap = new Map<string, DebtReferenceRate[]>();
                         const epMap = new Map<string, DebtExtraPayment[]>();
+                        const snMap = new Map<string, BalanceSnapshot[]>();
                         for (const d of res.data) {
                             const rr = await getReferenceRates(d.id);
                             if (rr.success && rr.data) rrMap.set(d.id, rr.data);
                             const ep = await getExtraPayments(d.id);
                             if (ep.success && ep.data) epMap.set(d.id, ep.data);
+                            const sn = await getSnapshotsForEntity('debt', d.id);
+                            if (sn.success && sn.data) snMap.set(d.id, sn.data);
                         }
                         setReferenceRates(rrMap);
                         setExtraPayments(epMap);
+                        setDebtSnapshots(snMap);
                     }
                     break;
                 }
@@ -994,12 +1005,19 @@ export function EntityListDrawer({ visible, category, onClose, onRefresh, editEn
                     const debtRates = referenceRates.get(debt.id) || [];
                     const debtEps = extraPayments.get(debt.id) || [];
                     const isExpanded = expandedId === debt.id;
-                    // Progress framing: run the amortization engine over a long
-                    // horizon so the payoff month is found (cheap for few debts).
+                    // Progress framing: run the amortization engine (anchored on the
+                    // latest check-in snapshot, like the Overview) over a long horizon
+                    // so the payoff month is found; "remaining" is read from the
+                    // current month's row, not the final (always 0) payoff row.
+                    const snaps = debtSnapshots.get(debt.id) || [];
                     const rows = calculateDebtAmortization(
-                        debt, debtRates, debtEps, debt.startDate, addMonths(getCurrentYearMonth(), 480)
+                        debt, debtRates, debtEps, debt.startDate, addMonths(getCurrentYearMonth(), 480),
+                        snaps.length > 0 ? snaps[snaps.length - 1] : null
                     );
-                    const payoff = getDebtPayoffInfo(debt, rows);
+                    const payoff = getDebtPayoffInfo(debt, rows, {
+                        currentMonth: getCurrentYearMonth(),
+                        originalPrincipal: getDebtOriginalPrincipal(debt, snaps),
+                    });
                     const subtitle = isSimple
                         ? `${Math.round(payoff.percentPaid)}% paid off${payoff.estimatedPayoffDate ? ` · debt-free ${formatYearMonth(payoff.estimatedPayoffDate)}` : ''}`
                         : `${formatCurrency(debt.initialPrincipal, debt.currency)} · ${debt.debtType} · ${debt.interestModelType}`;

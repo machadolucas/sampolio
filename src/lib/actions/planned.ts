@@ -11,6 +11,7 @@ import {
 } from '@/lib/db/planned-items';
 import { resolveAnchor, addMonths, compareYearMonths } from '@/lib/projection';
 import { updateTag } from 'next/cache';
+import { clearNullsInPatch } from '@/lib/patch-utils';
 import type { ApiResponse, PlannedItem, YearMonth } from '@/types';
 
 const createPlannedItemSchema = z.object({
@@ -159,12 +160,8 @@ export async function updatePlannedItem(
     }
 
     const parsedData = updatePlannedItemSchema.parse(data);
-    const updateData = {
-      ...parsedData,
-      category: parsedData.category ?? undefined,
-      endDate: parsedData.endDate ?? undefined,
-      paidByCardLinkId: parsedData.paidByCardLinkId ?? undefined,
-    };
+    // Only keys the caller sent are touched; `null` clears the field.
+    const updateData = clearNullsInPatch(parsedData, ['category', 'endDate', 'paidByCardLinkId']);
 
     const item = await dbUpdatePlannedItem(session.user.id, accountId, itemId, updateData);
     if (!item) {

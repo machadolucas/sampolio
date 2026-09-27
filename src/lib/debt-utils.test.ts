@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { getDebtPayoffInfo } from './debt-utils';
-import { createMockDebt } from '@/test/mocks';
+import { getDebtPayoffInfo, getDebtOriginalPrincipal } from './debt-utils';
+import { calculateDebtAmortization } from './wealth-projection';
+import { createMockDebt, createMockSnapshot } from '@/test/mocks';
 import type { DebtAmortizationRow } from '@/types';
 
 function createRow(overrides: Partial<DebtAmortizationRow>): DebtAmortizationRow {
@@ -227,5 +228,45 @@ describe('getDebtPayoffInfo', () => {
       expect(info.percentPaid).toBe(100);
       expect(info.estimatedPayoffDate).toBe('2026-02');
     });
+  });
+});
+
+describe('getDebtPayoffInfo with a long payoff horizon (drawer usage)', () => {
+  const debt = createMockDebt({
+    debtType: 'amortized', initialPrincipal: 20000, startDate: '2024-01',
+    interestModelType: 'fixed', fixedInterestRate: 3, monthlyPayment: 400,
+  });
+  const rows = calculateDebtAmortization(debt, [], [], debt.startDate, '2066-01');
+
+  it('reads remaining from the current month, not the final payoff row', () => {
+    const info = getDebtPayoffInfo(debt, rows, { currentMonth: '2026-09' });
+    const current = rows.find(r => r.yearMonth === '2026-09')!;
+    expect(info.remaining).toBeCloseTo(current.endingPrincipal, 6);
+    expect(info.remaining).toBeGreaterThan(0);
+    expect(info.percentPaid).toBeGreaterThan(0);
+    expect(info.percentPaid).toBeLessThan(100);
+    expect(info.estimatedPayoffDate).toBe(rows[rows.length - 1].yearMonth);
+  });
+
+  it('reports 0 remaining after the payoff month and the start principal before the first row', () => {
+    expect(getDebtPayoffInfo(debt, rows, { currentMonth: '2070-01' }).remaining).toBe(0);
+    expect(getDebtPayoffInfo(debt, rows, { currentMonth: '2023-06' }).remaining).toBe(20000);
+  });
+
+  it('measures progress against the recovered original principal after a check-in', () => {
+    // A check-in rewrote initialPrincipal to the confirmed balance.
+    const checkedIn = { ...debt, initialPrincipal: 12000 };
+    const snap = createMockSnapshot({
+      entityType: 'debt', entityId: debt.id, yearMonth: '2026-03',
+      expectedBalance: -20000, actualBalance: -12000,
+    });
+    const anchoredRows = calculateDebtAmortization(checkedIn, [], [], checkedIn.startDate, '2066-01', snap);
+    const original = getDebtOriginalPrincipal(checkedIn, [snap]);
+    expect(original).toBe(20000);
+    const info = getDebtPayoffInfo(checkedIn, anchoredRows, { currentMonth: '2026-09', originalPrincipal: original });
+    expect(info.principalBase).toBe(20000);
+    expect(info.remaining).toBeLessThan(12000);
+    expect(info.percentPaid).toBeGreaterThan(40);
+    expect(info.percentPaid).toBeLessThan(100);
   });
 });

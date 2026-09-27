@@ -10,6 +10,7 @@ import {
 } from '@/lib/db/salary-configs';
 import { recomputeSalaryLinkedTaxedIncomes } from '@/lib/db/taxed-income';
 import { updateTag } from 'next/cache';
+import { clearNullsInPatch } from '@/lib/patch-utils';
 import type { ApiResponse, SalaryConfig } from '@/types';
 
 const salaryBenefitSchema = z.object({
@@ -114,6 +115,8 @@ export async function createSalaryConfig(
     });
 
     updateTag(`user:${session.user.id}:account:${accountId}:salary`);
+    // The DB layer creates/updates/deletes the linked "Salary:" recurring item.
+    updateTag(`user:${session.user.id}:account:${accountId}:recurring`);
 
     // Cascade: taxed incomes on this account that follow the salary's tax
     // settings get their frozen net recomputed against the new rates.
@@ -142,10 +145,8 @@ export async function updateSalaryConfig(
     }
 
     const parsedData = updateSalaryConfigSchema.parse(data);
-    const updateData = {
-      ...parsedData,
-      endDate: parsedData.endDate ?? undefined,
-    };
+    // Only keys the caller sent are touched; `null` clears the end date.
+    const updateData = clearNullsInPatch(parsedData, ['endDate']);
 
     const config = await dbUpdateSalaryConfig(session.user.id, accountId, configId, updateData);
     if (!config) {
@@ -153,6 +154,8 @@ export async function updateSalaryConfig(
     }
 
     updateTag(`user:${session.user.id}:account:${accountId}:salary`);
+    // The DB layer creates/updates/deletes the linked "Salary:" recurring item.
+    updateTag(`user:${session.user.id}:account:${accountId}:recurring`);
 
     // Cascade: recompute taxed incomes that follow the salary's tax settings.
     const changed = await recomputeSalaryLinkedTaxedIncomes(session.user.id, accountId);
@@ -180,6 +183,8 @@ export async function deleteSalaryConfig(
 
     await dbDeleteSalaryConfig(session.user.id, accountId, configId);
     updateTag(`user:${session.user.id}:account:${accountId}:salary`);
+    // The DB layer creates/updates/deletes the linked "Salary:" recurring item.
+    updateTag(`user:${session.user.id}:account:${accountId}:recurring`);
 
     // Cascade: deleting the active salary config may change the account's
     // resolved tax settings — recompute salary-linked taxed incomes.

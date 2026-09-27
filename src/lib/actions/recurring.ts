@@ -10,6 +10,7 @@ import {
 } from '@/lib/db/recurring-items';
 import { cachedGetRecurringItems, cachedGetRecurringItemById } from '@/lib/db/cached';
 import { updateTag } from 'next/cache';
+import { clearNullsInPatch } from '@/lib/patch-utils';
 import type { ApiResponse, RecurringItem } from '@/types';
 
 const createRecurringItemSchema = z.object({
@@ -131,12 +132,8 @@ export async function updateRecurringItem(
     }
 
     const parsedData = updateRecurringItemSchema.parse(data);
-    const updateData = {
-      ...parsedData,
-      category: parsedData.category ?? undefined,
-      endDate: parsedData.endDate ?? undefined,
-      paidByCardLinkId: parsedData.paidByCardLinkId ?? undefined,
-    };
+    // Only keys the caller sent are touched; `null` clears the field.
+    const updateData = clearNullsInPatch(parsedData, ['category', 'endDate', 'paidByCardLinkId']);
 
     const item = await dbUpdateRecurringItem(session.user.id, accountId, itemId, updateData);
     if (!item) {

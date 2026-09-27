@@ -183,6 +183,8 @@ export async function setReferenceRate(
 
     const referenceRate = await dbSetReferenceRate(session.user.id, debtId, yearMonth, rate);
     updateTag(`user:${session.user.id}:debt:${debtId}:rates`);
+    // Parent tag too: aggregate reads (cachedGetWealthData → backups) embed these rows.
+    updateTag(`user:${session.user.id}:debts`);
     return { success: true, data: referenceRate };
   } catch (error) {
     console.error('Set reference rate error:', error);
@@ -202,6 +204,8 @@ export async function deleteReferenceRate(
 
     await dbDeleteReferenceRate(session.user.id, debtId, rateId);
     updateTag(`user:${session.user.id}:debt:${debtId}:rates`);
+    // Parent tag too: aggregate reads (cachedGetWealthData → backups) embed these rows.
+    updateTag(`user:${session.user.id}:debts`);
     return { success: true };
   } catch (error) {
     console.error('Delete reference rate error:', error);
@@ -240,6 +244,8 @@ export async function createExtraPayment(
 
     const payment = await dbCreateExtraPayment(session.user.id, debtId, data.date, data.amount, data.description || data.note);
     updateTag(`user:${session.user.id}:debt:${debtId}:payments`);
+    // Parent tag too: aggregate reads (cachedGetWealthData → backups) embed these rows.
+    updateTag(`user:${session.user.id}:debts`);
     return { success: true, data: payment };
   } catch (error) {
     console.error('Create extra payment error:', error);
@@ -259,6 +265,8 @@ export async function deleteExtraPayment(
 
     await dbDeleteExtraPayment(session.user.id, debtId, paymentId);
     updateTag(`user:${session.user.id}:debt:${debtId}:payments`);
+    // Parent tag too: aggregate reads (cachedGetWealthData → backups) embed these rows.
+    updateTag(`user:${session.user.id}:debts`);
     return { success: true };
   } catch (error) {
     console.error('Delete extra payment error:', error);
