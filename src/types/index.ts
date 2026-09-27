@@ -1539,9 +1539,12 @@ export interface BankSyncRunAccountResult {
   balanceFetched: boolean;
   txAdded: number;
   txUpdated: number;
-  txRemoved?: number; // stale pending rows pruned this run (optional: absent in old run history)
+  txRemoved?: number; // stale pendings pruned + disproved #occN slots dropped (absent in old run history)
   pendingFetched?: number; // PDNG rows fetched this run (absent = pending fetch not attempted)
   pendingFetchOk?: boolean; // absent = not attempted; false = attempted, failed non-fatally
+  // Rows dropped this run as repeated deliveries of one transaction (across
+  // pages or the plain + PDNG requests); set only when > 0. Count only.
+  duplicatesCollapsed?: number;
   fromDate?: string;
   toDate?: string;
   error?: string; // code only

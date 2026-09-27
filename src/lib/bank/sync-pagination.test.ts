@@ -49,6 +49,16 @@ function rawTx(ref: string, status = 'BOOK') {
   return { entry_reference: ref, transaction_amount: { amount: '42', currency: 'EUR' },
     credit_debit_indicator: 'DBIT', status, booking_date: '2026-09-09' };
 }
+/** A card purchase at a generic merchant, as the bank delivers it. */
+function cafeTx(ref: string, status = 'BOOK') {
+  return { ...rawTx(ref, status), creditor_name: 'Corner Cafe' };
+}
+/** A stored row identical to what `cafeTx` maps to (same identity group). */
+function storedCafe(id: string, dedupKey: string, status: BankTransaction['status']): BankTransaction {
+  return { id, linkedAccountId: 'account-a', dedupKey, entryReference: 'p-1',
+    bookingDate: '2026-09-09', amount: -42, currency: 'EUR', status, counterpartyName: 'Corner Cafe',
+    firstSeenAt: '2026-09-09T08:00:00Z', lastSeenAt: '2026-09-09T08:00:00Z' };
+}
 let primary: BankConnection;
 let sibling: BankConnection;
 beforeEach(() => {
@@ -163,5 +173,63 @@ describe('runSync pagination persistence', () => {
     for (const accountId of ['account-a', 'account-b']) {
       expect(writtenRows(accountId)?.map((t) => t.dedupKey)).toEqual(['complete-booked']);
     }
+  });
+});
+
+describe('runSync repeated deliveries', () => {
+  it('keeps one pending row when the plain and PDNG responses both deliver it (Nordea shape)', async () => {
+    vi.mocked(getBankTransactions).mockResolvedValue([]);
+    vi.mocked(getAccountTransactions).mockImplementation(async (_uid, query) => ({
+      transactions: query?.transactionStatus === 'PDNG'
+        ? [cafeTx('p-1', 'PDNG')]
+        : [rawTx('a-1'), cafeTx('p-1', 'PDNG')],
+    }));
+    const run = await runSync('alex', 'primary', 'manual', {}, now);
+    expect(run.perAccount[0]).toMatchObject({
+      pendingFetchOk: true, pendingFetched: 1, duplicatesCollapsed: 1, txAdded: 2,
+    });
+    const rows = writtenRows('account-a')!;
+    expect(rows.map((t) => `${t.dedupKey}:${t.status}`).sort()).toEqual(['a-1:booked', 'p-1:pending']);
+  });
+
+  it('collapses a booked row repeated across pages but keeps repeats within one page', async () => {
+    vi.mocked(getBankTransactions).mockResolvedValue([]);
+    vi.mocked(getAccountTransactions).mockImplementation(async (_uid, query) => {
+      if (query?.transactionStatus === 'PDNG') return { transactions: [] };
+      if (!query?.continuationKey) return { transactions: [cafeTx('r-1'), rawTx('x-1')], continuation_key: 'next' };
+      return { transactions: [cafeTx('r-1')] };
+    });
+    const run = await runSync('alex', 'primary', 'manual', {}, now);
+    expect(run.perAccount[0]).toMatchObject({ duplicatesCollapsed: 1, txAdded: 2 });
+    expect(writtenRows('account-a')!.map((t) => t.dedupKey).sort()).toEqual(['r-1', 'x-1']);
+
+    vi.clearAllMocks();
+    vi.mocked(getAccountTransactions).mockImplementation(async (_uid, query) => ({
+      transactions: query?.transactionStatus === 'PDNG' ? [] : [cafeTx('r-1'), cafeTx('r-1')],
+    }));
+    const genuine = await runSync('alex', 'primary', 'manual', {}, now);
+    expect(genuine.perAccount[0].duplicatesCollapsed).toBeUndefined();
+    expect(writtenRows('account-a')!.map((t) => t.dedupKey).sort()).toEqual(['r-1', 'r-1#occ2']);
+  });
+
+  it.each([
+    ['a complete PDNG fetch', undefined],
+    ['a plain response without a PDNG fetch', '2026-09-09T08:00:00.000Z'],
+  ] as const)('drops a stored phantom pending slot after %s reports it once', async (_label, lastSyncedAt) => {
+    primary.linkedAccounts[0].lastSyncedAt = lastSyncedAt;
+    vi.mocked(getBankTransactions).mockResolvedValue([
+      storedCafe('stored-p', 'p-1', 'pending'),
+      storedCafe('stored-p-phantom', 'p-1#occ2', 'pending'),
+    ]);
+    vi.mocked(getAccountTransactions).mockImplementation(async (_uid, query) => ({
+      // Without a PDNG fetch (gate closed) the Nordea-style plain response is
+      // the only report of the pending row, and no prune window applies.
+      transactions: query?.transactionStatus === 'PDNG' || lastSyncedAt ? [cafeTx('p-1', 'PDNG')] : [],
+    }));
+    const run = await runSync('alex', 'primary', 'manual', {}, now);
+    expect(run.perAccount[0].pendingFetchOk).toBe(lastSyncedAt ? undefined : true);
+    expect(run.perAccount[0]).toMatchObject({ txAdded: 0, txRemoved: 1 });
+    const rows = writtenRows('account-a')!;
+    expect(rows.map((t) => [t.id, t.dedupKey])).toEqual([['stored-p', 'p-1']]);
   });
 });

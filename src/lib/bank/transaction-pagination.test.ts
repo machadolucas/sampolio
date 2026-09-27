@@ -1,7 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BankTransaction } from '@/types';
 import { BankApiError, getAccountTransactions } from './client';
-import { fetchAllAccountTransactions } from './transaction-pagination';
+import {
+  fetchAllAccountTransactionPages,
+  fetchAllAccountTransactions,
+} from './transaction-pagination';
 
 vi.mock('./client', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./client')>();
@@ -197,5 +200,62 @@ describe('fetchAllAccountTransactions', () => {
 
     expectRedactedBadResponse(error);
     expect(getPage).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('repeated deliveries across pages', () => {
+  beforeEach(() => {
+    getPage.mockReset();
+  });
+
+  it('collapses a row the bank repeated across two pages', async () => {
+    getPage
+      .mockResolvedValueOnce({
+        transactions: [rawTransaction('first'), rawTransaction('overlap')],
+        continuation_key: 'next',
+      })
+      .mockResolvedValueOnce({ transactions: [rawTransaction('overlap'), rawTransaction('last')] });
+
+    const transactions = await fetchPages();
+
+    expect(transactions.map((transaction) => transaction.dedupKey)).toEqual([
+      'first',
+      'overlap',
+      'last',
+    ]);
+  });
+
+  it('keeps a row repeated within one page', async () => {
+    getPage.mockResolvedValueOnce({
+      transactions: [rawTransaction('ticket'), rawTransaction('ticket')],
+    });
+
+    const transactions = await fetchPages();
+
+    expect(transactions.map((transaction) => transaction.dedupKey)).toEqual(['ticket', 'ticket']);
+  });
+
+  it('fetchAllAccountTransactionPages returns one array per page', async () => {
+    getPage
+      .mockResolvedValueOnce({
+        transactions: [rawTransaction('a'), rawTransaction('b')],
+        continuation_key: 'next',
+      })
+      .mockResolvedValueOnce({ transactions: [rawTransaction('b')] });
+
+    let id = 0;
+    const pages = await fetchAllAccountTransactionPages(
+      'bank/uid',
+      { dateFrom: '2026-09-01', dateTo: '2026-09-09', strategy: 'longest' },
+      psu,
+      'link-1',
+      nowIso,
+      () => `id-${++id}`
+    );
+
+    expect(pages.map((page) => page.map((transaction) => transaction.dedupKey))).toEqual([
+      ['a', 'b'],
+      ['b'],
+    ]);
   });
 });

@@ -48,7 +48,7 @@ import {
   terminalSessionStatus,
   type MappedBalance,
 } from './mappers';
-import { mergeTransactions, type FetchWindow } from './dedup';
+import { collapseRepeatedDeliveries, mergeTransactions, type FetchWindow } from './dedup';
 import { repairDegenerateBookingDates } from './repair-booking-dates';
 import { applyLinkBalances } from './apply-link-balances';
 import { linksShareIdentity, isLinkFresh } from './link-identity';
@@ -63,7 +63,7 @@ import {
   TRANSIENT_BACKOFF_MS,
   isBankSyncVerbose,
 } from './constants';
-import { fetchAllAccountTransactions } from './transaction-pagination';
+import { fetchAllAccountTransactionPages } from './transaction-pagination';
 
 // ---------- per-connection in-process lock ----------
 const inFlight = new Map<string, Promise<BankSyncRun>>();
@@ -174,6 +174,7 @@ function logSyncSummary(
           `+${r.txAdded}/~${r.txUpdated}/-${r.txRemoved ?? 0} range=${r.fromDate}..${r.toDate}` +
           (r.pendingFetched != null ? ` pdng=${r.pendingFetched}` : '') +
           (r.pendingFetchOk === false ? ' pdngERR' : '') +
+          (r.duplicatesCollapsed ? ` dup=${r.duplicatesCollapsed}` : '') +
           (r.error ? ` ERR=${r.error}` : '')
       );
     }
@@ -542,8 +543,9 @@ async function doRunSync(
 
       // --- transactions (paginated) ---
       // The helper buffers the entire chain, so a malformed/failed later page
-      // cannot leak a partial result into the ledger, cursor, or fan-out.
-      const incoming: BankTransaction[] = await fetchAllAccountTransactions(
+      // cannot leak a partial result into the ledger, cursor, or fan-out. Page
+      // boundaries are kept so repeated deliveries can be collapsed below.
+      const bookedPages = await fetchAllAccountTransactionPages(
         link.accountUid,
         {
           dateFrom: fromDate,
@@ -557,13 +559,16 @@ async function doRunSync(
       );
 
       // --- pending (PDNG) transactions, separate request ---
-      // Every ASPSP returns booked rows only unless `transaction_status` is sent,
-      // so pendings need their own paginated fetch. Non-fatal by design: booked
-      // data is the sync's contract, pendings are an enhancement.
+      // Whether the plain response also carries pending rows is bank-dependent
+      // (Nordea includes them, others return booked only), so pendings get
+      // their own paginated `transaction_status=PDNG` fetch. Non-fatal and
+      // all-or-nothing by design: booked data is the sync's contract, pendings
+      // are an enhancement, and a failed PDNG fetch contributes no rows.
       let pendingFetchOk = false;
+      let pendingPages: BankTransaction[][] = [];
       if (shouldFetchPending(!!opts.psuIp, current.lastSyncedAt, today)) {
         try {
-          const pending = await fetchAllAccountTransactions(
+          pendingPages = await fetchAllAccountTransactionPages(
             link.accountUid,
             {
               dateFrom: fromDate,
@@ -576,8 +581,7 @@ async function doRunSync(
             nowIso,
             () => uuidv4()
           );
-          incoming.push(...pending);
-          result.pendingFetched = pending.length;
+          result.pendingFetched = pendingPages.reduce((n, page) => n + page.length, 0);
           pendingFetchOk = true;
         } catch (err) {
           console.warn(
@@ -587,6 +591,16 @@ async function doRunSync(
         }
         result.pendingFetchOk = pendingFetchOk;
       }
+
+      // One delivery per real transaction: a row repeated across booked pages,
+      // across PDNG pages, or across the plain and PDNG requests (a pending row
+      // in both) collapses before the merge, which would otherwise keep each
+      // copy as an extra occurrence slot. Genuine repeats within one page stay.
+      const { rows: incoming, collapsed } = collapseRepeatedDeliveries([
+        ...bookedPages,
+        ...pendingPages,
+      ]);
+      if (collapsed > 0) result.duplicatesCollapsed = collapsed;
 
       // Reconcile against the fetched window: absorb overlap AND prune stale
       // pendings the bank no longer reports in [fromDate, today]. Only when the

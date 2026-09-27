@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mergeTransactions, syntheticDedupKey } from './dedup';
+import { collapseRepeatedDeliveries, mergeTransactions, syntheticDedupKey } from './dedup';
 import type { BankTransaction } from '@/types';
 
 function tx(overrides: Partial<BankTransaction> = {}): BankTransaction {
@@ -609,5 +609,94 @@ describe('repeated purchases during pending promotion', () => {
     const again = mergeTransactions(first.merged, incoming, '2026-05-11T00:00:00Z');
     expect(again.merged).toHaveLength(2);
     expect(again.merged.map(row => row.id).sort()).toEqual(first.merged.map(row => row.id).sort());
+  });
+});
+
+
+describe('collapseRepeatedDeliveries', () => {
+  const ticket = (overrides: Partial<BankTransaction> = {}) =>
+    tx({ dedupKey: 'ticket-ref', entryReference: 'ticket-ref', amount: -3.2, counterpartyName: 'City Transit', bookingDate: '2026-09-20', ...overrides });
+
+  it('collapses the same row delivered on two pages to one', () => {
+    const res = collapseRepeatedDeliveries([[ticket({ id: 'a' })], [ticket({ id: 'b' })]]);
+    expect(res.rows.map((row) => row.id)).toEqual(['a']);
+    expect(res.collapsed).toBe(1);
+  });
+
+  it('keeps the same row twice within one batch (genuine repeat)', () => {
+    const res = collapseRepeatedDeliveries([[ticket({ id: 'a' }), ticket({ id: 'b' })]]);
+    expect(res.rows.map((row) => row.id)).toEqual(['a', 'b']);
+    expect(res.collapsed).toBe(0);
+  });
+
+  it('collapses a pending row present in both the plain and the PDNG batch', () => {
+    const pending = (id: string) => ticket({ id, status: 'pending', dedupKey: 'syn:cafe', entryReference: undefined, counterpartyName: 'Corner Cafe' });
+    const plain = [ticket({ id: 'booked' }), pending('plain-copy')];
+    const pdng = [pending('pdng-copy')];
+    const res = collapseRepeatedDeliveries([plain, pdng]);
+    expect(res.rows.map((row) => row.id)).toEqual(['booked', 'plain-copy']);
+    expect(res.collapsed).toBe(1);
+  });
+
+  it('keeps rows with the same key but a different booking date', () => {
+    const res = collapseRepeatedDeliveries([[ticket({ id: 'a' })], [ticket({ id: 'b', bookingDate: '2026-09-21' })]]);
+    expect(res.rows).toHaveLength(2);
+    expect(res.collapsed).toBe(0);
+  });
+
+  it('keeps the max per-batch multiplicity, not the sum', () => {
+    const res = collapseRepeatedDeliveries([
+      [ticket({ id: 'a1' }), ticket({ id: 'a2' })],
+      [ticket({ id: 'b1' })],
+    ]);
+    expect(res.rows.map((row) => row.id)).toEqual(['a1', 'a2']);
+    expect(res.collapsed).toBe(1);
+  });
+});
+
+describe('mergeTransactions — disproved extra occurrences', () => {
+  const now = '2026-09-21T12:00:00.000Z';
+  const row = (overrides: Partial<BankTransaction> = {}) =>
+    tx({ dedupKey: 'K', entryReference: 'K', amount: -4.5, counterpartyName: 'Corner Kiosk', bookingDate: '2026-09-20', ...overrides });
+
+  it('drops a phantom pending #occ2 when the fetch reports one copy', () => {
+    const stored = [
+      row({ id: 'base', status: 'pending' }),
+      row({ id: 'phantom', dedupKey: 'K#occ2', status: 'pending' }),
+    ];
+    const res = mergeTransactions(stored, [row({ id: 'fresh', status: 'pending' })], now);
+    expect(res.merged).toHaveLength(1);
+    expect(res.merged[0]).toMatchObject({ id: 'base', dedupKey: 'K', status: 'pending' });
+    expect(res.removed).toBe(1);
+  });
+
+  it('drops a phantom booked #occ2 when the fetch reports one copy', () => {
+    const stored = [row({ id: 'base' }), row({ id: 'phantom', dedupKey: 'K#occ2' })];
+    const res = mergeTransactions(stored, [row({ id: 'fresh' })], now);
+    expect(res.merged).toHaveLength(1);
+    expect(res.merged[0]).toMatchObject({ id: 'base', dedupKey: 'K', status: 'booked' });
+    expect(res.removed).toBe(1);
+  });
+
+  it('keeps both slots when the fetch reports two copies', () => {
+    const stored = [row({ id: 'base' }), row({ id: 'second', dedupKey: 'K#occ2' })];
+    const res = mergeTransactions(stored, [row({ id: 'fresh-1' }), row({ id: 'fresh-2' })], now);
+    expect(res.merged.map((t) => t.id).sort()).toEqual(['base', 'second']);
+    expect(res.removed).toBe(0);
+  });
+
+  it('never touches a group the fetch did not report', () => {
+    const stored = [row({ id: 'base' }), row({ id: 'second', dedupKey: 'K#occ2' })];
+    const unrelated = tx({ dedupKey: 'other', entryReference: 'other', counterpartyName: 'Other Shop', bookingDate: '2026-09-20' });
+    const res = mergeTransactions(stored, [unrelated], now);
+    expect(res.merged.map((t) => t.id).sort()).toEqual(['base', 'id-other', 'second']);
+    expect(res.removed).toBe(0);
+  });
+
+  it('keeps a #occ2 slot booked on a different day than the reported copy', () => {
+    const stored = [row({ id: 'base' }), row({ id: 'later', dedupKey: 'K#occ2', bookingDate: '2026-09-19' })];
+    const res = mergeTransactions(stored, [row({ id: 'fresh' })], now);
+    expect(res.merged.map((t) => t.id).sort()).toEqual(['base', 'later']);
+    expect(res.removed).toBe(0);
   });
 });

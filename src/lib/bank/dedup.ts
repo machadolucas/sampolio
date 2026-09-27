@@ -33,6 +33,27 @@
  * inside it the fetch did not corroborate is pruned. Booked rows and rows outside
  * the window are never touched. Pass NO window when the fetch asked for booked
  * rows only — it says nothing about pendings and must not prune them.
+ *
+ * Repeated rows. Two genuinely identical purchases (e.g. two public-transport
+ * tickets on the same day) can share one dedup key, so the merge keeps repeated
+ * same-status rows of one fetch in deterministic occurrence slots (`<key>#occ2`,
+ * `#occ3` …). That only works if each real transaction is DELIVERED once per
+ * fetch, but banks sometimes deliver the same row twice in one sync run: a
+ * pending row in both the plain and the `transaction_status=PDNG` request, or a
+ * booked row repeated across a pagination page boundary. `collapseRepeatedDeliveries`
+ * therefore reduces a fetch's batches (one batch = one response page, or one
+ * request) to the multiplicity the bank actually asserts: for each identity
+ * group, the MAX count within any single batch — genuine repeats arrive together
+ * in one batch, cross-batch repeats are the same delivery again. Known limit:
+ * genuine identical purchases split across a page boundary collapse to one.
+ *
+ * Phantom slots that an earlier, uncollapsed fetch already persisted self-heal
+ * in `mergeTransactions`: a stored `#occN` slot that no incoming row claimed is
+ * dropped when the fetch reported that exact transaction (same base key,
+ * status, booking day, amount, currency and text). Every reported copy found an
+ * identical stored slot first, so a left-over identical slot means the stored
+ * count exceeds what the bank now reports. Base (unsuffixed) keys and groups the
+ * fetch did not report are never touched, so this needs no window.
  */
 
 import type { BankTransaction } from '@/types';
@@ -87,6 +108,78 @@ function nameAffinity(a: string | undefined, b: string | undefined): boolean {
 /** Keep legitimate repeated bank rows in deterministic occurrence slots. */
 function occurrenceKey(baseKey: string, occurrence: number): string {
   return occurrence === 0 ? baseKey : `${baseKey}#occ${occurrence + 1}`;
+}
+
+/** Trailing occurrence-slot suffix(es) a stored extra occurrence carries. */
+const OCCURRENCE_SUFFIX = /(?:#occ\d+)+$/;
+
+/** The bank-derived dedup key of a (possibly occurrence-slotted) stored key. */
+function baseDedupKey(key: string): string {
+  return key.replace(OCCURRENCE_SUFFIX, '');
+}
+
+/**
+ * Identity group used to recognize the SAME delivered transaction: base dedup
+ * key + status + booking day + amount + currency + normalized text. `baseKey`
+ * is passed separately so a stored `#occN` row can be grouped under its base.
+ */
+function deliveryIdentity(t: BankTransaction, baseKey: string): string {
+  return [
+    baseKey,
+    t.status,
+    t.bookingDate.slice(0, 10),
+    t.amount.toFixed(2),
+    t.currency,
+    norm(t.counterpartyName),
+    norm(t.remittanceInfo),
+  ].join('\u001f');
+}
+
+export interface CollapseResult {
+  rows: BankTransaction[];
+  /** Input rows dropped as repeated deliveries (total input − `rows.length`). */
+  collapsed: number;
+}
+
+/**
+ * Collapse the same transaction delivered more than once in one sync run.
+ *
+ * A batch is one response page (or one request). The same row repeated across
+ * pages, or across the plain + PDNG requests, is one delivery; genuinely
+ * identical purchases arrive within ONE batch. So each identity group (see
+ * `deliveryIdentity`) keeps the MAX count it reaches within any single batch —
+ * not the sum — taking the first rows of the group in flattened order (batch
+ * order, then row order). Incoming rows carry their base dedup key (never an
+ * `#occ` suffix). Known limit: genuine identical purchases split across a page
+ * boundary collapse to one.
+ */
+export function collapseRepeatedDeliveries(batches: BankTransaction[][]): CollapseResult {
+  const multiplicity = new Map<string, number>();
+  for (const batch of batches) {
+    const counts = new Map<string, number>();
+    for (const t of batch) {
+      const identity = deliveryIdentity(t, t.dedupKey);
+      counts.set(identity, (counts.get(identity) ?? 0) + 1);
+    }
+    for (const [identity, count] of counts) {
+      if (count > (multiplicity.get(identity) ?? 0)) multiplicity.set(identity, count);
+    }
+  }
+
+  const kept = new Map<string, number>();
+  const rows: BankTransaction[] = [];
+  let total = 0;
+  for (const batch of batches) {
+    for (const t of batch) {
+      total++;
+      const identity = deliveryIdentity(t, t.dedupKey);
+      const soFar = kept.get(identity) ?? 0;
+      if (soFar >= (multiplicity.get(identity) ?? 0)) continue;
+      kept.set(identity, soFar + 1);
+      rows.push(t);
+    }
+  }
+  return { rows, collapsed: total - rows.length };
 }
 
 function occurrenceSortKey(t: BankTransaction): string {
@@ -148,7 +241,8 @@ export interface MergeResult {
   merged: BankTransaction[];
   added: number;
   updated: number;
-  removed: number; // stale in-window pending rows pruned (0 when no window given)
+  /** Stale in-window pendings (window given) and disproved extra occurrences. */
+  removed: number;
 }
 
 /** The date range a fetch covered — inclusive 'YYYY-MM-DD' bounds. */
@@ -198,9 +292,11 @@ function bestFuzzyPendingMatch(
 /**
  * Merge `incoming` rows into `existing`, deduping by `dedupKey` and promoting
  * pending → booked (see the module doc for the three promotion paths). `nowIso`
- * stamps `lastSeenAt` (and `firstSeenAt` for new rows). When `window` is given,
- * stale PENDING rows inside that fetched range — ones this fetch did not return —
- * are pruned. The result is sorted newest-first by booking date.
+ * stamps `lastSeenAt` (and `firstSeenAt` for new rows). Stored `#occN` slots
+ * this fetch disproved (it reported that exact transaction, yet no reported copy
+ * claimed the slot) are dropped. When `window` is given, stale PENDING rows
+ * inside that fetched range — ones this fetch did not return — are pruned. The
+ * result is sorted newest-first by booking date.
  */
 export function mergeTransactions(
   existing: BankTransaction[],
@@ -396,6 +492,22 @@ export function mergeTransactions(
     claimedStoredKeys.add(effectiveKey);
     confirmed.add(effectiveKey);
     added++;
+  }
+
+  // Self-heal disproved extra occurrences (e.g. phantoms persisted when a row
+  // was delivered twice in one run). `confirmed` holds every key an incoming row
+  // matched or wrote this merge — every write path adds to it, and it is a
+  // superset of `claimedStoredKeys` (the pending → booked-twin path confirms a
+  // booked row without claiming it). An unconfirmed suffixed slot whose exact
+  // identity this fetch reported is surplus: each reported copy first claimed an
+  // identical unclaimed stored slot via `storedMatch`, so the stored count
+  // exceeds the bank's. Base keys and unreported groups are never touched.
+  const incomingIdentities = new Set(incoming.map((t) => deliveryIdentity(t, t.dedupKey)));
+  for (const [key, t] of byKey) {
+    if (!OCCURRENCE_SUFFIX.test(key) || confirmed.has(key)) continue;
+    if (!incomingIdentities.has(deliveryIdentity(t, baseDedupKey(key)))) continue;
+    byKey.delete(key);
+    removed++;
   }
 
   // Prune stale pendings the bank no longer reports in the re-fetched window.

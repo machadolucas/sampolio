@@ -5,6 +5,7 @@ import {
   type PsuContext,
   type TransactionsQuery,
 } from './client';
+import { collapseRepeatedDeliveries } from './dedup';
 import { mapTransactions } from './mappers';
 
 const MAX_TRANSACTION_PAGES = 50;
@@ -40,21 +41,24 @@ function validatePageEnvelope(raw: unknown): {
 }
 
 /**
- * Fetch and map one complete Enable Banking transaction result set.
+ * Fetch and map one complete Enable Banking transaction result set, one array
+ * of mapped rows per response page.
  *
  * Results stay buffered until every page validates and the pagination chain
  * terminates. This lets callers safely discard an incomplete booked or pending
- * result without accidentally persisting its earlier pages.
+ * result without accidentally persisting its earlier pages. The page boundaries
+ * are kept so `collapseRepeatedDeliveries` can tell a row the bank repeated
+ * across pages (one delivery) from genuine repeats within one page.
  */
-export async function fetchAllAccountTransactions(
+export async function fetchAllAccountTransactionPages(
   accountUid: string,
   query: TransactionsQuery,
   psu: PsuContext | undefined,
   linkedAccountId: string,
   nowIso: string,
   idFactory: () => string
-): Promise<BankTransaction[]> {
-  const buffered: BankTransaction[] = [];
+): Promise<BankTransaction[][]> {
+  const pages: BankTransaction[][] = [];
   const seenContinuationKeys = new Set<string>();
   let continuationKey = query.continuationKey;
 
@@ -68,10 +72,10 @@ export async function fetchAllAccountTransactions(
     );
     const envelope = validatePageEnvelope(raw);
     const mapped = mapTransactions(envelope, linkedAccountId, nowIso, idFactory);
-    buffered.push(...mapped.transactions);
+    pages.push(mapped.transactions);
 
     const nextKey = envelope.continuation_key ?? undefined;
-    if (!nextKey) return buffered;
+    if (!nextKey) return pages;
     if (seenContinuationKeys.has(nextKey)) throw badPaginationResponse();
 
     seenContinuationKeys.add(nextKey);
@@ -79,4 +83,29 @@ export async function fetchAllAccountTransactions(
   }
 
   throw badPaginationResponse();
+}
+
+/**
+ * Fetch one complete result set (see `fetchAllAccountTransactionPages`) as a
+ * flat list, with a row the bank repeated across pages collapsed to one
+ * delivery (`collapseRepeatedDeliveries`). Rows repeated within one page are
+ * kept — those are genuine identical transactions.
+ */
+export async function fetchAllAccountTransactions(
+  accountUid: string,
+  query: TransactionsQuery,
+  psu: PsuContext | undefined,
+  linkedAccountId: string,
+  nowIso: string,
+  idFactory: () => string
+): Promise<BankTransaction[]> {
+  const pages = await fetchAllAccountTransactionPages(
+    accountUid,
+    query,
+    psu,
+    linkedAccountId,
+    nowIso,
+    idFactory
+  );
+  return collapseRepeatedDeliveries(pages).rows;
 }
