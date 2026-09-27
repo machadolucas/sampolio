@@ -372,6 +372,8 @@ describe('anchorMonthOpeningBalance / anchorMonthActuals (one actualized-month r
     expect(shouldActualizeAnchorMonth('2026-09', null, '2026-09')).toBe(true);
     expect(shouldActualizeAnchorMonth('2026-08', '2026-08-20', '2026-09')).toBe(true);
     expect(shouldActualizeAnchorMonth('2026-08', null, '2026-09')).toBe(false);
+    expect(shouldActualizeAnchorMonth('2026-08', null, '2026-09', true)).toBe(true); // past manual month with bookings
+    expect(shouldActualizeAnchorMonth('2026-10', null, '2026-09', true)).toBe(false); // future anchor
   });
 });
 

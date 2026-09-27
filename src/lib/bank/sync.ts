@@ -820,21 +820,22 @@ async function autoAnchorAccount(
     month: currentMonth,
     transactions,
   });
-  // A historical available balance's opening is only an estimate (its
-  // pending set is unknown, `bankSnapshotProvenance`): record no variance.
-  const expected = provenance.openingIsEstimate
-    ? actualBalance
-    : (expectedLiveBalance({
-        account,
-        recurringItems,
-        plannedItems,
-        taxedIncomes,
-        priorSnapshot,
-        transactions,
-        month: currentMonth,
-        actualBalance,
-        monthStartBalance: provenance.monthStartBalance,
-      }) ?? actualBalance); // no planned row for this month ⇒ record no variance
+  // A historical available balance's opening is only an estimate (its pending
+  // set at that date is unknown, `bankSnapshotProvenance`). Never let it become
+  // the anchor: holds that have since booked would be counted twice once the
+  // month's booked rows are added. Keep the previous anchor instead.
+  if (provenance.openingIsEstimate) return false;
+  const expected = expectedLiveBalance({
+    account,
+    recurringItems,
+    plannedItems,
+    taxedIncomes,
+    priorSnapshot,
+    transactions,
+    month: currentMonth,
+    actualBalance,
+    monthStartBalance: provenance.monthStartBalance,
+  }) ?? actualBalance; // no planned row for this month ⇒ record no variance
 
   const snapshot = await createBalanceSnapshot(
     userId,

@@ -286,7 +286,7 @@ describe('runSync auto-anchor provenance (R2-1)', () => {
     }
   });
 
-  it('R5-3: a historical available balance records no variance (its opening is only an estimate)', async () => {
+  it('R5-3/R6-4: a historical available balance never becomes the anchor (its opening is only an estimate)', async () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(new Date(2026, 8, 9, 13, 0, 0)); // Sept 9, local
     try {
@@ -321,11 +321,9 @@ describe('runSync auto-anchor provenance (R2-1)', () => {
 
       await runSync('alex', 'primary', 'manual', {}, now);
 
-      const args = vi.mocked(createBalanceSnapshot).mock.calls[0];
-      expect(args[4]).toBe(900); // expected = actual ⇒ no false −€100 variance
-      expect(args[5]).toBe(900);
-      // The estimate flag itself is not persisted.
-      expect(args[7]).toEqual({ balanceType: 'OPAV', balanceAsOf: '2026-09-08', monthStartBalance: 900 });
+      // Holds that have since booked would be counted twice on top of an
+      // estimated opening: keep the previous (manual) anchor instead.
+      expect(vi.mocked(createBalanceSnapshot)).not.toHaveBeenCalled();
     } finally {
       vi.useRealTimers();
     }

@@ -49,6 +49,7 @@ import {
   anchorMonthActuals,
   anchorMonthOpeningBalance,
   shouldActualizeAnchorMonth,
+  hasBookedRowsInMonth,
 } from '@/lib/live-anchor';
 import type {
   BankConnection,
@@ -300,12 +301,18 @@ export async function getCurrentMonthActualsForAccount(
 ): Promise<CurrentMonthActuals | null> {
   const anchor = resolveAnchor(account.startingDate, account.startingBalance, storedSnapshot);
   const asOf = liveAnchorAsOf(account.startingDate, storedSnapshot);
-  if (!shouldActualizeAnchorMonth(anchor.startMonth, asOf, getCurrentYearMonth())) return null;
+  const currentMonth = getCurrentYearMonth();
+  // Cheap exits first: a future anchor, or a past manual/genesis anchor on an
+  // account with no linked ledger, never actualizes.
+  if (compareYearMonths(anchor.startMonth, currentMonth) > 0) return null;
   let transactions: BankTransaction[] = [];
   try {
     transactions = await getLinkedCashBankTransactions(userId, accountId, bankData);
   } catch (error) {
     console.error('Current-month actuals gathering failed:', error);
+  }
+  if (!shouldActualizeAnchorMonth(anchor.startMonth, asOf, currentMonth, hasBookedRowsInMonth(transactions, anchor.startMonth))) {
+    return null;
   }
   const opening = anchorMonthOpeningBalance(account.startingDate, account.startingBalance, storedSnapshot, transactions);
   return anchorMonthActuals(anchor.startMonth, opening, transactions);

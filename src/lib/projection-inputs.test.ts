@@ -150,13 +150,23 @@ describe('stale bank-sync anchor (sync stopped last month)', () => {
     expect(sep.startingBalance).toBe(4200);
   });
 
-  it('does not actualize a past manual anchor month (it is a start-of-month balance)', async () => {
+  it('keeps actualizing a past manual anchor month that has booked rows (opening + bookings)', async () => {
     mocks.getLatestSnapshot.mockResolvedValue(
       createMockSnapshot({ entityId: 'acc', yearMonth: '2026-08', actualBalance: 1200, source: 'manual' })
     );
     mocks.getBankTransactions.mockResolvedValue([tx({ bookingDate: '2026-08-03', amount: -800 })]);
     const inputs = await gatherProjectionInputs('user-alex', 'acc');
     expect(inputs!.anchorLiveAsOf).toBeNull();
+    expect(inputs!.currentMonthActuals?.openingBalance).toBe(1200);
+    expect(inputs!.currentMonthActuals?.transactions).toHaveLength(1);
+  });
+
+  it('forecasts a past manual anchor month in full when it has no booked rows', async () => {
+    mocks.getLatestSnapshot.mockResolvedValue(
+      createMockSnapshot({ entityId: 'acc', yearMonth: '2026-08', actualBalance: 1200, source: 'manual' })
+    );
+    mocks.getBankTransactions.mockResolvedValue([tx({ bookingDate: '2026-09-03', amount: -800 })]);
+    const inputs = await gatherProjectionInputs('user-alex', 'acc');
     expect(inputs!.currentMonthActuals).toBeNull();
   });
 });
@@ -363,12 +373,30 @@ describe('R5-4: a manual current-month opening is advanced by the booked rows it
     const before = (await project()).rows;
     vi.setSystemTime(new Date(2026, 9, 2, 12, 0, 0)); // 2 Oct 2026, local
     const { inputs, rows: after } = await project();
-    expect(inputs.currentMonthActuals).toBeNull(); // past manual month: plain forecast
+    // The past manual month keeps its booked rows (opening + bookings).
+    expect(inputs.currentMonthActuals?.openingBalance).toBe(1000);
     const sepBefore = before.find((m) => m.yearMonth === '2026-09')!;
     const sepAfter = after.find((m) => m.yearMonth === '2026-09')!;
-    expect(sepAfter.isActualized).toBeUndefined();
+    expect(sepAfter.isActualized).toBe(true);
     expect(sepAfter.endingBalance).toBe(sepBefore.endingBalance);
     expect(after.find((m) => m.yearMonth === '2026-10')!.startingBalance).toBe(900);
+  });
+
+  it('R6-3: an unplanned booking survives the rollover (no fictitious €50)', async () => {
+    mocks.getBankTransactions.mockImplementation(async (_userId: string, linkId: string) =>
+      linkId === 'link-cash'
+        ? [
+            tx({ bookingDate: '2026-09-03', amount: -100, counterpartyName: 'Rent' }),
+            tx({ bookingDate: '2026-09-12', amount: -50, counterpartyName: 'Kiosk' }),
+          ]
+        : []
+    );
+    const sepBefore = (await project()).rows.find((m) => m.yearMonth === '2026-09')!;
+    expect(sepBefore.endingBalance).toBe(850);
+    vi.setSystemTime(new Date(2026, 9, 1, 9, 0, 0)); // 1 Oct 2026, local
+    const after = (await project()).rows;
+    expect(after.find((m) => m.yearMonth === '2026-09')!.endingBalance).toBe(850);
+    expect(after.find((m) => m.yearMonth === '2026-10')!.startingBalance).toBe(850);
   });
 });
 

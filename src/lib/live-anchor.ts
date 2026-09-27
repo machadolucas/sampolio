@@ -217,18 +217,29 @@ export function liveAnchorOpeningBalance(
 /**
  * Whether the anchor month gets actualized against booked bank activity:
  *  - the anchor month is the current calendar month (any anchor source), or
- *  - the anchor is a live bank-sync balance (`anchorLiveAsOf` set) from an
- *    EARLIER month — the sync went stale (consent expired, sync failing).
- * A manual/genesis anchor of an earlier month is a plain start-of-month
- * balance whose month is forecast in full. Pure.
+ *  - the anchor is from an EARLIER month and either is a live bank-sync
+ *    balance (`anchorLiveAsOf` set — the sync went stale: consent expired,
+ *    sync failing) or is a manual/genesis start-of-month balance whose month
+ *    has booked rows in the linked ledger. Keeping a past manual anchor month
+ *    actualized means the calendar rolling over never switches that month
+ *    from "opening + bookings" back to a pure forecast (no balance jump).
+ * A past manual/genesis anchor with no booked rows (e.g. no bank link) is
+ * forecast in full. Pure.
  */
 export function shouldActualizeAnchorMonth(
   anchorMonth: YearMonth,
   anchorLiveAsOf: string | null,
-  currentMonth: YearMonth
+  currentMonth: YearMonth,
+  hasBookedRowsInAnchorMonth = false
 ): boolean {
   if (anchorMonth === currentMonth) return true;
-  return anchorLiveAsOf !== null && compareYearMonths(anchorMonth, currentMonth) < 0;
+  if (compareYearMonths(anchorMonth, currentMonth) > 0) return false;
+  return anchorLiveAsOf !== null || hasBookedRowsInAnchorMonth;
+}
+
+/** Whether `transactions` hold any booked row dated in `month`. Pure. */
+export function hasBookedRowsInMonth(transactions: BankTransaction[], month: YearMonth): boolean {
+  return bookedInMonthThrough(transactions, month, null).length > 0;
 }
 
 /**
@@ -302,7 +313,7 @@ export function plannedOpeningBalance(params: {
 
   const opening = anchorMonthOpeningBalance(account.startingDate, account.startingBalance, priorSnapshot, transactions);
   if (cmp === 0) return opening;
-  const actuals = shouldActualizeAnchorMonth(anchor.startMonth, priorAsOf, month)
+  const actuals = shouldActualizeAnchorMonth(anchor.startMonth, priorAsOf, month, hasBookedRowsInMonth(transactions, anchor.startMonth))
     ? anchorMonthActuals(anchor.startMonth, opening, transactions)
     : null;
   const rows = calculateProjection(

@@ -49,6 +49,20 @@ describe('deriveHeroSummary', () => {
     expect(summary?.totalIncome).toBe(3000);
   });
 
+  it('R6-5: uses ending − opening for an actualized row with a known opening (unplanned bookings count)', () => {
+    const summary = deriveHeroSummary({
+      accountIds: ['alex-main'],
+      cashProjections: {
+        'alex-main': { monthly: [row('2026-09', {
+          isActualized: true, openingBalance: 1000, startingBalance: 900, endingBalance: 900,
+          plannedTotalIncome: 0, plannedTotalExpenses: 0,
+        })] },
+      },
+      currentYearMonth: '2026-09',
+    });
+    expect(summary?.netChange).toBe(-100);
+  });
+
   it('never reports a zero net just because the wealth projection lacks a previous month', () => {
     // The old hero compared the wealth projection's current vs previous month,
     // which never existed — so it always said "balanced" with a €0 delta.

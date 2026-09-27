@@ -17,8 +17,9 @@ export interface HeroSummary {
   /**
    * This month's whole-month net for all active cash accounts. For a normal
    * forecast row that is its `netChange`; for a row actualized from bank data
-   * `netChange` only holds what is still to come ("Net left"), so the month's
-   * planned totals are used instead — the hero describes the whole month.
+   * `netChange` only holds what is still to come ("Net left"), so the whole
+   * month is `endingBalance − openingBalance` (booked so far + remaining), or
+   * the planned totals when the opening is unknown.
    */
   netChange: number;
   /** Σ current-month income (drives the "caution" sentiment). */
@@ -63,7 +64,14 @@ export function deriveHeroSummary({ accountIds, cashProjections, currentYearMont
       found++;
       const monthIncome = current.isActualized ? (current.plannedTotalIncome ?? current.totalIncome) : current.totalIncome;
       const monthExpenses = current.isActualized ? (current.plannedTotalExpenses ?? current.totalExpenses) : current.totalExpenses;
-      netChange += current.isActualized ? monthIncome - monthExpenses : current.netChange;
+      // Actualized row: booked activity so far + what is still to come, i.e.
+      // ending − month-start balance (openingBalance). Planned totals only
+      // when the opening is unknown.
+      netChange += !current.isActualized
+        ? current.netChange
+        : current.openingBalance !== undefined
+          ? current.endingBalance - current.openingBalance
+          : monthIncome - monthExpenses;
       totalIncome += monthIncome;
       rowsEnd += current.endingBalance;
     }
