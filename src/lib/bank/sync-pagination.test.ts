@@ -11,7 +11,7 @@ import { getPlannedItems } from '@/lib/db/planned-items';
 import { getTaxedIncomes } from '@/lib/db/taxed-income';
 import { createBalanceSnapshot, getLatestSnapshot } from '@/lib/db/reconciliation';
 import { createMockAccount, createMockSnapshot } from '@/test/mocks';
-import { TRANSIENT_BACKOFF_MS } from './constants';
+import { TRANSIENT_BACKOFF_MS, RATE_LIMIT_BACKOFF_MS, SCHEDULED_SYNC_INTERVAL_MS } from './constants';
 
 vi.mock('./client', async (importOriginal) => ({
   ...await importOriginal<typeof import('./client')>(),
@@ -92,6 +92,22 @@ function writtenRows(accountId: string) {
 }
 
 describe('runSync pagination persistence', () => {
+  it.each([
+    ['AUTH_FAILED', SCHEDULED_SYNC_INTERVAL_MS],
+    ['TRANSIENT', TRANSIENT_BACKOFF_MS],
+    ['RATE_LIMITED', RATE_LIMIT_BACKOFF_MS],
+    ['EXPIRED_SESSION', undefined],
+  ] as const)('schedules %s without changing stored transactions', async (code, delay) => {
+    vi.mocked(getAccountTransactions).mockRejectedValue(new BankApiError(code, 'Synthetic failure'));
+    const run = await runSync('alex', 'primary', 'manual', {}, now);
+    expect(run.status).toBe('error');
+    expect(writeBankTransactions).not.toHaveBeenCalled();
+    const update = vi.mocked(updateBankConnection).mock.calls.at(-1)![2];
+    expect(update.nextSyncDueAt).toBe(delay === undefined ? undefined : new Date(now + delay).toISOString());
+    if (code === 'EXPIRED_SESSION') expect(update.status).toBe('expired');
+    else expect(update.status).toBeUndefined();
+  });
+
   it('extends only credit-card refreshes through the latest closed cycle', () => {
     expect(creditCardRefreshFloor('2026-09-20', 13)).toBe('2026-08-13');
     expect(creditCardRefreshFloor('2026-09-10', 13)).toBe('2026-07-13');

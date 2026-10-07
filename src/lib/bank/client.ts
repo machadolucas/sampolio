@@ -67,12 +67,28 @@ export function describeBankError(err: unknown): string {
 }
 
 function mapStatusToCode(status: number, apiCode?: string): BankErrorCode {
-  if (status === 401) return 'EXPIRED_SESSION';
-  if (status === 403) return 'AUTH_FAILED';
+  // A bare HTTP 401 does not tell us whether the app JWT or user consent failed.
+  if (
+    apiCode === 'EXPIRED_SESSION' ||
+    apiCode === 'CLOSED_SESSION' ||
+    apiCode === 'REVOKED_SESSION'
+  ) return 'EXPIRED_SESSION';
   if (status === 429 || apiCode === 'ASPSP_RATE_LIMIT_EXCEEDED') return 'RATE_LIMITED';
+  if (status === 408 || apiCode === 'ASPSP_TIMEOUT') return 'TRANSIENT';
+  if (status === 401 || status === 403) return 'AUTH_FAILED';
   if (status >= 500) return 'TRANSIENT';
-  if (apiCode === 'EXPIRED_SESSION') return 'EXPIRED_SESSION';
   return 'UNKNOWN';
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/** Keep only machine-readable error identifiers in apiCode; free-form text is detail. */
+function errorIdentifier(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  return /^[A-Z][A-Z0-9_]*$/.test(trimmed) ? trimmed : undefined;
 }
 
 /**
@@ -136,18 +152,20 @@ async function ebFetch<T>(pathAndQuery: string, opts: FetchOptions = {}): Promis
     try {
       const raw = await res.text();
       try {
-        const errBody = JSON.parse(raw) as {
-          code?: string;
-          error?: string;
-          message?: string;
-          error_description?: string;
-          detail?: string;
-        };
-        apiCode = errBody.code ?? errBody.error;
+        const parsed: unknown = JSON.parse(raw);
+        const errBody = isRecord(parsed) ? parsed : undefined;
+        // Current ErrorResponse uses numeric `code` for HTTP status and textual
+        // `error` for the provider error. Older responses may use string `code`.
+        const providerError = typeof errBody?.error === 'string' ? errBody.error : undefined;
+        apiCode = errorIdentifier(providerError) ?? errorIdentifier(errBody?.code);
         // The human-readable reason (e.g. why a 400 was rejected). Kept off the
         // default logs; surfaced only via describeBankError under the verbose flag.
-        detail =
-          errBody.message ?? errBody.error_description ?? errBody.detail ?? (raw || undefined);
+        const detailValue =
+          (typeof errBody?.message === 'string' ? errBody.message : undefined) ??
+          (typeof errBody?.error_description === 'string' ? errBody.error_description : undefined) ??
+          (typeof errBody?.detail === 'string' ? errBody.detail : undefined) ??
+          providerError;
+        detail = detailValue ?? (raw || undefined);
       } catch {
         // non-JSON error body — keep the raw text as the detail
         detail = raw || undefined;
