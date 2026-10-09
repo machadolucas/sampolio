@@ -187,8 +187,8 @@ curl -skI https://sampolio.example.com/ | head -1
 # Fresh startup errors
 tail -n 30 "$HOME/.sampolio/logs/sampolio-error.log"
 
-# DB boot lines: "[db] opened encrypted database …", on the first 4.x boot
-# "[db] imported N legacy users (M soft-deleted) …", then "[db] snapshot (startup) written …"
+# DB boot lines: "[db] opened encrypted database …", "[db] user store ok: N user(s), M data dir(s)",
+# then "[db] snapshot (startup) written …"
 grep -h '\[db\]' "$HOME/.sampolio/logs/"*.log | tail -n 5
 ```
 Then refresh the snapshot so the post-deploy state is captured:

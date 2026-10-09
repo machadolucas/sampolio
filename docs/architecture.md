@@ -159,9 +159,7 @@ data/
 ├── sampolio.db (+ -wal, -shm)                  # SQLCipher DB: Better Auth tables + _meta (db/sqlite/); never tar'd live
 ├── snapshots/sampolio.db                       # verified encrypted VACUUM INTO copy — what backups archive
 ├── app-settings.enc                            # AppSettings (db/app-settings.ts)
-├── users-index.enc                             # LEGACY (pre-4.0) email → userId index; read once by the importer, never written
 ├── users/{userId}/
-│   ├── user.enc                                # LEGACY (pre-4.0) user record; imported once, kept as the rollback path
 │   ├── preferences.enc                         # UserPreferences (single file)
 │   ├── avatar.webp                             # profile picture — PLAIN binary (unencrypted, deliberate); excluded from JSON backup
 │   │                                           #   ↑ the only unencrypted file in the tree; low-sensitivity, enables zero-decrypt streaming + HTTP caching
@@ -288,20 +286,20 @@ on the SQLCipher DB via the drizzle adapter; tables in `src/lib/db/sqlite/schema
   That validity rule is `toAppSession` (`src/lib/auth/session.ts`), shared with the proxy's
   auth-page lookup `getProxySession` (`src/lib/auth/server.ts`: a second Better Auth instance
   without `nextCookies`, `getSession` with `disableRefresh`).
-- **Passwords**: new hashes are Better Auth scrypt. Legacy bcrypt hashes (imported from the
-  `.enc` users) verify through `bcryptjs` (`password.verify` branches on `$2`) and are rehashed
+- **Passwords**: new hashes are Better Auth scrypt. Legacy bcrypt hashes (carried over from the
+  pre-4.0 user files) verify through `bcryptjs` (`password.verify` branches on `$2`) and are rehashed
   to scrypt by the `/sign-in/email` after-hook.
 - **User fields** (`user.additionalFields`, all `input: false`): `role`, `isActive`,
   `deletedAt`, `avatarVersion`. No admin plugin — no `/admin/*` HTTP surface, no impersonation;
   admin actions go through `src/lib/actions/admin.ts` → `src/lib/db/users.ts`.
-- **Fail closed**: `src/lib/db/sqlite/bootstrap.ts` (boot) records any open/import failure in
-  `setup-state.ts`; while set, or while `.enc` user data exists without the import marker
-  (`isAuthSetupComplete` in `legacy-import.ts`), sign-up and session creation throw **503
+- **Fail closed**: `src/lib/db/sqlite/bootstrap.ts` (boot) records any open or user-store failure in
+  `setup-state.ts`; while set, or while `users/*` data dirs exist but the DB has no user rows
+  (`isAuthSetupComplete` in `user-store.ts`), sign-up and session creation throw **503
   `SETUP_INCOMPLETE`**, `/api/auth/*` returns 503 and `auth()` returns null. A DB file created
   by the failed boot is deleted. Details: [`operations.md`](operations.md) §1.
 - **Hooks**: `databaseHooks.session.create.before` refuses inactive/deleted users for every
   sign-in method (403 `ACCOUNT_INACTIVE`); `user.create.before` makes the first user admin —
-  only on a truly fresh install (`isFirstUserSetup`: no user rows, no legacy `.enc` users).
+  only on a truly fresh install (`isFirstUserSetup`: no user rows, no `users/*` data dirs).
   `hooks.before`: `/sign-up/email` enforces `selfSignupEnabled` (unless first user), the name
   rule and `passwordPolicySchema` (`src/lib/schemas/auth.schema.ts`; `disableSignUp` stays
   false because it would also block the server-side `auth.api.signUpEmail`). The sign-up gate
@@ -368,11 +366,12 @@ sets the cookie). Settings › Account hosts the Passkeys panel
 (`src/components/settings/passkeys-panel.tsx`); on `PASSKEY_REAUTH_REQUIRED` it offers
 "Sign in again" (sign out → `/auth/signin?callbackUrl=/settings?tab=account`).
 
-Users were imported once from the `.enc` files by `src/lib/db/sqlite/legacy-import.ts`
-(boot, `_meta` row `legacy-users-imported`, one transaction): same UUIDs, role, active flag,
-timestamps and `avatarVersion`; the bcrypt hash becomes the `credential` account row; a
-`users/*/user.enc` not in `users-index.enc` is imported soft-deleted with the tombstone email
-`deleted+<id>@invalid`. The `.enc` files are never modified.
+User ids are the UUIDs that key the `users/<id>/` data dirs. At boot
+`src/lib/db/sqlite/user-store.ts` (`verifyUserStore`) refuses a DB with no user rows while
+`users/*` dirs exist (a lost or wrong `sampolio.db`), and `isAuthSetupComplete()` /
+`isFirstUserSetup()` apply the same check to sign-up and session creation (see
+[`operations.md`](operations.md) §1, fail-closed boot). Soft-deleted users keep their row with
+the tombstone email `deleted+<id>@invalid`.
 
 In production an outer **Cloudflare Access** layer authenticates before requests ever reach
 the app — see [`operations.md`](operations.md).
@@ -518,7 +517,8 @@ wraps components in ThemeProvider). ~100 test files:
   `reconciliation`, `data-transfer`, `taxed-income`, `split-groups`, `app-settings`,
   `path-guard` (id/path guards); `src/lib/db/sqlite/sqlite.test.ts`
   (temp SQLCipher DB: plaintext header absent, wrong/no key fails, idempotent migrations,
-  legacy `.enc` import incl. soft-deleted user, verified encrypted snapshot)
+  verified encrypted snapshot); `bootstrap.test.ts` (user-store gate: lost/wrong DB next to
+  user data fails closed, first-user rule)
 - **Auth** (`src/lib/auth/server.test.ts`, temp DB via `src/test/temp-data-dir.ts`): sign-up
   gating + first-user admin, weak-password/`input:false` rejection, bcrypt sign-in + scrypt
   rehash, deactivation (sign-in 403 and `auth()` → null), soft/hard delete, lockout 429,

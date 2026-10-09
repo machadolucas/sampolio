@@ -7,7 +7,7 @@ import type { User, UserRole, PublicUser } from '@/types';
 import { ensureDir, getUserDir } from './encryption';
 import { getDb } from './sqlite/client';
 import { account, session, user as userTable } from './sqlite/schema';
-import { isFirstUserSetup, tombstoneEmail } from './sqlite/legacy-import';
+import { isFirstUserSetup, tombstoneEmail } from './sqlite/user-store';
 
 // Users live in the SQLCipher DB (`src/lib/db/sqlite/`), managed by Better
 // Auth (`src/lib/auth/server.ts`). These functions keep the pre-4.0 file-DB

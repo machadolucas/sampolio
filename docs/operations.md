@@ -66,30 +66,27 @@ through a Cloudflare Tunnel gated by Cloudflare Access (Zero Trust).
   snapshot `snapshots/sampolio.db`; see the DB layer docs). The app reads its
   secrets from the environment, not from disk.
 - **Boot log lines** (`sampolio.log`, from `src/lib/db/sqlite/bootstrap.ts`):
-  `[db] opened encrypted database … (migrations applied)`; on the first 4.x boot
-  `[db] imported N legacy users (M soft-deleted) from .enc files`, afterwards
-  `[db] legacy users already imported`; then, from `src/lib/db/sqlite/maintenance.ts`,
+  `[db] opened encrypted database … (migrations applied)`, then
+  `[db] user store ok: N user(s), M data dir(s)`; then, from `src/lib/db/sqlite/maintenance.ts`,
   `[db] pruned N expired verification row(s) (startup)` and
   `[db] pruned N stale rate-limit row(s) (startup)` (the same lines with `(hourly)`
   whenever an hourly prune deletes something); then `[db] snapshot (startup) written …
   (encrypted, verified)`. On failure `sampolio-error.log` gets a `====` banner
   starting `[db] STARTUP FAILED — sign-in and sign-up are DISABLED` plus the cause.
-- **Fail-closed boot.** The legacy import aborts (one transaction, marker never
-  written) on: an unreadable/corrupt `users-index.enc` or `user.enc` (usually a
-  wrong `ENCRYPTION_KEY`), `users/*` dirs without `users-index.enc`, an index
-  entry without its dir, a `user.enc` whose id differs from its dir, an indexed
-  user without email, duplicate emails, or an email already owned by another DB
-  row. The app keeps serving pages, but sign-up and every session creation
-  (password, passkey, dev bypass) are refused, `auth()` returns null and
-  `/api/auth/*` answers **503 `SETUP_INCOMPLETE`**. The same gate applies without
-  the in-process flag whenever `.enc` user data exists but the `_meta` import
-  marker is missing. If this boot had just **created** `sampolio.db` (first boot)
-  it is closed and deleted, so a DB keyed with a wrong key never survives to a
-  later "working" boot; a pre-existing DB is never deleted (and is still
-  snapshotted). Fix the key/files, then restart (`scripts/prod-service.sh restart`).
+- **Fail-closed boot.** Boot fails when `sampolio.db` does not open with the
+  key (wrong `ENCRYPTION_KEY`), or when `users/*` data dirs exist but the DB has no
+  user rows at all (a lost or re-created DB; `src/lib/db/sqlite/user-store.ts`), or
+  when `users/` is unreadable. The app keeps serving pages, but sign-up and every
+  session creation (password, passkey, dev bypass) are refused, `auth()` returns
+  null and `/api/auth/*` answers **503 `SETUP_INCOMPLETE`**. The data-dirs-without-users
+  gate also applies without the in-process flag. If this boot had just **created**
+  `sampolio.db` it is closed and deleted, so an empty DB never survives to a later
+  "working" boot; a pre-existing DB is never deleted (and is still snapshotted).
+  Fix the key or restore `snapshots/sampolio.db` (below), then restart
+  (`scripts/prod-service.sh restart`).
 - **First-user rule** (sign-up bypasses the self-signup setting and becomes
   admin) applies only to a truly fresh install: setup complete, no user rows at
-  all (soft-deleted included) and no `users-index.enc` / `users/*` on disk.
+  all (soft-deleted included) and no `users/*` data dirs on disk.
 - **Logs:** `~/.sampolio/logs/sampolio.log` and `sampolio-error.log`.
 - **Env:** gui: baked into the plist from `~/sampolio/.env` by
   `scripts/install-launchd.sh` (see §5). system: `~/.sampolio/launchd.env`, written
@@ -233,11 +230,11 @@ snapshots.
 The snapshot opens with the same `ENCRYPTION_KEY`; sessions/passkeys added after
 the snapshot are lost (users sign in again).
 
-**Rollback to a pre-4.0 build** — check out the previous tag, rebuild, kickstart.
-The legacy `users-index.enc` / `users/*/user.enc` are never modified by 4.x, so the
-old build signs users in as before; move `sampolio.db*` aside (don't delete).
-Password changes, passkeys and users created after the cutover are not in the
-`.enc` files and are lost on rollback.
+**No rollback to a pre-4.0 build.** Pre-4.0 builds read users from
+`users-index.enc` / `users/*/user.enc`; since 4.1.2 nothing reads those files and
+installs remove them once the users are in the DB. A pre-4.0 data dir must boot a
+4.0.0–4.1.1 build once (it imports the users) before upgrading to 4.1.2 or later;
+booting 4.1.2+ directly fails closed (data dirs, no user rows).
 
 **Cloudflare Access changes** (login methods, allow-list, session length) are made
 in the Cloudflare Zero Trust dashboard or via the API:

@@ -11,7 +11,7 @@ import { getDb } from '@/lib/db/sqlite/client';
 import * as schema from '@/lib/db/sqlite/schema';
 import { getUserDir, ensureDir } from '@/lib/db/encryption';
 import { isSelfSignupEnabled } from '@/lib/db/app-settings';
-import { isAuthSetupComplete, isFirstUserSetup } from '@/lib/db/sqlite/legacy-import';
+import { isAuthSetupComplete, isFirstUserSetup } from '@/lib/db/sqlite/user-store';
 import { getSetupFailure, SETUP_INCOMPLETE_CODE, SETUP_INCOMPLETE_MESSAGE } from '@/lib/db/sqlite/setup-state';
 import {
   getLockoutRetryAfterSeconds,

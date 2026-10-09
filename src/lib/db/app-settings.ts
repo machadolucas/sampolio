@@ -6,7 +6,7 @@ import {
   readEncryptedFile,
   writeEncryptedFile,
 } from './encryption';
-import { isFirstUserSetup } from './sqlite/legacy-import';
+import { isFirstUserSetup } from './sqlite/user-store';
 
 const APP_SETTINGS_FILE = 'app-settings.enc';
 

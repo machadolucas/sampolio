@@ -3,7 +3,7 @@
 import { headers } from 'next/headers';
 import { z } from 'zod';
 import { isAPIError } from 'better-auth/api';
-import { isAuthSetupComplete, isFirstUserSetup } from '@/lib/db/sqlite/legacy-import';
+import { isAuthSetupComplete, isFirstUserSetup } from '@/lib/db/sqlite/user-store';
 import { isSelfSignupEnabled } from '@/lib/db/app-settings';
 import { getAuth } from '@/lib/auth/server';
 import { passwordPolicySchema, signUpNameSchema } from '@/lib/schemas/auth.schema';

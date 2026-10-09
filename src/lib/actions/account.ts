@@ -338,7 +338,7 @@ export async function deleteMyAccount(input: { confirmationText: string }): Prom
 }
 
 // Dirs wiped by "Start fresh" — every OWNED financial data dir. Deliberately
-// excludes user.enc, preferences.enc, and never touches shared split-groups /
+// excludes preferences.enc and the avatar, and never touches shared split-groups /
 // shared-mortgages (those live outside the user dir entirely).
 const RESET_DIRS = ['accounts', 'investments', 'receivables', 'debts', 'goals', 'budgets', 'trips', 'reconciliation', 'bank'];
 

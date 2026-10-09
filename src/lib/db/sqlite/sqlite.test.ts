@@ -1,17 +1,13 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import Database from 'better-sqlite3';
-import bcrypt from 'bcryptjs';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { eq } from 'drizzle-orm';
-import { useTempDataDir, UUID_RE } from '@/test/temp-data-dir';
-import { writeEncryptedFile } from '../encryption';
+import { useTempDataDir } from '@/test/temp-data-dir';
 import { closeDb, getDb, getDbPath, getSqlite, openEncryptedDatabase } from './client';
 import { deriveSqliteKeyHex, getSqliteKeyHex } from './key';
 import { runMigrations } from './migrate';
 import { createSnapshot, getSnapshotPath, verifyEncryptedDbFile } from './snapshot';
-import { importLegacyUsers, tombstoneEmail } from './legacy-import';
-import { account, user } from './schema';
+import { user } from './schema';
 
 const PLAINTEXT_HEADER = 'SQLite format 3\0';
 
@@ -19,58 +15,11 @@ function header(file: string): string {
   return fs.readFileSync(file).subarray(0, 16).toString('latin1');
 }
 
-// Synthetic legacy users (repo rule: Alex, Sam, *@example.com).
-const ALEX_ID = '2f0c1d8e-4b7a-4c1e-9a3f-0d6b5e8c7a11';
-const SAM_ID = '7a9e3b21-5c4d-4f6e-8b2a-1c3d5e7f9a22';
-const OLD_ID = 'c4d2e6f8-1a3b-4c5d-8e7f-9a0b1c2d3e33';
-
 let tmp: ReturnType<typeof useTempDataDir>;
 
-beforeAll(async () => {
+beforeAll(() => {
   tmp = useTempDataDir();
   closeDb();
-  const dataDir = tmp.dir;
-  const alexHash = await bcrypt.hash('Alex-Legacy-1!', 4);
-  const samHash = await bcrypt.hash('Sam-Legacy-1!', 4);
-  await writeEncryptedFile(path.join(dataDir, 'users-index.enc'), {
-    users: [
-      { id: ALEX_ID, email: 'alex@example.com' },
-      { id: SAM_ID, email: 'sam@example.com' },
-    ],
-  });
-  await writeEncryptedFile(path.join(dataDir, 'users', ALEX_ID, 'user.enc'), {
-    id: ALEX_ID,
-    email: 'alex@example.com',
-    name: 'Alex',
-    passwordHash: alexHash,
-    role: 'admin',
-    isActive: true,
-    createdAt: '2025-01-02T03:04:05.000Z',
-    updatedAt: '2025-06-01T00:00:00.000Z',
-  });
-  await writeEncryptedFile(path.join(dataDir, 'users', SAM_ID, 'user.enc'), {
-    id: SAM_ID,
-    email: 'Sam@Example.com',
-    name: 'Sam',
-    passwordHash: samHash,
-    // pre-role legacy file: role/isActive missing ⇒ user + active
-    avatarVersion: 3,
-    createdAt: '2025-02-02T00:00:00.000Z',
-    updatedAt: '2025-02-03T00:00:00.000Z',
-  });
-  // A user dir that is not in the index: soft-deleted by the old admin delete.
-  await writeEncryptedFile(path.join(dataDir, 'users', OLD_ID, 'user.enc'), {
-    id: OLD_ID,
-    email: 'alex@example.com',
-    name: 'Old Alex',
-    passwordHash: alexHash,
-    role: 'user',
-    isActive: false,
-    createdAt: '2024-01-01T00:00:00.000Z',
-    updatedAt: '2024-05-05T00:00:00.000Z',
-  });
-  // A stray dir without user.enc is ignored.
-  fs.mkdirSync(path.join(dataDir, 'users', 'not-a-user'), { recursive: true });
 });
 
 afterAll(() => {
@@ -130,47 +79,20 @@ describe('migrations', () => {
   });
 });
 
-describe('legacy .enc user import', () => {
-  it('imports every user dir with the same UUIDs, soft-deleting non-index users', async () => {
-    const result = await importLegacyUsers();
-    expect(result).toEqual({ status: 'imported', imported: 3, softDeleted: 1 });
-
-    const rows = getDb().select().from(user).all();
-    expect(rows.map((r) => r.id).sort()).toEqual([ALEX_ID, SAM_ID, OLD_ID].sort());
-
-    const alex = rows.find((r) => r.id === ALEX_ID)!;
-    expect(alex).toMatchObject({ email: 'alex@example.com', name: 'Alex', role: 'admin', isActive: true, deletedAt: null });
-    expect(alex.createdAt.toISOString()).toBe('2025-01-02T03:04:05.000Z');
-
-    const sam = rows.find((r) => r.id === SAM_ID)!;
-    expect(sam).toMatchObject({ email: 'sam@example.com', role: 'user', isActive: true, avatarVersion: 3 });
-
-    const old = rows.find((r) => r.id === OLD_ID)!;
-    expect(old.email).toBe(tombstoneEmail(OLD_ID));
-    expect(old.isActive).toBe(false);
-    expect(old.deletedAt?.toISOString()).toBe('2024-05-05T00:00:00.000Z');
-
-    const creds = getDb().select().from(account).where(eq(account.providerId, 'credential')).all();
-    expect(creds).toHaveLength(3);
-    for (const c of creds) {
-      expect(c.accountId).toBe(c.userId);
-      expect(c.password?.startsWith('$2')).toBe(true);
-      expect(c.id).toMatch(UUID_RE);
+describe('user rows', () => {
+  // Synthetic users (repo rule: Alex, Sam, *@example.com) for the snapshot below.
+  it('stores users', () => {
+    const now = new Date();
+    for (const [id, name] of [
+      ['2f0c1d8e-4b7a-4c1e-9a3f-0d6b5e8c7a11', 'Alex'],
+      ['7a9e3b21-5c4d-4f6e-8b2a-1c3d5e7f9a22', 'Sam'],
+    ]) {
+      getDb()
+        .insert(user)
+        .values({ id, name, email: `${name.toLowerCase()}@example.com`, emailVerified: false, createdAt: now, updatedAt: now })
+        .run();
     }
-  });
-
-  it('is idempotent (guarded by the _meta row)', async () => {
-    const again = await importLegacyUsers();
-    expect(again.status).toBe('already-imported');
-    expect(getDb().select().from(user).all()).toHaveLength(3);
-    expect(getDb().select().from(account).all()).toHaveLength(3);
-  });
-
-  it('never modifies the .enc files', () => {
-    for (const id of [ALEX_ID, SAM_ID, OLD_ID]) {
-      expect(fs.existsSync(path.join(tmp.dir, 'users', id, 'user.enc'))).toBe(true);
-    }
-    expect(fs.existsSync(path.join(tmp.dir, 'users-index.enc'))).toBe(true);
+    expect(getDb().select().from(user).all()).toHaveLength(2);
   });
 });
 
@@ -185,7 +107,7 @@ describe('snapshot', () => {
     const keyed = openEncryptedDatabase(file, getSqliteKeyHex(), { readonly: true });
     const n = (keyed.prepare('SELECT count(*) AS n FROM user').get() as { n: number }).n;
     keyed.close();
-    expect(n).toBe(3);
+    expect(n).toBe(2);
 
     const unkeyed = new Database(file, { readonly: true });
     expect(() => unkeyed.prepare('SELECT count(*) FROM sqlite_master').get()).toThrow(/not a database/);

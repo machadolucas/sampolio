@@ -2,7 +2,7 @@
  * Next.js instrumentation hook — runs once when the server process boots
  * (Node runtime only). Order matters:
  *  1. open the SQLCipher DB + apply migrations (src/lib/db/sqlite/),
- *  2. one-shot import of the legacy `.enc` users (guarded by a _meta row),
+ *  2. check that the DB holds the users the data dirs belong to,
  *  3. prune expired `verification` rows (abandoned WebAuthn challenges) now
  *     and hourly, then an encrypted snapshot now, every 6 h and daily at 04:55,
  *  4. the Enable Banking background sync scheduler (reads the users table).

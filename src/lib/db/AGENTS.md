@@ -46,8 +46,8 @@ Ids reach this layer straight from action arguments and import payloads, and `pa
 | `sqlite/migrate.ts` + `/drizzle` | Committed SQL from `pnpm db:generate` (drizzle-kit **generate only** — it cannot open the keyed DB; no push/migrate/studio). Applied by the runtime migrator on first connection; idempotent. |
 | `sqlite/snapshot.ts` | `createSnapshot()`: `VACUUM INTO '<plain path>'` (SQLite3MultipleCiphers encrypts the copy with the source key; the `file:…?hexkey=` URI form is unusable because better-sqlite3 does not enable URI filenames), verify (no plaintext header, opens with key, fails without), atomic rename to `snapshots/sampolio.db`. Never `db.backup()` (unkeyed ⇒ plaintext). `startSnapshotScheduler()`: boot + every 6 h + daily 04:55. CLI twin: `scripts/db-snapshot.mjs`. |
 | `sqlite/maintenance.ts` | `pruneExpiredVerifications()`: `DELETE FROM verification WHERE expiresAt < now`. Every passkey options request (the sign-in page's conditional UI on each load) writes a 5-minute challenge row; an abandoned ceremony's row is never consumed, and Better Auth only prunes inside `findVerificationValue`, which the passkey plugin does not use. Safe for all verification uses (expired rows are already invalid). `pruneStaleRateLimits()`: `DELETE FROM rateLimit WHERE lastRequest < now - rateLimitRowRetentionMs()` (2 × the longest window in `src/lib/auth/rate-limit-rules.ts`, at least 24 h); Better Auth prunes only when a bucket rolls over, so keys never hit again stayed forever, and a row inside its window is never deleted. `startMaintenanceScheduler()`: both, at boot (before the startup snapshot) + hourly. |
-| `sqlite/legacy-import.ts` | One-shot `.enc` → DB user import (see `users.ts` below), guarded by `_meta` `legacy-users-imported`, one transaction; throws `LegacyImportError` on any inconsistency (missing index, unreadable file, missing email, duplicate email, id mismatch). Also `isAuthSetupComplete()` / `isFirstUserSetup()` / `hasLegacyUserData()`. |
-| `sqlite/bootstrap.ts` + `setup-state.ts` | Boot sequence (open → import) that **fails closed**: records the failure, deletes a DB file this boot created, and blocks auth (503 `SETUP_INCOMPLETE`). |
+| `sqlite/user-store.ts` | Consistency gate between the `user` table and the `users/<id>/` data dirs: `verifyUserStore()` (boot; throws `UserStoreError` when data dirs exist but the DB has no user rows — a lost/wrong DB), `isAuthSetupComplete()` / `isFirstUserSetup()` (sign-up and session gates), `countUserDataDirs()` (missing `users/` = 0, other read errors propagate), `tombstoneEmail()`. |
+| `sqlite/bootstrap.ts` + `setup-state.ts` | Boot sequence (open → user-store check) that **fails closed**: records the failure, deletes a DB file this boot created, and blocks auth (503 `SETUP_INCOMPLETE`). |
 
 Driver: `better-sqlite3` is a **pnpm alias** for `better-sqlite3-multiple-ciphers` (N-API prebuilds, `allowBuilds: false` in `pnpm-workspace.yaml`), so drizzle's `drizzle-orm/better-sqlite3` gets the cipher build. It is in `serverExternalPackages`.
 
@@ -57,7 +57,7 @@ Driver: `better-sqlite3` is a **pnpm alias** for `better-sqlite3-multiple-cipher
 
 1. Add its tables to `sqlite/schema/<entity>.ts` (export from `index.ts`), run `pnpm db:generate`, read the SQL (additive only), commit `drizzle/`.
 2. Re-implement the entity's `src/lib/db/<entity>.ts` **behind its existing function signatures** (same inputs/outputs, ISO-string dates at the boundary, `uuid` v4 ids), so actions and `cached.ts` do not change. `cached.ts` stays on top with the same tags.
-3. Add a one-shot importer next to `legacy-import.ts` with its own `_meta` guard, reading the `.enc` files with `readEncryptedFile` and writing in one transaction; leave the `.enc` files in place until a later cleanup.
+3. Add a one-shot importer in `sqlite/` with its own `_meta` guard, reading the `.enc` files with `readEncryptedFile` and writing in one transaction; leave the `.enc` files in place until a later cleanup release removes the importer and its readers (the 4.0 user importer, removed in 4.1.2, is in git history as `sqlite/legacy-import.ts`).
 4. Tests on a temp encrypted DB (`src/test/temp-data-dir.ts`), including importer idempotency.
 
 ## Data Directory Structure
@@ -66,7 +66,6 @@ Driver: `better-sqlite3` is a **pnpm alias** for `better-sqlite3-multiple-cipher
 {dataDir}/
 ├── sampolio.db (+ -wal/-shm) # SQLCipher: Better Auth tables + _meta (see above)
 ├── snapshots/sampolio.db     # verified encrypted snapshot (what backups archive)
-├── users-index.enc           # LEGACY { users: [{ id, email }] } — imported once, never written
 ├── app-settings.enc          # { selfSignupEnabled, updatedAt, updatedBy }
 ├── shared/                   # Shared (non-user-scoped) entities — access control in the action layer
 │   ├── mortgages/{id}.enc    # SharedMortgage (loans + members embedded)
@@ -77,7 +76,6 @@ Driver: `better-sqlite3` is a **pnpm alias** for `better-sqlite3-multiple-cipher
 │   ├── split-groups/{id}/summary.enc   # Maintained running balances (netByUserId) + month index
 │   └── split-group-members/{userId}.enc  # Reverse index: userId → groupIds
 └── users/{userId}/
-    ├── user.enc              # LEGACY profile + bcrypt hash — imported once, kept for rollback, never written
     ├── preferences.enc       # Onboarding, categories, tax defaults
     ├── avatar.webp           # Profile picture — PLAIN binary (NOT encrypted); optional; excluded from JSON backup
     ├── accounts/{id}.enc     # One file per cash account

@@ -166,7 +166,6 @@ Financial data is stored as individually encrypted JSON files in `~/.sampolio/da
 ~/.sampolio/data/
 ├── sampolio.db                  # SQLCipher: users, sessions, passkeys (Better Auth)
 ├── snapshots/sampolio.db        # verified encrypted snapshot (back this up, not the live file)
-├── users-index.enc              # legacy user index (pre-4.0; imported once)
 ├── app-settings.enc             # Global settings (self-signup, etc.)
 ├── shared/                      # Shared (non-user-scoped) entities
 │   ├── mortgages/
@@ -176,7 +175,6 @@ Financial data is stored as individually encrypted JSON files in `~/.sampolio/da
 │       └── {userId}.enc         # Reverse index: userId → mortgageIds
 └── users/
     └── {userId}/
-        ├── user.enc             # legacy profile (pre-4.0; imported once)
         ├── preferences.enc      # Onboarding state, categories, tax defaults
         ├── accounts/
         │   └── {accountId}.enc  # Cash accounts
