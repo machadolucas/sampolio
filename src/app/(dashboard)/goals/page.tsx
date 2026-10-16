@@ -6,7 +6,6 @@ import { Button } from 'primereact/button';
 import { confirmDialog } from 'primereact/confirmdialog';
 import { ListPageSkeleton } from '@/components/ui/skeletons';
 import { MdAdd, MdErrorOutline, MdFlag } from 'react-icons/md';
-import { useAppContext } from '@/components/layout/app-layout';
 import { useToast } from '@/components/providers/toast-provider';
 import { updateGoal, deleteGoal } from '@/lib/actions/goals';
 import { getGoalsPageData } from '@/lib/actions/dashboard-data';
@@ -16,9 +15,9 @@ import { AlertBanner } from '@/components/ui/alert-banner';
 import { GoalCard } from '@/components/goals/goal-card';
 import { GoalDialog } from '@/components/goals/goal-dialog';
 import type { FinancialAccount, Goal, MonthlyProjection, WealthProjectionMonth } from '@/types';
+import { notifyDataChanged, useDataRefresh } from '@/lib/hooks/use-data-refresh';
 
 export default function GoalsPage() {
-  const appContext = useAppContext();
   const toast = useToast();
   const { data: session } = useSession();
 
@@ -89,7 +88,7 @@ export default function GoalsPage() {
   }, [userId]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
-  useEffect(() => { if (appContext) appContext.setRefreshCallback(fetchData); }, [appContext, fetchData]);
+  useDataRefresh(fetchData);
 
   const warningFor = (goal: Goal): string | undefined => {
     if (goal.trackingMethod === 'account-balance' && goal.linkedAccountId && !accounts.some((a) => a.id === goal.linkedAccountId)) {
@@ -115,7 +114,7 @@ export default function GoalsPage() {
     const res = await updateGoal(goal.id, { isArchived: !goal.isArchived });
     if (res.success) {
       toast.success(goal.isArchived ? 'Goal unarchived' : 'Goal archived', goal.name);
-      fetchData();
+      notifyDataChanged();
     } else {
       toast.error('Error', res.error || 'Failed to update goal');
     }
@@ -131,7 +130,7 @@ export default function GoalsPage() {
         const res = await deleteGoal(goal.id);
         if (res.success) {
           toast.success('Goal deleted', goal.name);
-          fetchData();
+          notifyDataChanged();
         } else {
           toast.error('Error', res.error || 'Failed to delete goal');
         }
@@ -234,7 +233,8 @@ export default function GoalsPage() {
         goal={editingGoal}
         accounts={accounts}
         onHide={() => setDialogOpen(false)}
-        onSaved={fetchData}
+        // GoalDialog announces the change itself; this page refetches via useDataRefresh.
+        onSaved={() => {}}
       />
     </div>
   );

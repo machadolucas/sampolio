@@ -1,5 +1,5 @@
 import { differenceInCalendarDays } from 'date-fns';
-import type { SplitDuplicateCandidate, SplitLinkCandidate } from '@/types';
+import type { SplitDuplicateCandidate, SplitExpense, SplitLinkCandidate } from '@/types';
 
 export interface BankTxForMatch {
   id: string;
@@ -94,6 +94,48 @@ function setMatches(
   if (!primary) return;
   if (matches.length > 1) primary.related = matches.slice(1);
   result.set(txId, primary);
+}
+
+/** Client-side twin of the projection in `getMySplitLinkCandidates`
+ * (`src/lib/actions/split-groups.ts`) — keep the two mappings identical. Lets
+ * the bank page show a just-created split's flag before the refetch lands.
+ * Payments are never candidates (`null`). */
+export function splitCandidateFromExpense(
+  expense: SplitExpense,
+  group: { id: string; name: string },
+): SplitLinkCandidate | null {
+  if (expense.kind !== 'expense') return null;
+  return {
+    expenseId: expense.id,
+    groupId: group.id,
+    groupName: group.name,
+    title: expense.title,
+    date: expense.date,
+    amountCents: expense.amountCents,
+    currency: expense.currency,
+    bankLink: expense.bankLink
+      ? {
+          txId: expense.bankLink.txId,
+          linkedAccountId: expense.bankLink.linkedAccountId,
+          ownerUserId: expense.bankLink.ownerUserId,
+          bookingDate: expense.bankLink.bookingDate,
+          amount: expense.bankLink.amount,
+          counterpartyName: expense.bankLink.counterpartyName,
+        }
+      : undefined,
+  };
+}
+
+/** Replace the candidate with the same `expenseId`, else append. Never mutates `list`. */
+export function upsertSplitCandidate(
+  list: readonly SplitLinkCandidate[],
+  candidate: SplitLinkCandidate,
+): SplitLinkCandidate[] {
+  const index = list.findIndex((c) => c.expenseId === candidate.expenseId);
+  if (index < 0) return [...list, candidate];
+  const next = [...list];
+  next[index] = candidate;
+  return next;
 }
 
 /** Explicit links are resolved first, then stale-link recovery, then heuristics. */

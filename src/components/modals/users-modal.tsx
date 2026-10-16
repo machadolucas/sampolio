@@ -26,6 +26,7 @@ import {
 import { UserAvatar } from '@/components/ui/user-avatar';
 import { AvatarEditorDialog } from '@/components/ui/avatar-editor-dialog';
 import { invalidateUserProfiles } from '@/lib/hooks/use-user-profiles';
+import { notifyDataChanged } from '@/lib/hooks/use-data-refresh';
 import type { AdminUserRow, PublicUser, UserRole } from '@/types';
 import { formatDate } from '@/lib/constants';
 
@@ -119,6 +120,8 @@ export function UsersModal({ visible, onHide }: UsersModalProps) {
 
                 if (result.success) {
                     toast.success('Success', 'User updated successfully');
+                    invalidateUserProfiles([editingUser.id]); // a renamed user shows its new name everywhere
+                    notifyDataChanged();
                     setDialogVisible(false);
                     fetchUsers();
                 } else {
@@ -135,6 +138,7 @@ export function UsersModal({ visible, onHide }: UsersModalProps) {
 
                 if (result.success) {
                     toast.success('Success', 'User created successfully');
+                    notifyDataChanged();
                     setDialogVisible(false);
                     fetchUsers();
                 } else {
@@ -153,6 +157,7 @@ export function UsersModal({ visible, onHide }: UsersModalProps) {
         const result = await updateUser(editingUser.id, { avatarDataUri: dataUri });
         if (result.success) {
             invalidateUserProfiles([editingUser.id]);
+            notifyDataChanged();
             if (result.data) setEditingUser(result.data);
             fetchUsers();
             toast.success('Photo updated', `${editingUser.name}'s profile picture is set.`);
@@ -175,6 +180,7 @@ export function UsersModal({ visible, onHide }: UsersModalProps) {
                     const result = await deleteUser(user.id);
                     if (result.success) {
                         toast.success('Success', 'User deleted successfully');
+                        notifyDataChanged();
                         fetchUsers();
                     } else {
                         toast.error('Error', result.error);

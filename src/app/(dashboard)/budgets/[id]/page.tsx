@@ -28,6 +28,7 @@ import { BudgetConfirmDialog } from '@/components/budgets/budget-confirm-dialog'
 import { BudgetExportDialog } from '@/components/budgets/budget-export-dialog';
 import { statusTag } from '@/components/budgets/budget-card';
 import type { Budget, Trip } from '@/types';
+import { notifyDataChanged, useDataRefresh } from '@/lib/hooks/use-data-refresh';
 
 export default function BudgetDetailPage() {
   const params = useParams<{ id: string }>();
@@ -58,6 +59,9 @@ export default function BudgetDetailPage() {
       // labels; all budgets tell the picker which trips are already taken.
       const [res, tripsRes, budgetsRes] = await Promise.all([getBudgetById(budgetId), getTrips(), getBudgets()]);
       if (res.success && res.data) setBudget(res.data);
+      // A background refetch that fails transiently keeps the loaded budget;
+      // only a genuinely missing one (or a failed first load) leaves the page.
+      else if (hasLoadedOnce.current && res.error !== 'Budget not found') return;
       else { router.push('/budgets'); return; }
       setTrips(tripsRes.success && tripsRes.data ? tripsRes.data : []);
       setAllBudgets(budgetsRes.success && budgetsRes.data ? budgetsRes.data : []);
@@ -75,7 +79,7 @@ export default function BudgetDetailPage() {
   }, [budgetId, router, appToast]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
-  useEffect(() => { if (appContext) appContext.setRefreshCallback(fetchData); }, [appContext, fetchData]);
+  useDataRefresh(fetchData);
 
   // Refresh just the trips list — used after a trip is created inline from the
   // funding dialog, so the linked-trip label on the funding row resolves once
@@ -90,40 +94,44 @@ export default function BudgetDetailPage() {
   const includeRegularIncome = budget?.includeRegularIncome;
   const startMonth = budget?.startMonth;
   const endMonth = budget?.endMonth;
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      if (!includeRegularIncome || !incomeAccountId || !startMonth || !endMonth) {
-        setRegularIncome(null);
-        return;
-      }
-      const account = accounts.find(a => a.id === incomeAccountId);
-      if (!account) {
-        setRegularIncome(null);
-        return;
-      }
-      const res = await getProjection(incomeAccountId, { startDate: startMonth, endDate: endMonth });
-      if (cancelled || !res.success || !res.data) return;
-      const months = res.data.monthly;
-      if (months.length === 0) {
-        setRegularIncome(null);
-        return;
-      }
-      // Exclude this feature's own injected lines to avoid circularity once confirmed.
-      const totalIncome = months.reduce(
-        (sum, m) => sum + m.incomeBreakdown.filter(i => i.source !== 'budget').reduce((s, i) => s + i.amount, 0),
-        0
-      );
-      const expectedMonths = getBudgetMonths({ startMonth, endMonth } as Budget).length;
-      setRegularIncome({
-        monthlyAverage: totalIncome / months.length,
-        currency: account.currency,
-        accountName: account.name,
-        partial: months.length < expectedMonths,
-      });
-    })();
-    return () => { cancelled = true; };
+  const incomeRequestId = useRef(0);
+  const loadRegularIncome = useCallback(async () => {
+    const requestId = ++incomeRequestId.current;
+    if (!includeRegularIncome || !incomeAccountId || !startMonth || !endMonth) {
+      setRegularIncome(null);
+      return;
+    }
+    const account = accounts.find(a => a.id === incomeAccountId);
+    if (!account) {
+      setRegularIncome(null);
+      return;
+    }
+    const res = await getProjection(incomeAccountId, { startDate: startMonth, endDate: endMonth });
+    // Superseded by a newer request, or a failed refetch: keep what is shown.
+    if (requestId !== incomeRequestId.current || !res.success || !res.data) return;
+    const months = res.data.monthly;
+    if (months.length === 0) {
+      setRegularIncome(null);
+      return;
+    }
+    // Exclude this feature's own injected lines to avoid circularity once confirmed.
+    const totalIncome = months.reduce(
+      (sum, m) => sum + m.incomeBreakdown.filter(i => i.source !== 'budget').reduce((s, i) => s + i.amount, 0),
+      0
+    );
+    const expectedMonths = getBudgetMonths({ startMonth, endMonth } as Budget).length;
+    setRegularIncome({
+      monthlyAverage: totalIncome / months.length,
+      currency: account.currency,
+      accountName: account.name,
+      partial: months.length < expectedMonths,
+    });
   }, [includeRegularIncome, incomeAccountId, startMonth, endMonth, accounts]);
+  useEffect(() => {
+    void loadRegularIncome();
+  }, [loadRegularIncome]);
+  // Income / cashflow edits elsewhere change the projection this figure reads.
+  useDataRefresh(loadRegularIncome);
 
   const feasibility = useMemo(() => (budget ? computeFeasibility(budget) : null), [budget]);
   const rollup = useMemo(() => (budget ? computeActualsRollup(budget) : null), [budget]);
@@ -172,6 +180,7 @@ export default function BudgetDetailPage() {
         const res = await unconfirmBudget(budget.id);
         if (res.success && res.data) {
           setBudget(res.data);
+          notifyDataChanged();
           toast('Removed from your cashflow');
         } else {
           toast(res.error ?? 'Something went wrong', 'error');
@@ -183,6 +192,7 @@ export default function BudgetDetailPage() {
     const res = await updateBudget(budget.id, { isArchived: !budget.isArchived });
     if (res.success && res.data) {
       setBudget(res.data);
+      notifyDataChanged();
       toast(res.data.isArchived ? 'Archived — it no longer shows in your cashflow' : 'Unarchived');
     } else {
       toast(res.error ?? 'Something went wrong', 'error');
@@ -198,8 +208,10 @@ export default function BudgetDetailPage() {
       acceptClassName: 'p-button-danger',
       accept: async () => {
         const res = await deleteBudget(budget.id);
-        if (res.success) router.push('/budgets');
-        else toast(res.error ?? 'Something went wrong', 'error');
+        if (res.success) {
+          notifyDataChanged();
+          router.push('/budgets');
+        } else toast(res.error ?? 'Something went wrong', 'error');
       },
     });
 
@@ -275,7 +287,10 @@ export default function BudgetDetailPage() {
           tripToBudgetName={tripToBudgetName}
           onToggleRegularIncome={async (include) => {
             const res = await updateBudget(budget.id, { includeRegularIncome: include });
-            if (res.success && res.data) setBudget(res.data);
+            if (res.success && res.data) {
+              setBudget(res.data);
+              notifyDataChanged();
+            }
           }}
           onChanged={setBudget}
           onTripsChanged={refreshTrips}
@@ -305,6 +320,7 @@ export default function BudgetDetailPage() {
         onHide={() => setConfirmOpen(false)}
         onConfirmed={(b) => {
           setBudget(b);
+          notifyDataChanged();
           const hasTripFunding = b.fundingSources.some((s) => s.linkedTripId);
           toast(
             hasTripFunding

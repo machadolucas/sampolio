@@ -9,6 +9,7 @@ import { useToast } from '@/components/providers/toast-provider';
 import { getRecurringSuggestions } from '@/lib/actions/bank';
 import { createRecurringItem } from '@/lib/actions/recurring';
 import { getAccounts } from '@/lib/actions/accounts';
+import { notifyDataChanged, useDataRefresh } from '@/lib/hooks/use-data-refresh';
 import { formatCurrency, formatYearMonth } from '@/lib/constants';
 import type { RecurringSuggestion } from '@/lib/recurring-detection';
 import type { Currency, FinancialAccount } from '@/types';
@@ -60,6 +61,10 @@ export function RecurringSuggestions() {
     load();
   }, [load]);
 
+  // Tracking an item (here or on another screen) changes which suggestions
+  // remain; skip the focus refetch — it fans out one call per account.
+  useDataRefresh(load, { focus: false });
+
   if (suggestions.length === 0) return null;
 
   const handleTrack = async (s: RecurringSuggestion & { accountId: string }) => {
@@ -77,6 +82,7 @@ export function RecurringSuggestions() {
       if (res.success) {
         dismissSuggestionKey(s.key);
         setSuggestions((all) => all.filter((x) => x.key !== s.key));
+        notifyDataChanged();
         toast.success('Now tracked', `"${s.name}" was added as a recurring ${s.type} — see it on Cashflow.`);
       } else {
         toast.error('Could not add item', res.error);

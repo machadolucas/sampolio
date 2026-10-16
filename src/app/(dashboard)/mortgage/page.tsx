@@ -30,6 +30,7 @@ import { MortgageSetupWizard } from '@/components/mortgage/mortgage-setup-wizard
 import { MortgageImportDialog } from '@/components/mortgage/mortgage-import-dialog';
 import { MortgageReconcileDialog } from '@/components/mortgage/mortgage-reconcile-dialog';
 import { EuriborUpdateDialog, DriftAdjustmentDialog, ExtraPaymentDialog, MortgageMembersDialog } from '@/components/mortgage/mortgage-dialogs';
+import { notifyDataChanged, useDataRefresh } from '@/lib/hooks/use-data-refresh';
 // The mortgage page renders seven Chart.js charts. Code-split them into a single
 // shared lazy chunk (same module specifier → one shared chunk) so they don't
 // inflate the page's initial JS; a short placeholder holds each chart's height.
@@ -92,7 +93,10 @@ export default function MortgagePage() {
     if (!hasLoadedOnce.current) setIsLoading(true);
     try {
       const res = await getMyMortgages();
-      const active = res.success && res.data ? res.data.filter((m) => !m.isArchived) : [];
+      // A failed (re)load keeps what is on screen rather than showing the
+      // "set up your mortgage" empty state.
+      if (!res.success) return;
+      const active = res.data ? res.data.filter((m) => !m.isArchived) : [];
       if (active.length === 0) {
         setInputs(null);
       } else {
@@ -108,7 +112,7 @@ export default function MortgagePage() {
   }, []);
 
   useEffect(() => { fetchData(); }, [fetchData]);
-  useEffect(() => { if (appContext) appContext.setRefreshCallback(fetchData); }, [appContext, fetchData]);
+  useDataRefresh(fetchData);
 
   const toast = (msg: string, severity: 'success' | 'error' = 'success') =>
     severity === 'success' ? appToast.success('Done', msg) : appToast.error('Error', msg);
@@ -172,7 +176,7 @@ export default function MortgagePage() {
       acceptClassName: 'p-button-danger',
       accept: async () => {
         const res = await deleteMortgage(mortgageId);
-        if (res.success) { toast('Mortgage deleted'); fetchData(); }
+        if (res.success) { toast('Mortgage deleted'); notifyDataChanged(); }
         else toast(res.error ?? 'Failed to delete', 'error');
       },
     });
@@ -196,7 +200,7 @@ export default function MortgagePage() {
       acceptClassName: 'p-button-danger',
       accept: async () => {
         const res = await revertMortgageMonth(mortgageId, yearMonth);
-        if (res.success) { toast(`${label} reverted to forecast`); fetchData(); }
+        if (res.success) { toast(`${label} reverted to forecast`); notifyDataChanged(); }
         else toast(res.error ?? 'Failed to revert', 'error');
       },
     });
@@ -220,7 +224,7 @@ export default function MortgagePage() {
           you both see the same picture.
         </p>
         <Button label="Set up your mortgage" icon={<MdHouse />} onClick={() => setSetupOpen(true)} />
-        <MortgageSetupWizard visible={setupOpen} isSimple={!!isSimple} onClose={() => setSetupOpen(false)} onCreated={() => { setSetupOpen(false); toast('Mortgage created'); fetchData(); }} />
+        <MortgageSetupWizard visible={setupOpen} isSimple={!!isSimple} onClose={() => setSetupOpen(false)} onCreated={() => { setSetupOpen(false); toast('Mortgage created'); }} />
       </div>
     );
   }
@@ -382,7 +386,7 @@ export default function MortgagePage() {
                 rates={inputs.rates}
                 costs={inputs.costs}
                 currency={mortgage.currency}
-                onChanged={(msg) => { toast(msg); fetchData(); }}
+                onChanged={(msg) => { toast(msg); }}
               />
             )}
           </div>
@@ -408,7 +412,7 @@ export default function MortgagePage() {
         previewLoans={previewLoans}
         currency={mortgage.currency}
         onClose={() => setEuriborOpen(false)}
-        onSaved={(msg) => { setEuriborOpen(false); toast(msg); fetchData(); }}
+        onSaved={(msg) => { setEuriborOpen(false); toast(msg); }}
       />
       <DriftAdjustmentDialog
         visible={driftOpen}
@@ -417,7 +421,7 @@ export default function MortgagePage() {
         expectedByLoan={expectedByLoan}
         currency={mortgage.currency}
         onClose={() => setDriftOpen(false)}
-        onSaved={(msg) => { setDriftOpen(false); toast(msg); fetchData(); }}
+        onSaved={(msg) => { setDriftOpen(false); toast(msg); }}
       />
       <ExtraPaymentDialog
         visible={extraOpen}
@@ -425,21 +429,21 @@ export default function MortgagePage() {
         loans={mortgage.loans.map((l) => ({ id: l.id, label: l.label }))}
         currency={mortgage.currency}
         onClose={() => setExtraOpen(false)}
-        onSaved={(msg) => { setExtraOpen(false); toast(msg); fetchData(); }}
+        onSaved={(msg) => { setExtraOpen(false); toast(msg); }}
       />
       <MortgageMembersDialog
         visible={membersOpen}
         mortgage={mortgage}
         currentUserId={userId}
         onClose={() => setMembersOpen(false)}
-        onChanged={(msg) => { toast(msg); fetchData(); }}
+        onChanged={(msg) => { toast(msg); }}
       />
       <MortgageImportDialog
         visible={importOpen}
         mortgage={mortgage}
         hasActuals={inputs.actuals.length > 0}
         onClose={() => setImportOpen(false)}
-        onImported={(msg) => { setImportOpen(false); toast(msg); fetchData(); }}
+        onImported={(msg) => { setImportOpen(false); toast(msg); }}
       />
       <MortgageReconcileDialog
         visible={reconcileYM !== null}
@@ -447,7 +451,7 @@ export default function MortgagePage() {
         mortgage={mortgage}
         currency={mortgage.currency}
         onClose={() => setReconcileYM(null)}
-        onSaved={(msg) => { setReconcileYM(null); toast(msg); fetchData(); }}
+        onSaved={(msg) => { setReconcileYM(null); toast(msg); }}
       />
     </div>
   );

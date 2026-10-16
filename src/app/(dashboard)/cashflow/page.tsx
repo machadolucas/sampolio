@@ -40,6 +40,8 @@ import { useMonthSelection } from '@/lib/hooks/use-month-selection';
 import type { FinancialAccount, MonthFlowData, CashflowItem, Currency, SalaryConfig, TaxedIncome, MonthlyProjection } from '@/types';
 import { MdAccountBalanceWallet, MdAdd, MdAccountTree, MdBarChart, MdTableChart, MdInfoOutline, MdHistory } from 'react-icons/md';
 import { Tooltip } from 'primereact/tooltip';
+import { useDataRefresh } from '@/lib/hooks/use-data-refresh';
+import { resolveSeriesEditTarget } from '@/lib/cashflow-edit-target';
 
 export default function CashflowPage() {
     const appContext = useAppContext();
@@ -113,26 +115,28 @@ export default function CashflowPage() {
         }
     }, [selectedAccountId, fetchProjection]);
 
-    // Register refresh callback
-    useEffect(() => {
-        if (appContext) {
-            appContext.setRefreshCallback(fetchProjection);
-        }
-    }, [appContext, fetchProjection]);
+    useDataRefresh(fetchProjection);
 
     // Fetch reconciliation sessions to determine which months are reconciled
-    useEffect(() => {
-        async function fetchReconciliationStatus() {
-            const result = await getReconciliationSessions();
-            if (result.success && result.data) {
-                const completed = result.data
-                    .filter(s => s.status === 'completed')
-                    .map(s => s.yearMonth);
-                setReconciledMonths(new Set(completed));
-            }
-        }
-        fetchReconciliationStatus();
+    // (on mount, and again whenever data changes — e.g. a check-in completes).
+    const fetchReconciliationStatus = useCallback(() => {
+        return getReconciliationSessions()
+            .then((result) => {
+                if (result.success && result.data) {
+                    const completed = result.data
+                        .filter(s => s.status === 'completed')
+                        .map(s => s.yearMonth);
+                    setReconciledMonths(new Set(completed));
+                }
+            })
+            .catch((err) => console.error('Failed to fetch reconciliation status:', err));
     }, []);
+
+    useEffect(() => {
+        void fetchReconciliationStatus();
+    }, [fetchReconciliationStatus]);
+
+    useDataRefresh(fetchReconciliationStatus);
 
     // Display mode
     const displayMode = appContext?.displayMode ?? 'advanced';
@@ -155,16 +159,24 @@ export default function CashflowPage() {
         useMonthSelection(displayMonths, projection);
 
     // Card statement breakdown for the selected month (for the Sankey drill-down)
-    useEffect(() => {
-        if (!selectedAccountId) return;
-        getCardStatementBreakdownForAccount(selectedAccountId, selectedMonth).then((res) => {
-            setCardBreakdowns(
-                res.success && res.data
-                    ? new Map(res.data.map((b) => [b.linkId, { cardName: b.cardName, transactions: b.transactions }]))
-                    : new Map()
-            );
-        });
+    const fetchCardBreakdowns = useCallback(() => {
+        if (!selectedAccountId) return Promise.resolve();
+        return getCardStatementBreakdownForAccount(selectedAccountId, selectedMonth)
+            .then((res) => {
+                setCardBreakdowns(
+                    res.success && res.data
+                        ? new Map(res.data.map((b) => [b.linkId, { cardName: b.cardName, transactions: b.transactions }]))
+                        : new Map()
+                );
+            })
+            .catch((err) => console.error('Failed to fetch card statement breakdown:', err));
     }, [selectedAccountId, selectedMonth]);
+
+    useEffect(() => {
+        void fetchCardBreakdowns();
+    }, [fetchCardBreakdowns]);
+
+    useDataRefresh(fetchCardBreakdowns);
 
     // Current balance for the account selector affordance ("Everyday · €1 234"):
     // the anchor month's starting balance for the selected account.
@@ -461,6 +473,7 @@ export default function CashflowPage() {
             entityType,
             entityId: itemId,
             yearMonth: selectedMonth,
+            accountId: selectedAccountId,
         });
     };
 
@@ -469,6 +482,7 @@ export default function CashflowPage() {
             mode: 'create',
             entityType: type,
             yearMonth: selectedMonth,
+            accountId: selectedAccountId,
         });
     };
 
@@ -477,6 +491,7 @@ export default function CashflowPage() {
             mode: 'view',
             entityType: 'cashflow-item',
             yearMonth: selectedMonth,
+            accountId: selectedAccountId,
         });
     };
 
@@ -520,12 +535,20 @@ export default function CashflowPage() {
                         outlined
                         onClick={() => {
                             setEditChoiceVisible(false);
-                            const entityType = editChoiceItemType === 'income' ? 'income' : 'expense';
+                            // A salary shows up as its linked recurring item; its
+                            // series is edited through the salary config.
+                            const target = resolveSeriesEditTarget(
+                                editChoiceItemId,
+                                editChoiceItemType,
+                                salaryConfigs,
+                                taxedIncomes,
+                            );
                             appContext?.openDrawer({
                                 mode: 'edit',
-                                entityType,
-                                entityId: editChoiceItemId,
+                                entityType: target.entityType,
+                                entityId: target.entityId,
                                 yearMonth: selectedMonth,
+                                accountId: selectedAccountId,
                             });
                         }}
                     />
@@ -546,7 +569,9 @@ export default function CashflowPage() {
                 recurringItemId={overrideRecurringItemId}
                 accountId={selectedAccountId}
                 yearMonth={selectedMonth}
-                onDataChange={fetchProjection}
+                // Announce globally (projection, reconciliation and open modals all
+                // refetch through the data-refresh bus).
+                onDataChange={() => appContext?.refreshData()}
             />
 
             <CashflowHeader

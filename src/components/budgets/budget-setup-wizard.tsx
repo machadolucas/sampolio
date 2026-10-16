@@ -20,6 +20,7 @@ import { getVerdict } from './budget-verdict-card';
 import { BUDGET_TEMPLATES } from './budget-templates';
 import { createBudget, addBudgetLine, addBudgetFundingSource } from '@/lib/actions/budgets';
 import type { Budget, BudgetFundingType, Currency } from '@/types';
+import { notifyDataChanged } from '@/lib/hooks/use-data-refresh';
 
 const STEPS = [
   { label: 'The plan' },
@@ -146,6 +147,8 @@ export function BudgetSetupWizard({
         setSaving(false);
         return;
       }
+      // The budget exists from here on, whatever happens to the lines below.
+      notifyDataChanged();
       const budgetId = created.data.id;
       let latest: Budget = created.data;
       for (const l of realLines) {
@@ -166,8 +169,10 @@ export function BudgetSetupWizard({
       }
       setSaving(false);
       reset();
+      notifyDataChanged();
       onCreated(latest);
     } catch {
+      notifyDataChanged();
       setSaving(false);
       setError('Something went wrong — please try again');
     }

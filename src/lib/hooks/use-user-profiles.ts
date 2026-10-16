@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { getUserProfiles } from '@/lib/actions/user-profiles';
+import { useDataRefresh } from '@/lib/hooks/use-data-refresh';
 import type { UserProfile } from '@/types';
 
 // Module-level cache of resolved profiles, shared across every mounted hook so
@@ -48,6 +49,35 @@ async function fetchMissing(missing: string[]): Promise<boolean> {
   return missing.some((id) => cache.has(id));
 }
 
+/** Re-read already-cached profiles in place (no cache clearing, so avatars
+ * never flash back to initials) and wake every mounted hook if any changed —
+ * picks up a co-member's new name/photo made in another tab or session. */
+async function refreshProfiles(ids: string[]): Promise<void> {
+  const key = `refresh:${ids.join(',')}`;
+  const pending = inflight.get(key);
+  if (pending) return pending;
+  const run = doRefreshProfiles(ids).finally(() => inflight.delete(key));
+  inflight.set(key, run);
+  return run;
+}
+
+async function doRefreshProfiles(ids: string[]): Promise<void> {
+  try {
+    const res = await getUserProfiles(ids);
+    if (!res.success || !res.data) return;
+    let changed = false;
+    for (const profile of res.data) {
+      const prev = cache.get(profile.id);
+      if (prev && prev.name === profile.name && prev.avatarUrl === profile.avatarUrl) continue;
+      cache.set(profile.id, profile);
+      changed = true;
+    }
+    if (changed) for (const wake of subscribers) wake();
+  } catch (err) {
+    console.error('[user-profiles] refresh failed:', err);
+  }
+}
+
 /**
  * Resolve `{ name, avatarUrl }` for a set of user ids. Only cache misses hit the
  * server (deduped across concurrent callers). Returns a plain record keyed by
@@ -67,6 +97,12 @@ export function useUserProfiles(userIds: readonly string[]): Record<string, User
       subscribers.delete(wake);
     };
   }, []);
+
+  // Own edits invalidate explicitly; other tabs / returning to the app re-read.
+  useDataRefresh((reason) => {
+    if (reason === 'mutation' || !key) return;
+    void refreshProfiles(key.split(','));
+  });
 
   useEffect(() => {
     const ids = key ? key.split(',') : [];

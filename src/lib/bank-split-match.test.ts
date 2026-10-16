@@ -1,6 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { findSplitDuplicateCandidates, matchTransactionsToSplits, type BankTxForMatch } from './bank-split-match';
-import type { SplitLinkCandidate } from '@/types';
+import {
+  findSplitDuplicateCandidates,
+  matchTransactionsToSplits,
+  splitCandidateFromExpense,
+  upsertSplitCandidate,
+  type BankTxForMatch,
+} from './bank-split-match';
+import type { SplitExpense, SplitLinkCandidate } from '@/types';
 
 function tx(overrides: Partial<BankTxForMatch> & { id: string }): BankTxForMatch {
   return { amount: -10, currency: 'EUR', bookingDate: '2026-07-01', ...overrides };
@@ -179,5 +185,77 @@ describe('matchTransactionsToSplits', () => {
     expect(matchTransactionsToSplits([], []).size).toBe(0);
     expect(matchTransactionsToSplits([tx({ id: 'tx1' })], []).size).toBe(0);
     expect(matchTransactionsToSplits([], [candidate({ expenseId: 'e1' })]).size).toBe(0);
+  });
+});
+
+describe('splitCandidateFromExpense / upsertSplitCandidate', () => {
+  const created = {
+    id: 'e9',
+    kind: 'expense',
+    groupId: 'g1',
+    title: 'Dinner',
+    category: 'Food',
+    amountCents: 4200,
+    date: '2026-07-02',
+    currency: 'EUR',
+    netByUserId: {},
+    source: 'manual',
+    createdByUserId: 'u1',
+    createdAt: '2026-07-02T10:00:00.000Z',
+    bankLink: {
+      txId: 'tx9',
+      linkedAccountId: 'l1',
+      ownerUserId: 'u1',
+      bookingDate: '2026-07-02',
+      amount: -42,
+      currency: 'EUR',
+      counterpartyName: 'Corner Cafe',
+      bankName: 'Test Bank',
+    },
+  } as unknown as SplitExpense;
+
+  it('maps a created expense the way getMySplitLinkCandidates does', () => {
+    expect(splitCandidateFromExpense(created, { id: 'g1', name: 'Roomies' })).toEqual({
+      expenseId: 'e9',
+      groupId: 'g1',
+      groupName: 'Roomies',
+      title: 'Dinner',
+      date: '2026-07-02',
+      amountCents: 4200,
+      currency: 'EUR',
+      bankLink: {
+        txId: 'tx9',
+        linkedAccountId: 'l1',
+        ownerUserId: 'u1',
+        bookingDate: '2026-07-02',
+        amount: -42,
+        counterpartyName: 'Corner Cafe',
+      },
+    });
+  });
+
+  it('leaves bankLink undefined for manual rows and skips payments', () => {
+    const manual = { ...created, bankLink: undefined } as SplitExpense;
+    expect(splitCandidateFromExpense(manual, { id: 'g1', name: 'Roomies' })?.bankLink).toBeUndefined();
+    const payment = { ...created, kind: 'payment' } as unknown as SplitExpense;
+    expect(splitCandidateFromExpense(payment, { id: 'g1', name: 'Roomies' })).toBeNull();
+  });
+
+  it('makes the new candidate flag its transaction as linked', () => {
+    const c = splitCandidateFromExpense(created, { id: 'g1', name: 'Roomies' })!;
+    const t = tx({ id: 'tx9', amount: -42 });
+    expect(matchTransactionsToSplits([t], upsertSplitCandidate([], c)).get('tx9')).toMatchObject({ kind: 'linked', expenseId: 'e9' });
+  });
+
+  it('upserts by expenseId without mutating the input', () => {
+    const a = candidate({ expenseId: 'e1', title: 'Old' });
+    const b = candidate({ expenseId: 'e2' });
+    const list = [a, b];
+    const replaced = upsertSplitCandidate(list, candidate({ expenseId: 'e1', title: 'New' }));
+    expect(replaced.map((c) => c.title)).toEqual(['New', 'Groceries']);
+    expect(list[0].title).toBe('Old');
+    const appended = upsertSplitCandidate(list, candidate({ expenseId: 'e3' }));
+    expect(appended.map((c) => c.expenseId)).toEqual(['e1', 'e2', 'e3']);
+    expect(list).toHaveLength(2);
   });
 });

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSession } from '@/lib/auth-client';
 import { Card } from 'primereact/card';
 import { Tag } from 'primereact/tag';
@@ -9,6 +9,7 @@ import { getSplitGroupView, getSplitExpenses } from '@/lib/actions/split-groups'
 import { buildSplitBudgetEntries, getBudgetMonths } from '@/lib/budget-utils';
 import { formatCurrency } from '@/lib/constants';
 import { DelayedSkeleton } from '@/components/ui/delayed-loading';
+import { useDataRefresh } from '@/lib/hooks/use-data-refresh';
 import type { Budget, SplitExpense, SplitGroup } from '@/types';
 
 /**
@@ -30,28 +31,36 @@ export function BudgetSplitExpenses({ budget }: { budget: Budget }) {
   const startMonth = budget.startMonth;
   const endMonth = budget.endMonth;
 
-  useEffect(() => {
+  const requestId = useRef(0);
+  const hasLoaded = useRef(false);
+  const load = useCallback(async () => {
     if (!groupId) return;
-    let active = true;
-    (async () => {
-      const months = getBudgetMonths({ startMonth, endMonth } as Budget);
-      const [viewRes, rowsRes] = await Promise.all([
-        getSplitGroupView(groupId),
-        getSplitExpenses(groupId, months),
-      ]);
-      if (!active) return;
-      if (!viewRes.success || !viewRes.data || !rowsRes.success || !rowsRes.data) {
+    const id = ++requestId.current;
+    const months = getBudgetMonths({ startMonth, endMonth } as Budget);
+    const [viewRes, rowsRes] = await Promise.all([
+      getSplitGroupView(groupId),
+      getSplitExpenses(groupId, months),
+    ]);
+    if (id !== requestId.current) return;
+    if (!viewRes.success || !viewRes.data || !rowsRes.success || !rowsRes.data) {
+      // A failed refetch keeps the rows already on screen.
+      if (!hasLoaded.current) {
         setError(viewRes.error ?? rowsRes.error ?? 'Could not load the linked split group');
         setRows([]);
-        return;
       }
-      setGroup(viewRes.data.group);
-      setRows(rowsRes.data);
-    })();
-    return () => {
-      active = false;
-    };
+      return;
+    }
+    hasLoaded.current = true;
+    setError('');
+    setGroup(viewRes.data.group);
+    setRows(rowsRes.data);
   }, [groupId, startMonth, endMonth]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+  // Split expenses added/edited anywhere (quick-add, the group page) change this list.
+  useDataRefresh(load);
 
   const view = useMemo(
     () => (rows && myId ? buildSplitBudgetEntries(rows, myId, budget) : null),

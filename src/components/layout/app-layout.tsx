@@ -18,6 +18,7 @@ import { getAccounts } from '@/lib/actions/accounts';
 import { getUserPreferences } from '@/lib/actions/user-preferences';
 import { MdAdd, MdVisibilityOff } from 'react-icons/md';
 import { setDemoMask, DEMO_MODE_STORAGE_KEY } from '@/lib/demo-mode';
+import { notifyDataChanged, useDataRefresh } from '@/lib/hooks/use-data-refresh';
 import type { FinancialAccount, DrawerState, DisplayMode } from '@/types';
 
 // Both wizards are large and rarely open — lazy-load them out of the shared
@@ -39,8 +40,9 @@ interface AppLayoutProps {
 
 // Context to communicate with pages for data refresh and drawer control
 interface AppContextValue {
+    /** Announce a successful mutation: refetches every mounted data view (see
+     * `useDataRefresh` in src/lib/hooks/use-data-refresh.ts). */
     refreshData: () => void;
-    setRefreshCallback: (cb: () => void) => void;
     selectedAccountId: string;
     setSelectedAccountId: (id: string) => void;
     accounts: FinancialAccount[];
@@ -100,7 +102,6 @@ export function AppLayout({ children }: AppLayoutProps) {
     const [accounts, setAccounts] = useState<FinancialAccount[]>([]);
     const [accountsLoaded, setAccountsLoaded] = useState(false);
     const [selectedAccountId, setSelectedAccountId] = useState<string>('');
-    const [refreshCallback, setRefreshCallback] = useState<(() => void) | null>(null);
     const [drawerState, setDrawerState] = useState<DrawerState>(initialDrawerState);
     const [selectedYearMonth, setSelectedYearMonth] = useState(() => {
         const now = new Date();
@@ -145,6 +146,7 @@ export function AppLayout({ children }: AppLayoutProps) {
             entityType: options.entityType,
             entityId: options.entityId,
             yearMonth: options.yearMonth,
+            accountId: options.accountId,
         });
     }, []);
 
@@ -247,7 +249,10 @@ export function AppLayout({ children }: AppLayoutProps) {
                     setAccounts(result.data!);
                     setAccountsLoaded(true);
                     if (activeAccounts.length > 0) {
-                        setSelectedAccountId((prev) => prev || activeAccounts[0].id);
+                        // Keep the current pick unless it was archived or deleted.
+                        setSelectedAccountId((prev) =>
+                            prev && activeAccounts.some((a) => a.id === prev) ? prev : activeAccounts[0].id,
+                        );
                     }
                 });
                 return;
@@ -261,11 +266,10 @@ export function AppLayout({ children }: AppLayoutProps) {
     useEffect(() => {
         fetchAccounts();
     }, [fetchAccounts]);
+    // The accounts list is shared state too: refetch it on every data change.
+    useDataRefresh(fetchAccounts);
 
-    const handleDataChange = useCallback(() => {
-        fetchAccounts();
-        refreshCallback?.();
-    }, [fetchAccounts, refreshCallback]);
+    const handleDataChange = useCallback(() => notifyDataChanged(), []);
 
     const handleAddItem = (type: 'income' | 'expense', yearMonth?: string) => {
         openDrawer({
@@ -280,20 +284,12 @@ export function AppLayout({ children }: AppLayoutProps) {
         [openDrawer],
     );
 
-    // Stable identity across renders — pages depend on this via `appContext` in
-    // effect deps, so a fresh closure every render (the old inline arrow) caused
-    // an infinite fetch-on-mount loop (see contextValue below).
-    const registerRefreshCallback = useCallback((cb: () => void) => setRefreshCallback(() => cb), []);
-
-    // Pages read `appContext` in mount-effect deps (to register their refresh
-    // callback) — an un-memoized object literal here is a new reference every
-    // AppLayout render, re-running those effects and re-triggering their
-    // fetch + setRefreshCallback, which re-renders AppLayout: an infinite loop
-    // that flickered the page's loading skeleton. Memoize with every value
-    // referenced in the object listed as a dep.
+    // Pages read `appContext` in effect deps — an un-memoized object literal
+    // here is a new reference every AppLayout render, re-running those effects
+    // (and their fetches) in a loop that flickered the page's loading skeleton.
+    // Memoize with every value referenced in the object listed as a dep.
     const contextValue: AppContextValue = useMemo(() => ({
         refreshData: handleDataChange,
-        setRefreshCallback: registerRefreshCallback,
         selectedAccountId,
         setSelectedAccountId,
         accounts,
@@ -315,7 +311,6 @@ export function AppLayout({ children }: AppLayoutProps) {
         setDemoMode,
     }), [
         handleDataChange,
-        registerRefreshCallback,
         selectedAccountId,
         setSelectedAccountId,
         accounts,

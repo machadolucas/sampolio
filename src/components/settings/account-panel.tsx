@@ -22,6 +22,7 @@ import { UserAvatar } from '@/components/ui/user-avatar';
 import { AvatarEditorDialog } from '@/components/ui/avatar-editor-dialog';
 import { PasskeysPanel } from '@/components/settings/passkeys-panel';
 import { useUserProfiles, invalidateUserProfiles } from '@/lib/hooks/use-user-profiles';
+import { notifyDataChanged } from '@/lib/hooks/use-data-refresh';
 import type { AccountDeletionPreflight } from '@/types';
 
 interface AccountPanelProps {
@@ -48,6 +49,8 @@ export function AccountPanel({ isDark }: AccountPanelProps) {
         const result = await updateMyAvatar(dataUri);
         if (result.success) {
             if (myId) invalidateUserProfiles([myId]);
+            // Other tabs / views showing this avatar (the shared profile cache) re-read it.
+            notifyDataChanged();
             toast.success(
                 dataUri ? 'Photo updated' : 'Photo removed',
                 dataUri ? 'Your new profile picture is set.' : 'Your profile picture was removed.'

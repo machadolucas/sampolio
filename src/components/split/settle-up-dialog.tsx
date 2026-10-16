@@ -13,6 +13,7 @@ import { toCents } from '@/lib/split-utils';
 import { UserAvatar } from '@/components/ui/user-avatar';
 import { useUserProfiles } from '@/lib/hooks/use-user-profiles';
 import type { Currency, SplitExpense, SplitGroupMember, SplitMemberBalance } from '@/types';
+import { notifyDataChanged } from '@/lib/hooks/use-data-refresh';
 
 export function SettleUpDialog({
   visible,
@@ -87,6 +88,7 @@ export function SettleUpDialog({
     });
     setSaving(false);
     if (!res.success) return setError(res.error ?? 'Failed to record');
+    notifyDataChanged();
     onSaved(res.data);
     onHide();
   };

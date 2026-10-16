@@ -17,7 +17,7 @@ import { maskIban, txDisplayDate } from '@/lib/bank-utils';
 import { guessCategory } from '@/lib/split-utils';
 import { QuickAddSplitModal, type QuickAddSplitInitial } from '@/components/split/quick-add-split-modal';
 import type { BankSplitMatch } from '@/lib/bank-split-match';
-import type { BankTransaction, Currency, BankTransactionStatus } from '@/types';
+import type { BankTransaction, Currency, BankTransactionStatus, SplitExpense } from '@/types';
 
 const STATUS_TIP: Record<BankTransactionStatus, string> = {
   booked: 'Booked — settled and final; it appears on your statement and won’t change.',
@@ -129,7 +129,7 @@ export function BankLedgerTable({
   linkedAccountId: string;
   bankName: string;
   splitMatches?: Map<string, BankSplitMatch>;
-  onSplitSaved?: () => void;
+  onSplitSaved?: (expense?: SplitExpense, group?: { id: string; name: string }) => void;
   onConfirmSplitSuggestion?: (tx: BankTransaction, match: BankSplitMatch) => Promise<void> | void;
   highlightTxId?: string;
 }) {

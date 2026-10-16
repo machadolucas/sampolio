@@ -29,6 +29,7 @@ import { fetchCurrentEuribor12m } from '@/lib/actions/euribor';
 import { getAccounts } from '@/lib/actions/accounts';
 import type { SharedMortgage, Currency, FinancialAccount } from '@/types';
 import { useFormSubmit } from '@/lib/hooks/use-form-submit';
+import { notifyDataChanged } from '@/lib/hooks/use-data-refresh';
 
 interface PreviewLoan {
   label: string;
@@ -113,8 +114,10 @@ export function EuriborUpdateDialog({
     setError('');
     const res = await setMortgageRate(mortgageId, { effectiveDate, euriborRate: euribor });
     setSaving(false);
-    if (res.success) onSaved('Euribor updated — your payments are recalculated.');
-    else setError(res.error ?? 'Failed to save');
+    if (res.success) {
+      notifyDataChanged();
+      onSaved('Euribor updated — your payments are recalculated.');
+    } else setError(res.error ?? 'Failed to save');
   };
 
   const onFormSubmit = useFormSubmit(save, { disabled: saving });
@@ -233,8 +236,10 @@ export function DriftAdjustmentDialog({
     setError('');
     const res = await recordMortgageBalanceSnapshot(mortgageId, { loanId, yearMonth, actualBalance });
     setSaving(false);
-    if (res.success) onSaved('Balance corrected — projections re-anchored to your real number.');
-    else setError(res.error ?? 'Failed to save');
+    if (res.success) {
+      notifyDataChanged();
+      onSaved('Balance corrected — projections re-anchored to your real number.');
+    } else setError(res.error ?? 'Failed to save');
   };
 
   const onFormSubmit = useFormSubmit(save, { disabled: saving });
@@ -325,8 +330,10 @@ export function ExtraPaymentDialog({
     setError('');
     const res = await addMortgageExtraPayment(mortgageId, { loanId, date, amount, mode });
     setSaving(false);
-    if (res.success) onSaved('Extra payment added.');
-    else setError(res.error ?? 'Failed to save');
+    if (res.success) {
+      notifyDataChanged();
+      onSaved('Extra payment added.');
+    } else setError(res.error ?? 'Failed to save');
   };
 
   const onFormSubmit = useFormSubmit(save, { disabled: saving });
@@ -412,8 +419,10 @@ export function MortgageMembersDialog({
 
   const linkAccount = async (accountId: string | null) => {
     const res = await setMyMortgageLinkedAccount(mortgage.id, accountId);
-    if (res.success) onChanged(accountId ? 'Mortgage transfer will show in that account’s cashflow.' : 'Mortgage transfer removed from cashflow.');
-    else setError(res.error ?? 'Failed to update linked account');
+    if (res.success) {
+      notifyDataChanged();
+      onChanged(accountId ? 'Mortgage transfer will show in that account’s cashflow.' : 'Mortgage transfer removed from cashflow.');
+    } else setError(res.error ?? 'Failed to update linked account');
   };
 
   const add = async () => {
@@ -423,6 +432,7 @@ export function MortgageMembersDialog({
     setSaving(false);
     if (res.success) {
       setEmail('');
+      notifyDataChanged();
       onChanged('Member added.');
     } else setError(res.error ?? 'Failed to add member');
   };
@@ -438,8 +448,10 @@ export function MortgageMembersDialog({
       accept: async () => {
         setError('');
         const res = await removeMortgageMember(mortgage.id, userId);
-        if (res.success) onChanged('Member removed.');
-        else setError(res.error ?? 'Failed to remove member');
+        if (res.success) {
+          notifyDataChanged();
+          onChanged('Member removed.');
+        } else setError(res.error ?? 'Failed to remove member');
       },
     });
   };
@@ -447,8 +459,10 @@ export function MortgageMembersDialog({
   const changeRole = async (userId: string, role: 'owner' | 'member') => {
     setError('');
     const res = await updateMortgageMember(mortgage.id, userId, { role });
-    if (res.success) onChanged('Member updated.');
-    else setError(res.error ?? 'Failed to update member');
+    if (res.success) {
+      notifyDataChanged();
+      onChanged('Member updated.');
+    } else setError(res.error ?? 'Failed to update member');
   };
 
   return (

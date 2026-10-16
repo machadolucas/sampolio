@@ -16,6 +16,7 @@ import { MdSave, MdClose } from 'react-icons/md';
 import { useToast } from '@/components/providers/toast-provider';
 import { CURRENCIES } from '@/lib/constants';
 import { createGoal, updateGoal } from '@/lib/actions/goals';
+import { notifyDataChanged } from '@/lib/hooks/use-data-refresh';
 import { goalSchema, type GoalFormData } from '@/lib/schemas/goal.schema';
 import type { FinancialAccount, Goal } from '@/types';
 
@@ -143,6 +144,7 @@ export function GoalDialog({
       const result = goal ? await updateGoal(goal.id, payload) : await createGoal(payload);
       if (result.success) {
         toast.success(goal ? 'Goal updated' : 'Goal created', data.name);
+        notifyDataChanged();
         onSaved();
         onHide();
       } else {

@@ -11,7 +11,7 @@
  */
 
 import * as crypto from 'crypto';
-import { updateTag } from 'next/cache';
+import { invalidateTags } from '@/lib/cache-tags';
 import type { BankConnection } from '@/types';
 import {
   createBankConnection,
@@ -73,21 +73,15 @@ async function resolveConsentRequest(
 }
 
 function invalidate(userId: string, connectionId: string): void {
-  // `updateTag` works in server actions but can throw in a GET route handler
-  // (the consent callback's context). Tolerate that so a tag-revalidation
-  // failure never aborts the flow before the initial backfill runs — the cache
-  // still revalidates on the next request-scoped mutation / "Refresh now".
-  for (const tag of [
+  // Runs from server actions (`updateTag`) and from the consent callback's GET
+  // route handler (`updateTag` throws there; `invalidateTags` falls back to
+  // immediate-expiry `revalidateTag`). It never throws, so a tag failure can't
+  // abort the flow before the initial backfill runs.
+  invalidateTags(
     `user:${userId}:bank-connections`,
     `user:${userId}:bank-connection:${connectionId}`,
-    `user:${userId}:accounts`,
-  ]) {
-    try {
-      updateTag(tag);
-    } catch {
-      // ignore — see comment above
-    }
-  }
+    `user:${userId}:accounts`
+  );
 }
 
 /**

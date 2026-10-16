@@ -207,7 +207,11 @@ dropping them on a write path re-introduces double counting. The override dialog
 (`src/components/modals/occurrence-override-dialog.tsx`) accepts an amount of 0 and
 `toOccurrenceOverridePayload` (`src/lib/schemas/occurrence-override.schema.ts`) saves it
 as `skipOccurrence: true`, since the server schema only accepts positive override
-amounts.
+amounts. Overrides belong to their series: the "View all items" list
+(`cashflow-item-modal.tsx`) hides them, and deleting the recurring item
+(`deleteRecurringItem`) or a salary with a linked recurring item (`deleteSalaryConfig`)
+deletes its overrides too (`deletePlannedOverridesForRecurringItem` in
+`src/lib/db/planned-items.ts`).
 
 In `calculateProjection`, override items are **removed from regular planned-item
 processing** and indexed as `recurringItemId → month → PlannedItem`. When the recurring

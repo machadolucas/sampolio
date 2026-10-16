@@ -10,6 +10,7 @@ import { useToast } from '@/components/providers/toast-provider';
 import { navItems } from '@/components/layout/nav-config';
 import { useJiggleReorder, JiggleModeBar } from '@/components/ui/jiggle-reorder';
 import { updateBottomNavIds } from '@/lib/actions/user-preferences';
+import { notifyDataChanged } from '@/lib/hooks/use-data-refresh';
 import {
     MAX_BOTTOM_NAV_TABS,
     resolveBottomNavIds,
@@ -55,8 +56,9 @@ export function MobileNavCard() {
                 if (!res.success) {
                     setBottomNavIds(prev);
                     toast.error('Could not save navigation', res.error);
-                } else if (next === null) {
-                    toast.success('Default tabs restored');
+                } else {
+                    notifyDataChanged();
+                    if (next === null) toast.success('Default tabs restored');
                 }
             });
         },

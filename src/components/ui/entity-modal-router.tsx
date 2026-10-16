@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import dynamic from 'next/dynamic';
 import { DelayedSpinner } from '@/components/ui/delayed-loading';
 import type { DrawerState, FinancialAccount } from '@/types';
@@ -54,6 +55,20 @@ export function EntityModalRouter({
     const entityType = drawerState.entityType;
     const editItemId = drawerState.mode === 'edit' ? drawerState.entityId : undefined;
 
+    // The account the cashflow modal acts on: the page's own pick
+    // (`drawerState.accountId`, e.g. Cashflow's selector) wins over AppLayout's
+    // selection, and the modal's own account dropdown overrides both — but only
+    // for the drawer it was changed in. `openDrawer` always creates a fresh
+    // `drawerState`, so tying the override to that object resets it on each open.
+    const [accountOverride, setAccountOverride] = useState<{ forState: DrawerState; id: string } | null>(null);
+    const effectiveAccountId = accountOverride?.forState === drawerState
+        ? accountOverride.id
+        : (drawerState.accountId ?? selectedAccountId);
+    const handleAccountChange = (accountId: string) => {
+        setAccountOverride({ forState: drawerState, id: accountId });
+        onAccountChange(accountId);
+    };
+
     const handleHide = () => {
         onClose();
         onDataChange();
@@ -75,9 +90,9 @@ export function EntityModalRouter({
             <CashflowItemModal
                 visible={visible}
                 onHide={handleHide}
-                selectedAccountId={selectedAccountId}
+                selectedAccountId={effectiveAccountId}
                 accounts={accounts.filter(a => !a.isArchived)}
-                onAccountChange={onAccountChange}
+                onAccountChange={handleAccountChange}
                 onDataChange={onDataChange}
                 editItemId={editItemId}
                 editItemSource={entityType}

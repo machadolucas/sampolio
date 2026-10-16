@@ -73,7 +73,9 @@ Full monthly data table with columns: Month, Income, Expenses, Net Change, Balan
 
 **Edit Choice Dialog**: When clicking a recurring item, asks whether to edit:
 - "This occurrence only" — creates an occurrence override (PlannedItem with `isRecurringOverride: true`)
-- "Entire series" — edits the RecurringItem itself
+- "Entire series" — edits the RecurringItem itself; a salary's linked "Salary:" recurring item opens the salary config instead (`resolveSeriesEditTarget`, `src/lib/cashflow-edit-target.ts` — the modal's list shows salaries, not their linked recurring items)
+
+Every `openDrawer` from this page passes `accountId` (the page's own account picker), which `EntityModalRouter` prefers over AppLayout's `selectedAccountId`. If an edit target isn't found once the modal's list has loaded, the modal toasts "Item not found" and closes rather than staying invisibly open.
 
 **Occurrence Override Dialog** (`src/components/modals/occurrence-override-dialog.tsx`):
 - Allows changing the amount for a single month
@@ -85,6 +87,7 @@ Full monthly data table with columns: Month, Income, Expenses, Net Change, Balan
 - For Salary: shows gross salary, benefits, tax rate, contributions, deductions with live net calculation
 - For Gross income: gross amount, one-time or recurring schedule (yearly default frequency), a **"Use my salary's tax settings"** toggle (default on when an active salary config exists; disabled otherwise) vs custom rates, a live net preview via `calculateTaxedIncomeNet` (`src/lib/taxed-income-utils.ts`), and **skip-occurrence chips** (the next ~3 occurrence months via `getUpcomingTaxedIncomeOccurrences` — tap to skip a year, stored as `skippedOccurrences` on the entity). Saving a salary config cascade-recomputes salary-linked taxed incomes server-side (see `docs/projections-and-reconciliation.md`)
 - **List view is two sections** (the recurrence filter row is gone; the Income/Expense filter remains): "Regular items" — three summary cards (≈Monthly income / ≈Monthly expenses / ≈Net per month over ACTIVE items' monthly equivalents: quarterly ÷3, yearly ÷12) plus a sortable "≈ / month" DataTable column — and "One-time items" — a compact "Upcoming: +X / −Y" strip (scheduled month ≥ current) + a month-sorted table. Below `lg` both sections render as stacked lists instead of DataTables, with 44px sort buttons (`sortMobileItems`: the same keys and default directions as the desktop tables' initial sort)
+- The list hides occurrence overrides (`isRecurringOverride` planned items); deleting a series deletes them too
 - Clicking a `source: 'taxed-income'` projection line routes to entityType `'taxed-income'` (its own mapping in `entity-modal-router.tsx` → this modal with recurrence `'taxed-income'`), never to `'salary'`
 
 ## Data Flow
@@ -92,7 +95,7 @@ Full monthly data table with columns: Month, Income, Expenses, Net Change, Balan
 1. Page fetches projection data via `getProjection(accountId)` server action (returns `monthly` forecast + `retrospective` bank-actual past months + `salaryConfigs`/`taxedIncomes` for the Sankey's gross→deductions synthesis)
 2. Projection engine (`src/lib/projection.ts`) calculates monthly balances; `src/lib/retrospective.ts` reconstructs the past months from bank transactions
 3. Results displayed as charts and tables (`displayMonths = [...retrospective, ...monthly]`)
-4. Edits go through server actions → file writes → cache invalidation → refresh
+4. Edits go through server actions → file writes → cache invalidation → `notifyDataChanged()`; the projection, reconciled-month badges and card-statement breakdowns each refetch through `useDataRefresh`
 
 ### Injected read-only lines
 When the account is linked to a shared mortgage, a confirmed budget, a synced credit card, a cashflow-injecting spend goal, or an unreimbursed trip, `getProjection` injects **read-only** lines into the projection:

@@ -16,6 +16,7 @@ import { toCents } from '@/lib/split-utils';
 import { SPLIT_CATEGORIES } from '@/lib/constants';
 import { SplitEditor, emptyDraft, draftFromExpense, resolveDraftSpec, type SplitDraft } from './split-editor';
 import type { Currency, SplitExpense, SplitExpenseItem, SplitGroupMember } from '@/types';
+import { notifyDataChanged } from '@/lib/hooks/use-data-refresh';
 
 function isoFromDate(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -92,6 +93,7 @@ export function SplitExpenseDialog({
       : await createSplitExpense(groupId, payload);
     setSaving(false);
     if (!res.success) return setError(res.error ?? 'Failed to save');
+    notifyDataChanged();
     onSaved(res.data);
     onHide();
   };

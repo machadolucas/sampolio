@@ -37,7 +37,6 @@ import { SelectButton } from 'primereact/selectbutton';
 import { formatCents, formatYearMonth, formatDayMonth } from '@/lib/constants';
 import { useToast } from '@/components/providers/toast-provider';
 import { useCelebration } from '@/components/providers/celebration-provider';
-import { useAppContext } from '@/components/layout/app-layout';
 import { useDwellSeen } from '@/lib/hooks/use-dwell-seen';
 import type {
   SplitGroup,
@@ -50,6 +49,7 @@ import type {
   SplitActivityEvent,
   SplitExpenseBankLink,
 } from '@/types';
+import { notifyDataChanged, useDataRefresh } from '@/lib/hooks/use-data-refresh';
 
 export default function SplitGroupDetailPage() {
   const params = useParams();
@@ -61,7 +61,6 @@ export default function SplitGroupDetailPage() {
   myIdRef.current = myId;
   const toast = useToast();
   const { celebrate } = useCelebration();
-  const appContext = useAppContext();
 
   const [group, setGroup] = useState<SplitGroup | null>(null);
   const [summary, setSummary] = useState<SplitGroupSummary | null>(null);
@@ -149,34 +148,54 @@ export default function SplitGroupDetailPage() {
     [groupId],
   );
 
+  // A refetch (mutation bus, focus) must never turn a loaded page into "not
+  // found": only the first load — or an error that really means the group is
+  // gone / no longer accessible — does that; any other failure keeps the data.
+  const hasGroupRef = useRef(false);
+  const viewRef = useRef(view);
+  useEffect(() => { viewRef.current = view; }, [view]);
   const load = useCallback(async () => {
-    const res = await getSplitGroupView(groupId);
-    if (!res.success || !res.data) {
-      setNotFound(true);
+    let res: Awaited<ReturnType<typeof getSplitGroupView>> | null = null;
+    try {
+      res = await getSplitGroupView(groupId);
+    } catch (err) {
+      console.error('Failed to load split group:', err);
+    }
+    if (!res || !res.success || !res.data) {
+      const gone = res?.error === 'Group not found' || res?.error === 'You do not have access to this group';
+      if (!hasGroupRef.current || gone) setNotFound(true);
       setLoading(false);
       return;
     }
+    hasGroupRef.current = true;
+    setNotFound(false);
     setGroup(res.data.group);
     setSummary(res.data.summary);
     setBalances(res.data.balances);
-    setActivity(null); // stale after any mutation — refetch on next Activity view
+    if (viewRef.current === 'activity') {
+      // Stale after any mutation: refresh in place instead of dropping the
+      // feed back to its loading state.
+      const act = await getSplitActivity(30, groupId);
+      if (act.success && act.data) setActivity(act.data);
+    } else {
+      setActivity(null); // refetch on next Activity view
+    }
     const desc = [...res.data.summary.monthsWithData].reverse();
     await loadExpenses(desc.slice(0, visibleCount));
     setLoading(false);
   }, [groupId, loadExpenses, visibleCount]);
 
   // Global mutations (e.g. the floating quick-add modal saving an expense into
-  // this group) refresh the page through the AppContext callback — registered
-  // separately from the fetch effect, per the app-wide pattern.
-  useEffect(() => {
-    if (appContext) appContext.setRefreshCallback(load);
-  }, [appContext, load]);
+  // this group), other tabs and returning to the app refresh the page.
+  useDataRefresh(load);
 
   // First load: materialize any due recurrences, then fetch.
   useEffect(() => {
     let active = true;
     (async () => {
-      await catchUpGroupRecurrences(groupId);
+      const caught = await catchUpGroupRecurrences(groupId);
+      // Recurrences materialized here are new expenses other views can show.
+      if (caught.success && caught.data?.changed) notifyDataChanged();
       if (active) await load();
     })();
     return () => {
@@ -441,7 +460,7 @@ export default function SplitGroupDetailPage() {
           return;
         }
         toast.success('Deleted');
-        load(); // background reconcile (summary counts, month index)
+        notifyDataChanged(); // reconciles this page too (summary counts, month index)
       },
     });
   };
@@ -600,6 +619,7 @@ export default function SplitGroupDetailPage() {
                       toast.error('Failed to update rule', res.error);
                       return;
                     }
+                    notifyDataChanged();
                     toast.success(next ? 'Recurring resumed' : 'Recurring paused');
                   }}
                 />
@@ -634,6 +654,7 @@ export default function SplitGroupDetailPage() {
                           toast.error('Failed to delete rule', res.error);
                           return;
                         }
+                        notifyDataChanged();
                         toast.success('Recurring rule deleted');
                       },
                     });
@@ -821,14 +842,14 @@ export default function SplitGroupDetailPage() {
         currency={group.currency}
         myId={myId}
         rule={editRule}
-        onSaved={() => { load(); toast.success(editRule ? 'Recurring rule updated' : 'Recurring rule added'); }}
+        onSaved={() => { toast.success(editRule ? 'Recurring rule updated' : 'Recurring rule added'); }}
       />
-      <SplitImportDialog visible={showImport} onHide={() => setShowImport(false)} group={group} onImported={() => { load(); toast.success('Expenses imported'); }} />
+      <SplitImportDialog visible={showImport} onHide={() => setShowImport(false)} group={group} onImported={() => { toast.success('Expenses imported'); }} />
       <GroupFormDialog
         visible={showSettings}
         onHide={() => setShowSettings(false)}
         group={group}
-        onSaved={() => { load(); toast.success('Group updated'); }}
+        onSaved={() => { toast.success('Group updated'); }}
         onLeft={() => router.push('/split')}
       />
       {bankLinkDialog && (

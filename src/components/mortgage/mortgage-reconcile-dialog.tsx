@@ -10,6 +10,7 @@ import { HelpTip } from '@/components/ui/form-primitives';
 import { formatCurrency, formatYearMonthShort } from '@/lib/constants';
 import { reconcileMortgageMonth } from '@/lib/actions/shared-mortgages';
 import type { SharedMortgage, MortgageProjectionMonth, Currency } from '@/types';
+import { notifyDataChanged } from '@/lib/hooks/use-data-refresh';
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
@@ -93,8 +94,10 @@ export function MortgageReconcileDialog({
     }));
     const res = await reconcileMortgageMonth(mortgage.id, entries);
     setSaving(false);
-    if (res.success) onSaved(`${formatYearMonthShort(month.yearMonth)} marked as actual.`);
-    else setError(res.error ?? 'Failed to reconcile');
+    if (res.success) {
+      notifyDataChanged();
+      onSaved(`${formatYearMonthShort(month.yearMonth)} marked as actual.`);
+    } else setError(res.error ?? 'Failed to reconcile');
   };
 
   const label = month ? formatYearMonthShort(month.yearMonth) : '';

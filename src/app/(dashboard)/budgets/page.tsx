@@ -9,6 +9,7 @@ import { getAccounts } from '@/lib/actions/accounts';
 import { TripsSection } from '@/components/trips/trips-section';
 import { BudgetsSection } from '@/components/budgets/budgets-section';
 import type { Budget, Trip, FinancialAccount } from '@/types';
+import { useDataRefresh } from '@/lib/hooks/use-data-refresh';
 
 /**
  * "Trips & Budgets" — the merged travel/project planning page. Trips (per-diem
@@ -41,7 +42,7 @@ export default function TripsAndBudgetsPage() {
   }, []);
 
   useEffect(() => { fetchData(); }, [fetchData]);
-  useEffect(() => { if (appContext) appContext.setRefreshCallback(fetchData); }, [appContext, fetchData]);
+  useDataRefresh(fetchData);
 
   if (isLoading) {
     return <ListPageSkeleton />;

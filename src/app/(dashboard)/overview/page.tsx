@@ -32,6 +32,7 @@ import { WealthDistribution } from '@/components/overview/wealth-distribution';
 import { plainTerm, helpText } from '@/lib/plain-language';
 import { PlanCheckCard } from '@/components/overview/forecast-vs-actual-card';
 import { MdSync, MdShowChart, MdEuro, MdAccountBalanceWallet, MdBarChart, MdGroup, MdCreditCard, MdArrowForward, MdAddCircle, MdRemoveCircle, MdHouse, MdHomeWork, MdErrorOutline } from 'react-icons/md';
+import { useDataRefresh } from '@/lib/hooks/use-data-refresh';
 
 // Chart.js (primereact/chart) is heavy and client-only — code-split both charts
 // so they leave the Overview route's first-load JS. Imported from their own
@@ -142,12 +143,7 @@ export default function OverviewPage() {
         fetchData();
     }, [fetchData]);
 
-    // Register refresh callback
-    useEffect(() => {
-        if (appContext) {
-            appContext.setRefreshCallback(fetchData);
-        }
-    }, [appContext, fetchData]);
+    useDataRefresh(fetchData);
 
     const handleRetry = useCallback(async () => {
         setRetrying(true);

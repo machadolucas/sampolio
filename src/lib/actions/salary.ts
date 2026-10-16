@@ -7,8 +7,10 @@ import {
   createSalaryConfig as dbCreateSalaryConfig,
   updateSalaryConfig as dbUpdateSalaryConfig,
   deleteSalaryConfig as dbDeleteSalaryConfig,
+  getSalaryConfigById as dbGetSalaryConfigById,
 } from '@/lib/db/salary-configs';
 import { recomputeSalaryLinkedTaxedIncomes } from '@/lib/db/taxed-income';
+import { deletePlannedOverridesForRecurringItem } from '@/lib/db/planned-items';
 import { updateTag } from 'next/cache';
 import { clearNullsInPatch } from '@/lib/patch-utils';
 import type { ApiResponse, SalaryConfig } from '@/types';
@@ -181,10 +183,22 @@ export async function deleteSalaryConfig(
       return { success: false, error: 'Unauthorized' };
     }
 
+    const linkedRecurringItemId = (await dbGetSalaryConfigById(session.user.id, accountId, configId))
+      ?.linkedRecurringItemId;
     await dbDeleteSalaryConfig(session.user.id, accountId, configId);
     updateTag(`user:${session.user.id}:account:${accountId}:salary`);
     // The DB layer creates/updates/deletes the linked "Salary:" recurring item.
     updateTag(`user:${session.user.id}:account:${accountId}:recurring`);
+    // ...and that series' occurrence overrides go with it (as in
+    // deleteRecurringItem); best-effort, the config is already gone.
+    if (linkedRecurringItemId) {
+      try {
+        const removed = await deletePlannedOverridesForRecurringItem(session.user.id, accountId, linkedRecurringItemId);
+        if (removed > 0) updateTag(`user:${session.user.id}:account:${accountId}:planned`);
+      } catch (cleanupError) {
+        console.error('Delete salary overrides cleanup error:', cleanupError);
+      }
+    }
 
     // Cascade: deleting the active salary config may change the account's
     // resolved tax settings — recompute salary-linked taxed incomes.

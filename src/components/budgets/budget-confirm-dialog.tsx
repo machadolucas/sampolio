@@ -11,6 +11,7 @@ import { formatYearMonth, getCurrencySymbol } from '@/lib/constants';
 import { confirmBudget } from '@/lib/actions/budgets';
 import type { Budget, FinancialAccount } from '@/types';
 import { useFormSubmit } from '@/lib/hooks/use-form-submit';
+import { notifyDataChanged } from '@/lib/hooks/use-data-refresh';
 
 export function BudgetConfirmDialog({
   visible,
@@ -57,6 +58,7 @@ export function BudgetConfirmDialog({
     });
     setSaving(false);
     if (res.success && res.data) {
+      notifyDataChanged();
       onConfirmed(res.data);
       onHide();
     } else {

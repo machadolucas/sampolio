@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo, useId } from 'react';
+import { useState, useEffect, useCallback, useMemo, useId, useRef } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Dialog } from 'primereact/dialog';
@@ -19,6 +19,7 @@ import { Column } from 'primereact/column';
 import { ProgressSpinner } from 'primereact/progressspinner';
 import { confirmDialog } from 'primereact/confirmdialog';
 import { useToast } from '@/components/providers/toast-provider';
+import { useDataRefresh } from '@/lib/hooks/use-data-refresh';
 import { formatCurrency, FREQUENCIES, ITEM_CATEGORIES, formatYearMonth } from '@/lib/constants';
 import { guessItemCategory } from '@/lib/category-utils';
 import { getCurrentYearMonth, getIntervalMonths } from '@/lib/projection';
@@ -216,6 +217,14 @@ export function CashflowItemModal({
     const [salaryConfigs, setSalaryConfigs] = useState<SalaryConfig[]>([]);
     const [taxedIncomes, setTaxedIncomes] = useState<TaxedIncome[]>([]);
     const [isLoading, setIsLoading] = useState(false);
+    // Account whose items finished loading in the current open cycle (null until
+    // then, and again after the modal closes). Gates the "item not found" check
+    // so it never judges a stale or still-loading list.
+    const [loadedAccountId, setLoadedAccountId] = useState<string | null>(null);
+    // Newest in-flight fetch; older responses are dropped (account switches, bursts).
+    const fetchSeqRef = useRef(0);
+    // Which standalone-form open (edit target / create variant) already auto-opened.
+    const autoOpenKeyRef = useRef<string | null>(null);
     const [isFormOpen, setIsFormOpen] = useState(false);
     // Quick-add pattern: the create form shows name/amount/category + schedule
     // first; secondary fields (card, dates, reimbursement, active) sit behind
@@ -320,10 +329,12 @@ export function CashflowItemModal({
         });
     }, []);
 
-    // Fetch all items
-    const fetchAll = useCallback(async () => {
+    // Fetch all items. `silent` skips the list spinner (refetch after a
+    // mutation or an external change, when the list is already on screen).
+    const fetchAll = useCallback(async (opts?: { silent?: boolean }) => {
         if (!selectedAccountId) return;
-        setIsLoading(true);
+        const seq = ++fetchSeqRef.current;
+        if (!opts?.silent) setIsLoading(true);
         try {
             const [recResult, planResult, salResult, taxResult] = await Promise.all([
                 getRecurringItems(selectedAccountId),
@@ -331,22 +342,40 @@ export function CashflowItemModal({
                 getSalaryConfigs(selectedAccountId),
                 getTaxedIncomes(selectedAccountId),
             ]);
+            if (seq !== fetchSeqRef.current) return;
             if (recResult.success && recResult.data) setRecurringItems(recResult.data);
             if (planResult.success && planResult.data) setPlannedItems(planResult.data);
             if (salResult.success && salResult.data) setSalaryConfigs(salResult.data);
             if (taxResult.success && taxResult.data) setTaxedIncomes(taxResult.data);
+            if (recResult.success && planResult.success && salResult.success && taxResult.success) {
+                setLoadedAccountId(selectedAccountId);
+            }
         } catch (err) {
             console.error('Failed to fetch items:', err);
         } finally {
-            setIsLoading(false);
+            if (seq === fetchSeqRef.current) setIsLoading(false);
         }
     }, [selectedAccountId]);
 
+    // (Re)load whenever the modal opens or what it was opened for changes — the
+    // instance can stay mounted across opens, so a one-time fetch would go stale.
     useEffect(() => {
-        if (visible && selectedAccountId) {
+        setLoadedAccountId(null);
+        if (!visible) {
+            autoOpenKeyRef.current = null;
+            setIsFormOpen(false);
+            return;
+        }
+        if (selectedAccountId) {
             fetchAll();
         }
-    }, [visible, selectedAccountId, fetchAll]);
+    }, [visible, selectedAccountId, editItemId, autoOpenForm, initialType, initialRecurrence, fetchAll]);
+
+    // Changes made elsewhere (other pages, other tabs, bank sync) while open.
+    useDataRefresh(
+        useCallback(() => (visible ? fetchAll({ silent: true }) : undefined), [visible, fetchAll]),
+        { focus: false },
+    );
 
     // Build unified list
     const unifiedItems: UnifiedItem[] = useMemo(() => {
@@ -380,6 +409,9 @@ export function CashflowItemModal({
         });
 
         plannedItems.forEach(item => {
+            // Occurrence overrides belong to their recurring series and are edited
+            // via "This Occurrence" — they are not items of their own.
+            if (item.isRecurringOverride) return;
             const isOneOff = item.kind === 'one-off';
             items.push({
                 id: item.id,
@@ -537,25 +569,33 @@ export function CashflowItemModal({
         setIsFormOpen(true);
     }, [reset, buildDefaults, taxDefaults]);
 
-    // Auto-open edit form when editItemId is provided
+    // Standalone form mode: open the edit form for `editItemId` (once its list has
+    // loaded) or the create form. An edit target that does not exist (deleted,
+    // another account) closes the drawer with a message instead of leaving an
+    // invisible open drawer behind. Runs once per open — `autoOpenKeyRef` keeps a
+    // later list refetch from reopening a form the user just closed.
     useEffect(() => {
-        if (editItemId && unifiedItems.length > 0 && !isFormOpen) {
+        if (!visible || (!editItemId && !autoOpenForm)) return;
+        const key = `${editItemId ?? ''}|${autoOpenForm ? 1 : 0}|${initialType ?? ''}|${initialRecurrence ?? ''}`;
+        if (autoOpenKeyRef.current === key) return;
+        if (editItemId) {
+            if (loadedAccountId !== selectedAccountId) return;
+            autoOpenKeyRef.current = key;
             const item = unifiedItems.find(i => i.id === editItemId);
             if (item) {
                 openEditForm(item);
+            } else {
+                toast.error('Item not found', 'It may have been deleted or belongs to another account.');
+                onHide();
             }
+            return;
         }
-    }, [editItemId, unifiedItems.length]); // eslint-disable-line react-hooks/exhaustive-deps
-
-    // Auto-open add form when autoOpenForm is true (e.g. from Add Income/Expense buttons)
-    useEffect(() => {
-        if (autoOpenForm && visible && !editItemId && !isLoading && !isFormOpen) {
-            setEditingItem(null);
-            reset(buildDefaults());
-            setShowMore(false);
-            setIsFormOpen(true);
-        }
-    }, [autoOpenForm, visible, isLoading]); // eslint-disable-line react-hooks/exhaustive-deps
+        autoOpenKeyRef.current = key;
+        setEditingItem(null);
+        reset(buildDefaults());
+        setShowMore(false);
+        setIsFormOpen(true);
+    }, [visible, editItemId, autoOpenForm, initialType, initialRecurrence, loadedAccountId, selectedAccountId, unifiedItems, openEditForm, buildDefaults, reset, toast, onHide]);
 
     const openNewForm = (nextType?: 'income' | 'expense', nextRecurrence?: FormRecurrence) => {
         setEditingItem(null);
@@ -710,7 +750,7 @@ export function CashflowItemModal({
                 return;
             }
 
-            await fetchAll();
+            await fetchAll({ silent: true });
             setIsFormOpen(false);
             resetForm();
             onDataChange?.();
@@ -741,7 +781,7 @@ export function CashflowItemModal({
                 toast.error(res.error || 'Failed to delete item');
                 return false;
             }
-            await fetchAll();
+            await fetchAll({ silent: true });
             onDataChange?.();
             toast.success('Item deleted');
             return true;
@@ -801,7 +841,7 @@ export function CashflowItemModal({
                 toast.error(res.error || 'Failed to update status');
                 return;
             }
-            await fetchAll();
+            await fetchAll({ silent: true });
             onDataChange?.();
             toast.success(`Item ${!item.isActive ? 'activated' : 'deactivated'}`);
         } catch (err) {

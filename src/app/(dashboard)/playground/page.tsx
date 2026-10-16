@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useEffect, useId } from 'react';
+import { useState, useMemo, useEffect, useCallback, useRef, useId } from 'react';
 import dynamic from 'next/dynamic';
 import { Card } from 'primereact/card';
 import { Button } from 'primereact/button';
@@ -18,6 +18,7 @@ import { formatCurrency, formatYearMonth } from '@/lib/constants';
 import { runScenarioProjection } from '@/lib/actions/scenario';
 import { createRecurringItem, getRecurringItems } from '@/lib/actions/recurring';
 import { createPlannedItem, getPlannedItems } from '@/lib/actions/planned';
+import { useDataRefresh, type DataRefreshReason } from '@/lib/hooks/use-data-refresh';
 import type { ScenarioModification } from '@/lib/scenario-utils';
 import type { MonthlyProjection, Currency, FinancialAccount, RecurringItem, PlannedItem } from '@/types';
 import { MdPlayArrow, MdAdd, MdTrendingUp, MdRefresh, MdClose, MdPlaylistAdd, MdCheck } from 'react-icons/md';
@@ -111,18 +112,28 @@ export default function PlaygroundPage() {
     // Fetch the account's real items whenever an item-picker template is active,
     // filtering to items that can actually be modified (active recurring; non-
     // override planned items).
+    const pickerRequestId = useRef(0);
+    const loadPickerItems = useCallback(async (reason?: DataRefreshReason) => {
+        if (!isItemPicker || !selectedAccountId) return;
+        const requestId = ++pickerRequestId.current;
+        const [recRes, planRes] = await Promise.all([getRecurringItems(selectedAccountId), getPlannedItems(selectedAccountId)]);
+        if (requestId !== pickerRequestId.current) return;
+        // A failed bus refetch keeps the list the user is picking from.
+        if (reason && (!recRes.success || !planRes.success)) return;
+        const recurring = (recRes.success && recRes.data ? recRes.data : []).filter((r) => r.isActive);
+        const planned = (planRes.success && planRes.data ? planRes.data : []).filter((p) => !p.isRecurringOverride);
+        setPickerItems({ recurring, planned });
+    }, [isItemPicker, selectedAccountId]);
     useEffect(() => {
         if (!isItemPicker || !selectedAccountId) return;
-        let active = true;
         setSelectedItemId(null);
-        Promise.all([getRecurringItems(selectedAccountId), getPlannedItems(selectedAccountId)]).then(([recRes, planRes]) => {
-            if (!active) return;
-            const recurring = (recRes.success && recRes.data ? recRes.data : []).filter((r) => r.isActive);
-            const planned = (planRes.success && planRes.data ? planRes.data : []).filter((p) => !p.isRecurringOverride);
-            setPickerItems({ recurring, planned });
-        });
-        return () => { active = false; };
+        void loadPickerItems();
+        // selectedTemplate: switching between item-picker templates re-picks.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isItemPicker, selectedAccountId, selectedTemplate]);
+    // Items edited elsewhere (Cashflow, bank suggestions) refresh the picker's
+    // list without touching the selection or any typed amount.
+    useDataRefresh(loadPickerItems);
 
     // Flat lookup + grouped dropdown options for the item picker.
     const itemById = useMemo(() => {

@@ -11,6 +11,7 @@ import { Message } from 'primereact/message';
 import { parseSplitwiseCsv } from '@/lib/split-csv';
 import { importSplitwiseCsv } from '@/lib/actions/split-groups';
 import type { SplitGroup } from '@/types';
+import { notifyDataChanged } from '@/lib/hooks/use-data-refresh';
 
 /**
  * Import a Splitwise CSV export into a group. Parses client-side (pure), lets
@@ -83,6 +84,7 @@ export function SplitImportDialog({
     });
     setSaving(false);
     if (!res.success) return setError(res.error ?? 'Import failed');
+    notifyDataChanged();
     onImported(res.data?.imported ?? parsed.rows.length);
     onHide();
   };

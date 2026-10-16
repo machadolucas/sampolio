@@ -593,7 +593,7 @@ Equipment, Other) — not the cashflow `ITEM_CATEGORIES`.
 (`src/components/trips/trips-section.tsx`, `<section id="trips">`) then Budgets
 (`src/components/budgets/budgets-section.tsx`, `<section id="budgets">`, the budget
 list with `budget-card.tsx`) — fetched together (`Promise.all([getBudgets, getTrips,
-getAccounts])`, one `loaded` flag + refresh callback). `/budgets/[id]` is the
+getAccounts])`, one `loaded` flag + `useDataRefresh` subscription). `/budgets/[id]` is the
 single-page budget editor, unchanged. Components in `src/components/budgets/`:
 `budget-setup-wizard.tsx` (4 steps: "The plan",
 "What it costs", "Who's paying", "Does it add up?"; templates in
@@ -867,7 +867,7 @@ resolving empty (logged) on failure instead of failing the page. It shows:
 
 After the first paint it runs `catchUpGroupRecurrences` (a mutation, so a separate
 call) only for groups with an active recurrence rule and re-reads `getHomeData` when any
-result reports `changed` (§1); it registers itself as the AppContext refresh callback.
+result reports `changed` (§1); it refetches through `useDataRefresh` (any data change, other tabs, returning to the app).
 
 ## 6. Overview (`/overview`)
 

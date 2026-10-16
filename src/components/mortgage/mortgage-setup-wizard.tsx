@@ -16,6 +16,7 @@ import { deriveLoanShares } from '@/lib/mortgage-utils';
 import { mortgageSetupSchema } from '@/lib/schemas/mortgage.schema';
 import { createMortgage } from '@/lib/actions/shared-mortgages';
 import type { Currency, CreateMortgageRequest, MortgagePaymentMode, MortgageDayCount, SharedMortgage } from '@/types';
+import { notifyDataChanged } from '@/lib/hooks/use-data-refresh';
 
 interface LoanDraft {
   label: string;
@@ -137,6 +138,7 @@ export function MortgageSetupWizard({
         )
       );
       setSaving(false);
+      notifyDataChanged();
       onCreated(created);
     } else {
       setSaving(false);

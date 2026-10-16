@@ -19,6 +19,7 @@ import {
   deleteMortgageCost,
 } from '@/lib/actions/shared-mortgages';
 import type { SharedMortgage, MortgageRateEntry, MortgageCostEntry, MortgageCostType, Currency } from '@/types';
+import { notifyDataChanged } from '@/lib/hooks/use-data-refresh';
 
 const COST_LABELS: Record<MortgageCostType, string> = {
   'loan-insurance': 'Insurance',
@@ -56,8 +57,10 @@ export function MortgageHistoryStrips({
       acceptClassName: 'p-button-danger',
       accept: async () => {
         const res = await deleteMortgageRate(mortgage.id, id);
-        if (res.success) onChanged('Rate removed.');
-        else toast.error('Could not delete the rate', res.error);
+        if (res.success) {
+          notifyDataChanged();
+          onChanged('Rate removed.');
+        } else toast.error('Could not delete the rate', res.error);
       },
     });
   };
@@ -76,8 +79,10 @@ export function MortgageHistoryStrips({
       acceptClassName: 'p-button-danger',
       accept: async () => {
         const res = await deleteMortgageCost(mortgage.id, id);
-        if (res.success) onChanged('Fee entry removed.');
-        else toast.error('Could not delete the fee entry', res.error);
+        if (res.success) {
+          notifyDataChanged();
+          onChanged('Fee entry removed.');
+        } else toast.error('Could not delete the fee entry', res.error);
       },
     });
   };
@@ -112,11 +117,13 @@ export function MortgageHistoryStrips({
     // If the month changed on an existing entry, remove the old one first.
     if (editingRate && editingRate.effectiveDate !== rateDate) {
       await deleteMortgageRate(mortgage.id, editingRate.id);
+      notifyDataChanged();
     }
     const res = await setMortgageRate(mortgage.id, { effectiveDate: rateDate, euriborRate: euribor });
     setSaving(false);
     if (res.success) {
       setRateDialog(false);
+      notifyDataChanged();
       onChanged(editingRate ? 'Rate updated.' : 'Rate added.');
     } else setError(res.error ?? 'Failed to save rate');
   };
@@ -156,11 +163,13 @@ export function MortgageHistoryStrips({
     // If the key (type/loan/month) changed on an existing entry, remove the old one.
     if (editingCost && (editingCost.type !== type || editingCost.loanId !== newLoanId || editingCost.effectiveDate !== costDate)) {
       await deleteMortgageCost(mortgage.id, editingCost.id);
+      notifyDataChanged();
     }
     const res = await setMortgageCost(mortgage.id, { type, loanId: newLoanId, effectiveDate: costDate, amount });
     setSaving(false);
     if (res.success) {
       setCostDialog(false);
+      notifyDataChanged();
       onChanged(editingCost ? 'Fee updated.' : 'Fee added.');
     } else setError(res.error ?? 'Failed to save');
   };

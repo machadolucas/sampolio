@@ -20,6 +20,7 @@ import { buildDefaultRateSnapshot, PER_DIEM_COUNTRIES_2026, DOMESTIC_COUNTRY_COD
 import { PerDiemBreakdown } from './per-diem-breakdown';
 import { formatCurrency } from '@/lib/constants';
 import type { FinancialAccount, Trip } from '@/types';
+import { notifyDataChanged } from '@/lib/hooks/use-data-refresh';
 
 const DESTINATION_OPTIONS = [
   { label: 'Finland (domestic)', value: DOMESTIC_COUNTRY_CODE },
@@ -207,6 +208,7 @@ export function TripDialog({
       const result = trip ? await updateTrip(trip.id, payload) : await createTrip(payload);
       if (result.success && result.data) {
         toast.success(trip ? 'Trip updated' : 'Trip created', data.name);
+        notifyDataChanged();
         onSaved(result.data);
         onHide();
       } else {

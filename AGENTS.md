@@ -75,7 +75,10 @@ AES-256-GCM with HKDF-SHA256 for new writes and a PBKDF2 compatibility read
 fallback. Use the migration and rotation scripts only as documented in [`docs/operations.md`](docs/operations.md).
 
 The UI uses PrimeReact plus Tailwind and AppContext from
-`src/components/layout/app-layout.tsx`; do not add Redux/Zustand. Use the
+`src/components/layout/app-layout.tsx`; do not add Redux/Zustand. Client
+freshness goes through `src/lib/hooks/use-data-refresh.ts`: every successful
+mutation calls `notifyDataChanged()`, every data view subscribes with
+`useDataRefresh` (rules in `docs/architecture.md` §13). Use the
 shared `ToastProvider`, `AlertBanner`, `KpiTile`, `HelpHint`, `EmptyState`,
 delayed loading/skeletons, and lazy heavy charts. Every canvas chart uses
 `ChartExplain` plus a tested description in `src/lib/chart-descriptions.ts`.

@@ -26,6 +26,7 @@ import { describeSplitSpend, describeSplitNet } from '@/lib/chart-descriptions';
 import { formatCents } from '@/lib/constants';
 import type { SplitGroup, SplitMemberBalance, Currency } from '@/types';
 import type { SplitInsights } from '@/lib/split-insights';
+import { notifyDataChanged, useDataRefresh } from '@/lib/hooks/use-data-refresh';
 
 // The ECharts insights charts are code-split into their own chunk (ssr:false —
 // client-only), matching the cashflow page. A short-delayed placeholder holds
@@ -152,6 +153,9 @@ export default function SplitPage() {
   const [jiggling, setJiggling] = useState(false);
   const [showAllPeople, setShowAllPeople] = useState(false);
   const movedRef = useRef(false);
+  const jigglingRef = useRef(false);
+  useEffect(() => { jigglingRef.current = jiggling; }, [jiggling]);
+  const pendingOrderSaves = useRef(0);
 
   const fetchData = useCallback(async () => {
     if (!myId) return;
@@ -160,9 +164,15 @@ export default function SplitPage() {
       getUserPreferences(),
       getSplitInsights(12),
     ]);
-    const groups = res.success && res.data ? res.data : [];
+    if (!res.success || !res.data) {
+      // Keep the cards already on screen when a refetch fails.
+      setLoaded(true);
+      return;
+    }
+    const groups = res.data;
     const lastSeen = prefsRes.success ? prefsRes.data?.splitLastSeenAt ?? {} : {};
-    if (prefsRes.success) setOrder(prefsRes.data?.splitGroupOrder);
+    // Never let a refetch overwrite an order the user is rearranging / saving.
+    if (prefsRes.success && !jigglingRef.current && pendingOrderSaves.current === 0) setOrder(prefsRes.data?.splitGroupOrder);
     setInsights(insRes.success && insRes.data ? insRes.data : null);
     const built = await Promise.all(
       groups.map(async (g) => {
@@ -187,7 +197,7 @@ export default function SplitPage() {
   // appContext too — combining them re-ran the fetch (and re-showed the
   // skeleton) on every AppLayout re-render.
   useEffect(() => { fetchData(); }, [fetchData]);
-  useEffect(() => { appContext?.setRefreshCallback(fetchData); }, [appContext, fetchData]);
+  useDataRefresh(fetchData);
 
   // Curated display order (identity when no order is set).
   const displayCards = useMemo(() => sortByPreferredOrder(cards, (c) => c.group.id, order), [cards, order]);
@@ -209,9 +219,15 @@ export default function SplitPage() {
     (nextIds: string[]) => {
       movedRef.current = true;
       setOrder(nextIds); // optimistic — display re-sorts immediately
-      void updateSplitGroupOrder(nextIds).then((res) => {
-        if (!res.success) toast.error('Could not save order', res.error);
-      });
+      pendingOrderSaves.current += 1;
+      void updateSplitGroupOrder(nextIds)
+        .then((res) => {
+          if (res.success) notifyDataChanged();
+          else toast.error('Could not save order', res.error);
+        })
+        .finally(() => {
+          pendingOrderSaves.current -= 1;
+        });
     },
     [toast],
   );
@@ -423,7 +439,7 @@ export default function SplitPage() {
         </div>
       )}
 
-      <GroupFormDialog visible={showCreate} onHide={() => setShowCreate(false)} onSaved={() => fetchData()} />
+      <GroupFormDialog visible={showCreate} onHide={() => setShowCreate(false)} onSaved={() => { /* GroupFormDialog announces the change; fetchData reruns via useDataRefresh */ }} />
       <JiggleModeBar jiggling={jiggling} onDone={() => handleJiggleChange(false)} hint="Drag to reorder your groups" />
     </div>
   );

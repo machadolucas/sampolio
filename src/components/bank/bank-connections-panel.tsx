@@ -27,6 +27,7 @@ import {
   updateBankAccountLink,
 } from '@/lib/actions/bank';
 import { getAccounts } from '@/lib/actions/accounts';
+import { notifyDataChanged } from '@/lib/hooks/use-data-refresh';
 import { maskIban, getConsentExpiryInfo, effectiveCardNumbers } from '@/lib/bank-utils';
 import { suggestStatementDay } from '@/lib/bank/card-billing';
 import { STATEMENT_GRACE_DAYS } from '@/lib/bank/constants';
@@ -151,6 +152,7 @@ export function BankConnectionsPanel() {
     setBusyId(null);
     if (res.success) {
       toast('Refreshed');
+      notifyDataChanged();
       load();
     } else {
       toast(res.error ?? 'Refresh failed', 'error');
@@ -180,6 +182,7 @@ export function BankConnectionsPanel() {
         setBusyId(null);
         if (res.success) {
           toast('Disconnected');
+          notifyDataChanged();
           load();
         } else {
           toast(res.error ?? 'Disconnect failed', 'error');
@@ -195,6 +198,7 @@ export function BankConnectionsPanel() {
     const res = await updateBankAccountLink(connectionId, linkId, data);
     if (res.success && res.data) {
       setConnections((prev) => prev.map((c) => (c.id === connectionId ? res.data! : c)));
+      notifyDataChanged();
       return true;
     }
     toast(res.error ?? 'Update failed', 'error');

@@ -9,7 +9,7 @@ Every action file starts with `'use server'` and exports async functions. The co
 1. **Authenticate**: `const session = await auth()` — reject if no session
 2. **Validate**: Use Zod schema to parse input
 3. **Execute**: Call DB layer functions from `src/lib/db/`
-4. **Invalidate cache**: Call `updateTag(tagName)` for affected data
+4. **Invalidate cache**: Call `updateTag(tagName)` for affected data (code that can also run in a route handler uses `invalidateTags` from `src/lib/cache-tags.ts`). The client then announces the change with `notifyDataChanged()` so on-screen views refetch (`docs/architecture.md` §13)
 5. **Return**: `ApiResponse<T>` = `{ success: boolean; data?: T; error?: string }`
 
 Ids that become path segments are validated at the boundary with `idSchema` /

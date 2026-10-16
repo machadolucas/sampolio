@@ -28,6 +28,7 @@ import {
 } from '@/lib/actions/reconciliation';
 import { expectedCashBalance, expectedInvestmentBalance, expectedReceivableBalance, expectedDebtState } from '@/lib/reconcile-prefill';
 import { useAppContext } from '@/components/layout/app-layout';
+import { notifyDataChanged } from '@/lib/hooks/use-data-refresh';
 import type { FinancialAccount, InvestmentAccount, Receivable, Debt, EntityType, Currency } from '@/types';
 
 interface ReconcileWizardProps {
@@ -352,6 +353,8 @@ export function ReconcileWizard({
                     }
                 }
             }
+            // Snapshots are written even if a later one fails — announce regardless.
+            notifyDataChanged();
             if (failedSnapshots.length > 0) {
                 const message = `Could not save ${failedSnapshots.length === 1 ? 'the balance for' : 'balances for'} ${failedSnapshots.join(', ')}${firstSnapshotError ? ` (${firstSnapshotError})` : ''}. Balances were not applied to your accounts yet — try saving again.`;
                 setError(message);
@@ -385,6 +388,7 @@ export function ReconcileWizard({
                     setIsSaving(false);
                     return;
                 }
+                notifyDataChanged();
             }
 
             // Complete the session

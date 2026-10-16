@@ -21,6 +21,7 @@ import {
 import { useToast } from '@/components/providers/toast-provider';
 import { CURRENCIES } from '@/lib/constants';
 import type { Currency, SplitGroup, SplitGroupMemberRole } from '@/types';
+import { notifyDataChanged } from '@/lib/hooks/use-data-refresh';
 
 const EMOJI_CHOICES = ['🏠', '💞', '✈️', '🍽️', '🎉', '🛒', '🚗', '🏖️', '👨‍👩‍👧', '💡'];
 const ROLE_OPTIONS: { label: string; value: SplitGroupMemberRole }[] = [
@@ -75,6 +76,7 @@ export function GroupFormDialog({
       setSaving(false);
       if (!res.success) return setError(res.error ?? 'Could not add member');
       setMemberEmail('');
+      notifyDataChanged();
       onSaved(group.id);
     } else {
       if (!pendingEmails.includes(email)) setPendingEmails((p) => [...p, email]);
@@ -101,6 +103,7 @@ export function GroupFormDialog({
           toast.error('Could not remove member', res.error);
           return;
         }
+        notifyDataChanged();
         onSaved(group.id);
       },
     });
@@ -125,6 +128,7 @@ export function GroupFormDialog({
           return;
         }
         toast.success('You left the group', group.name);
+        notifyDataChanged();
         onHide();
         onLeft?.();
       },
@@ -139,6 +143,7 @@ export function GroupFormDialog({
       const res = await updateSplitGroup(group.id, { name: name.trim(), emoji });
       setSaving(false);
       if (!res.success) return setError(res.error ?? 'Failed to save');
+      notifyDataChanged();
       onSaved(group.id);
       onHide();
     } else {
@@ -150,6 +155,7 @@ export function GroupFormDialog({
       });
       setSaving(false);
       if (!res.success) return setError(res.error ?? 'Failed to create');
+      notifyDataChanged();
       onSaved(res.data?.id);
       onHide();
     }
@@ -209,6 +215,7 @@ export function GroupFormDialog({
                         const res = await updateSplitGroupMemberRole(group!.id, m.userId, newRole);
                         setSaving(false);
                         if (!res.success) return setError(res.error ?? 'Could not update role');
+                        notifyDataChanged();
                         onSaved(group!.id);
                       }}
                     />

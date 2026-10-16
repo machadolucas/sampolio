@@ -9,6 +9,7 @@ import { useToast } from '@/components/providers/toast-provider';
 import { updateTrip, deleteTrip } from '@/lib/actions/trips';
 import { TripCard } from '@/components/trips/trip-card';
 import { TripDialog } from '@/components/trips/trip-dialog';
+import { notifyDataChanged } from '@/lib/hooks/use-data-refresh';
 import type { Budget, FinancialAccount, Trip, TripStatus } from '@/types';
 
 interface TripsSectionProps {
@@ -23,7 +24,8 @@ interface TripsSectionProps {
 /**
  * The Trips half of the merged "Trips & Budgets" page: per-diem calculator
  * cards, status transitions, and the create/edit dialog. Trips/accounts are
- * fetched by the parent; mutations call `onChanged` to re-sync.
+ * fetched by the parent; status/delete announce via `notifyDataChanged` (the
+ * parent refetches through `useDataRefresh`), the dialog's save also calls `onChanged`.
  */
 export function TripsSection({ trips, accounts, budgets, onChanged }: TripsSectionProps) {
   const toast = useToast();
@@ -52,7 +54,7 @@ export function TripsSection({ trips, accounts, budgets, onChanged }: TripsSecti
         nextStatus === 'reimbursed' ? 'Trip marked reimbursed' : 'Trip marked completed',
         trip.name
       );
-      onChanged();
+      notifyDataChanged();
     } else {
       toast.error('Error', res.error || 'Failed to update trip');
     }
@@ -71,7 +73,7 @@ export function TripsSection({ trips, accounts, budgets, onChanged }: TripsSecti
         const res = await deleteTrip(trip.id);
         if (res.success) {
           toast.success('Trip deleted', trip.name);
-          onChanged();
+          notifyDataChanged();
         } else {
           toast.error('Error', res.error || 'Failed to delete trip');
         }

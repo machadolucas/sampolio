@@ -1671,6 +1671,10 @@ export interface DrawerState {
   entityType?: string;
   entityId?: string;
   yearMonth?: YearMonth;
+  /** Account the opened modal acts on; defaults to AppContext.selectedAccountId.
+   * Pages with their own account picker (Cashflow) pass it so the modal edits
+   * the account that is on screen. */
+  accountId?: string;
 }
 
 // ============================================================

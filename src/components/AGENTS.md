@@ -140,9 +140,11 @@ The occurrence-override dialog lives in `modals/occurrence-override-dialog.tsx`.
 ### Modal/Drawer Flow
 1. User clicks action button → AppContext's `openDrawer()` sets drawer state
 2. `EntityModalRouter` reads drawer state and renders the appropriate modal
-3. Modal calls server action on save → cache invalidated → `refreshData()` called
-4. Parent component re-fetches data
-5. Submit buttons show `loading` while awaiting; on success the modal closes and a `useToast()` toast confirms; on hot paths the parent updates optimistically and reconciles via the background `refreshData()` (see root `AGENTS.md` → "Working rules")
+3. Modal calls server action on save → cache invalidated → `notifyDataChanged()` (directly, or via `refreshData()` / `onDataChange`)
+4. Every mounted view subscribed with `useDataRefresh(refetch)` re-fetches — in this tab and the user's other tabs (`src/lib/hooks/use-data-refresh.ts`, `docs/architecture.md` §13)
+5. Submit buttons show `loading` while awaiting; on success the modal closes and a `useToast()` toast confirms; on hot paths the parent updates optimistically and reconciles via the background refetch (see root `AGENTS.md` → "Working rules")
+
+Rule: a shared component that calls a mutating server action announces success itself with `notifyDataChanged()` (it may be mounted anywhere — the global quick-add, the bank ledger, a page), and any view that shows server data subscribes with `useDataRefresh`. A parent callback that only refreshes its own state is not enough.
 
 ### Form Pattern
 All forms use React Hook Form with Zod validation:

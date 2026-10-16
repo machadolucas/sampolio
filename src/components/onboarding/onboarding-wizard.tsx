@@ -19,6 +19,7 @@ import { createRecurringItem } from '@/lib/actions/recurring';
 import { createSalaryConfig } from '@/lib/actions/salary';
 import { completeOnboarding, getUserPreferences } from '@/lib/actions/user-preferences';
 import { useAppContext } from '@/components/layout/app-layout';
+import { notifyDataChanged } from '@/lib/hooks/use-data-refresh';
 import { calculateNetSalary } from '@/lib/salary-utils';
 import { formatCurrency } from '@/lib/constants';
 import type { Currency, DisplayMode, SalaryBenefit } from '@/types';
@@ -141,6 +142,7 @@ export function OnboardingWizard({ visible, onComplete }: OnboardingWizardProps)
                 });
                 if (result.success && result.data) {
                     setCreatedAccountId(result.data.id);
+                    notifyDataChanged();
                 }
             } catch (err) {
                 console.error('Failed to create account:', err);
@@ -170,6 +172,7 @@ export function OnboardingWizard({ visible, onComplete }: OnboardingWizardProps)
                         isActive: true,
                         isLinkedToRecurring: true,
                     });
+                    notifyDataChanged();
                 } else if (incomeType === 'simple' && incomeAmount > 0) {
                     // Create simple recurring income
                     await createRecurringItem(createdAccountId, {
@@ -179,6 +182,7 @@ export function OnboardingWizard({ visible, onComplete }: OnboardingWizardProps)
                         frequency: 'monthly',
                         startDate: getCurrentYearMonth(),
                     });
+                    notifyDataChanged();
                 }
             } catch (err) {
                 console.error('Failed to create income:', err);
@@ -205,6 +209,7 @@ export function OnboardingWizard({ visible, onComplete }: OnboardingWizardProps)
                         startDate: getCurrentYearMonth(),
                     });
                 }
+                if (validExpenses.length > 0) notifyDataChanged();
             } catch (err) {
                 console.error('Failed to create expenses:', err);
             } finally {

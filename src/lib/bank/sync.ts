@@ -10,7 +10,7 @@
  */
 
 import { v4 as uuidv4 } from 'uuid';
-import { updateTag } from 'next/cache';
+import { invalidateTags } from '@/lib/cache-tags';
 import type {
   BankAccountLink,
   BankConnection,
@@ -134,17 +134,13 @@ export function shouldFetchPending(
 
 /** Invalidate cache tags, tolerating a missing request scope (background tick). */
 function safeUpdateTags(tags: string[]): void {
-  for (const tag of tags) {
-    try {
-      updateTag(tag);
-    } catch {
-      // No request scope (scheduler tick) — `updateTag` throws and is swallowed.
-      // The 'use cache' store can't be invalidated here; the bank/snapshot reads
-      // use the bounded 'synced' cacheLife profile so the UI still catches up to
-      // disk within minutes (see next.config.ts). A request-scoped mutation /
-      // "Refresh now" still revalidates instantly via these tags.
-    }
-  }
+  // `invalidateTags` uses `updateTag` in a server action ("Refresh now") and
+  // immediate-expiry `revalidateTag` in a route handler (the OAuth callback's
+  // initial backfill). In the scheduler tick there is no request scope, and
+  // BOTH forms throw there (`revalidate()` needs Next's work store), so it
+  // skips the tags: the bank/snapshot reads use the bounded 'synced' cacheLife
+  // so the UI still catches up to disk within minutes (see next.config.ts).
+  invalidateTags(...tags);
 }
 
 /**

@@ -164,3 +164,24 @@ export async function deletePlannedItem(
   await deleteFile(itemFile);
   return true;
 }
+
+/**
+ * Delete every occurrence override of a recurring item (planned items with
+ * `isRecurringOverride` + `linkedRecurringItemId`). Called when the recurring
+ * item itself is deleted so its overrides don't linger as orphans. Reads the
+ * files directly (uncached) and returns how many were removed.
+ */
+export async function deletePlannedOverridesForRecurringItem(
+  userId: string,
+  accountId: string,
+  recurringItemId: string
+): Promise<number> {
+  const items = await getPlannedItems(userId, accountId);
+  const overrides = items.filter(
+    item => item.isRecurringOverride && item.linkedRecurringItemId === recurringItemId
+  );
+  for (const override of overrides) {
+    await deletePlannedItem(userId, accountId, override.id);
+  }
+  return overrides.length;
+}

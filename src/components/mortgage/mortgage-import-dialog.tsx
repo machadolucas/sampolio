@@ -9,6 +9,7 @@ import { Message } from 'primereact/message';
 import { confirmDialog } from 'primereact/confirmdialog';
 import { importMortgageActuals, clearMortgageActuals } from '@/lib/actions/shared-mortgages';
 import type { SharedMortgage, MortgageActualInput } from '@/types';
+import { notifyDataChanged } from '@/lib/hooks/use-data-refresh';
 
 /** Lenient number parse: handles "1 234,56" (fi), "1.234,56", and "1234.56". */
 function parseNum(raw: string): number | null {
@@ -104,8 +105,10 @@ export function MortgageImportDialog({
     setError('');
     const res = await importMortgageActuals(mortgage.id, { entries: parsed.entries, replaceAll });
     setSaving(false);
-    if (res.success) onImported(`Imported ${res.data?.imported ?? parsed.entries.length} monthly rows.`);
-    else setError(res.error ?? 'Import failed');
+    if (res.success) {
+      notifyDataChanged();
+      onImported(`Imported ${res.data?.imported ?? parsed.entries.length} monthly rows.`);
+    } else setError(res.error ?? 'Import failed');
   };
 
   const doClear = () => {
@@ -120,8 +123,10 @@ export function MortgageImportDialog({
         setSaving(true);
         const res = await clearMortgageActuals(mortgage.id);
         setSaving(false);
-        if (res.success) onImported('Imported history cleared.');
-        else setError(res.error ?? 'Failed to clear');
+        if (res.success) {
+          notifyDataChanged();
+          onImported('Imported history cleared.');
+        } else setError(res.error ?? 'Failed to clear');
       },
     });
   };

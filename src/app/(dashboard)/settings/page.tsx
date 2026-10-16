@@ -43,6 +43,7 @@ const AccountPanel = dynamic(
 import type { TaxDefaults, SplitNotifyEvent } from '@/types';
 import { MdDownload, MdUpload, MdAccountBalanceWallet, MdAdd, MdCheck, MdGroup, MdCached, MdStorage, MdDeleteSweep } from 'react-icons/md';
 import { FaGithub } from 'react-icons/fa';
+import { notifyDataChanged } from '@/lib/hooks/use-data-refresh';
 
 /** Split push-notification events, in the order the Settings block lists them. */
 const SPLIT_NOTIFY_TOGGLES: { key: SplitNotifyEvent; label: string }[] = [
@@ -184,6 +185,7 @@ function SettingsPageInner() {
         try {
             const result = await updateSettings({ selfSignupEnabled });
             if (result.success) {
+                notifyDataChanged();
                 toast.success('Settings saved successfully');
             } else {
                 toast.error('Error', result.error || 'Failed to save settings');
@@ -200,6 +202,7 @@ function SettingsPageInner() {
         try {
             const result = await revalidateAllCaches();
             if (result.success) {
+                notifyDataChanged();
                 toast.success('All caches revalidated successfully');
             } else {
                 toast.error('Error', result.error || 'Failed to revalidate caches');
@@ -243,7 +246,7 @@ function SettingsPageInner() {
                     toast.show({ severity: 'warn', summary: 'Import note', detail: warning, life: 8000 });
                 }
                 setImportCandidate(null);
-                appContext?.refreshData();
+                notifyDataChanged();
             } else {
                 toast.error('Import failed', result.error || 'Failed to import data');
             }
@@ -319,6 +322,7 @@ function SettingsPageInner() {
                     if (res.success && res.data) {
                         setCompactMessage({ type: 'success', text: `Removed ${res.data.snapshots} snapshots, ${res.data.sessions} check-in logs, ${res.data.adjustments} adjustments, ${res.data.overrides} expired one-time changes.` });
                         setCompactPreview(null);
+                        notifyDataChanged();
                     } else {
                         setCompactMessage({ type: 'error', text: res.error || 'Failed to compact history' });
                     }
@@ -402,6 +406,7 @@ function SettingsPageInner() {
                         setCheckInReminders(enabled);
                         const result = await updateCheckInReminders(enabled);
                         if (result.success) {
+                            notifyDataChanged();
                             toast.success(enabled ? 'Check-in reminders on' : 'Check-in reminders off');
                         } else {
                             setCheckInReminders(!enabled);
@@ -448,6 +453,7 @@ function SettingsPageInner() {
                         setCheckInNotifications(enabled);
                         const result = await updateCheckInNotifications(enabled);
                         if (result.success) {
+                            notifyDataChanged();
                             toast.success(enabled ? 'Device notifications on' : 'Device notifications off');
                         } else {
                             setCheckInNotifications(!enabled);
@@ -470,6 +476,7 @@ function SettingsPageInner() {
         setSplitNotifyPrefs(next);
         const result = await updateSplitNotificationPrefs(next);
         if (result.success) {
+            notifyDataChanged();
             toast.success(`${label} ${enabled ? 'on' : 'off'}`);
         } else {
             setSplitNotifyPrefs(previous);
@@ -607,8 +614,10 @@ function SettingsPageInner() {
                     setIsSavingCategories(true);
                     try {
                         const result = await updateCategories(customCategories, removedDefaults);
-                        if (result.success) toast.success('Categories saved');
-                        else toast.error('Error', result.error || 'Failed to save categories');
+                        if (result.success) {
+                            notifyDataChanged();
+                            toast.success('Categories saved');
+                        } else toast.error('Error', result.error || 'Failed to save categories');
                     } catch {
                         toast.error('Error', 'An error occurred');
                     } finally {
@@ -684,8 +693,10 @@ function SettingsPageInner() {
                         setIsSavingTax(true);
                         try {
                             const result = await updateTaxDefaults(taxDefaults);
-                            if (result.success) toast.success('Tax defaults saved');
-                            else toast.error('Error', result.error || 'Failed to save tax defaults');
+                            if (result.success) {
+                                notifyDataChanged();
+                                toast.success('Tax defaults saved');
+                            } else toast.error('Error', result.error || 'Failed to save tax defaults');
                         } catch {
                             toast.error('Error', 'An error occurred');
                         } finally {

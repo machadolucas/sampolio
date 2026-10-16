@@ -19,10 +19,11 @@ import { getMySplitGroups, getMySplitLinkCandidates, createSplitExpense, setDefa
 import { getUserPreferences } from '@/lib/actions/user-preferences';
 import { DelayedSkeleton } from '@/components/ui/delayed-loading';
 import { findSplitDuplicateCandidates } from '@/lib/bank-split-match';
+import { notifyDataChanged } from '@/lib/hooks/use-data-refresh';
 import { toCents, guessCategory, parseAmountInput } from '@/lib/split-utils';
 import { SPLIT_CATEGORIES, formatCurrency } from '@/lib/constants';
 import { SplitEditor, emptyDraft, resolveDraftSpec, type SplitDraft } from './split-editor';
-import type { SplitGroup, SplitExpenseBankLink, SplitDuplicateCandidate, SplitLinkCandidate, Currency } from '@/types';
+import type { SplitGroup, SplitExpense, SplitExpenseBankLink, SplitDuplicateCandidate, SplitLinkCandidate, Currency } from '@/types';
 import type { BankSplitMatch } from '@/lib/bank-split-match';
 
 /** Optional prefill applied each time the dialog opens (e.g. "Split this" from
@@ -49,7 +50,9 @@ function parseIsoDate(iso: string): Date | null {
 interface QuickAddSplitModalProps {
   visible: boolean;
   onHide: () => void;
-  onSaved?: () => void;
+  /** Called after a successful create (with the new row and its group, so a
+   * parent can show it optimistically) or confirm-link (no args — just refetch). */
+  onSaved?: (expense?: SplitExpense, group?: { id: string; name: string }) => void;
   initial?: QuickAddSplitInitial;
   onConfirmLink?: (match: BankSplitMatch) => Promise<void> | void;
 }
@@ -235,7 +238,8 @@ export function QuickAddSplitModal({ visible, onHide, onSaved, initial, onConfir
       // stay open); the toast is the reduced-motion feedback. No row flash here —
       // the created row isn't on this screen.
       celebrate('checkmark');
-      onSaved?.();
+      onSaved?.(res.data, { id: group.id, name: group.name });
+      notifyDataChanged();
       toast.success('Added', title.trim());
       if (addAnother) reset();
       else onHide();
@@ -310,6 +314,7 @@ export function QuickAddSplitModal({ visible, onHide, onSaved, initial, onConfir
                         await onConfirmLink(candidate);
                         toast.success('Split link confirmed', `${candidate.title} is now linked to this bank transaction.`);
                         onSaved?.();
+                        notifyDataChanged();
                         onHide();
                       } catch (e) {
                         const message = e instanceof Error ? e.message : 'Could not confirm the split link';

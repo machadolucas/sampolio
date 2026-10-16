@@ -1,12 +1,11 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useSession } from '@/lib/auth-client';
 import { Dialog } from 'primereact/dialog';
 import { MdAccountBalance, MdChevronRight, MdCreditCard, MdSavings } from 'react-icons/md';
-import { useAppContext } from '@/components/layout/app-layout';
 import { navItems } from '@/components/layout/nav-config';
 import { HomeSkeleton } from '@/components/ui/skeletons';
 import { PageEntrance } from '@/components/ui/page-entrance';
@@ -20,6 +19,7 @@ import type { ConnectionAttention, HomeBankAccountGlance } from '@/lib/actions/b
 import { aggregatePairwiseNets } from '@/lib/split-insights';
 import { formatCents, formatCurrency, formatYearMonth } from '@/lib/constants';
 import type { BankAccountRole, Currency, SplitActivityEvent, SplitGroup, SplitMemberBalance } from '@/types';
+import { notifyDataChanged, useDataRefresh } from '@/lib/hooks/use-data-refresh';
 
 /** Groups with an active recurrence rule — the only ones catch-up can touch. */
 function hasActiveRecurrence(group: SplitGroup): boolean {
@@ -45,7 +45,6 @@ function roleIconSmall(role: BankAccountRole) {
 }
 
 export function HomeDashboard() {
-  const appContext = useAppContext();
   const router = useRouter();
   const { data: session } = useSession();
   const myId = session?.user?.id ?? '';
@@ -88,6 +87,8 @@ export function HomeDashboard() {
     setEvents(data.splitActivity);
   }, [myId]);
 
+  const announcedCatchUp = useRef(false);
+
   const fetchData = useCallback(async () => {
     if (!myId) return;
     try {
@@ -103,11 +104,23 @@ export function HomeDashboard() {
       // re-read whenever catch-up wrote any occurrence (new rows, or an
       // overwrite that repaired a stale summary).
       const due = res.data.splitGroups.map((l) => l.group).filter(hasActiveRecurrence);
-      if (due.length === 0) return;
+      if (due.length === 0) {
+        announcedCatchUp.current = false;
+        return;
+      }
       const results = await Promise.all(due.map((g) => catchUpGroupRecurrences(g.id)));
       if (results.some((r) => r.success && r.data?.changed)) {
         const fresh = await getHomeData();
         if (fresh.success && fresh.data) applyHomeData(fresh.data);
+        // The new rows are visible to other mounted views too. Announce once per
+        // streak: this view re-runs on the bus, and a catch-up that keeps
+        // reporting changes must not turn that into a refetch loop.
+        if (!announcedCatchUp.current) {
+          announcedCatchUp.current = true;
+          notifyDataChanged();
+        }
+      } else {
+        announcedCatchUp.current = false;
       }
     } catch (err) {
       console.error('Failed to load home:', err);
@@ -121,7 +134,7 @@ export function HomeDashboard() {
   // fetch (and re-showed the loading skeleton) on every AppLayout re-render,
   // since `appContext` used to be a fresh object each time.
   useEffect(() => { fetchData(); }, [fetchData]);
-  useEffect(() => { appContext?.setRefreshCallback(fetchData); }, [appContext, fetchData]);
+  useDataRefresh(fetchData);
 
   const otherMemberIds = useMemo(
     () => lines.map((l) => l.otherUserId).filter((id): id is string => !!id),

@@ -245,10 +245,12 @@ All cached reads live in `src/lib/db/cached.ts` (`cachedGet*` wrappers using the
 | `indefinite` | 1y / 1y / 1y | Everything mutated only via request-scoped server actions — invalidated purely by `updateTag`. |
 | `synced` | 60s / 300s / 3600s | Data the **background bank scheduler** writes outside request scope: `cachedGetBankConnections`, `cachedGetBankConnectionById`, `cachedGetBankTransactions`, `cachedGetBankSyncRuns`, `cachedGetLatestBankSyncRun`, and every balance-snapshot read (bank-sync anchor snapshots): `cachedGetBalanceSnapshots`, `cachedGetSnapshotsForEntity`, `cachedGetSnapshotsForMonth`, `cachedGetLatestSnapshot`, `cachedGetLatestSnapshotsByEntity`. |
 
-The scheduler caveat: `updateTag` throws outside request scope, so background sync writes
-cannot invalidate the cache (`safeUpdateTags` in `src/lib/bank/sync.ts` swallows it) — the
-`synced` profile's short revalidate window is what makes those reads eventually consistent.
-Never give background-mutated data `indefinite`.
+Outside server actions, invalidate through `invalidateTags` (`src/lib/cache-tags.ts`): it
+uses `updateTag` in a server action and falls back to `revalidateTag(tag, { expire: 0 })` in a
+route handler (the bank OAuth callback). With no request scope at all (the background
+scheduler) both throw, so `safeUpdateTags` in `src/lib/bank/sync.ts` ends up a no-op there —
+the `synced` profile's short revalidate window is what makes those reads eventually
+consistent. Never give background-mutated data `indefinite`.
 
 Every wrapper tags `all-data` plus a specific tag; mutations call `updateTag`. Tag families:
 
@@ -472,11 +474,25 @@ and [`src/components/AGENTS.md`](../src/components/AGENTS.md).
 
 State management is React Context only — `AppContext` in
 `src/components/layout/app-layout.tsx` (drawer state, the shared `accounts` list +
-`accountsLoaded`, refresh callbacks, sidebar state); no Redux/Zustand. Hooks
-(`src/lib/hooks/`): `use-delayed-flag.ts` (spinner debounce), `use-form-submit.ts` (Enter
+`accountsLoaded`, `refreshData`, sidebar state); no Redux/Zustand. Hooks
+(`src/lib/hooks/`): `use-data-refresh.ts` (client data freshness, below), `use-delayed-flag.ts` (spinner debounce), `use-form-submit.ts` (Enter
 submits dialog forms, §17), `use-media-query.ts` (SSR-safe `useIsMobile`), `use-month-selection.ts`
 (cashflow month selection), `use-reduced-motion.ts`, and `use-dwell-seen.ts` (split
-"seen" dwell tracking). Forms use React Hook Form +
+"seen" dwell tracking).
+
+**Client data freshness.** Pages are client components that load data with server
+actions into `useState`, so `updateTag` alone never reaches what is on screen. The one
+mechanism is the bus in `src/lib/hooks/use-data-refresh.ts`: every successful mutation
+calls `notifyDataChanged()` (shared mutating components do it themselves;
+`AppContext.refreshData()` / `EntityModalRouter`'s `onDataChange` forward to it), and every
+data view subscribes its refetch with `useDataRefresh(refetch)`. A notification refetches
+all mounted subscribers in one coalesced round and reaches the user's other tabs and PWA
+windows over a `BroadcastChannel`; returning to the app (tab visible / window focus,
+throttled to 15 s) refetches too, which is how background bank syncs and other members'
+split/mortgage edits appear. Routes hidden by Next's Activity unsubscribe while hidden and
+replay a missed change when shown again. Refetches must keep the last good data on
+failure, never flash a full skeleton (`hasLoadedOnce` guards) and never overwrite form
+drafts — form-heavy views subscribe with `{ focus: false }` or not at all. Forms use React Hook Form +
 Zod resolvers with PrimeReact inputs wrapped in `Controller`. Pure calculation engines live
 beside the UI in `src/lib/` (`projection.ts`, `wealth-projection.ts`,
 `mortgage-projection.ts`, `retrospective.ts`, `split-utils.ts`, `budget-utils.ts`, etc.) —

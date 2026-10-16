@@ -189,6 +189,10 @@ export async function disconnectBankConnection(
 
     updateTag(`user:${session.user.id}:bank-connections`);
     updateTag(`user:${session.user.id}:bank-connection:${connectionId}`);
+    updateTag(`user:${session.user.id}:bank-connection:${connectionId}:runs`);
+    for (const link of connection.linkedAccounts) {
+      updateTag(`user:${session.user.id}:bank-account:${link.id}:transactions`);
+    }
     return { success: true };
   } catch (error) {
     console.error('Disconnect bank connection error:', redactBankError(error));

@@ -29,6 +29,7 @@ import { getMySplitGroups } from '@/lib/actions/split-groups';
 import { getTrips } from '@/lib/actions/trips';
 import type { Budget, BudgetLine, BudgetFundingSource, BudgetFundingType, BudgetFundingTiming, Currency, FinancialAccount, SplitGroup, Trip } from '@/types';
 import { useFormSubmit } from '@/lib/hooks/use-form-submit';
+import { notifyDataChanged } from '@/lib/hooks/use-data-refresh';
 
 const PER_DIEM_SOURCE_OPTIONS = [
   { label: 'From a trip', value: 'trip' },
@@ -114,6 +115,7 @@ export function BudgetLineDialog({
       : await addBudgetLine(budget.id, parsed.data);
     setSaving(false);
     if (res.success && res.data) {
+      notifyDataChanged();
       onSaved(res.data);
       onHide();
     } else {
@@ -326,6 +328,7 @@ export function BudgetFundingDialog({
       : await addBudgetFundingSource(budget.id, parsed.data);
     setSaving(false);
     if (res.success && res.data) {
+      notifyDataChanged();
       onSaved(res.data);
       onHide();
     } else {
@@ -553,6 +556,7 @@ export function BudgetDetailsDialog({
     const res = await updateBudget(budget.id, parsed.data);
     setSaving(false);
     if (res.success && res.data) {
+      notifyDataChanged();
       onSaved(res.data);
       onHide();
     } else {

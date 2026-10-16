@@ -8,6 +8,7 @@ import {
   updateRecurringItem as dbUpdateRecurringItem,
   deleteRecurringItem as dbDeleteRecurringItem,
 } from '@/lib/db/recurring-items';
+import { deletePlannedOverridesForRecurringItem } from '@/lib/db/planned-items';
 import { cachedGetRecurringItems, cachedGetRecurringItemById } from '@/lib/db/cached';
 import { updateTag } from 'next/cache';
 import { clearNullsInPatch } from '@/lib/patch-utils';
@@ -163,6 +164,22 @@ export async function deleteRecurringItem(
 
     await dbDeleteRecurringItem(session.user.id, accountId, itemId);
     updateTag(`user:${session.user.id}:account:${accountId}:recurring`);
+
+    // The series' occurrence overrides (planned items) go with it — otherwise
+    // they linger as orphans no screen can reach. The item itself is already
+    // gone, so a cleanup failure is logged rather than failing the delete.
+    try {
+      const removedOverrides = await deletePlannedOverridesForRecurringItem(
+        session.user.id,
+        accountId,
+        itemId
+      );
+      if (removedOverrides > 0) {
+        updateTag(`user:${session.user.id}:account:${accountId}:planned`);
+      }
+    } catch (cleanupError) {
+      console.error('Delete recurring item overrides cleanup error:', cleanupError);
+    }
     return { success: true };
   } catch (error) {
     console.error('Delete recurring item error:', error);

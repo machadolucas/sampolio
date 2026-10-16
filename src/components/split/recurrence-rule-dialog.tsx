@@ -16,6 +16,7 @@ import { toCents } from '@/lib/split-utils';
 import { SPLIT_CATEGORIES, SPLIT_INTERVALS } from '@/lib/constants';
 import { SplitEditor, emptyDraft, draftFromSpec, resolveDraftSpec, type SplitDraft } from './split-editor';
 import type { Currency, SplitGroupMember, SplitRecurrenceRule } from '@/types';
+import { notifyDataChanged } from '@/lib/hooks/use-data-refresh';
 
 function isoFromDate(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -98,6 +99,7 @@ export function RecurrenceRuleDialog({
       : await createSplitRecurrenceRule(groupId, { ...base, ...(endDate ? { endDate: isoFromDate(endDate) } : {}) });
     setSaving(false);
     if (!res.success) return setError(res.error ?? 'Failed to save');
+    notifyDataChanged();
     onSaved();
     onHide();
   };

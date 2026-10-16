@@ -15,6 +15,7 @@ import { BudgetLineDialog, BudgetFundingDialog } from './budget-dialogs';
 import { BUDGET_TEMPLATES } from './budget-templates';
 import type { Budget, BudgetLine, BudgetFundingSource, BudgetFundingType, Currency, FinancialAccount, Trip } from '@/types';
 import type { FundingAllocation } from '@/lib/budget-utils';
+import { notifyDataChanged } from '@/lib/hooks/use-data-refresh';
 
 const FUNDING_TYPE_LABELS: Record<BudgetFundingType, string> = {
   grant: 'Grant',
@@ -94,7 +95,10 @@ export function BudgetLinesPanel({
       acceptClassName: 'p-button-danger',
       accept: async () => {
         const res = await deleteBudgetLine(budget.id, line.id);
-        if (res.success && res.data) onChanged(res.data);
+        if (res.success && res.data) {
+          notifyDataChanged();
+          onChanged(res.data);
+        }
       },
     });
 
@@ -208,7 +212,10 @@ export function BudgetFundingPanel({
       acceptClassName: 'p-button-danger',
       accept: async () => {
         const res = await deleteBudgetFundingSource(budget.id, source.id);
-        if (res.success && res.data) onChanged(res.data);
+        if (res.success && res.data) {
+          notifyDataChanged();
+          onChanged(res.data);
+        }
       },
     });
 

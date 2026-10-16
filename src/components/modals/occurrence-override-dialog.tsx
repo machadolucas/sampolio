@@ -18,6 +18,7 @@ import {
     getPlannedItems,
 } from '@/lib/actions/planned';
 import { getRecurringItemById } from '@/lib/actions/recurring';
+import { notifyDataChanged } from '@/lib/hooks/use-data-refresh';
 import type { RecurringItem, YearMonth } from '@/types';
 import { MdSave, MdDelete, MdClose, MdSkipNext } from 'react-icons/md';
 import {
@@ -130,6 +131,7 @@ export function OccurrenceOverrideDialog({
                         ? `Occurrence skipped for ${formatYearMonth(yearMonth)}`
                         : `Override saved for ${formatYearMonth(yearMonth)}`
                 );
+                notifyDataChanged();
                 onDataChange?.();
                 onHide();
             } else {
@@ -156,6 +158,7 @@ export function OccurrenceOverrideDialog({
                     );
                     if (result.success) {
                         toast.success('Override Removed', 'Original recurring item values restored');
+                        notifyDataChanged();
                         onDataChange?.();
                         onHide();
                     } else {

@@ -20,7 +20,13 @@ import { getUserPreferences } from '@/lib/actions/user-preferences';
 import { useToast } from '@/components/providers/toast-provider';
 import { useAppContext } from '@/components/layout/app-layout';
 import { getMySplitLinkCandidates, confirmSplitBankLink } from '@/lib/actions/split-groups';
-import { matchTransactionsToSplits } from '@/lib/bank-split-match';
+import {
+  matchTransactionsToSplits,
+  splitCandidateFromExpense,
+  upsertSplitCandidate,
+  type BankSplitMatch,
+} from '@/lib/bank-split-match';
+import { notifyDataChanged, useDataRefresh } from '@/lib/hooks/use-data-refresh';
 import {
   maskIban,
   getConsentExpiryInfo,
@@ -40,6 +46,7 @@ import type {
   BankTransaction,
   BankConnectionStatus,
   Currency,
+  SplitExpense,
   SplitLinkCandidate,
 } from '@/types';
 
@@ -118,6 +125,21 @@ function BankPageInner() {
   // switching accounts does NOT discard it — ledgers are stored per link.
   const ledgerRequestsRef = useRef<Map<string, { seq: number; version: number }>>(new Map());
   const ledgerSeqRef = useRef(0);
+  // Latest split-candidate request per link. Only the newest response applies,
+  // so a slow request that started before a save can never overwrite the list
+  // that includes it.
+  const candidateRequestsRef = useRef<Map<string, number>>(new Map());
+  const candidateSeqRef = useRef(0);
+  // The ledger array each link's candidates were last requested for: a new
+  // array (refetch, background sync) means its months may differ → reload.
+  const candidatesLedgerRef = useRef<Map<string, BankTransaction[]>>(new Map());
+  // Latest selection/ledgers for the data-refresh subscription.
+  const selectedLinkIdRef = useRef(selectedLinkId);
+  const ledgersRef = useRef(ledgers);
+  useEffect(() => {
+    selectedLinkIdRef.current = selectedLinkId;
+    ledgersRef.current = ledgers;
+  });
 
   const load = useCallback(async () => {
     if (!hasLoadedOnce.current) setLoading(true);
@@ -155,8 +177,9 @@ function BankPageInner() {
       // stay hidden until a full page reload). Existing rows stay on screen
       // while the refetch runs — no skeleton flash.
       loadedLedgersRef.current.clear();
-      setCandidatesByLink({});
       setLedgerVersion((v) => v + 1);
+      // A new ledger array reloads the split candidates (see the effect below).
+      notifyDataChanged();
     } finally {
       setRefreshingAll(false);
     }
@@ -310,31 +333,79 @@ function BankPageInner() {
 
   // Split-candidate wiring: once a ledger is loaded, fetch cross-group split
   // candidates for the months it covers so rows can be flagged "already
-  // split" (see src/lib/bank-split-match.ts).
+  // split" (see src/lib/bank-split-match.ts). Race-safe: only the newest
+  // request per link applies, and a failed fetch keeps the previous list.
   const loadCandidatesFor = useCallback(async (linkId: string, txs: BankTransaction[]) => {
+    const seq = ++candidateSeqRef.current;
+    candidateRequestsRef.current.set(linkId, seq);
+    candidatesLedgerRef.current.set(linkId, txs);
     const months = [...new Set(txs.map((t) => txDisplayDate(t).slice(0, 7)))];
-    const res = months.length > 0 ? await getMySplitLinkCandidates(months) : null;
-    setCandidatesByLink((prev) => ({ ...prev, [linkId]: res?.success && res.data ? res.data : [] }));
+    let list: SplitLinkCandidate[] | null = months.length === 0 ? [] : null;
+    if (!list) {
+      try {
+        const res = await getMySplitLinkCandidates(months);
+        if (res.success && res.data) list = res.data;
+      } catch {
+        // keep whatever we had — handled below
+      }
+    }
+    if (candidateRequestsRef.current.get(linkId) !== seq) return; // superseded
+    if (!list) {
+      setCandidatesByLink((prev) => (linkId in prev ? prev : { ...prev, [linkId]: [] }));
+      return;
+    }
+    // The newest server list is authoritative (it was requested after any save
+    // whose optimistic candidate it replaces).
+    const next = list;
+    setCandidatesByLink((prev) => ({ ...prev, [linkId]: next }));
   }, []);
 
   useEffect(() => {
     if (!selectedLinkId) return;
     const txs = ledgers[selectedLinkId];
-    if (!txs || candidatesByLink[selectedLinkId]) return;
-    loadCandidatesFor(selectedLinkId, txs);
-    // Only (re)run when the ledger first appears for this link — candidatesByLink
-    // and loadCandidatesFor are intentionally excluded so a later invalidation
-    // (handleSplitSaved) doesn't get immediately overwritten by this effect.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedLinkId, ledgers]);
-
-  const handleSplitSaved = useCallback(() => {
-    if (!selectedLinkId) return;
-    const txs = ledgers[selectedLinkId];
-    if (txs) loadCandidatesFor(selectedLinkId, txs);
+    if (!txs || candidatesLedgerRef.current.get(selectedLinkId) === txs) return;
+    void loadCandidatesFor(selectedLinkId, txs);
   }, [selectedLinkId, ledgers, loadCandidatesFor]);
 
-  const handleConfirmSplitSuggestion = useCallback(async (tx: BankTransaction, match: import('@/lib/bank-split-match').BankSplitMatch) => {
+  // Show a just-saved/confirmed split's pill immediately, without waiting for a
+  // server round-trip; the refetch that follows replaces the list with the
+  // server's.
+  const addOptimisticCandidate = useCallback((linkId: string, candidate: SplitLinkCandidate) => {
+    setCandidatesByLink((prev) => ({ ...prev, [linkId]: upsertSplitCandidate(prev[linkId] ?? [], candidate) }));
+  }, []);
+
+  const handleSplitSaved = useCallback(
+    (expense?: SplitExpense, group?: { id: string; name: string }) => {
+      const linkId = (expense?.kind === 'expense' && expense.bankLink?.linkedAccountId) || selectedLinkId;
+      if (!linkId) return;
+      if (expense) {
+        const candidate = splitCandidateFromExpense(expense, group ?? { id: expense.groupId, name: 'Split group' });
+        if (candidate) addOptimisticCandidate(linkId, candidate);
+      }
+      const txs = ledgers[linkId];
+      if (txs) void loadCandidatesFor(linkId, txs);
+    },
+    [selectedLinkId, ledgers, loadCandidatesFor, addOptimisticCandidate]
+  );
+
+  // Refetch when anything changes elsewhere (mutations in this or another tab)
+  // and when the user returns to the app. Bank rows only change out-of-band
+  // (background sync), so the ledger itself is refetched on focus/remote but not
+  // after an in-app mutation; existing rows stay on screen meanwhile.
+  useDataRefresh((reason) => {
+    void load();
+    const linkId = selectedLinkIdRef.current;
+    if (!linkId) return;
+    if (reason !== 'mutation' && ledgersRef.current[linkId]) {
+      loadedLedgersRef.current.clear();
+      setLedgerVersion((v) => v + 1); // the new ledger array reloads the candidates
+      return;
+    }
+    const txs = ledgersRef.current[linkId];
+    if (txs) void loadCandidatesFor(linkId, txs);
+  });
+
+  const handleConfirmSplitSuggestion = useCallback(async (tx: BankTransaction, match: BankSplitMatch) => {
     if (!selectedLinkId) throw new Error('Select a bank account first');
     const res = await confirmSplitBankLink(match.groupId, {
       expenseId: match.expenseId,
@@ -348,11 +419,13 @@ function BankPageInner() {
     if (!res.success) {
       throw new Error(res.error ?? 'Could not confirm split link');
     }
-    if (selectedLinkId) {
-      const txs = ledgers[selectedLinkId];
-      if (txs) await loadCandidatesFor(selectedLinkId, txs);
+    if (res.data) {
+      const candidate = splitCandidateFromExpense(res.data, { id: match.groupId, name: match.groupName });
+      if (candidate) addOptimisticCandidate(selectedLinkId, candidate);
     }
-  }, [selectedLinkId, ledgers, loadCandidatesFor]);
+    const txs = ledgers[selectedLinkId];
+    if (txs) await loadCandidatesFor(selectedLinkId, txs);
+  }, [selectedLinkId, ledgers, loadCandidatesFor, addOptimisticCandidate]);
 
   const splitMatches = useMemo(() => {
     if (!selectedLinkId) return undefined;

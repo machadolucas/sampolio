@@ -22,6 +22,7 @@ import { BudgetVsActualBars } from './budget-vs-actual-bars';
 import type { BudgetActualsRollup } from '@/lib/budget-utils';
 import type { Budget, BudgetExpenseEntry } from '@/types';
 import { useFormSubmit } from '@/lib/hooks/use-form-submit';
+import { notifyDataChanged } from '@/lib/hooks/use-data-refresh';
 
 /** Local-date ISO string (never UTC — a late-night entry must stay on its day). */
 function dateToIso(date: Date): string {
@@ -104,6 +105,7 @@ export function BudgetExpenseLog({
     try {
       const res = await addBudgetExpenseEntry(budget.id, { ...parsed.data, fundingSourceId: sourceId ?? undefined });
       if (res.success && res.data) {
+        notifyDataChanged();
         onChanged(res.data);
         setDescription(cur => (cur === submittedDescription ? '' : cur));
         setAmount(cur => (cur === submittedAmount ? null : cur));
@@ -127,6 +129,7 @@ export function BudgetExpenseLog({
       accept: async () => {
         const res = await deleteBudgetExpenseEntry(budget.id, entry.id);
         if (res.success && res.data) {
+          notifyDataChanged();
           onChanged(res.data);
           toast.success('Expense deleted');
         } else {
@@ -352,6 +355,7 @@ function ExpenseEditDialog({
     });
     setSaving(false);
     if (res.success && res.data) {
+      notifyDataChanged();
       onSaved(res.data);
       onHide();
     } else {
