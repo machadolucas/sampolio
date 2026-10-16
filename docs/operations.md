@@ -317,6 +317,7 @@ Every variable the code reads (`grep -r "process.env" src scripts next.config.ts
 | `ENABLE_BANKING_PRIVATE_KEY_FILE` | bank sync only | `lib/bank/jwt.ts` | Path to the 0600 RS256 PKCS#8 PEM (outside the repo). |
 | `ENABLE_BANKING_BASE_URL` | no | `lib/bank/constants.ts` | API base override (sandbox); unset in prod. |
 | `BANK_SYNC_VERBOSE` | no | `lib/bank/` | `1/true/yes` → verbose sync logging. |
+| `SAMPOLIO_DEV_EXTERNAL_APIS` | dev only | `lib/dev-isolation.ts` | `1` lets `next dev` use the real Enable Banking credentials and a non-loopback `HA_WEBHOOK_URL` (both off under `next dev` otherwise, §10). Never needed in prod. |
 | `HA_WEBHOOK_URL` | no | `lib/split-notify.ts` | Full Home Assistant webhook URL **including the secret webhook id** (e.g. `https://<ha-host>/api/webhook/<id>`) that split-activity notifications are POSTed to. Missing/blank ⇒ the feature hard-disables (zero network calls); `AUTH_URL` doubles as the deep-link base and must also be set. Never logged. |
 | `NODE_ENV` / `NEXT_RUNTIME` | set by Next | various | Standard runtime flags (e.g. service-worker registration is production-only; the bank scheduler starts only on the Node runtime). |
 
@@ -334,6 +335,16 @@ forwarding headers (`isLoopbackDevRequest`, `src/lib/auth/dev-loopback.ts`; deta
 [`architecture.md`](architecture.md) §9) and returns 404 otherwise.
 Port 3999 belongs to production (launchd `KeepAlive` restarts it if killed) —
 never point a dev server at prod's port or data dir.
+
+`next dev` auto-loads the repo `.env`, which carries production's real Enable Banking
+credentials and Home Assistant webhook (it is what `install-launchd.sh` bakes prod's
+env from). So under `NODE_ENV=development` both integrations resolve to "not
+configured" (`isBlockedInDevelopment`, `src/lib/dev-isolation.ts`; the server logs one
+`[dev-isolation] … disabled` line each): the bank scheduler stays idle, nothing calls
+the bank API, and split activity never notifies real phones. Cached bank data in the
+copied `./data` still renders. A loopback `HA_WEBHOOK_URL` (a local listener,
+[`features.md`](features.md) §1) is always allowed; anything else needs
+`SAMPOLIO_DEV_EXTERNAL_APIS=1` set deliberately for that run.
 
 ## 11. What is intentionally NOT in this repo
 

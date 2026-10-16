@@ -31,6 +31,7 @@
 import { after } from 'next/server';
 import { formatCents } from '@/lib/constants';
 import { getUserPreferences } from '@/lib/db/user-preferences';
+import { isBlockedInDevelopment, isLoopbackUrl } from '@/lib/dev-isolation';
 import type {
   Currency,
   SplitExpenseItem,
@@ -83,12 +84,15 @@ export interface SplitNotifyConfig {
 /**
  * Resolve the notification configuration from the environment. Returns null
  * (feature off) when either the webhook URL or the deep-link base is missing —
- * callers must treat null as "feature off", never substitute a default.
+ * callers must treat null as "feature off", never substitute a default. Under
+ * `next dev` a non-loopback webhook (production's, from the repo `.env`) is
+ * ignored unless opted in (`src/lib/dev-isolation.ts`).
  */
 export function getSplitNotifyConfig(): SplitNotifyConfig | null {
   const webhookUrl = process.env.HA_WEBHOOK_URL?.trim();
   const deepLinkBase = process.env.AUTH_URL?.trim().replace(/\/$/, '');
   if (!webhookUrl || !deepLinkBase) return null;
+  if (!isLoopbackUrl(webhookUrl) && isBlockedInDevelopment('ha-webhook')) return null;
   return { webhookUrl, deepLinkBase };
 }
 

@@ -16,7 +16,7 @@ Three required env vars, one optional override (`getBankConfig` in `src/lib/bank
 
 | Env var | Meaning |
 |---|---|
-| `ENABLE_BANKING_APP_ID` | Application id registered with Enable Banking; also the JWT `kid` |
+| `ENABLE_BANKING_APP_ID` | Application id registered with Enable Banking; also the JWT `kid`. Ignored under `next dev` unless `SAMPOLIO_DEV_EXTERNAL_APIS=1` (`src/lib/dev-isolation.ts`) |
 | `ENABLE_BANKING_REDIRECT_URL` | Consent callback URL; must match the EB control-panel registration |
 | `ENABLE_BANKING_PRIVATE_KEY_FILE` | Path to a 0600 PKCS#8 PEM **outside the repo** |
 | `ENABLE_BANKING_BASE_URL` (optional) | API base; defaults to `https://api.enablebanking.com` (`DEFAULT_API_BASE_URL`) |

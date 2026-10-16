@@ -8,6 +8,8 @@
  * caller bails out gracefully.
  */
 
+import { isBlockedInDevelopment } from '@/lib/dev-isolation';
+
 /** Enable Banking API base (override with ENABLE_BANKING_BASE_URL for sandbox). */
 export const DEFAULT_API_BASE_URL = 'https://api.enablebanking.com';
 
@@ -129,7 +131,9 @@ export interface BankConfig {
 /**
  * Resolve the Enable Banking configuration from the environment. Returns null
  * (feature disabled) when any required secret is missing — callers must treat
- * null as "feature off", never substitute a default.
+ * null as "feature off", never substitute a default. Also null under `next dev`
+ * unless opted in (`src/lib/dev-isolation.ts`): the repo `.env` holds the
+ * production credentials.
  */
 export function getBankConfig(): BankConfig | null {
   const appId = process.env.ENABLE_BANKING_APP_ID?.trim();
@@ -140,6 +144,7 @@ export function getBankConfig(): BankConfig | null {
   if (!appId || !redirectUrl || !privateKeyFile) {
     return null;
   }
+  if (isBlockedInDevelopment('enable-banking')) return null;
   return { appId, redirectUrl, baseUrl, privateKeyFile };
 }
 

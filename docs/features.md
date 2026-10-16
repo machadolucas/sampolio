@@ -404,7 +404,9 @@ delay a save.
 **Configuration.** `getSplitNotifyConfig()` needs `HA_WEBHOOK_URL` (the full webhook
 URL, secret id included) **and** `AUTH_URL` (the deep-link base, trailing slash
 stripped). Either missing/blank ⇒ null ⇒ the feature is hard-disabled with **zero
-network calls**, mirroring `getBankConfig()`. See
+network calls**, mirroring `getBankConfig()`. Under `next dev` only a loopback webhook
+is used (to test, point `HA_WEBHOOK_URL` at a local listener); production's webhook
+from `.env` is ignored unless `SAMPOLIO_DEV_EXTERNAL_APIS=1` ([`docs/operations.md`](operations.md) §10). See
 [`docs/operations.md`](operations.md) §9.
 
 **Events and their author.**

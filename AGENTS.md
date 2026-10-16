@@ -142,7 +142,9 @@ Commands: `pnpm dev` (preview port 4999), `pnpm build`, `pnpm lint`,
 environment from its configured dot-files; never point development at the
 production port 3999 or live data. To test real records, copy the live data
 one way into the gitignored repo `./data`, inject its secrets through the
-preview configuration, and never write back. Run lint and tests before a
+preview configuration, and never write back. `next dev` keeps Enable Banking
+and the production HA webhook off (`src/lib/dev-isolation.ts`); never opt in
+(`SAMPOLIO_DEV_EXTERNAL_APIS=1`) while running on copied data. Run lint and tests before a
 deploy; deployment is only performed on an explicit deploy request.
 
 ## Documentation discipline
