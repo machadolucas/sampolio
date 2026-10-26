@@ -110,8 +110,7 @@ except that the first 4.x boot creates `sampolio.db` and imports the `.enc` user
 Hashed assets under `/_next/static/*` self-invalidate (new build → new filenames),
 but stably-named cached assets do **not** — so if this deploy changes any of:
 - `public/sw.js` itself (its caching logic / precache list), or
-- a precached / stably-named cached asset: `public/offline.html`, `public/icons/*`,
-  or `public/themes/*`,
+- a precached / stably-named cached asset: `public/offline.html` or `public/icons/*`,
 
 then **bump `CACHE_VERSION` in `public/sw.js`** (e.g. `v1` → `v2`) so the new SW drops
 the stale caches on `activate`. The step-1 `git status`/diff shows whether any of
@@ -133,9 +132,9 @@ export NVM_DIR="$HOME/.nvm"; . "$NVM_DIR/nvm.sh"; nvm use 26 \
 - **Any failure here aborts the deploy** — prod stays up on its old build. Report
   what failed; do not restart.
 - If `pnpm install --frozen-lockfile` fails with `ERR_PNPM_MINIMUM_RELEASE_AGE_VIOLATION`
-  (pnpm 11 supply-chain embargo) or a lockfile/`package.json` mismatch: do **not**
+  (pnpm supply-chain embargo) or a lockfile/`package.json` mismatch: do **not**
   force it. Regenerate the lockfile under Node 26
-  (`pnpm install --lockfile-only [--config.minimumReleaseAge=0]`), re-run, and only
+  (`pnpm install --lockfile-only`, retaining the release-age policy), re-run, and only
   then continue.
 - Confirm `.next-prod/BUILD_ID` was (re)written: `ls -l $HOME/sampolio/.next-prod/BUILD_ID`.
 - The dev preview (port 4999, `next dev`) may keep running — it writes `.next`,

@@ -1,12 +1,14 @@
 'use client';
 
+import { TriangleAlert } from 'lucide-react';
+
 import { useMemo, useState } from 'react';
-import { Dialog } from 'primereact/dialog';
-import { InputTextarea } from 'primereact/inputtextarea';
-import { Checkbox } from 'primereact/checkbox';
-import { Button } from 'primereact/button';
-import { Message } from 'primereact/message';
-import { confirmDialog } from 'primereact/confirmdialog';
+import { Dialog } from '@/components/ui/dialog';
+import { InputTextarea } from '@/components/ui/input-textarea';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Button } from '@/components/ui/button';
+import { Message } from '@/components/ui/message';
+import { confirmDialog } from '@/components/ui/confirm-dialog';
 import { importMortgageActuals, clearMortgageActuals } from '@/lib/actions/shared-mortgages';
 import type { SharedMortgage, MortgageActualInput } from '@/types';
 import { notifyDataChanged } from '@/lib/hooks/use-data-refresh';
@@ -115,10 +117,10 @@ export function MortgageImportDialog({
     confirmDialog({
       header: 'Remove imported history?',
       message: 'Remove all imported history? Sampolio will go back to projecting from terms.',
-      icon: 'pi pi-exclamation-triangle',
+      icon: <TriangleAlert size={16} />,
       acceptLabel: 'Remove',
       rejectLabel: 'Cancel',
-      acceptClassName: 'p-button-danger',
+      severity: 'danger',
       accept: async () => {
         setSaving(true);
         const res = await clearMortgageActuals(mortgage.id);
@@ -133,11 +135,11 @@ export function MortgageImportDialog({
 
   return (
     <Dialog header="Import actual monthly history" visible={visible} onHide={onClose} style={{ width: '42rem' }} maximizable>
-      <p className="text-sm opacity-70 mb-2">
+      <p className="text-sm text-muted-foreground mb-2">
         Paste one row per loan per month so the ledger matches your bank exactly. Sampolio uses these figures for
         the recorded months and projects only beyond the latest one.
       </p>
-      <div className="text-xs opacity-70 mb-2 p-2 rounded surface-ground">
+      <div className="text-xs text-muted-foreground mb-2 p-2 rounded surface-ground">
         <div className="font-medium mb-1">Columns (comma, semicolon or tab separated):</div>
         <code>month, loan, remaining, repayment, interest, insurance, subsidy</code>
         <ul className="list-disc ml-5 mt-1 space-y-0.5">

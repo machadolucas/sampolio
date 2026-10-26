@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-/* eslint-disable @typescript-eslint/no-explicit-any -- lightweight PrimeReact/action test doubles */
+/* eslint-disable @typescript-eslint/no-explicit-any -- lightweight nonnumeric UI/action test doubles */
 import React from 'react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
@@ -29,34 +29,13 @@ vi.mock('@/lib/actions/split-groups', () => ({
   getMySplitLinkCandidates: mocks.getMySplitLinkCandidates,
 }));
 vi.mock('@/lib/actions/user-preferences', () => ({ getUserPreferences: mocks.getUserPreferences }));
-vi.mock('primereact/confirmdialog', () => ({ confirmDialog: mocks.confirmDialog }));
-vi.mock('primereact/dialog', () => ({ Dialog: ({ visible, children }: any) => visible ? <div role="dialog">{children}</div> : null }));
-vi.mock('primereact/button', () => ({ Button: ({ label, onClick, disabled, loading, children, ...rest }: any) => <button type="button" disabled={disabled || loading} onClick={onClick} {...rest}>{label ?? children}</button> }));
-vi.mock('primereact/inputtext', () => ({ InputText: (props: any) => <input {...props} /> }));
-// Mirrors PrimeReact 10: typing does NOT call onValueChange; the value is only
-// committed on blur or Enter, and a consumer's onKeyDown runs BEFORE the Enter
-// commit. (An always-live mock hid the stale-amount Enter bug.)
-const parseMockAmount = (text: string) => (text.trim() === '' ? null : Number(text.replace(/[^0-9,.-]/g, '').replace(',', '.')));
-vi.mock('primereact/inputnumber', () => ({
-  InputNumber: ({ value, onValueChange, onKeyDown, inputRef, inputClassName, ...props }: any) => (
-    <input
-      className={inputClassName}
-      key={String(value ?? '')}
-      ref={inputRef}
-      aria-label="Amount"
-      defaultValue={value == null ? '' : String(value).replace('.', ',')}
-      onKeyDown={(e) => {
-        onKeyDown?.(e);
-        if (!e.defaultPrevented && e.key === 'Enter') onValueChange?.({ value: parseMockAmount(e.currentTarget.value) });
-      }}
-      onBlur={(e) => onValueChange?.({ value: parseMockAmount(e.currentTarget.value) })}
-      {...props}
-    />
-  ),
-}));
-vi.mock('primereact/dropdown', () => ({ Dropdown: ({ value, options, onChange, ...props }: any) => <select value={value} onChange={(e) => onChange({ value: e.target.value })} {...props}>{options?.map((o: any) => <option key={o.value} value={o.value}>{o.label}</option>)}</select> }));
-vi.mock('primereact/calendar', () => ({ Calendar: ({ value }: any) => <input aria-label="Date" value={value?.toISOString?.().slice(0, 10) ?? ''} readOnly /> }));
-vi.mock('primereact/message', () => ({ Message: ({ text }: any) => <div role="alert">{text}</div> }));
+vi.mock('@/components/ui/confirm-dialog', () => ({ confirmDialog: mocks.confirmDialog }));
+vi.mock('@/components/ui/dialog', () => ({ Dialog: ({ visible, children }: any) => visible ? <div role="dialog">{children}</div> : null }));
+vi.mock('@/components/ui/button', () => ({ Button: ({ label, onClick, disabled, loading, children, ...rest }: any) => <button type="button" disabled={disabled || loading} onClick={onClick} {...rest}>{label ?? children}</button> }));
+vi.mock('@/components/ui/input-text', () => ({ InputText: (props: any) => <input {...props} /> }));
+vi.mock('@/components/ui/dropdown', () => ({ Dropdown: ({ value, options, onChange, ...props }: any) => <select value={value} onChange={(e) => onChange({ value: e.target.value })} {...props}>{options?.map((o: any) => <option key={o.value} value={o.value}>{o.label}</option>)}</select> }));
+vi.mock('@/components/ui/calendar', () => ({ Calendar: ({ value }: any) => <input aria-label="Date" value={value?.toISOString?.().slice(0, 10) ?? ''} readOnly /> }));
+vi.mock('@/components/ui/message', () => ({ Message: ({ text }: any) => <div role="alert">{text}</div> }));
 vi.mock('./split-editor', () => ({
   SplitEditor: () => <div data-testid="split-editor" />,
   emptyDraft: () => ({ paidByUserId: 'u1', splitMode: 'equal' }),
@@ -147,7 +126,7 @@ describe('QuickAddSplitModal duplicate and review UX', () => {
 describe('QuickAddSplitModal Enter-to-save', () => {
   it('saves the typed amount on Enter, not the stale prefilled one', async () => {
     openModal();
-    const input = await screen.findByLabelText('Amount');
+    const input = await screen.findByPlaceholderText('0,00');
     await waitFor(() => expect(screen.getByRole('button', { name: 'Save' })).not.toBeDisabled());
     fireEvent.change(input, { target: { value: '30,75 €' } });
     fireEvent.keyDown(input, { key: 'Enter' });
@@ -157,7 +136,7 @@ describe('QuickAddSplitModal Enter-to-save', () => {
 
   it('saves a freshly typed amount on Enter instead of reporting a missing amount', async () => {
     openModal({ title: 'Lunch' });
-    const input = await screen.findByLabelText('Amount');
+    const input = await screen.findByPlaceholderText('0,00');
     await waitFor(() => expect(screen.getByRole('button', { name: 'Save' })).not.toBeDisabled());
     fireEvent.change(input, { target: { value: '12,50' } });
     fireEvent.keyDown(input, { key: 'Enter' });

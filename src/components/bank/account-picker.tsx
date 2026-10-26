@@ -11,9 +11,9 @@ import type { BankConnection, BankAccountLink, Currency } from '@/types';
 /** Role → icon. Shared between the account chips here and the bank page's
  * selected-account summary header. */
 export function roleIcon(role: BankAccountLink['accountRole']) {
-  if (role === 'credit-card') return <MdCreditCard className="opacity-70" />;
-  if (role === 'savings') return <MdSavings className="opacity-70" />;
-  return <MdAccountBalance className="opacity-70" />;
+  if (role === 'credit-card') return <MdCreditCard className="" />;
+  if (role === 'savings') return <MdSavings className="" />;
+  return <MdAccountBalance className="" />;
 }
 
 /** Status dot color + hover/long-press hint for a bank tab, reusing the same
@@ -151,7 +151,7 @@ export function AccountPicker({
                 className={`shrink-0 inline-flex items-center whitespace-nowrap rounded-full px-3 min-h-[36px] text-sm font-medium transition-colors ${
                   active
                     ? 'bg-[var(--primary-color)] text-[var(--primary-color-text)]'
-                    : 'border surface-border opacity-70 hover:opacity-100'
+                    : 'border surface-border  hover:opacity-100'
                 }`}
               >
                 <span data-jiggle-inner="" className="flex items-center gap-1.5">
@@ -169,7 +169,7 @@ export function AccountPicker({
           <button
             type="button"
             onClick={() => router.push('/settings?tab=banking')}
-            className="shrink-0 whitespace-nowrap flex items-center gap-2 rounded-lg border surface-border px-3 min-h-[44px] text-sm opacity-60 hover:opacity-100"
+            className="shrink-0 whitespace-nowrap flex items-center gap-2 rounded-lg border surface-border px-3 min-h-[44px] text-sm  hover:opacity-100"
           >
             No accounts — connect in Settings
           </button>
@@ -193,7 +193,7 @@ export function AccountPicker({
                   {roleIcon(link.accountRole)}
                   <div className="min-w-0">
                     <div className="text-sm font-medium truncate max-w-[10rem]">{accountLabel(link)}</div>
-                    {balance && <div className="text-xs opacity-70 truncate max-w-[10rem]">{balance}</div>}
+                    {balance && <div className="text-xs  truncate max-w-[10rem]">{balance}</div>}
                   </div>
                 </span>
               </button>

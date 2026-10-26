@@ -1,25 +1,35 @@
-'use client';
+"use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
-import { useSession } from '@/lib/auth-client';
-import { format, parseISO } from 'date-fns';
-import { Button } from 'primereact/button';
-import { Menu } from 'primereact/menu';
-import { confirmDialog } from 'primereact/confirmdialog';
-import { MdArrowBack, MdAdd, MdMoreVert, MdSettings, MdRepeat, MdUploadFile, MdAccountBalance } from 'react-icons/md';
-import { CategoryIcon } from '@/components/split/category-icon';
-import { SplitExpenseDialog } from '@/components/split/split-expense-dialog';
-import { SettleUpDialog } from '@/components/split/settle-up-dialog';
-import { GroupFormDialog } from '@/components/split/group-form-dialog';
-import { RecurrenceRuleDialog } from '@/components/split/recurrence-rule-dialog';
-import { SplitImportDialog } from '@/components/split/split-import-dialog';
-import { BankLinkDetailsDialog } from '@/components/split/bank-link-details-dialog';
-import { GroupPeriodCard } from '@/components/split/group-period-card';
-import { DelayedSpinner } from '@/components/ui/delayed-loading';
-import { SplitDetailSkeleton } from '@/components/ui/skeletons';
-import { UserAvatar } from '@/components/ui/user-avatar';
-import { useUserProfiles } from '@/lib/hooks/use-user-profiles';
+import { TriangleAlert } from "lucide-react";
+
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useParams, useRouter } from "next/navigation";
+import { useSession } from "@/lib/auth-client";
+import { format, parseISO } from "date-fns";
+import { Button } from "@/components/ui/button";
+import { Menu } from "@/components/ui/menu";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
+import {
+  MdArrowBack,
+  MdAdd,
+  MdMoreVert,
+  MdSettings,
+  MdRepeat,
+  MdUploadFile,
+  MdAccountBalance,
+} from "react-icons/md";
+import { CategoryIcon } from "@/components/split/category-icon";
+import { SplitExpenseDialog } from "@/components/split/split-expense-dialog";
+import { SettleUpDialog } from "@/components/split/settle-up-dialog";
+import { GroupFormDialog } from "@/components/split/group-form-dialog";
+import { RecurrenceRuleDialog } from "@/components/split/recurrence-rule-dialog";
+import { SplitImportDialog } from "@/components/split/split-import-dialog";
+import { BankLinkDetailsDialog } from "@/components/split/bank-link-details-dialog";
+import { GroupPeriodCard } from "@/components/split/group-period-card";
+import { DelayedSpinner } from "@/components/ui/delayed-loading";
+import { SplitDetailSkeleton } from "@/components/ui/skeletons";
+import { UserAvatar } from "@/components/ui/user-avatar";
+import { useUserProfiles } from "@/lib/hooks/use-user-profiles";
 import {
   getSplitGroupView,
   getSplitExpenses,
@@ -29,15 +39,15 @@ import {
   deleteSplitRecurrenceRule,
   updateSplitRecurrenceRule,
   markSplitGroupSeen,
-} from '@/lib/actions/split-groups';
-import { getUserPreferences } from '@/lib/actions/user-preferences';
-import { computeSeenWatermark } from '@/lib/split-utils';
-import { SplitActivityFeed } from '@/components/split/split-activity-feed';
-import { SelectButton } from 'primereact/selectbutton';
-import { formatCents, formatYearMonth, formatDayMonth } from '@/lib/constants';
-import { useToast } from '@/components/providers/toast-provider';
-import { useCelebration } from '@/components/providers/celebration-provider';
-import { useDwellSeen } from '@/lib/hooks/use-dwell-seen';
+} from "@/lib/actions/split-groups";
+import { getUserPreferences } from "@/lib/actions/user-preferences";
+import { computeSeenWatermark } from "@/lib/split-utils";
+import { SplitActivityFeed } from "@/components/split/split-activity-feed";
+import { SelectButton } from "@/components/ui/select-button";
+import { formatCents, formatYearMonth, formatDayMonth } from "@/lib/constants";
+import { useToast } from "@/components/providers/toast-provider";
+import { useCelebration } from "@/components/providers/celebration-provider";
+import { useDwellSeen } from "@/lib/hooks/use-dwell-seen";
 import type {
   SplitGroup,
   SplitGroupSummary,
@@ -48,15 +58,18 @@ import type {
   SplitRecurrenceRule,
   SplitActivityEvent,
   SplitExpenseBankLink,
-} from '@/types';
-import { notifyDataChanged, useDataRefresh } from '@/lib/hooks/use-data-refresh';
+} from "@/types";
+import {
+  notifyDataChanged,
+  useDataRefresh,
+} from "@/lib/hooks/use-data-refresh";
 
 export default function SplitGroupDetailPage() {
   const params = useParams();
   const router = useRouter();
   const groupId = String(params.id);
   const { data: session } = useSession();
-  const myId = session?.user?.id ?? '';
+  const myId = session?.user?.id ?? "";
   const myIdRef = useRef(myId);
   myIdRef.current = myId;
   const toast = useToast();
@@ -74,10 +87,14 @@ export default function SplitGroupDetailPage() {
   // "New since last visit": a watermark fetched once on mount and then FROZEN
   // for the visit (never advanced live, or rows would stop being "new" as you
   // scroll). undefined = still loading, null = no baseline yet (first visit).
-  const [lastSeenSnapshot, setLastSeenSnapshot] = useState<string | null | undefined>(undefined);
+  const [lastSeenSnapshot, setLastSeenSnapshot] = useState<
+    string | null | undefined
+  >(undefined);
 
   const [showExpense, setShowExpense] = useState(false);
-  const [editExpense, setEditExpense] = useState<SplitExpenseItem | undefined>();
+  const [editExpense, setEditExpense] = useState<
+    SplitExpenseItem | undefined
+  >();
   const [showSettle, setShowSettle] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showImport, setShowImport] = useState(false);
@@ -91,37 +108,47 @@ export default function SplitGroupDetailPage() {
   // "Split this" (bank/page.tsx): the owner deep-links back into their own
   // ledger; anyone else sees a display-only summary (they have no access to
   // the owner's bank data).
-  const [bankLinkDialog, setBankLinkDialog] = useState<{ bankLink: SplitExpenseBankLink; memberName: string } | null>(null);
+  const [bankLinkDialog, setBankLinkDialog] = useState<{
+    bankLink: SplitExpenseBankLink;
+    memberName: string;
+  } | null>(null);
 
   // Deep link from the bank page's SplitFlag: ?expense=&month= locates and
   // flashes a specific row. Read via window.location (not useSearchParams) to
   // avoid a Suspense boundary, matching the settings page's ?tab= pattern.
-  const [deepLinkExpenseId, setDeepLinkExpenseId] = useState<string | undefined>(undefined);
-  const [deepLinkMonth, setDeepLinkMonth] = useState<string | undefined>(undefined);
+  const [deepLinkExpenseId, setDeepLinkExpenseId] = useState<
+    string | undefined
+  >(undefined);
+  const [deepLinkMonth, setDeepLinkMonth] = useState<string | undefined>(
+    undefined,
+  );
   const didReadDeepLinkRef = useRef(false);
   const deepLinkDoneRef = useRef(false);
   useEffect(() => {
     if (didReadDeepLinkRef.current) return;
     didReadDeepLinkRef.current = true;
     const params = new URLSearchParams(window.location.search);
-    const expense = params.get('expense');
-    const month = params.get('month');
+    const expense = params.get("expense");
+    const month = params.get("month");
     if (expense) setDeepLinkExpenseId(expense);
     if (month) setDeepLinkMonth(month);
   }, []);
 
   // Ledger vs recent-activity framing ("added by X yesterday", the Splitwise
   // mental model). Activity loads lazily on first switch.
-  const [view, setView] = useState<'expenses' | 'activity'>('expenses');
+  const [view, setView] = useState<"expenses" | "activity">("expenses");
   const [activity, setActivity] = useState<SplitActivityEvent[] | null>(null);
   useEffect(() => {
-    if (view !== 'activity' || activity !== null) return;
+    if (view !== "activity" || activity !== null) return;
     getSplitActivity(30, groupId).then((res) => {
       setActivity(res.success && res.data ? res.data : []);
     });
   }, [view, activity, groupId]);
 
-  const monthsDesc = useMemo(() => [...(summary?.monthsWithData ?? [])].reverse(), [summary]);
+  const monthsDesc = useMemo(
+    () => [...(summary?.monthsWithData ?? [])].reverse(),
+    [summary],
+  );
 
   const loadExpenses = useCallback(
     async (months: string[]) => {
@@ -153,16 +180,20 @@ export default function SplitGroupDetailPage() {
   // gone / no longer accessible — does that; any other failure keeps the data.
   const hasGroupRef = useRef(false);
   const viewRef = useRef(view);
-  useEffect(() => { viewRef.current = view; }, [view]);
+  useEffect(() => {
+    viewRef.current = view;
+  }, [view]);
   const load = useCallback(async () => {
     let res: Awaited<ReturnType<typeof getSplitGroupView>> | null = null;
     try {
       res = await getSplitGroupView(groupId);
     } catch (err) {
-      console.error('Failed to load split group:', err);
+      console.error("Failed to load split group:", err);
     }
     if (!res || !res.success || !res.data) {
-      const gone = res?.error === 'Group not found' || res?.error === 'You do not have access to this group';
+      const gone =
+        res?.error === "Group not found" ||
+        res?.error === "You do not have access to this group";
       if (!hasGroupRef.current || gone) setNotFound(true);
       setLoading(false);
       return;
@@ -172,7 +203,7 @@ export default function SplitGroupDetailPage() {
     setGroup(res.data.group);
     setSummary(res.data.summary);
     setBalances(res.data.balances);
-    if (viewRef.current === 'activity') {
+    if (viewRef.current === "activity") {
       // Stale after any mutation: refresh in place instead of dropping the
       // feed back to its loading state.
       const act = await getSplitActivity(30, groupId);
@@ -230,7 +261,7 @@ export default function SplitGroupDetailPage() {
       (entries) => {
         if (entries.some((e) => e.isIntersecting)) loadMore();
       },
-      { rootMargin: '300px' },
+      { rootMargin: "300px" },
     );
     obs.observe(el);
     return () => obs.disconnect();
@@ -269,11 +300,13 @@ export default function SplitGroupDetailPage() {
       let attempts = 0;
       const tryScroll = () => {
         if (cancelled) return;
-        const el = document.querySelector(`[data-expense-id="${deepLinkExpenseId}"]`) as HTMLElement | null;
+        const el = document.querySelector(
+          `[data-expense-id="${deepLinkExpenseId}"]`,
+        ) as HTMLElement | null;
         if (el) {
-          el.scrollIntoView({ block: 'center', behavior: 'smooth' });
-          el.classList.add('flash-highlight');
-          setTimeout(() => el.classList.remove('flash-highlight'), 2000);
+          el.scrollIntoView({ block: "center", behavior: "smooth" });
+          el.classList.add("flash-highlight");
+          setTimeout(() => el.classList.remove("flash-highlight"), 2000);
           deepLinkDoneRef.current = true;
           router.replace(`/split/${groupId}`, { scroll: false });
           return;
@@ -305,11 +338,13 @@ export default function SplitGroupDetailPage() {
   const flashRow = useCallback((id: string) => {
     let attempts = 0;
     const tryFlash = () => {
-      const el = document.querySelector(`[data-expense-id="${id}"]`) as HTMLElement | null;
+      const el = document.querySelector(
+        `[data-expense-id="${id}"]`,
+      ) as HTMLElement | null;
       if (el) {
-        el.scrollIntoView({ block: 'center', behavior: 'smooth' });
-        el.classList.add('flash-highlight');
-        setTimeout(() => el.classList.remove('flash-highlight'), 2000);
+        el.scrollIntoView({ block: "center", behavior: "smooth" });
+        el.classList.add("flash-highlight");
+        setTimeout(() => el.classList.remove("flash-highlight"), 2000);
         return;
       }
       attempts += 1;
@@ -326,7 +361,9 @@ export default function SplitGroupDetailPage() {
     let active = true;
     getUserPreferences().then((res) => {
       if (!active) return;
-      const snap = res.success ? res.data?.splitLastSeenAt?.[groupId] ?? null : null;
+      const snap = res.success
+        ? (res.data?.splitLastSeenAt?.[groupId] ?? null)
+        : null;
       setLastSeenSnapshot(snap);
       if (snap === null && !seededBaselineRef.current) {
         seededBaselineRef.current = true;
@@ -343,7 +380,8 @@ export default function SplitGroupDetailPage() {
     const set = new Set<string>();
     if (!lastSeenSnapshot) return set; // null/undefined ⇒ no baseline, nothing new
     for (const e of expenses) {
-      if (e.createdAt > lastSeenSnapshot && e.createdByUserId !== myId) set.add(e.id);
+      if (e.createdAt > lastSeenSnapshot && e.createdByUserId !== myId)
+        set.add(e.id);
     }
     return set;
   }, [expenses, lastSeenSnapshot, myId]);
@@ -361,9 +399,17 @@ export default function SplitGroupDetailPage() {
 
   const flushSeen = useCallback(() => {
     const snap = snapshotRef.current ?? null;
-    const watermark = computeSeenWatermark(expensesRef.current, snap, myIdRef.current, viewedRef.current);
+    const watermark = computeSeenWatermark(
+      expensesRef.current,
+      snap,
+      myIdRef.current,
+      viewedRef.current,
+    );
     if (!watermark) return;
-    const floor = lastSentRef.current && lastSentRef.current > (snap ?? '') ? lastSentRef.current : snap ?? '';
+    const floor =
+      lastSentRef.current && lastSentRef.current > (snap ?? "")
+        ? lastSentRef.current
+        : (snap ?? "");
     if (watermark <= floor) return;
     lastSentRef.current = watermark;
     void markSplitGroupSeen(groupId, watermark);
@@ -409,17 +455,28 @@ export default function SplitGroupDetailPage() {
       router.push(`/bank?account=${link.linkedAccountId}&tx=${link.txId}`);
       return;
     }
-    const memberName = group?.members.find((m) => m.userId === link.ownerUserId)?.name ?? 'Someone';
+    const memberName =
+      group?.members.find((m) => m.userId === link.ownerUserId)?.name ??
+      "Someone";
     setBankLinkDialog({ bankLink: link, memberName });
   };
 
   const myNet = balances.find((b) => b.userId === myId)?.netCents ?? 0;
-  const otherName = group?.members.find((m) => m.userId !== myId)?.name ?? 'Members';
+  const otherName =
+    group?.members.find((m) => m.userId !== myId)?.name ?? "Members";
   const otherMembers = group?.members.filter((m) => m.userId !== myId) ?? [];
   const profiles = useUserProfiles(group?.members.map((m) => m.userId) ?? []);
-  const nameOf = (id: string) => (id === myId ? 'You' : group?.members.find((m) => m.userId === id)?.name ?? 'Someone');
+  const nameOf = (id: string) =>
+    id === myId
+      ? "You"
+      : (group?.members.find((m) => m.userId === id)?.name ?? "Someone");
   const firstName = (full: string) => full.trim().split(/\s+/)[0] || full;
-  const shortNameOf = (id: string) => (id === myId ? 'You' : firstName(group?.members.find((m) => m.userId === id)?.name ?? 'Someone'));
+  const shortNameOf = (id: string) =>
+    id === myId
+      ? "You"
+      : firstName(
+          group?.members.find((m) => m.userId === id)?.name ?? "Someone",
+        );
 
   // Group visible expenses by month for sticky-header rendering.
   const byMonth = useMemo(() => {
@@ -442,24 +499,33 @@ export default function SplitGroupDetailPage() {
 
   const doDelete = (row: SplitExpense) => {
     confirmDialog({
-      message: 'Delete this entry?',
-      header: 'Confirm',
-      icon: 'pi pi-exclamation-triangle',
+      message: "Delete this entry?",
+      header: "Confirm",
+      icon: <TriangleAlert size={16} />,
       accept: async () => {
         // Optimistic: drop the row and back out its balance contribution
         // immediately, then reconcile with the server in the background.
         const prevExpenses = expenses;
         const prevBalances = balances;
         setExpenses((cur) => cur.filter((x) => x.id !== row.id));
-        setBalances((cur) => cur.map((b) => ({ ...b, netCents: b.netCents - (row.netByUserId[b.userId] ?? 0) })));
-        const res = await deleteSplitExpense(groupId, row.id, row.date.slice(0, 7));
+        setBalances((cur) =>
+          cur.map((b) => ({
+            ...b,
+            netCents: b.netCents - (row.netByUserId[b.userId] ?? 0),
+          })),
+        );
+        const res = await deleteSplitExpense(
+          groupId,
+          row.id,
+          row.date.slice(0, 7),
+        );
         if (!res.success) {
           setExpenses(prevExpenses);
           setBalances(prevBalances);
-          toast.error('Failed to delete', res.error);
+          toast.error("Failed to delete", res.error);
           return;
         }
-        toast.success('Deleted');
+        toast.success("Deleted");
         notifyDataChanged(); // reconciles this page too (summary counts, month index)
       },
     });
@@ -471,21 +537,24 @@ export default function SplitGroupDetailPage() {
   // state. Payment rows are excluded via `isEventClickable` on the feed.
   const openExpenseFromActivity = useCallback(
     async (ev: SplitActivityEvent) => {
-      if (ev.kind !== 'expense') return;
+      if (ev.kind !== "expense") return;
       const found = expenses.find((x) => x.id === ev.id);
-      if (found && found.kind === 'expense') {
+      if (found && found.kind === "expense") {
         setEditExpense(found);
         setShowExpense(true);
         return;
       }
       const month = ev.date.slice(0, 7);
       const res = await getSplitExpenses(groupId, [month]);
-      const row = res.success && res.data ? res.data.find((x) => x.id === ev.id) : undefined;
-      if (row && row.kind === 'expense') {
+      const row =
+        res.success && res.data
+          ? res.data.find((x) => x.id === ev.id)
+          : undefined;
+      if (row && row.kind === "expense") {
         setEditExpense(row);
         setShowExpense(true);
       } else {
-        toast.error('Could not load that expense');
+        toast.error("Could not load that expense");
       }
     },
     [expenses, groupId, toast],
@@ -498,7 +567,11 @@ export default function SplitGroupDetailPage() {
     return (
       <div className="text-center py-16 text-gray-500">
         <p>Group not found.</p>
-        <Button label="Back to Split" link onClick={() => router.push('/split')} />
+        <Button
+          label="Back to Split"
+          link
+          onClick={() => router.push("/split")}
+        />
       </div>
     );
   }
@@ -510,32 +583,50 @@ export default function SplitGroupDetailPage() {
         popup
         model={[
           {
-            label: 'Edit',
-            visible: menuTarget?.kind === 'expense',
+            label: "Edit",
+            visible: menuTarget?.kind === "expense",
             command: () => {
-              if (menuTarget?.kind === 'expense') {
+              if (menuTarget?.kind === "expense") {
                 setEditExpense(menuTarget as SplitExpenseItem);
                 setShowExpense(true);
               }
             },
           },
           {
-            label: 'View bank transaction',
-            visible: menuTarget?.kind === 'expense' && !!(menuTarget as SplitExpenseItem).bankLink,
+            label: "View bank transaction",
+            visible:
+              menuTarget?.kind === "expense" &&
+              !!(menuTarget as SplitExpenseItem).bankLink,
             command: () => {
-              if (menuTarget?.kind === 'expense') openBankLink(menuTarget as SplitExpenseItem);
+              if (menuTarget?.kind === "expense")
+                openBankLink(menuTarget as SplitExpenseItem);
             },
           },
-          { label: 'Delete', command: () => menuTarget && doDelete(menuTarget) },
+          {
+            label: "Delete",
+            command: () => menuTarget && doDelete(menuTarget),
+          },
         ]}
       />
 
       {/* Header */}
       <div className="flex items-center gap-2 mb-3">
-        <Button icon={<MdArrowBack />} text rounded onClick={() => router.push('/split')} aria-label="Back" />
-        <span className="text-2xl">{group.emoji ?? '🧾'}</span>
+        <Button
+          icon={<MdArrowBack />}
+          text
+          rounded
+          onClick={() => router.push("/split")}
+          aria-label="Back"
+        />
+        <span className="text-2xl">{group.emoji ?? "🧾"}</span>
         <h1 className="text-xl font-bold flex-1 truncate">{group.name}</h1>
-        <Button icon={<MdSettings />} text rounded onClick={() => setShowSettings(true)} aria-label="Group settings" />
+        <Button
+          icon={<MdSettings />}
+          text
+          rounded
+          onClick={() => setShowSettings(true)}
+          aria-label="Group settings"
+        />
       </div>
 
       {/* Balance banner */}
@@ -565,9 +656,13 @@ export default function SplitGroupDetailPage() {
           )}
           <div className="text-lg font-semibold">
             {myNet > 0 ? (
-              <span className="text-green-600 dark:text-green-400">{otherName} owes you {formatCents(myNet, group.currency)}</span>
+              <span className="text-green-600 dark:text-green-400">
+                {otherName} owes you {formatCents(myNet, group.currency)}
+              </span>
             ) : myNet < 0 ? (
-              <span className="text-orange-600 dark:text-orange-400">You owe {otherName} {formatCents(-myNet, group.currency)}</span>
+              <span className="text-orange-600 dark:text-orange-400">
+                You owe {otherName} {formatCents(-myNet, group.currency)}
+              </span>
             ) : (
               <span className="text-gray-500">You are all settled up</span>
             )}
@@ -584,9 +679,29 @@ export default function SplitGroupDetailPage() {
               setShowExpense(true);
             }}
           />
-          <Button label="Settle up" outlined size="small" onClick={() => setShowSettle(true)} />
-          <Button label="Recurring" icon={<MdRepeat />} outlined size="small" onClick={() => { setEditRule(undefined); setShowRecurring(true); }} />
-          <Button label="Import" icon={<MdUploadFile />} outlined size="small" onClick={() => setShowImport(true)} />
+          <Button
+            label="Settle up"
+            outlined
+            size="small"
+            onClick={() => setShowSettle(true)}
+          />
+          <Button
+            label="Recurring"
+            icon={<MdRepeat />}
+            outlined
+            size="small"
+            onClick={() => {
+              setEditRule(undefined);
+              setShowRecurring(true);
+            }}
+          />
+          <Button
+            label="Import"
+            icon={<MdUploadFile />}
+            outlined
+            size="small"
+            onClick={() => setShowImport(true)}
+          />
         </div>
       </div>
 
@@ -598,29 +713,47 @@ export default function SplitGroupDetailPage() {
       {/* Recurring rules */}
       {group.recurrenceRules.length > 0 && (
         <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4 mb-4">
-          <div className="text-sm font-medium text-gray-500 mb-2">Recurring</div>
+          <div className="text-sm font-medium text-gray-500 mb-2">
+            Recurring
+          </div>
           <div className="flex flex-col gap-2">
             {group.recurrenceRules.map((r) => (
               <div key={r.id} className="flex items-center gap-2 text-sm">
-                <span className={`flex-1 truncate ${r.isActive ? '' : 'line-through text-gray-400'}`}>
-                  {r.title} · {formatCents(r.amountCents, group.currency)} · {r.interval}
-                  {r.endDate && ` · until ${formatDayMonth(r.endDate, { short: true, year: true })}`}
+                <span
+                  className={`flex-1 truncate ${r.isActive ? "" : "line-through text-gray-400"}`}
+                >
+                  {r.title} · {formatCents(r.amountCents, group.currency)} ·{" "}
+                  {r.interval}
+                  {r.endDate &&
+                    ` · until ${formatDayMonth(r.endDate, { short: true, year: true })}`}
                 </span>
                 <Button
-                  label={r.isActive ? 'Pause' : 'Resume'}
+                  label={r.isActive ? "Pause" : "Resume"}
                   text
                   size="small"
                   onClick={async () => {
                     const next = !r.isActive;
-                    setGroup((g) => g && { ...g, recurrenceRules: g.recurrenceRules.map((x) => (x.id === r.id ? { ...x, isActive: next } : x)) });
-                    const res = await updateSplitRecurrenceRule(groupId, r.id, { isActive: next });
+                    setGroup(
+                      (g) =>
+                        g && {
+                          ...g,
+                          recurrenceRules: g.recurrenceRules.map((x) =>
+                            x.id === r.id ? { ...x, isActive: next } : x,
+                          ),
+                        },
+                    );
+                    const res = await updateSplitRecurrenceRule(groupId, r.id, {
+                      isActive: next,
+                    });
                     if (!res.success) {
                       await load();
-                      toast.error('Failed to update rule', res.error);
+                      toast.error("Failed to update rule", res.error);
                       return;
                     }
                     notifyDataChanged();
-                    toast.success(next ? 'Recurring resumed' : 'Recurring paused');
+                    toast.success(
+                      next ? "Recurring resumed" : "Recurring paused",
+                    );
                   }}
                 />
                 <Button
@@ -640,22 +773,33 @@ export default function SplitGroupDetailPage() {
                   aria-label={`Delete recurring ${r.title}`}
                   onClick={() => {
                     confirmDialog({
-                      header: 'Delete recurring expense?',
+                      header: "Delete recurring expense?",
                       message: `Stop adding “${r.title}” automatically? Expenses it already created stay in the group.`,
-                      icon: 'pi pi-exclamation-triangle',
-                      acceptLabel: 'Delete',
-                      rejectLabel: 'Cancel',
-                      acceptClassName: 'p-button-danger',
+                      icon: <TriangleAlert size={16} />,
+                      acceptLabel: "Delete",
+                      rejectLabel: "Cancel",
+                      severity: "danger",
                       accept: async () => {
-                        setGroup((g) => g && { ...g, recurrenceRules: g.recurrenceRules.filter((x) => x.id !== r.id) });
-                        const res = await deleteSplitRecurrenceRule(groupId, r.id);
+                        setGroup(
+                          (g) =>
+                            g && {
+                              ...g,
+                              recurrenceRules: g.recurrenceRules.filter(
+                                (x) => x.id !== r.id,
+                              ),
+                            },
+                        );
+                        const res = await deleteSplitRecurrenceRule(
+                          groupId,
+                          r.id,
+                        );
                         if (!res.success) {
                           await load();
-                          toast.error('Failed to delete rule', res.error);
+                          toast.error("Failed to delete rule", res.error);
                           return;
                         }
                         notifyDataChanged();
-                        toast.success('Recurring rule deleted');
+                        toast.success("Recurring rule deleted");
                       },
                     });
                   }}
@@ -672,14 +816,14 @@ export default function SplitGroupDetailPage() {
           value={view}
           onChange={(e) => e.value && setView(e.value)}
           options={[
-            { label: 'Expenses', value: 'expenses' },
-            { label: 'Activity', value: 'activity' },
+            { label: "Expenses", value: "expenses" },
+            { label: "Activity", value: "activity" },
           ]}
           className="text-sm"
         />
       </div>
 
-      {view === 'activity' ? (
+      {view === "activity" ? (
         activity === null ? (
           <DelayedSpinner />
         ) : (
@@ -689,7 +833,7 @@ export default function SplitGroupDetailPage() {
             showGroup={false}
             emptyText="No activity in this group yet"
             onEventClick={openExpenseFromActivity}
-            isEventClickable={(ev) => ev.kind === 'expense'}
+            isEventClickable={(ev) => ev.kind === "expense"}
             myId={myId}
           />
         )
@@ -701,7 +845,9 @@ export default function SplitGroupDetailPage() {
             <Button label="Load older months" text onClick={loadMore} />
           </div>
         ) : (
-          <p className="text-center text-gray-400 py-10">No expenses yet. Add one above.</p>
+          <p className="text-center text-gray-400 py-10">
+            No expenses yet. Add one above.
+          </p>
         )
       ) : (
         <div className="flex flex-col gap-4">
@@ -713,22 +859,34 @@ export default function SplitGroupDetailPage() {
               <ul className="flex flex-col divide-y divide-gray-100 dark:divide-gray-800">
                 {rows.map((e) => {
                   const viewerNet = e.netByUserId[myId] ?? 0;
-                  const isPayment = e.kind === 'payment';
+                  const isPayment = e.kind === "payment";
                   const title = isPayment
                     ? `${nameOf((e as SplitPayment).fromUserId)} paid ${nameOf((e as SplitPayment).toUserId)}`
                     : (e as SplitExpenseItem).title;
                   const sub = isPayment
-                    ? formatCents((e as SplitPayment).amountCents, group.currency)
+                    ? formatCents(
+                        (e as SplitPayment).amountCents,
+                        group.currency,
+                      )
                     : (() => {
                         const item = e as SplitExpenseItem;
-                        const amt = formatCents(item.amountCents, item.currency ?? group.currency);
+                        const amt = formatCents(
+                          item.amountCents,
+                          item.currency ?? group.currency,
+                        );
                         const adder = shortNameOf(item.createdByUserId);
                         const payers = item.paidBy;
-                        if (!payers || payers.length === 0) return `${amt} · added by ${adder}`;
-                        const payerLabel = payers.length === 1 ? shortNameOf(payers[0].userId) : `${payers.length} people`;
+                        if (!payers || payers.length === 0)
+                          return `${amt} · added by ${adder}`;
+                        const payerLabel =
+                          payers.length === 1
+                            ? shortNameOf(payers[0].userId)
+                            : `${payers.length} people`;
                         return `${payerLabel} paid ${amt} · added by ${adder}`;
                       })();
-                  const bankLink = !isPayment ? (e as SplitExpenseItem).bankLink : undefined;
+                  const bankLink = !isPayment
+                    ? (e as SplitExpenseItem).bankLink
+                    : undefined;
                   const activateRow = (ev: React.SyntheticEvent) => {
                     if (isPayment) onRowMenu(ev, e);
                     else {
@@ -740,54 +898,97 @@ export default function SplitGroupDetailPage() {
                     <li
                       key={e.id}
                       data-expense-id={e.id}
-                      role="button"
-                      tabIndex={0}
-                      onClick={activateRow}
-                      onKeyDown={(ev) => {
-                        if (ev.key !== 'Enter' && ev.key !== ' ') return;
-                        ev.preventDefault();
-                        activateRow(ev);
-                      }}
                       className="flex items-center gap-2 py-2 -mx-2 px-2 rounded-lg cursor-pointer transition-colors hover:bg-gray-50 dark:hover:bg-gray-800/60 active:bg-gray-100 dark:active:bg-gray-700/70"
                     >
-                      <div className="w-9 shrink-0 text-center">
-                        <div className="text-[11px] uppercase tracking-wide text-gray-400">{format(parseISO(e.date), 'MMM')}</div>
-                        <div className="text-base font-medium text-gray-500 dark:text-gray-400 leading-tight">{format(parseISO(e.date), 'd')}</div>
-                      </div>
-                      <CategoryIcon category={isPayment ? 'Payment' : (e as SplitExpenseItem).category} size={36} />
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate text-sm font-medium leading-snug text-gray-900 dark:text-gray-100">
-                          {newIds.has(e.id) && (
-                            <span
-                              className="inline-block w-2 h-2 mr-1.5 rounded-full align-middle shrink-0 bg-[var(--primary-color)]"
-                              title="New since your last visit"
-                            >
-                              <span className="sr-only">New — </span>
-                            </span>
-                          )}
-                          {title}
-                          {e.source === 'recurring' && <span title="recurring" className="text-gray-400"> ↻</span>}
-                        </div>
-                        <div className="truncate text-xs leading-snug text-gray-400">
-                          {bankLink && (
-                            <span title="Linked to a bank transaction">
-                              <MdAccountBalance size={12} className="inline shrink-0 align-[-1px] mr-1 opacity-60" aria-hidden />
-                            </span>
-                          )}
-                          {sub}
-                        </div>
-                      </div>
-                      <div className="text-right shrink-0">
-                        {viewerNet !== 0 ? (
-                          <div className={viewerNet > 0 ? 'text-green-600 dark:text-green-400' : 'text-orange-600 dark:text-orange-400'}>
-                            <div className="text-xs leading-snug">{viewerNet > 0 ? 'you lent' : 'you borrowed'}</div>
-                            <div className="text-sm font-medium leading-snug tabular-nums">{formatCents(Math.abs(viewerNet), group.currency)}</div>
+                      <button
+                        type="button"
+                        onClick={activateRow}
+                        className="flex min-w-0 flex-1 items-center gap-2 text-left min-h-11"
+                      >
+                        <div className="w-9 shrink-0 text-center">
+                          <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                            {format(parseISO(e.date), "MMM")}
                           </div>
-                        ) : (
-                          <div className="text-sm text-gray-400">—</div>
-                        )}
-                      </div>
-                      <Button icon={<MdMoreVert />} text rounded size="small" onClick={(ev) => onRowMenu(ev, e)} aria-label="Row actions" />
+                          <div className="text-base font-medium text-gray-500 dark:text-muted-foreground leading-tight">
+                            {format(parseISO(e.date), "d")}
+                          </div>
+                        </div>
+                        <CategoryIcon
+                          category={
+                            isPayment
+                              ? "Payment"
+                              : (e as SplitExpenseItem).category
+                          }
+                          size={36}
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-sm font-medium leading-snug text-gray-900 dark:text-gray-100">
+                            {newIds.has(e.id) && (
+                              <span
+                                className="inline-block w-2 h-2 mr-1.5 rounded-full align-middle shrink-0 bg-[var(--primary-color)]"
+                                title="New since your last visit"
+                              >
+                                <span className="sr-only">New — </span>
+                              </span>
+                            )}
+                            {title}
+                            {e.source === "recurring" && (
+                              <span
+                                title="recurring"
+                                className="text-muted-foreground"
+                              >
+                                {" "}
+                                ↻
+                              </span>
+                            )}
+                          </div>
+                          <div className="truncate text-xs leading-snug text-muted-foreground">
+                            {bankLink && (
+                              <span title="Linked to a bank transaction">
+                                <MdAccountBalance
+                                  size={12}
+                                  className="inline shrink-0 align-[-1px] mr-1 opacity-60"
+                                  aria-hidden
+                                />
+                              </span>
+                            )}
+                            {sub}
+                          </div>
+                        </div>
+                        <div className="text-right shrink-0">
+                          {viewerNet !== 0 ? (
+                            <div
+                              className={
+                                viewerNet > 0
+                                  ? "text-green-800 dark:text-green-400"
+                                  : "text-orange-800 dark:text-orange-400"
+                              }
+                            >
+                              <div className="text-xs leading-snug">
+                                {viewerNet > 0 ? "you lent" : "you borrowed"}
+                              </div>
+                              <div className="text-sm font-medium leading-snug tabular-nums">
+                                {formatCents(
+                                  Math.abs(viewerNet),
+                                  group.currency,
+                                )}
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="text-sm text-muted-foreground">
+                              —
+                            </div>
+                          )}
+                        </div>
+                      </button>
+                      <Button
+                        icon={<MdMoreVert />}
+                        text
+                        rounded
+                        size="small"
+                        onClick={(ev) => onRowMenu(ev, e)}
+                        aria-label="Row actions"
+                      />
                     </li>
                   );
                 })}
@@ -796,7 +997,12 @@ export default function SplitGroupDetailPage() {
           ))}
           {visibleCount < monthsDesc.length && (
             <div ref={sentinelRef} className="self-center py-1">
-              <Button label="Load older months" text loading={loadingMore} onClick={loadMore} />
+              <Button
+                label="Load older months"
+                text
+                loading={loadingMore}
+                onClick={loadMore}
+              />
             </div>
           )}
         </div>
@@ -814,10 +1020,10 @@ export default function SplitGroupDetailPage() {
         onSaved={async (saved) => {
           const wasEdit = !!editExpense;
           await load();
-          toast.success(wasEdit ? 'Expense updated' : 'Expense added');
+          toast.success(wasEdit ? "Expense updated" : "Expense added");
           // Celebrate a new expense; under reduced motion celebrate() is false,
           // so fall back to a row flash. Edits get neither (just the toast).
-          if (!wasEdit && !celebrate('checkmark') && saved) flashRow(saved.id);
+          if (!wasEdit && !celebrate("checkmark") && saved) flashRow(saved.id);
         }}
       />
       <SettleUpDialog
@@ -830,8 +1036,8 @@ export default function SplitGroupDetailPage() {
         balances={balances}
         onSaved={async (saved) => {
           await load();
-          toast.success('Settled up');
-          if (!celebrate('confetti') && saved) flashRow(saved.id);
+          toast.success("Settled up");
+          if (!celebrate("confetti") && saved) flashRow(saved.id);
         }}
       />
       <RecurrenceRuleDialog
@@ -842,15 +1048,28 @@ export default function SplitGroupDetailPage() {
         currency={group.currency}
         myId={myId}
         rule={editRule}
-        onSaved={() => { toast.success(editRule ? 'Recurring rule updated' : 'Recurring rule added'); }}
+        onSaved={() => {
+          toast.success(
+            editRule ? "Recurring rule updated" : "Recurring rule added",
+          );
+        }}
       />
-      <SplitImportDialog visible={showImport} onHide={() => setShowImport(false)} group={group} onImported={() => { toast.success('Expenses imported'); }} />
+      <SplitImportDialog
+        visible={showImport}
+        onHide={() => setShowImport(false)}
+        group={group}
+        onImported={() => {
+          toast.success("Expenses imported");
+        }}
+      />
       <GroupFormDialog
         visible={showSettings}
         onHide={() => setShowSettings(false)}
         group={group}
-        onSaved={() => { toast.success('Group updated'); }}
-        onLeft={() => router.push('/split')}
+        onSaved={() => {
+          toast.success("Group updated");
+        }}
+        onLeft={() => router.push("/split")}
       />
       {bankLinkDialog && (
         <BankLinkDetailsDialog

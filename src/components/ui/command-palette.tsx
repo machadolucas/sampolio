@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { InputText } from 'primereact/inputtext';
+import { InputText } from '@/components/ui/input-text';
 import { MdHome, MdSpaceDashboard, MdSettings, MdSync, MdAddCircle, MdRemoveCircle, MdSearch, MdHouse, MdLuggage, MdAccountBalance, MdGroups, MdInsights, MdFlag, MdFlightTakeoff, MdVisibilityOff } from 'react-icons/md';
 import { useTheme } from '@/components/providers/theme-provider';
 import { useAppContext } from '@/components/layout/app-layout';
@@ -327,7 +327,6 @@ export function CommandPalette({
         if (isOpen) {
             // eslint-disable-next-line react-hooks/set-state-in-effect
             setQuery('');
-            // eslint-disable-next-line react-hooks/set-state-in-effect
             setSelectedIndex(0);
             setTimeout(() => inputRef.current?.focus(), 50);
         }

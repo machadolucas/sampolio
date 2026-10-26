@@ -1,11 +1,13 @@
 'use client';
 
+import { Check } from 'lucide-react';
+
 import { useState, useId } from 'react';
-import { Dialog } from 'primereact/dialog';
-import { InputNumber } from 'primereact/inputnumber';
-import { Button } from 'primereact/button';
-import { Message } from 'primereact/message';
-import { Tag } from 'primereact/tag';
+import { Dialog } from '@/components/ui/dialog';
+import { InputNumber } from '@/components/ui/input-number';
+import { Button } from '@/components/ui/button';
+import { Message } from '@/components/ui/message';
+import { Tag } from '@/components/ui/tag';
 import { HelpTip } from '@/components/ui/form-primitives';
 import { formatCurrency, formatYearMonthShort } from '@/lib/constants';
 import { reconcileMortgageMonth } from '@/lib/actions/shared-mortgages';
@@ -109,7 +111,7 @@ export function MortgageReconcileDialog({
       onHide={onClose}
       style={{ width: '40rem' }}
     >
-      <p className="text-sm opacity-70 mb-3">
+      <p className="text-sm text-muted-foreground mb-3">
         These are Sampolio&apos;s projected figures for <b>{label}</b>. If they match your bank statement, just confirm —
         the month becomes an <b className="text-green-600">actual</b> and future forecasts continue from it. Adjust any
         value that drifted before confirming.
@@ -121,28 +123,28 @@ export function MortgageReconcileDialog({
             <div className="font-medium mb-2">{d.label}</div>
             <div className={`grid gap-3 ${d.showSubsidy ? 'grid-cols-2 md:grid-cols-3' : 'grid-cols-2'}`}>
               <div>
-                <label htmlFor={`${uid}-remaining-balance-${d.loanId}`} className="text-xs opacity-70">Remaining balance</label>
+                <label htmlFor={`${uid}-remaining-balance-${d.loanId}`} className="text-xs text-muted-foreground">Remaining balance</label>
                 <InputNumber inputId={`${uid}-remaining-balance-${d.loanId}`} value={d.remaining} onValueChange={(e) => update(d.loanId, 'remaining', e.value ?? 0)} mode="currency" currency={currency} locale="fi-FI" className="w-full" />
                 <HelpTip text="What's still owed on this loan after this month's payment." />
               </div>
               <div>
-                <label htmlFor={`${uid}-repayment-total-charge-${d.loanId}`} className="text-xs opacity-70">Repayment (total charge)</label>
+                <label htmlFor={`${uid}-repayment-total-charge-${d.loanId}`} className="text-xs text-muted-foreground">Repayment (total charge)</label>
                 <InputNumber inputId={`${uid}-repayment-total-charge-${d.loanId}`} value={d.repayment} onValueChange={(e) => update(d.loanId, 'repayment', e.value ?? 0)} mode="currency" currency={currency} locale="fi-FI" className="w-full" />
                 <HelpTip text="The bank's full charge this month: principal + interest + insurance + invoicing share." />
               </div>
               <div>
-                <label htmlFor={`${uid}-interest-paid-${d.loanId}`} className="text-xs opacity-70">Interest paid</label>
+                <label htmlFor={`${uid}-interest-paid-${d.loanId}`} className="text-xs text-muted-foreground">Interest paid</label>
                 <InputNumber inputId={`${uid}-interest-paid-${d.loanId}`} value={d.interest} onValueChange={(e) => update(d.loanId, 'interest', e.value ?? 0)} mode="currency" currency={currency} locale="fi-FI" className="w-full" />
                 <HelpTip text="The interest part of this month's charge, after any subsidy." />
               </div>
               <div>
-                <label htmlFor={`${uid}-insurance-${d.loanId}`} className="text-xs opacity-70">Insurance</label>
+                <label htmlFor={`${uid}-insurance-${d.loanId}`} className="text-xs text-muted-foreground">Insurance</label>
                 <InputNumber inputId={`${uid}-insurance-${d.loanId}`} value={d.insurance} onValueChange={(e) => update(d.loanId, 'insurance', e.value ?? 0)} mode="currency" currency={currency} locale="fi-FI" className="w-full" />
                 <HelpTip text="Loan-protection insurance charged this month (0 if none)." />
               </div>
               {d.showSubsidy && (
                 <div>
-                  <label htmlFor={`${uid}-asp-subsidy-${d.loanId}`} className="text-xs opacity-70">ASP subsidy</label>
+                  <label htmlFor={`${uid}-asp-subsidy-${d.loanId}`} className="text-xs text-muted-foreground">ASP subsidy</label>
                   <InputNumber inputId={`${uid}-asp-subsidy-${d.loanId}`} value={d.subsidy} onValueChange={(e) => update(d.loanId, 'subsidy', e.value ?? 0)} mode="currency" currency={currency} locale="fi-FI" className="w-full" />
                   <HelpTip text="Government interest subsidy this month (only when the rate is above the ASP threshold)." />
                 </div>
@@ -161,7 +163,7 @@ export function MortgageReconcileDialog({
 
       <div className="flex justify-end gap-2 mt-4">
         <Button label="Cancel" text onClick={onClose} disabled={saving} />
-        <Button label={`Confirm ${label} as actual`} icon="pi pi-check" loading={saving} onClick={save} disabled={!month || drafts.length === 0} />
+        <Button label={`Confirm ${label} as actual`} icon={<Check size={16} />} loading={saving} onClick={save} disabled={!month || drafts.length === 0} />
       </div>
     </Dialog>
   );

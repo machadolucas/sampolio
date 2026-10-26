@@ -55,7 +55,7 @@ describe('SplitEditor', () => {
     const inputs = await screen.findAllByPlaceholderText(cents(5000));
     expect(inputs).toHaveLength(2);
 
-    // Type 40 for "You" and commit (PrimeReact InputNumber commits on blur)
+    // Type40 for "You" through the real locale-aware number field.
     fireEvent.change(inputs[0], { target: { value: '40' } });
     fireEvent.blur(inputs[0]);
 

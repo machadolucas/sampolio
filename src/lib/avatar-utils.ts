@@ -28,8 +28,8 @@ export function getInitials(name: string): string {
 /**
  * Deterministic background color for the initials fallback. Hue is hashed from
  * the userId (same string hash as getCategoryColor's fallback in constants.ts);
- * fixed 65% saturation / 42% lightness keeps white text at ≥4.5:1 contrast in
- * both light and dark themes across the whole hue wheel.
+ * fixed 65% saturation / 42% lightness preserves its identity across themes.
+ * Text on the swatch must use contrastTextColor (some hues need black text).
  */
 export function getAvatarColor(userId: string): string {
   let hash = 0;

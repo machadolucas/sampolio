@@ -11,7 +11,7 @@ import { useReducedMotion } from '@/lib/hooks/use-reduced-motion';
  * `celebrate(kind)` returns whether a visual was actually shown — it returns
  * false under reduced motion (nothing mounts), so callers fall back to their
  * quieter feedback (a row flash + toast). Both effects are pointer-events-none
- * and sit at z-[2000], above PrimeReact dialog masks, so a dialog left open by
+ * and sit at z-[2000], above dialog backdrops, so a dialog left open by
  * "Save & add another" keeps working underneath.
  */
 type CelebrationKind = 'checkmark' | 'confetti';

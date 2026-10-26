@@ -9,31 +9,28 @@ mechanics live in [`features.md`](features.md), [`projections-and-reconciliation
 
 | Layer | Package | Version (package.json) |
 |---|---|---|
-| Framework | `next` | 16.3.6 (App Router, `cacheComponents: true`) |
-| UI runtime | `react` / `react-dom` | 19.3.0 |
+| Framework | `next` | 16.4.3 (App Router, `cacheComponents: true`) |
+| UI runtime | `react` / `react-dom` | 19.3.1 |
 | Language | `typescript` | ^6.0.3 (strict) |
-| Components | `primereact` | ^10.9.9 (+ `primeicons` ^7.0.0, `react-icons` ^5.7.0, `lucide-react` 1.48.0) |
+| Components | App-owned shadcn/Base UI source | `@base-ui/react` 1.9.0; `@tanstack/react-table` 9.3.1; `@daypicker/react` 10.0.2; Lucide 1.61.0 |
 | Styling | `tailwindcss` | ^4.3.3 (via `@tailwindcss/postcss`) |
-| Auth | `better-auth` + `@better-auth/passkey` | 1.7.6 exact (scrypt hashes; `bcryptjs` ^3.0.3 only verifies legacy imported hashes) |
-| Auth DB | `drizzle-orm` 0.45.3 + `better-sqlite3` → `npm:better-sqlite3-multiple-ciphers@13.0.3` | SQLCipher-encrypted SQLite (`drizzle-kit` 0.31.11 generates migrations only) |
-| Validation | `zod` | ^4.6.5 |
-| Forms | `react-hook-form` ^7.89.0 + `@hookform/resolvers` ^5.9.1 |
-| Charts | `echarts` ^6.1.0 (+ `echarts-for-react` ^3.0.6), `chart.js` ^4.5.1 |
-| Avatar crop | `react-easy-crop` | ^6.2.3 (lazy-loaded in the avatar editor) |
+| Auth | `better-auth` + `@better-auth/passkey` | 1.7.12 exact (scrypt hashes; `bcryptjs` ^3.0.3 only verifies legacy imported hashes) |
+| Auth DB | `drizzle-orm` 0.45.4 + `better-sqlite3` → `npm:better-sqlite3-multiple-ciphers@13.0.3` | SQLCipher-encrypted SQLite (`drizzle-kit` 0.31.11 generates migrations only) |
+| Validation | `zod` | ^4.6.7 |
+| Forms | `react-hook-form` ^7.91.0 + `@hookform/resolvers` ^6.0.0 |
+| Charts | `echarts` ^6.1.0 (+ `echarts-for-react` ^3.0.6), `chart.js` ^4.6.1 with `react-chartjs-2` 5.3.1 |
+| Avatar crop | `react-easy-crop` | ^6.2.4 (lazy-loaded in the avatar editor) |
 | Dates | `date-fns` | ^4.4.0 |
-| JWT (bank API) | `jose` | ^6.2.12 (RS256 for Enable Banking) |
-| IDs | `uuid` | ^14.0.2 |
-| Tests | `vitest` ^5.0.2, `@testing-library/react` ^16.3.3, `jsdom` ^30.1.1 |
+| JWT (bank API) | `jose` | ^6.2.13 (RS256 for Enable Banking) |
+| IDs | `uuid` | ^14.0.3 |
+| Tests | `vitest` 5.0.5, `@testing-library/react` ^16.3.3, `jsdom` ^30.1.3 |
 
-Package manager: **pnpm 12.3.4** (`packageManager` field). Node: **>= 26** (`engines`; `.nvmrc` = `v26`).
+Package manager: **pnpm 12.15.0** (`packageManager` field). Node: **>= 26** (`engines`; `.nvmrc` = `v26`).
 Persistence is encrypted JSON files on disk, plus one SQLCipher-encrypted SQLite file
 (`${DATA_DIR}/sampolio.db`) that currently holds only the auth tables (§6, §9). No external
 database server.
 
-Compatibility bounds: PrimeReact 10 preserves the resource-based themes used by
-`scripts/copy-themes.mjs`; PrimeIcons 7 retains its MIT license. ESLint 9 and
-TypeScript 6 remain within the lint plugins' supported peer ranges. Lucide is
-pinned to an exact version (1.48.0).
+Compatibility bounds: ESLint 9 and TypeScript 6 remain within the lint plugins' supported peer ranges. Better Auth and passkey are exactly paired at 1.7.12; dependency installation retains pnpm's minimum-release-age safeguard. SQLCipher alias and native-module externalization remain unchanged.
 
 ## 2. Runtime topology
 
@@ -271,7 +268,7 @@ embed child rows.
 
 ## 9. Auth
 
-**Better Auth 1.7.6** (`src/lib/auth/server.ts`, lazy `getAuth()` singleton on `globalThis`)
+**Better Auth 1.7.12** (`src/lib/auth/server.ts`, lazy `getAuth()` singleton on `globalThis`)
 on the SQLCipher DB via the drizzle adapter; tables in `src/lib/db/sqlite/schema/auth.ts`
 (`user`, `session`, `account`, `verification`, `passkey`, `rateLimit`). Config:
 
@@ -382,7 +379,7 @@ the app — see [`operations.md`](operations.md).
 
 `src/proxy.ts` (Next.js 16 proxy, **Node.js runtime**; cookie-presence checks, plus one session
 lookup on the auth pages). Matcher: everything **except** `_next/static`, `_next/image`,
-`favicon.ico`, `manifest.webmanifest`, `sw.js`, `offline.html`, `icons`, `themes`, and
+`favicon.ico`, `manifest.webmanifest`, `sw.js`, `offline.html`, `icons`, and
 `*.png|jpg|svg` (PWA/install assets must load without auth). Behavior:
 
 - **Rate limiting** (in-memory `Map` per client IP — `clientIpFrom`: `cf-connecting-ip`, then
@@ -407,7 +404,7 @@ Security headers are set for every route in `next.config.ts` (`headers()`):
 `Referrer-Policy: strict-origin-when-cross-origin`, `X-DNS-Prefetch-Control: off`,
 `Permissions-Policy` (camera/mic/geo/topics off), `Strict-Transport-Security`, and a CSP
 (key directives: `default-src 'self'`; `script-src` allows `unsafe-inline` for Next, and
-`unsafe-eval` only outside production — `next dev` needs it for HMR/React Refresh; `style-src 'unsafe-inline'` for PrimeReact; `worker-src 'self'` for the service
+`unsafe-eval` only outside production — `next dev` needs it for HMR/React Refresh; `style-src 'unsafe-inline'` for charts and positioned UI; `worker-src 'self'` for the service
 worker; `frame-ancestors 'none'`; plus `img-src`/`font-src`/`connect-src`/`base-uri`/
 `form-action` all `'self'`-scoped and `upgrade-insecure-requests` — full list in
 `next.config.ts`). `/sw.js` is additionally served `no-cache, no-store` with
@@ -443,9 +440,9 @@ requests; **network-first** for navigations with `public/offline.html` fallback;
 **cache-first** for hashed `/_next/static/*` — storing only successful same-origin responses
 (`res.ok && res.type === 'basic'`, never a 404/5xx from a deploy restart or an opaque/redirected
 one) and trimming the oldest entries beyond `MAX_STATIC_ENTRIES` (300, ~3 builds of chunks)
-after each put; **stale-while-revalidate** for `/themes/*` and `/icons/*`; everything else
+after each put; **stale-while-revalidate** for `/icons/*`; everything else
 uncached. The service worker disables itself on `localhost`/`127.0.0.1`.
-`src/test/service-worker.test.ts` runs `sw.js` in a sandbox to pin these rules. `CACHE_VERSION` (currently `'v11'`) must be bumped on
+`src/test/service-worker.test.ts` runs `sw.js` in a sandbox to pin these rules. `CACHE_VERSION` (currently `'v12'`) must be bumped on
 any deploy that changes cached assets. Responsive/PWA UI rules: root `AGENTS.md`
 and [`src/components/AGENTS.md`](../src/components/AGENTS.md).
 
@@ -456,7 +453,7 @@ and [`src/components/AGENTS.md`](../src/components/AGENTS.md).
 | Directory | Contents |
 |---|---|
 | `layout/` | `AppLayout` (AppContext + ToastProvider host; no session provider — `useSession` is the Better Auth store), `SidebarNav`, `MobileTopBar`, `BottomNav` (1–4 user-chosen tabs + fixed "More"; resolved by `src/lib/bottom-nav-prefs.ts` from `UserPreferences.bottomNavIds`, customizable in Settings → General), `MobileNavDrawer`, shared `nav-config.tsx` (single source for all four nav surfaces) |
-| `providers/` | `PrimeProvider`, `ThemeProvider`, `ToastProvider`, `CelebrationProvider`, `ServiceWorkerRegister` |
+| `providers/` | `ThemeProvider`, `ToastProvider`, `CelebrationProvider`, `ServiceWorkerRegister` |
 | `charts/` | ECharts/Chart.js components (cashflow waterfall, treemap, monthly flow, net-worth, wealth, scenario comparison, split spend/net); no barrel — import each module directly |
 | `modals/` | Cashflow item modal, occurrence-override dialog, users (admin) modal |
 | `home/` | `HomeDashboard` (bank glance strip, projected-month tile, merged split balances + activity card) |
@@ -493,7 +490,7 @@ split/mortgage edits appear. Routes hidden by Next's Activity unsubscribe while 
 replay a missed change when shown again. Refetches must keep the last good data on
 failure, never flash a full skeleton (`hasLoadedOnce` guards) and never overwrite form
 drafts — form-heavy views subscribe with `{ focus: false }` or not at all. Forms use React Hook Form +
-Zod resolvers with PrimeReact inputs wrapped in `Controller`. Pure calculation engines live
+Zod resolvers with app-owned controlled inputs wrapped in `Controller`. Pure calculation engines live
 beside the UI in `src/lib/` (`projection.ts`, `wealth-projection.ts`,
 `mortgage-projection.ts`, `retrospective.ts`, `split-utils.ts`, `budget-utils.ts`, etc.) —
 see [`projections-and-reconciliation.md`](projections-and-reconciliation.md) and
@@ -563,24 +560,35 @@ wraps components in ThemeProvider). ~100 test files:
   the cashflow item modal, the split editor, and the reconcile wizard (server
   actions mocked with `vi.mock`)
 
-**No coverage exists for**: most pages, most server actions (auth/validation/cache-tag
-behavior — except the action slice listed above), the bank client/sync
-modules, and there are no e2e/browser tests. `src/proxy.test.ts` covers the auth-page session
+**Unit coverage remains partial for** feature pages, server actions (auth/validation/cache-tag
+behavior beyond the action slice listed above), and bank client/sync modules. `src/proxy.test.ts` covers the auth-page session
 handling (redirect / clear / render, plus a redirect-following loop check) against a real temp
 DB; `src/lib/auth/passkey-registration.test.ts` and `passkey-sign-in.test.ts` run full passkey
 registrations and sign-ins with a software authenticator (`src/test/soft-authenticator.ts`);
 `src/app/api/bank/callback/route.test.ts` and `src/lib/actions/bank-psu.test.ts` check the PSU
 IP the bank callback and "Refresh now" pass on. Manual
-verification uses the `sampolio-preview` launch config + `preview_*` tools.
+verification uses the configured preview launcher and available browser automation.
+
+The committed Chromium suite (`e2e/`, `playwright.config.ts`) exercises synthetic
+password/passkey authentication, every route, representative mutations/import/export,
+number/date entry, nested overlays, table controls, preferences and accessibility at
+390/768/1280px. `scripts/browser-fixture.mjs` requires Node 26 and a clean worktree
+without `.env*` files, creates disposable encrypted data and secrets, blanks external
+banking/webhook configuration and binds loopback port 4999. Production mode builds
+and starts that isolated bundle. One Chromium worker, no WebKit/WebGL on this host.
+Screenshots require manual material/readability review; axe alone is insufficient.
+Real iPhone Safari/PWA keyboard and compositing behavior remains a separate device check.
+`scripts/bundle-metrics.mjs` reports aggregate raw/gzip static chunks, not per-route
+first-load transfer. Generated reports and synthetic auth state are gitignored.
 
 ## 16. Tooling
 
-`package.json` scripts: `dev` (`next dev -p 4999`), `dev:preview` (same port, additionally
-sets `DEV_AUTH_BYPASS`), `build` (`copy-themes` + `next build`), `start`, `lint` (`eslint`),
-`test` / `test:watch` / `test:coverage` (vitest), `copy-themes` + `postinstall`
-(`scripts/copy-themes.mjs` — recolors PrimeReact's `lara-{light,dark}-green` theme CSS into
-`public/themes/sampolio-{light,dark}.css`; the hand-authored `public/themes/glass-overrides.css`
-liquid-glass override layer is loaded after the theme by `theme-provider.tsx`).
+`package.json` scripts: `dev` (loopback port 4999), `dev:preview` (additionally
+sets `DEV_AUTH_BYPASS`), `build` (`next build`), `start`, `lint` (`eslint`),
+`test` / `test:watch` / `test:coverage` (Vitest). `test:e2e`,
+`build:synthetic`, and `test:e2e:production` already invoke the host heavy-job guard;
+do not nest another guard around them. The synthetic production suite builds and
+starts a disposable, isolated app through `scripts/browser-fixture.mjs`.
 
 **Port convention**: production (`com.sampolio.app`, `next start`) owns **3999**; dev
 (`pnpm dev` or the `.claude/launch.json` `sampolio-preview` config) runs on **4999** against a
@@ -596,12 +604,45 @@ The component inventory is in [`src/components/AGENTS.md`](../src/components/AGE
 This section owns cross-cutting UI behavior; display-mode and money-masking details
 live in [`features.md`](features.md#10-demo-mode-ui-only-money-masking).
 
+### Component source provenance
+
+`components.json` selects shadcn's Base UI registry (`base-nova`). The app-owned
+controls adapt the reviewed MIT recipes for
+[button](https://github.com/shadcn-ui/ui/blob/main/apps/v4/registry/bases/base/ui/button.tsx),
+[dialog](https://github.com/shadcn-ui/ui/blob/main/apps/v4/registry/bases/base/ui/dialog.tsx),
+[select](https://github.com/shadcn-ui/ui/blob/main/apps/v4/registry/bases/base/ui/select.tsx),
+[table](https://github.com/shadcn-ui/ui/blob/main/apps/v4/registry/bases/base/ui/table.tsx) and
+[calendar](https://github.com/shadcn-ui/ui/blob/main/apps/v4/registry/bases/base/ui/calendar.tsx).
+They are maintained source, not exact registry copies: financial field contracts,
+material classes, responsive overlays and the TanStack v9 table adapter are local.
+Calendar imports use `@daypicker/react` v10. Upstream attribution is retained in
+[`ui/LICENSE.shadcn`](../src/components/ui/LICENSE.shadcn); installed packages retain
+their own license notices. Generation tooling is not a runtime dependency.
+
+### Material system and theme
+
+`src/app/globals.css` owns the shared tokens and materials, following
+[Apple material guidance](https://developer.apple.com/design/human-interface-guidelines/materials).
+Opaque/strongly filled surfaces hold money, rows, charts and editable forms. Regular
+glass belongs to floating navigation, toolbars and contextual controls; avoid nested
+blur and clear glass over financial content. System fonts, tabular financial numerals,
+rounded controls and the green accent retain Sampolio's identity. Semantic category
+colors remain; `src/lib/color-contrast.ts` chooses legible text on solid fills.
+
+`ThemeProvider` retains `sampolio-theme` and adds device-local
+`sampolio-reduce-transparency`; OS increased contrast/reduced transparency also force
+stronger materials. The root pre-paint initializer sets the theme before paint and
+synchronizes browser theme color. ThemeProvider renders children during SSR;
+AppLayout keeps its route children mounted but invisible/inert until device preferences
+are ready, preventing an unmasked first paint. Root and dashboard auth boundaries use
+Suspense; `partialPrefetching: false` retains the established route caching behavior.
+
 ### Feedback & loading UX (perceived performance)
 
 Every mutation should confirm; every load should feel instant. The primitives:
 
-- **Global toast** — one `<Toast>` is mounted by `ToastProvider` (`src/components/providers/toast-provider.tsx`, wrapping the app in `AppLayout`). Use `useToast()` → `success/error/info/show`; **do not** mount per-component `<Toast>` refs. Fire a toast after every create/update/delete/settle/import so the user knows it worked.
-- **Global confirm dialog** — likewise, exactly ONE `<ConfirmDialog />` receiver is mounted in `AppLayout`; components call PrimeReact's imperative `confirmDialog({...})` and **never mount their own `<ConfirmDialog />`** — every mounted receiver answers every `confirmDialog()` call, so a second receiver produces a stacked duplicate that stays open after accept/reject. Never use the browser's native `confirm()`: `src/test/no-native-confirm.test.ts` fails on any call in `src/`.
+- **Global toast** — one Base UI Toast provider in `ToastProvider`; use `useToast()` → `success/error/info/show`, with application-owned message types, arrays, lifetimes and sticky messages. Never mount feature-local toast providers.
+- **Global confirm dialog** — one Base UI AlertDialog coordinator (`ui/confirmation.tsx`) mounted in `AppLayout`. `requestConfirmation(options): Promise<boolean>` queues requests, resolves once after dismissal, and defaults to Confirm/Cancel with reject focus. The callback facade `confirmDialog(options)` preserves Yes/No with accept focus; explicit labels/focus override defaults. Sign-out/unmount cancels pending requests; accepted callback failures show a toast. Never mount another receiver or call native `confirm()`.
 - **Delayed loading** — `useDelayedFlag(active, 300)` (`src/lib/hooks/use-delayed-flag.ts`) reveals a flag only after `active` holds for ~300ms and drops it instantly when false, so fast ops (the norm after the HKDF encryption fix) never flash a spinner. `DelayedSpinner` / `DelayedSkeleton` (`src/components/ui/delayed-loading.tsx`) build on it.
 - **Instant shell + skeletons** — heavy pages render their chrome immediately and show a content-shaped, delayed skeleton for the data region instead of a full-page `ProgressSpinner`. Reusable layouts in `src/components/ui/skeletons.tsx` (`KpiGridSkeleton`, `ChartsPageSkeleton`, `ListPageSkeleton`, `HomeSkeleton` — Home's glance/balances/activity region, `SplitDetailSkeleton`). Skeletons must match the real content's position AND height — a skeleton taller than what it replaces makes content jump on load. Pages fetch with a first-load-only `loaded` flag: refetches update silently and never re-show the skeleton; register the AppContext refresh callback in a **separate** effect from the fetch effect (goals/page.tsx is the reference pattern).
 - **Optimistic UI** — on daily-driver hot paths (e.g. split-expense delete, recurring pause/resume in `split/[id]/page.tsx`), apply the change to local state immediately + toast + reconcile with a background refresh; on failure, roll back the snapshot and toast the error. Server actions/schemas are unchanged.
@@ -621,8 +662,7 @@ motion library), and it must never gate input. The primitives:
   `--motion-slow` (250ms, entrances/expanders) on `:root` in `src/app/globals.css`; easings
   `--ease-fluid` (entrances) / `--ease-snap` (press/settle) in its `@theme` (→ Tailwind
   `ease-fluid`/`ease-snap` utilities). Never hardcode new durations/curves — consume the tokens
-  (CSS files use `var(--motion-*)`; note `public/themes/glass-overrides.css` changes require a
-  `CACHE_VERSION` bump in `public/sw.js`).
+  (CSS files use `var(--motion-*)`).
 - **Entrance utilities** — `animate-fade-in` (180ms opacity), `animate-rise-in` (250ms opacity +
   8px rise), `animate-scale-in` (160ms; command palette). They're *mount* animations with the
   default `none` fill — NEVER add `forwards`/`both`: a filled entrance keeps the element
@@ -637,24 +677,12 @@ motion library), and it must never gate input. The primitives:
   route wrapper never plays because Next 16 pre-mounts prefetched routes hidden (the animation
   clock is spent before reveal; layout effects fire at reveal, hence the restart). Used by
   `src/app/(dashboard)/template.tsx` and Home (`home-dashboard.tsx`, outside the group).
-- **Press/hover** — `.pressable` (globals.css, un-layered so it wins on PrimeReact Cards) gives
-  card-sized clickable surfaces transition + `:active` scale(0.98), plus a centralized guarded
-  hover box-shadow lift (`@media (hover: hover) and (pointer: fine)`, box-shadow only — never
-  transform, so it can't fight Tailwind `hover:scale-*` utilities like KpiTile's) — per-element
-  `hover:shadow-md` is now optional/redundant on `.pressable` surfaces. Text/list rows get
-  `transition-colors` + an `active:bg-*` tint instead — never transform. PrimeReact buttons/inputs/
-  menu rows are covered globally in `glass-overrides.css` (buttons get `:enabled:active`
-  scale(0.97)); when adding a `transition` there, MERGE with the theme's property list on the
-  theme's own selector — a later shorthand replaces it wholesale, and a lower-specificity selector
-  silently never applies. Ripple stays off. Tailwind's `hover:` is already touch-safe; hand-written
-  CSS `:hover` must sit in `@media (hover: hover) and (pointer: fine)`.
-- **Cursor** — Tailwind v4's preflight no longer sets `cursor: pointer` on `<button>` (v3 did), and
-  the PrimeReact theme CSS never set it on `.p-button`/`.p-menuitem-link`. Restored globally:
-  `globals.css` covers native `button`/`[role="button"]`, `glass-overrides.css` covers
-  `.p-button:enabled`/`.p-menuitem-link`.
-- **Reduced motion** — one global kill-switch at the end of globals.css (0.01ms durations, covers
-  PrimeReact too). Never add per-component `prefers-reduced-motion` blocks; JS-driven motion bails
-  out via `useReducedMotion()` (`src/lib/hooks/use-reduced-motion.ts`).
+- **Press/hover** — `.pressable` in globals.css gives card surfaces short active feedback
+  and pointer-only hover shadows. Buttons use `.ui-button`; inputs never scale on press.
+  Text/list rows use color feedback. Hand-written hover styles require a hover-capable pointer.
+- **Cursor** — native buttons and role buttons receive pointer cursors in globals.css.
+- **Reduced motion** — the global kill-switch in globals.css reduces animation/transition
+  durations; JavaScript motion uses `useReducedMotion()`.
 - **Expanders** — `.collapse-grid`/`.is-open` (globals.css) animates auto-height for
   always-mounted content (add `inert` when closed); conditionally-rendered or heavy reveals use
   `animate-fade-in` instead.
@@ -698,12 +726,12 @@ motion library), and it must never gate input. The primitives:
 **Every new page, component, and interface MUST be responsive** — it has to look and work well on a phone (~375px wide) *and* on desktop, with no horizontal overflow. This is a hard requirement, not a nice-to-have. Always check both a mobile (~390px) and a desktop (~1280px) breakpoint before considering UI work done (use any available browser/UI automation with a resized viewport — assert `document.documentElement.scrollWidth <= window.innerWidth`). The app is also an **installable PWA** (Add to Home Screen on iOS/Android/desktop).
 
 - **Breakpoint switch — Tailwind `lg` (1024px)**: below `lg` = mobile chrome, at/above `lg` = the desktop sidebar layout. **Drive visibility with CSS** (`lg:hidden` / `hidden lg:block`) to stay hydration-safe and avoid flashes; only use the SSR-safe `useIsMobile()` / `useMediaQuery()` hook (`src/lib/hooks/use-media-query.ts`) when logic must branch (which component to mount, a numeric prop, `maximized={isMobile}`).
-- **Navigation chrome**: desktop uses the fixed collapsible `SidebarNav` (`hidden lg:flex`); mobile uses `MobileTopBar` (hamburger + brand + search; the monthly check-in deliberately lives on Overview, not in the chrome), `BottomNav` (1–4 user-chosen tabs + a fixed "More"; see `src/lib/bottom-nav-prefs.ts`), and `MobileNavDrawer` (PrimeReact `Sidebar`, the full menu). All four nav surfaces read the **shared `src/components/layout/nav-config.tsx`** (`navItems`, `isNavItemActive`, `useUserMenuItems`) — add a nav entry there, never in one surface only. The sidebar/drawer user button renders the user's `UserAvatar` (not a generic icon), and the user-menu's avatar+name+email header item navigates to `/settings?tab=account` — the Settings page maps a `?tab=` slug to the index of its *rendered* tabs (Simple mode hides some), unknown slug ⇒ first tab. `<main>` uses `lg:ml-16`/`lg:ml-64` (no base margin) + top/bottom padding for the mobile bars, all with `env(safe-area-inset-*)` so the iPhone notch / home indicator are respected (root `viewport` sets `viewport-fit=cover`). Mobile chrome (`MobileTopBar`, `BottomNav`) is `z-40`; the desktop `SidebarNav` and PrimeReact/command-palette overlays sit at `z-50`+.
-- **Dialogs**: a global mobile cap in `globals.css` (`@media (max-width:640px)` → `.p-dialog { width:95vw; max-width:95vw; max-height:calc(92vh − safe-area insets) }` + scrollable content) fixes **every** PrimeReact `Dialog` at once — you normally don't need per-dialog responsive props. For genuinely huge wizards, `maximized={isMobile}` is an option (the 95vw cap turns "maximized" into a tall centered box; the inset-aware `max-height` keeps its header clear of the dynamic island in the installed PWA).
-- **Overlay safe-area insets (installed PWA)**: portalled overlays render at the viewport edges (`viewport-fit=cover`), so `globals.css` pads them for `env(safe-area-inset-*)`. Off-canvas drawers (PrimeReact `Sidebar`) get top/bottom/side padding so the header clears the island and the footer clears the home indicator — **the position class lives on the `.p-sidebar-mask`, the panel is its child**, so target `.p-sidebar-mask.p-sidebar-left > .p-sidebar` (not `.p-sidebar.p-sidebar-left`, which matches nothing). Top-anchored `Toast`s drop below the island. Sticky in-page headers must pin **below** the mobile top bar (`sticky top-[calc(3.5rem+env(safe-area-inset-top))] lg:top-[env(safe-area-inset-top)]`), never `top-0` — the `lg:` offset matters because a **desktop-breakpoint installed PWA (iPad)** also runs edge-to-edge under the OS status bar with no mobile top bar to clear it. For the same reason `<main>` keeps `lg:pt-[env(safe-area-inset-top)]`/`lg:pb-[env(safe-area-inset-bottom)]` (not `lg:pt-0`), the desktop `SidebarNav` aside pads itself with both insets, and `AppLayout` paints a fixed `hidden lg:block` glass strip of height `env(safe-area-inset-top)` under the status bar so scrolled content never shows through it (all of these are 0 in a normal desktop browser).
+- **Navigation chrome**: desktop uses the fixed collapsible `SidebarNav` (`hidden lg:flex`); mobile uses `MobileTopBar` (hamburger + brand + shared-expense quick-add + search; the monthly check-in deliberately lives on Overview, not in the chrome), `BottomNav` (1–4 user-chosen tabs + a fixed "More"; see `src/lib/bottom-nav-prefs.ts`), and `MobileNavDrawer` (shared Base UI sheet, the full menu). All four nav surfaces read the **shared `src/components/layout/nav-config.tsx`** (`navItems`, `isNavItemActive`, `useUserMenuItems`) — add a nav entry there, never in one surface only. The sidebar/drawer user button renders the user's `UserAvatar` (not a generic icon), and the user-menu's avatar+name+email header item navigates to `/settings?tab=account` — the Settings page maps a `?tab=` slug to the index of its *rendered* tabs (Simple mode hides some), unknown slug ⇒ first tab. `<main>` uses `lg:ml-22`/`lg:ml-68` (no base margin) + top/bottom padding for the mobile bars, all with `env(safe-area-inset-*)` so the iPhone notch / home indicator are respected (root `viewport` sets `viewport-fit=cover`). Mobile chrome (`MobileTopBar`, `BottomNav`) is `z-40`; the desktop `SidebarNav` and dialog/command-palette overlays sit at `z-50`+.
+- **Dialogs**: shared `ui/dialog.tsx` uses Base UI portals and focus handling; centered desktop dialogs become bottom sheets at ≤640px. Strongly filled content, independently scrolling bodies, dynamic viewport heights and safe-area padding keep long forms usable. Maximize controls remain; free dragging/resizing is unsupported. Caller dismissal rules, including protected monthly check-in, remain authoritative.
+- **Overlay safe-area insets (installed PWA)**: portalled overlays render at the viewport edges (`viewport-fit=cover`), so `globals.css` pads them for `env(safe-area-inset-*)`. Shared sheets pad all relevant edges. Top-anchored `Toast`s drop below the island. Sticky in-page headers must pin **below** the mobile top bar (`sticky top-[calc(3.5rem+env(safe-area-inset-top))] lg:top-[env(safe-area-inset-top)]`), never `top-0` — the `lg:` offset matters because a **desktop-breakpoint installed PWA (iPad)** also runs edge-to-edge under the OS status bar with no mobile top bar to clear it. For the same reason `<main>` keeps `lg:pt-[env(safe-area-inset-top)]`/`lg:pb-[env(safe-area-inset-bottom)]` (not `lg:pt-0`), the desktop `SidebarNav` aside pads itself with both insets, and `AppLayout` paints a fixed `hidden lg:block` glass strip of height `env(safe-area-inset-top)` under the status bar so scrolled content never shows through it (all of these are 0 in a normal desktop browser).
 - **Tables (mixed strategy)**: lighter tables (e.g. cashflow projection, bank ledger) render a `lg:hidden` card/list view beside a `hidden lg:block` DataTable; the wide mortgage ledger keeps a single DataTable with a **frozen first column** (`frozen alignFrozen="left"` + `scrollable`) for horizontal scroll. Don't let a raw wide table overflow the viewport.
 - **Charts**: containers must be width-fluid (`width:100%`) with responsive heights (e.g. `h-72 lg:h-96`); Chart.js charts set `maintainAspectRatio:false` and fill the wrapper (don't also pass a fixed `height` prop — they fight). ECharts/Sankey resize to the container; pass a shorter mobile height where it helps.
-- **Toolbars / page headers**: stack on mobile (`flex-col sm:flex-row`), full-width controls (`w-full sm:w-auto` / `flex-1 sm:flex-none`). Full-bleed sticky bars that use negative margins must match the responsive content padding (`-mx-2 px-2 sm:-mx-4 sm:px-4 lg:-mx-6 lg:px-6`). Keep tap targets ≥44px. On touch screens `glass-overrides.css` enlarges small icon-only buttons (`p-button-icon-only p-button-sm`) and sortable DataTable headers to 44px inside `@media (pointer: coarse)`, keeping the compact size for mouse/trackpad. `TabView`s with many tabs use `scrollable`.
+- **Toolbars / page headers**: stack on mobile (`flex-col sm:flex-row`), full-width controls (`w-full sm:w-auto` / `flex-1 sm:flex-none`). Full-bleed sticky bars that use negative margins must match the responsive content padding (`-mx-2 px-2 sm:-mx-4 sm:px-4 lg:-mx-6 lg:px-6`). Keep tap targets ≥44px. Shared controls and table actions use at least 44px targets. `TabView`s with many tabs use `scrollable`.
 
 PWA manifest, service-worker caching, and registration details live in §12.
 
@@ -721,12 +749,12 @@ const { control, handleSubmit, formState: { errors } } = useForm<SomeFormData>({
 });
 ```
 - Zod schemas live in `src/lib/schemas/`
-- PrimeReact inputs require `Controller` wrapper (they use value/onChange, not ref-based)
+- Controlled shared inputs use `Controller`; associate field errors with `aria-invalid` and `aria-describedby`
 - Legacy forms may still use raw `useState` — migrate when touching them
 - **Dialog forms submit on Enter**: wrap the fields in `<form onSubmit={useFormSubmit(save, { disabled })}>`
   (`src/lib/hooks/use-form-submit.ts`), make the primary button `type="submit"` and every
-  other button `type="button"`. The hook blurs a focused `InputNumber` first (PrimeReact
-  commits typed text only on blur/Enter) and runs the latest `save` on the next tick.
+  other button `type="button"`. The hook commits a focused `[data-commit-on-submit]` numeric field by blurring it,
+  then runs the latest `save` on the next tick. Test immediate click and Enter submission.
 - **Partial updates**: an absent key keeps the stored value; to clear an optional field a form
   sends `null` (React drops `undefined` keys from server-action payloads). Actions map a
   present `null` to `undefined` with `clearNullsInPatch` (`src/lib/patch-utils.ts`), which the

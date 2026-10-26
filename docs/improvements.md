@@ -13,46 +13,24 @@ retired-ideas note at the bottom. What remains:
 ## Open items
 
 ### 13.1 Broader UI test coverage
-Component tests cover the shared primitives (AlertBanner/KpiTile/EmptyState/HelpHint),
-the cashflow item modal, the split editor, and the reconcile wizard. Natural next
-targets: the budget verdict card (per-month strip math at the DOM level), the
-month strip / projection table, the bank ledger (search + month grouping), and
-eventually a thin e2e smoke (sign-in → add expense → see it in the projection).
-Most server actions and the bank client/sync modules still have no coverage
-([architecture.md](architecture.md) §15).
+The synthetic Chromium suite covers every route and representative authentication,
+form, table, import/export and reconciliation workflows at three widths. Extend
+component coverage of remaining feature-specific state and action failures as those
+areas change. Check real iPhone Safari/PWA keyboard, focus, safe areas and glass
+compositing on another machine/device; Chromium emulation does not establish parity.
+Coverage details and the isolated harness are in [architecture.md](architecture.md) §15.
 
-### 13.2 Held-back dependency majors (checked 2026-09-27)
-Every other dependency is on its latest release; `pnpm outdated` lists only these four.
-- **PrimeReact 11 / primeicons 8 — evaluated in depth and deliberately declined
-  (2026-07-23)**: v11 is a ground-up rewrite under NEW packages (`@primereact/ui`,
-  `@primereact/core`, `@primeuix/themes`) with a **proprietary dual license** — a
-  key is required even on the free Community tier (individuals qualify; register
-  at primeui.dev/licenses/community), unlike MIT v10. Missing direct equivalents
-  for components in use: ConfirmDialog (13+ imperative sites), SelectButton (13),
-  MultiSelect, Steps (4 wizards), the Chart.js wrapper (4 chart files); renames
-  with API changes: Dropdown→Select (24 files), Calendar→DatePicker, Sidebar→
-  Drawer, TabView→Tabs, InputSwitch→ToggleSwitch. All 81 primereact-importing
-  files would change; the theme pipeline (`copy-themes.mjs` over `lara-*-green` +
-  ~90 `.p-*` selectors in globals.css/glass-overrides.css) must be rebuilt as a
-  design-token preset. v11.0.0 shipped with no changelog/migration guide (promised
-  from 11.0.1). 11.1.0 is out (2026-09-27 check); the licensing question is
-  unchanged and the maintainer chose to stay on v10 (10.9.9 / primeicons 7).
-  **Revisit when**: the maintainer decides the licensing question (obtain a
-  Community key, or migrate to a permanently-MIT stack instead); the migration
-  is then its own project.
-- **TypeScript 7**: blocked by typescript-eslint — 8.70.1 still peers
-  `typescript >=4.8.4 <6.1.0` (tracking typescript-eslint/typescript-eslint#10940).
-  `tsc --noEmit` itself passed on 7.0.2.
-- **eslint 10**: `eslint-plugin-react` (via eslint-config-next 16.3.6) crashes at
-  rule-creation under 10.x, and 7.37.5 still peers `eslint ≤9.7`; retry when the
-  Next lint stack catches up. Note
-  eslint-config-next 16.2.11 promoted the React Compiler hook rules to `error`;
-  `eslint.config.mjs` pins them back to `warn` (the codebase's fetch-effect
-  patterns trip them by design).
+### 13.2 Dependency compatibility bounds
+- **TypeScript 7 / ESLint 10**: retain TypeScript 6 and ESLint 9 while the current
+  TypeScript-ESLint and React/accessibility lint-plugin peer ranges exclude newer majors.
+  Recheck the complete lint stack before adopting them.
+- **Better Auth/passkey**: keep exactly paired versions; 1.7.12 is the installed
+  stable pair permitted by the package manager's release-age policy. Never bypass that
+  policy merely to match a planning target.
 
 ### 13.3 Form and mobile polish follow-ups
 - **Enter-to-submit** (`useFormSubmit`, [architecture.md](architecture.md) §17 Forms) is
-  not wired into `trip-dialog.tsx`, `cashflow-item-modal.tsx` or `settle-up-dialog.tsx`
+  not wired into `trip-dialog.tsx` or `settle-up-dialog.tsx`
   (no `<form>` there), so Enter does not save in those dialogs.
 - **Admin users modal** (`src/components/modals/users-modal.tsx`) has no `lg:hidden`
   stacked list; its table is the only layout on a phone.

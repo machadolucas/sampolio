@@ -1,7 +1,7 @@
 'use client';
 
 import { useId } from 'react';
-import { Tooltip } from 'primereact/tooltip';
+import { Tooltip } from '@/components/ui/tooltip';
 import { MdHelpOutline } from 'react-icons/md';
 
 interface HelpHintProps {
@@ -23,7 +23,7 @@ export function HelpHint({ text, ariaLabel = 'What does this mean?' }: HelpHintP
 
     return (
         <>
-            <Tooltip target={`#${id}`} content={text} event="both" position="top" className="max-w-xs" />
+            <Tooltip content={text} event="both" position="top" className="max-w-xs">
             {/* The ::before pseudo-element grows the hit area around the 16px
                 glyph without changing layout: 44px on touch screens (tap-target
                 rule), a modest 24px for mouse so it doesn't cover neighboring
@@ -40,6 +40,7 @@ export function HelpHint({ text, ariaLabel = 'What does this mean?' }: HelpHintP
             >
                 <MdHelpOutline size={16} aria-hidden />
             </button>
+            </Tooltip>
             <span id={`${id}-desc`} className="sr-only">{text}</span>
         </>
     );

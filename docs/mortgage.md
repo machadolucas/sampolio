@@ -220,6 +220,14 @@ button appears only while the update is due (plus the `AlertBanner` reminder);
 everything else lives under a single **"Manage"** menu grouped Loan · Members ·
 Data; per-month **Reconcile** stays on the ledger rows.
 
+The **Schedule** pane uses `MortgageLedgerTable` (`mortgage-ledger-table.tsx`)
+over the shared TanStack-backed `DataTable`. Its explicit scroll viewport opens
+centered on the current month, and the Month column stays pinned during horizontal
+scrolling. Column controls hide optional details and reset visibility; Month and
+total columns remain available. A changed loan/member/breakdown column set resets
+the table layout. Month inputs use local `YYYY-MM` values; displayed money uses
+the shared currency formatter, including Demo-mode masking.
+
 - **Setup wizard** (`mortgage-setup-wizard.tsx`): five steps — Home, People, Loans,
   Rate & fees, Review. Validated by `mortgageSetupSchema`
   (`src/lib/schemas/mortgage.schema.ts`; ownership targets must sum to 100% within

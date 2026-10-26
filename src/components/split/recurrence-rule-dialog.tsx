@@ -3,13 +3,13 @@
 
 import { useEffect, useState } from 'react';
 import { parseISO } from 'date-fns';
-import { Dialog } from 'primereact/dialog';
-import { InputText } from 'primereact/inputtext';
-import { InputNumber } from 'primereact/inputnumber';
-import { Dropdown } from 'primereact/dropdown';
-import { Calendar } from 'primereact/calendar';
-import { Button } from 'primereact/button';
-import { Message } from 'primereact/message';
+import { Dialog } from '@/components/ui/dialog';
+import { InputText } from '@/components/ui/input-text';
+import { InputNumber } from '@/components/ui/input-number';
+import { Dropdown } from '@/components/ui/dropdown';
+import { Calendar } from '@/components/ui/calendar';
+import { Button } from '@/components/ui/button';
+import { Message } from '@/components/ui/message';
 import { useIsMobile } from '@/lib/hooks/use-media-query';
 import { createSplitRecurrenceRule, updateSplitRecurrenceRule } from '@/lib/actions/split-groups';
 import { toCents } from '@/lib/split-utils';
@@ -138,7 +138,7 @@ export function RecurrenceRuleDialog({
 
         <div className="flex items-center gap-2 border-t pt-3 border-gray-100 dark:border-gray-800">
           <span className="text-sm text-gray-500 w-20 shrink-0">Repeats</span>
-          <Dropdown value={interval} onChange={(e) => setInterval(e.value)} options={SPLIT_INTERVALS} className="flex-1 min-w-0" />
+          <Dropdown value={interval} onChange={(e) => { if (e.value !== null) setInterval(e.value); }} options={SPLIT_INTERVALS} className="flex-1 min-w-0" />
         </div>
         <div className="flex items-center gap-2">
           <span className="text-sm text-gray-500 w-20 shrink-0">Starting</span>
@@ -160,7 +160,7 @@ export function RecurrenceRuleDialog({
         <p className="text-xs text-gray-400 -mt-1 pl-[calc(5rem+0.5rem)]">Shortening the end date removes generated expenses after it.</p>
         <div className="flex items-center gap-2">
           <span className="text-sm text-gray-500 w-20 shrink-0">Category</span>
-          <Dropdown value={category} onChange={(e) => setCategory(e.value)} options={SPLIT_CATEGORIES.filter((c) => c !== 'Payment')} filter className="flex-1 min-w-0" />
+          <Dropdown value={category} onChange={(e) => { if (e.value !== null) setCategory(e.value); }} options={SPLIT_CATEGORIES.filter((c) => c !== 'Payment')} filter className="flex-1 min-w-0" />
         </div>
         {error && <Message severity="error" text={error} />}
         <div className="flex justify-end gap-2 pt-1">

@@ -3,13 +3,17 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useTheme } from '@/components/providers/theme-provider';
-import { navItems, isNavItemActive, type NavItem } from '@/components/layout/nav-config';
+import {
+  navItems,
+  isNavItemActive,
+  type NavItem,
+} from '@/components/layout/nav-config';
 import { useAppContext } from '@/components/layout/app-layout';
 import { resolveBottomNavIds } from '@/lib/bottom-nav-prefs';
 import { MdMoreHoriz } from 'react-icons/md';
 
 interface BottomNavProps {
-    onOpenMore: () => void;
+  onOpenMore: () => void;
 }
 
 /**
@@ -32,53 +36,67 @@ interface BottomNavProps {
  * (e.g. on a "More" page like /settings or /bank).
  */
 export function BottomNav({ onOpenMore }: BottomNavProps) {
-    const pathname = usePathname();
-    const { theme } = useTheme();
-    const appContext = useAppContext();
-    const isDark = theme === 'dark';
+  const pathname = usePathname();
+  const { theme } = useTheme();
+  const appContext = useAppContext();
+  const isDark = theme === 'dark';
 
-    const chosenIds = resolveBottomNavIds(appContext?.bottomNavIds, appContext?.displayMode);
-    const primary = chosenIds
-        .map((id) => navItems.find((n) => n.id === id))
-        .filter((n): n is NavItem => Boolean(n));
-    const activeIndex = primary.findIndex((item) => isNavItemActive(pathname, item.href));
-    const cells = primary.length + 1; // +1 = the fixed More cell
+  const chosenIds = resolveBottomNavIds(
+    appContext?.bottomNavIds,
+    appContext?.displayMode,
+  );
+  const primary = chosenIds
+    .map((id) => navItems.find((n) => n.id === id))
+    .filter((n): n is NavItem => Boolean(n));
+  const activeIndex = primary.findIndex((item) =>
+    isNavItemActive(pathname, item.href),
+  );
+  const cells = primary.length + 1; // +1 = the fixed More cell
 
-    const cell = 'flex flex-col items-center justify-center gap-0.5 flex-1 min-w-0 h-full text-[0.7rem] font-medium transition-colors duration-150 active:opacity-60';
-    const activeCls = isDark ? 'text-accent-400' : 'text-accent-700';
-    const idleCls = isDark ? 'text-gray-400' : 'text-gray-500';
+  const cell =
+    'flex flex-col items-center justify-center gap-0.5 flex-1 min-w-0 h-full relative z-10 rounded-full min-h-11 text-[0.7rem] font-medium transition-colors duration-150 active:opacity-60';
+  const activeCls = 'text-primary font-semibold';
+  const idleCls = 'text-muted-foreground';
 
-    return (
-        <nav
-            // No `relative` here: `fixed` already makes the nav the containing block
-            // for the absolutely-positioned indicator (and `relative` would win the
-            // cascade and un-fix the bar).
-            className="lg:hidden fixed bottom-0 left-0 right-0 z-40 flex items-stretch h-[calc(4rem+env(safe-area-inset-bottom))] border-t pb-[env(safe-area-inset-bottom)] glass-chrome"
-        >
-            <span
-                aria-hidden
-                className={`absolute top-1 h-1 w-8 -translate-x-1/2 rounded-full transition-[left,opacity] duration-[250ms] ease-fluid ${isDark ? 'bg-accent-400' : 'bg-accent-700'} ${activeIndex >= 0 ? 'opacity-100' : 'opacity-0'}`}
-                // Pill centers on the active cell: (index + 0.5) × cell width.
-                style={{ left: `${((activeIndex >= 0 ? activeIndex : 0) + 0.5) * (100 / cells)}%` }}
-            />
-            {primary.map((item) => {
-                const active = isNavItemActive(pathname, item.href);
-                return (
-                    <Link
-                        key={item.id}
-                        href={item.href}
-                        aria-current={active ? 'page' : undefined}
-                        className={`${cell} no-underline ${active ? activeCls : idleCls}`}
-                    >
-                        {item.icon}
-                        <span className="truncate max-w-full px-0.5">{item.label}</span>
-                    </Link>
-                );
-            })}
-            <button type="button" onClick={onOpenMore} aria-label="More" className={`${cell} ${idleCls}`}>
-                <MdMoreHoriz size={20} />
-                <span>More</span>
-            </button>
-        </nav>
-    );
+  return (
+    <nav
+      // No `relative` here: `fixed` already makes the nav the containing block
+      // for the absolutely-positioned indicator (and `relative` would win the
+      // cascade and un-fix the bar).
+      className="lg:hidden fixed bottom-[calc(0.75rem+env(safe-area-inset-bottom))] left-3 right-3 z-40 flex items-stretch h-16 rounded-full border p-1 glass-chrome"
+    >
+      <span
+        aria-hidden
+        className={`absolute top-1 bottom-1 rounded-full transition-[left,opacity] duration-[250ms] ease-fluid ${isDark ? 'bg-accent-400/20' : 'bg-accent-100'} ${activeIndex >= 0 ? 'opacity-100' : 'opacity-0'}`}
+        // Pill centers on the active cell: (index + 0.5) × cell width.
+        style={{
+          left: `calc(${(activeIndex >= 0 ? activeIndex : 0) * (100 / cells)}% + 0.25rem)`,
+          width: `calc(${100 / cells}% - 0.5rem)`,
+        }}
+      />
+      {primary.map((item) => {
+        const active = isNavItemActive(pathname, item.href);
+        return (
+          <Link
+            key={item.id}
+            href={item.href}
+            aria-current={active ? 'page' : undefined}
+            className={`${cell} no-underline ${active ? activeCls : idleCls}`}
+          >
+            {item.icon}
+            <span className="truncate max-w-full px-0.5">{item.label}</span>
+          </Link>
+        );
+      })}
+      <button
+        type="button"
+        onClick={onOpenMore}
+        aria-label="More"
+        className={`${cell} ${idleCls}`}
+      >
+        <MdMoreHoriz size={20} />
+        <span>More</span>
+      </button>
+    </nav>
+  );
 }

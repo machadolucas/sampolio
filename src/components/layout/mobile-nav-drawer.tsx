@@ -2,8 +2,8 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Sidebar } from 'primereact/sidebar';
-import { Menu } from 'primereact/menu';
+import { Sidebar } from '@/components/ui/sheet';
+import { Menu } from '@/components/ui/menu';
 import { useTheme } from '@/components/providers/theme-provider';
 import { isNavItemActive, useUserMenuItems, useVisibleNavItems } from '@/components/layout/nav-config';
 import { BrandLogo } from '@/components/layout/brand-logo';
@@ -14,7 +14,7 @@ interface MobileNavDrawerProps {
 }
 
 /**
- * Off-canvas navigation for < lg screens. Reuses the PrimeReact Sidebar pattern
+ * Off-canvas navigation for < lg screens. Uses the shared Sheet pattern
  * already proven in entity-list-drawer (children + header prop + the built-in
  * close button) and the shared nav-config so it never drifts from the desktop
  * sidebar. Opened by both the top-bar hamburger and the bottom-nav "More" tab.

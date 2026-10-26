@@ -1,9 +1,9 @@
 'use client';
 
 import { useMemo } from 'react';
-import { InputNumber } from 'primereact/inputnumber';
-import { Dropdown } from 'primereact/dropdown';
-import { SelectButton } from 'primereact/selectbutton';
+import { InputNumber } from '@/components/ui/input-number';
+import { Dropdown } from '@/components/ui/dropdown';
+import { SelectButton } from '@/components/ui/select-button';
 import { resolveSplit, toCents } from '@/lib/split-utils';
 import { formatCents } from '@/lib/constants';
 import { resolveDraftSpec, splitEqually, type SplitDraft, type SplitPreset } from '@/lib/split-draft';
@@ -144,7 +144,7 @@ export function SplitEditor({
             <span className="text-sm text-gray-500 w-16 shrink-0">Paid by</span>
             <Dropdown
               value={value.payerId}
-              onChange={(e) => set({ payerId: e.value })}
+              onChange={(e) => { if (e.value !== null) set({ payerId: e.value }); }}
               options={memberOpts}
               className="flex-1 min-w-0"
             />

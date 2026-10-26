@@ -1,14 +1,14 @@
 'use client';
 
 import { useEffect, useMemo, useState, useId } from 'react';
-import { Dialog } from 'primereact/dialog';
-import { InputText } from 'primereact/inputtext';
-import { InputNumber } from 'primereact/inputnumber';
-import { Dropdown } from 'primereact/dropdown';
-import { MultiSelect } from 'primereact/multiselect';
-import { SelectButton } from 'primereact/selectbutton';
-import { Button } from 'primereact/button';
-import { Message } from 'primereact/message';
+import { Dialog } from '@/components/ui/dialog';
+import { InputText } from '@/components/ui/input-text';
+import { InputNumber } from '@/components/ui/input-number';
+import { Dropdown } from '@/components/ui/dropdown';
+import { MultiSelect } from '@/components/ui/multi-select';
+import { SelectButton } from '@/components/ui/select-button';
+import { Button } from '@/components/ui/button';
+import { Message } from '@/components/ui/message';
 import { MdAdd } from 'react-icons/md';
 import { MonthPicker, HelpTip } from '@/components/ui/form-primitives';
 import { TripDialog } from '@/components/trips/trip-dialog';
@@ -139,7 +139,7 @@ export function BudgetLineDialog({
           </div>
           <div>
             <label htmlFor={`${uid}-category`} className="text-sm font-medium">Category</label>
-            <Dropdown inputId={`${uid}-category`} value={category} options={BUDGET_CATEGORIES} onChange={(e) => setCategory(e.value)} className="w-full" />
+            <Dropdown inputId={`${uid}-category`} value={category} options={BUDGET_CATEGORIES} onChange={(e) => { if (e.value !== null) setCategory(e.value); }} className="w-full" />
           </div>
         </div>
         <div>
@@ -344,7 +344,7 @@ export function BudgetFundingDialog({
       <form className="space-y-3" onSubmit={onFormSubmit} noValidate>
         <div>
           <label htmlFor={`${uid}-what-kind-of`} className="text-sm font-medium">What kind of money is it?</label>
-          <Dropdown inputId={`${uid}-what-kind-of`} value={type} options={FUNDING_TYPE_OPTIONS} onChange={(e) => setType(e.value)} className="w-full" />
+          <Dropdown inputId={`${uid}-what-kind-of`} value={type} options={FUNDING_TYPE_OPTIONS} onChange={(e) => { if (e.value !== null) setType(e.value); }} className="w-full" />
         </div>
         <div>
           <label htmlFor={`${uid}-name`} className="text-sm font-medium">Name</label>
@@ -367,7 +367,7 @@ export function BudgetFundingDialog({
                 className="w-full"
               />
             ) : (
-              <p className="text-xs opacity-60">Per-diem trips are in euros — this budget uses {budget.currency}.</p>
+              <p className="text-xs text-muted-foreground">Per-diem trips are in euros — this budget uses {budget.currency}.</p>
             )}
 
             {isTripLinked ? (
@@ -444,7 +444,7 @@ export function BudgetFundingDialog({
         {!isSimple && (
           <div>
             <label htmlFor={`${uid}-when-does-the`} className="text-sm font-medium">When does the money arrive?</label>
-            <Dropdown inputId={`${uid}-when-does-the`} value={timing} options={TIMING_OPTIONS} onChange={(e) => setTiming(e.value)} className="w-full" />
+            <Dropdown inputId={`${uid}-when-does-the`} value={timing} options={TIMING_OPTIONS} onChange={(e) => { if (e.value !== null) setTiming(e.value); }} className="w-full" />
             {timing === 'specific-month' && (
               <div className="mt-2">
                 <MonthPicker value={receivedMonth} onChange={setReceivedMonth} />
@@ -574,7 +574,7 @@ export function BudgetDetailsDialog({
           <InputText id={`${uid}-name`} value={name} onChange={(e) => setName(e.target.value)} className="w-full" />
         </div>
         <div>
-          <label htmlFor={`${uid}-where-optional`} className="text-sm font-medium">Where? <span className="opacity-50 font-normal">(optional)</span></label>
+          <label htmlFor={`${uid}-where-optional`} className="text-sm font-medium">Where? <span className="text-muted-foreground font-normal">(optional)</span></label>
           <InputText id={`${uid}-where-optional`} value={destination} onChange={(e) => setDestination(e.target.value)} placeholder="e.g. Stockholm" className="w-full" />
         </div>
         <div className="grid grid-cols-2 gap-3">
@@ -592,13 +592,13 @@ export function BudgetDetailsDialog({
           <Dropdown inputId={`${uid}-currency`}
             value={currency}
             options={CURRENCIES.map((c) => ({ label: `${c.symbol} ${c.label}`, value: c.value }))}
-            onChange={(e) => setCurrency(e.value)}
+            onChange={(e) => { if (e.value !== null) setCurrency(e.value); }}
             className="w-full"
           />
           <HelpTip text="The currency you’ll mostly spend in." />
         </div>
         <div>
-          <label htmlFor={`${uid}-split-group-optional`} className="text-sm font-medium">Split group <span className="opacity-50 font-normal">(optional)</span></label>
+          <label htmlFor={`${uid}-split-group-optional`} className="text-sm font-medium">Split group <span className="text-muted-foreground font-normal">(optional)</span></label>
           <Dropdown inputId={`${uid}-split-group-optional`}
             value={effectiveSplitGroupId}
             options={splitGroupOptions}

@@ -1,11 +1,11 @@
 'use client';
 
 import { useState, useMemo, useId } from 'react';
-import { Dialog } from 'primereact/dialog';
-import { Dropdown } from 'primereact/dropdown';
-import { InputNumber } from 'primereact/inputnumber';
-import { Button } from 'primereact/button';
-import { Message } from 'primereact/message';
+import { Dialog } from '@/components/ui/dialog';
+import { Dropdown } from '@/components/ui/dropdown';
+import { InputNumber } from '@/components/ui/input-number';
+import { Button } from '@/components/ui/button';
+import { Message } from '@/components/ui/message';
 import { HelpTip } from '@/components/ui/form-primitives';
 import { formatYearMonth, getCurrencySymbol } from '@/lib/constants';
 import { confirmBudget } from '@/lib/actions/budgets';

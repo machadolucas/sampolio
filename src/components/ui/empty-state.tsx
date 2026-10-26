@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Button } from 'primereact/button';
+import { Button } from '@/components/ui/button';
 import { useTheme } from '@/components/providers/theme-provider';
 
 interface EmptyStateProps {

@@ -380,8 +380,8 @@ export function computeSeenWatermark(
 /**
  * Parse the text of a fi-FI formatted amount field ("1 234,50 €", "12,5",
  * "12.50") into euros, or null when it holds no number. Used where a keyboard
- * submit must read the live input text: PrimeReact's InputNumber only commits
- * its value on blur/Enter, and calls a consumer's onKeyDown BEFORE committing.
+ * submit must read the live input text before the controlled field's commit
+ * has reached the consumer's state.
  */
 export function parseAmountInput(text: string | null | undefined): number | null {
   if (!text) return null;

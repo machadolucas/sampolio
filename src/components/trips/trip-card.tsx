@@ -1,7 +1,7 @@
 'use client';
 
-import { Tag } from 'primereact/tag';
-import { Button } from 'primereact/button';
+import { Tag } from '@/components/ui/tag';
+import { Button } from '@/components/ui/button';
 import { MdFlightTakeoff, MdEdit, MdDelete, MdCheckCircle, MdPaid } from 'react-icons/md';
 import { formatCurrency, formatYearMonth } from '@/lib/constants';
 import { PER_DIEM_COUNTRIES_2026, DOMESTIC_COUNTRY_CODE } from '@/lib/per-diem-rates';
@@ -64,11 +64,11 @@ export function TripCard({
     <div
       className={`rounded-xl border p-4 transition-colors ${
         isDark ? 'border-neutral-700 bg-neutral-800/50' : 'border-neutral-200 bg-white'
-      } ${trip.status === 'reimbursed' ? 'opacity-70' : ''}`}
+      } ${trip.status === 'reimbursed' ? 'text-muted-foreground' : ''}`}
     >
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
-          <MdFlightTakeoff size={20} className="opacity-50 shrink-0" />
+          <MdFlightTakeoff size={20} className="text-muted-foreground shrink-0" />
           <h3 className="text-base font-semibold truncate">{trip.name}</h3>
         </div>
         <div className="flex flex-col items-end gap-1 shrink-0">
@@ -77,29 +77,29 @@ export function TripCard({
             <Tag
               severity="info"
               value={`Funds: ${fundedByBudgetName}`}
-              className="!max-w-[10rem] [&_.p-tag-value]:truncate"
+              className="!max-w-[10rem] truncate"
             />
           )}
         </div>
       </div>
 
-      <p className="text-sm opacity-60 mt-1.5">{countryName(trip.destinationCountry)}</p>
-      <p className="text-sm opacity-70 mt-1">
+      <p className="text-sm text-muted-foreground mt-1.5">{countryName(trip.destinationCountry)}</p>
+      <p className="text-sm text-muted-foreground mt-1">
         {formatDateTime(trip.startDateTime)} &rarr; {formatDateTime(trip.endDateTime)}
       </p>
-      <p className="text-xs opacity-50 mt-0.5">{formatDuration(trip.startDateTime, trip.endDateTime)}</p>
+      <p className="text-xs text-muted-foreground mt-0.5">{formatDuration(trip.startDateTime, trip.endDateTime)}</p>
 
       <div className="mt-3 flex items-baseline justify-between">
-        <span className="text-sm opacity-60">Per diem total</span>
+        <span className="text-sm text-muted-foreground">Per diem total</span>
         <span className="text-xl font-bold">{formatCurrency(total, 'EUR')}</span>
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-2 mt-2 text-xs opacity-60">
+      <div className="flex flex-wrap items-center justify-between gap-2 mt-2 text-xs text-muted-foreground">
         {linkedAccountName && <span>To: {linkedAccountName}</span>}
         <span>Reimbursed: {formatYearMonth(trip.expectedReimbursementMonth)}</span>
       </div>
 
-      {trip.notes && <p className="text-sm opacity-70 mt-2 line-clamp-2">{trip.notes}</p>}
+      {trip.notes && <p className="text-sm text-muted-foreground mt-2 line-clamp-2">{trip.notes}</p>}
 
       <div className="flex items-center justify-between gap-2 mt-3">
         <div>
@@ -130,7 +130,7 @@ export function TripCard({
       </div>
 
       {trip.status === 'completed' && (
-        <p className="text-xs opacity-50 mt-2">
+        <p className="text-xs text-muted-foreground mt-2">
           Marking this reimbursed stops it from showing up as expected income on Cashflow.
         </p>
       )}

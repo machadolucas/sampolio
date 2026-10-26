@@ -2,14 +2,14 @@
 
 import { useState, useEffect, useCallback, useRef, useId } from 'react';
 import { MdArrowBack, MdArrowForward, MdCheck, MdError } from 'react-icons/md';
-import { Dialog } from 'primereact/dialog';
-import { Button } from 'primereact/button';
-import { Steps } from 'primereact/steps';
-import { InputNumber } from 'primereact/inputnumber';
-import { Dropdown } from 'primereact/dropdown';
-import { Card } from 'primereact/card';
-import { Tag } from 'primereact/tag';
-import { ProgressSpinner } from 'primereact/progressspinner';
+import { Dialog } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Steps } from '@/components/ui/steps';
+import { InputNumber } from '@/components/ui/input-number';
+import { Dropdown } from '@/components/ui/dropdown';
+import { Card } from '@/components/ui/card';
+import { Tag } from '@/components/ui/tag';
+import { ProgressSpinner } from '@/components/ui/progress-spinner';
 import { useTheme } from '@/components/providers/theme-provider';
 import { useToast } from '@/components/providers/toast-provider';
 import { formatCurrency, formatYearMonth, MONTHS } from '@/lib/constants';
@@ -481,7 +481,7 @@ export function ReconcileWizard({
                                 <Dropdown inputId={`${uid}-year`}
                                     value={selectedYear}
                                     options={yearOptions}
-                                    onChange={(e) => setSelectedYear(e.value)}
+                                    onChange={(e) => { if (e.value !== null) setSelectedYear(e.value); }}
                                     className="w-full"
                                 />
                             </div>
@@ -492,7 +492,7 @@ export function ReconcileWizard({
                                 <Dropdown inputId={`${uid}-month`}
                                     value={selectedMonth}
                                     options={monthOptions}
-                                    onChange={(e) => setSelectedMonth(e.value)}
+                                    onChange={(e) => { if (e.value !== null) setSelectedMonth(e.value); }}
                                     className="w-full"
                                 />
                             </div>

@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Button } from 'primereact/button';
+import { Button } from '@/components/ui/button';
 import { MdAdd, MdLuggage } from 'react-icons/md';
 import { BudgetCard } from '@/components/budgets/budget-card';
 import { BudgetSetupWizard } from '@/components/budgets/budget-setup-wizard';
@@ -32,7 +32,7 @@ export function BudgetsSection({ budgets, onChanged }: BudgetsSectionProps) {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h2 className="text-xl font-semibold">Budgets</h2>
-          <p className="text-sm opacity-60">
+          <p className="text-sm text-muted-foreground">
             Plan a bounded project or trip budget — costs, funding (including restricted grants), and an expense log.
           </p>
         </div>
@@ -43,7 +43,7 @@ export function BudgetsSection({ budgets, onChanged }: BudgetsSectionProps) {
         <div className="flex flex-col items-center justify-center py-16 text-center">
           <MdLuggage size={48} className="opacity-30 mb-4" />
           <p className="text-lg font-medium mb-1">Plan a trip or a project</p>
-          <p className="text-sm opacity-60 max-w-md mb-4">
+          <p className="text-sm text-muted-foreground max-w-md mb-4">
             Add what it&apos;ll cost and who&apos;s paying — grants, daily allowances, your own money — and Sampolio
             tells you if it adds up. When it&apos;s a go, one click puts it in your cashflow.
           </p>

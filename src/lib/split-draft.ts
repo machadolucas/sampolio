@@ -2,7 +2,7 @@
 // (preset choice, or custom amounts/percentages) into a validated SplitSpec the
 // engine understands, and rebuilding a draft from a stored expense / spec.
 //
-// Kept free of React and PrimeReact so it is unit-testable in isolation
+// Kept free of React and UI components so it is unit-testable in isolation
 // (split-draft.test.ts) and reusable. Money is euros in the draft (what the
 // user types) and integer cents in the resolved spec.
 

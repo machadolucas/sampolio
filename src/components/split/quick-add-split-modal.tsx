@@ -1,17 +1,19 @@
 'use client';
 
+import { ExternalLink, Link2 } from 'lucide-react';
+
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { format, parseISO } from 'date-fns';
 import { useSession } from '@/lib/auth-client';
-import { Dialog } from 'primereact/dialog';
-import { InputText } from 'primereact/inputtext';
-import { InputNumber } from 'primereact/inputnumber';
-import { Dropdown } from 'primereact/dropdown';
-import { Calendar } from 'primereact/calendar';
-import { Button } from 'primereact/button';
-import { Message } from 'primereact/message';
-import { confirmDialog } from 'primereact/confirmdialog';
+import { Dialog } from '@/components/ui/dialog';
+import { InputText } from '@/components/ui/input-text';
+import { InputNumber } from '@/components/ui/input-number';
+import { Dropdown } from '@/components/ui/dropdown';
+import { Calendar } from '@/components/ui/calendar';
+import { Button } from '@/components/ui/button';
+import { Message } from '@/components/ui/message';
+import { confirmDialog } from '@/components/ui/confirm-dialog';
 import { MdAdd } from 'react-icons/md';
 import { useToast } from '@/components/providers/toast-provider';
 import { useCelebration } from '@/components/providers/celebration-provider';
@@ -220,7 +222,7 @@ export function QuickAddSplitModal({ visible, onHide, onSaved, initial, onConfir
             rejectLabel: 'Cancel',
             defaultFocus: 'reject',
             style: { width: 'min(32rem, calc(100vw - 2rem))' },
-            acceptClassName: 'p-button-warning',
+            severity: 'warning',
             accept: () => {
               void save(addAnother, [...new Set([...acknowledgedIds, ...duplicateList.map(candidate => candidate.expenseId)])], amount);
             },
@@ -256,7 +258,7 @@ export function QuickAddSplitModal({ visible, onHide, onSaved, initial, onConfir
   const duplicateDetails = (candidate: SplitDuplicateCandidate) => (
       <div key={candidate.expenseId} className="rounded-lg border border-amber-200 bg-amber-50/70 px-3 py-2 text-sm dark:border-amber-900/60 dark:bg-amber-950/20">
       <div className="font-medium break-words">{candidate.title}</div>
-      <div className="text-xs opacity-70">{candidate.groupName} · {dateLabel(candidate.date)} · {formatCurrency(candidate.amountCents / 100, candidate.currency as Currency)}</div>
+      <div className="text-xs text-muted-foreground">{candidate.groupName} · {dateLabel(candidate.date)} · {formatCurrency(candidate.amountCents / 100, candidate.currency as Currency)}</div>
     </div>
   );
 
@@ -293,20 +295,20 @@ export function QuickAddSplitModal({ visible, onHide, onSaved, initial, onConfir
                 ? 'The bank appears to have booked a transaction you split while it was pending. Confirm to reconnect the existing expense.'
                 : 'Check the details below. Confirming links the existing expense without adding another one.'} />
             <div className="rounded-xl border border-blue-200 bg-blue-50/60 p-3 text-sm dark:border-blue-900/60 dark:bg-blue-950/20">
-              <div className="text-xs uppercase tracking-wide opacity-60">Bank transaction</div>
+              <div className="text-xs uppercase tracking-wide text-muted-foreground">Bank transaction</div>
               <div className="mt-1 font-medium">{initial?.bankLink?.counterpartyName ?? 'Unknown merchant'}</div>
-              <div className="mt-1 opacity-70">{initial?.date ? dateLabel(initial.date) : initial?.bankLink?.bookingDate ? dateLabel(initial.bankLink.bookingDate) : '—'} · {initial?.bankLink ? formatCurrency(Math.abs(initial.bankLink.amount), initial.bankLink.currency) : '—'}</div>
+              <div className="mt-1 text-muted-foreground">{initial?.date ? dateLabel(initial.date) : initial?.bankLink?.bookingDate ? dateLabel(initial.bankLink.bookingDate) : '—'} · {initial?.bankLink ? formatCurrency(Math.abs(initial.bankLink.amount), initial.bankLink.currency) : '—'}</div>
             </div>
             {currencyMismatch && <Message severity="error" text={`Currency mismatch: bank transaction is ${bankCurrency}, existing expense is ${review.currency}. Linking is disabled.`} />}
             <div className="space-y-2">
               {reviewMatches.map((candidate, index) => (
                 <div key={candidate.expenseId} className="rounded-xl border border-gray-200 p-4 dark:border-gray-700">
-                  <div className="text-xs uppercase tracking-wide opacity-60">{candidate.kind === 'linked' ? 'Linked expense' : index === 0 ? 'Possible existing split' : 'Also matched'}</div>
+                  <div className="text-xs uppercase tracking-wide text-muted-foreground">{candidate.kind === 'linked' ? 'Linked expense' : index === 0 ? 'Possible existing split' : 'Also matched'}</div>
                   <div className="mt-1 text-lg font-semibold break-words">{candidate.title}</div>
-                  <div className="mt-1 text-sm opacity-70">{candidate.groupName} · {dateLabel(candidate.date)} · {formatCurrency(candidate.amountCents / 100, candidate.currency as Currency)}</div>
+                  <div className="mt-1 text-sm text-muted-foreground">{candidate.groupName} · {dateLabel(candidate.date)} · {formatCurrency(candidate.amountCents / 100, candidate.currency as Currency)}</div>
                   <div className="mt-3 flex flex-wrap gap-2">
-                    <Button label="Open expense" icon="pi pi-external-link" outlined onClick={() => router.push(`/split/${candidate.groupId}?expense=${candidate.expenseId}&month=${candidate.date.slice(0, 7)}`)} />
-                    {candidate.kind !== 'linked' && <Button label="Confirm link" icon="pi pi-link" loading={confirmingLink} disabled={confirmingLink || !onConfirmLink || candidate.currency !== bankCurrency} onClick={async () => {
+                    <Button label="Open expense" icon={<ExternalLink size={16} />} outlined onClick={() => router.push(`/split/${candidate.groupId}?expense=${candidate.expenseId}&month=${candidate.date.slice(0, 7)}`)} />
+                    {candidate.kind !== 'linked' && <Button label="Confirm link" icon={<Link2 size={16} />} loading={confirmingLink} disabled={confirmingLink || !onConfirmLink || candidate.currency !== bankCurrency} onClick={async () => {
                       if (!onConfirmLink) return;
                       setConfirmingLink(true);
                       setError('');
@@ -346,7 +348,7 @@ export function QuickAddSplitModal({ visible, onHide, onSaved, initial, onConfir
               <span className="shrink-0">With you and:</span>
               <Dropdown
                 value={groupId}
-                onChange={(e) => setGroupId(e.value)}
+                onChange={(e) => { if (e.value !== null) setGroupId(e.value); }}
                 options={groups.map((g) => ({ label: `${g.emoji ? g.emoji + ' ' : ''}${g.name}`, value: g.id }))}
                 className="flex-1 min-w-0"
               />
@@ -384,9 +386,8 @@ export function QuickAddSplitModal({ visible, onHide, onSaved, initial, onConfir
               inputMode="decimal"
               onKeyDown={(e) => {
                 if (e.key !== 'Enter' && e.key !== 'NumpadEnter') return;
-                // PrimeReact calls onKeyDown BEFORE it commits the typed text
-                // (onValueChange fires on blur/Enter, and never on Android
-                // Enter), so read the live input text instead of `amountState`.
+                // Read the live locale-aware text for keyboard submission,
+                // including IME/mobile keyboards that commit on Enter.
                 const live = parseAmountInput((e.target as HTMLInputElement).value);
                 setAmount(live);
                 void save(false, [], live);
@@ -422,7 +423,7 @@ export function QuickAddSplitModal({ visible, onHide, onSaved, initial, onConfir
                   <span className="text-sm text-gray-500 w-20 shrink-0">Category</span>
                   <Dropdown
                     value={effectiveCategory}
-                    onChange={(e) => setCategory(e.value)}
+                    onChange={(e) => { if (e.value !== null) setCategory(e.value); }}
                     options={SPLIT_CATEGORIES.filter((c) => c !== 'Payment')}
                     filter
                     className="flex-1 min-w-0"

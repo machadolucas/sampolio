@@ -1,5 +1,6 @@
 'use client';
 
+import { contrastTextColor } from '@/lib/color-contrast';
 import { useState } from 'react';
 import { getInitials, getAvatarColor } from '@/lib/avatar-utils';
 
@@ -21,7 +22,13 @@ interface UserAvatarProps {
  * The image is decorative next to accompanying text (`alt=""`, `aria-hidden` on
  * the fallback); the name is exposed via `title` for the standalone case.
  */
-export function UserAvatar({ userId, name, avatarUrl, size = 32, className = '' }: UserAvatarProps) {
+export function UserAvatar({
+  userId,
+  name,
+  avatarUrl,
+  size = 32,
+  className = '',
+}: UserAvatarProps) {
   const [errored, setErrored] = useState(false);
 
   // Reset the error flag when the URL changes (e.g. a new avatar was uploaded)
@@ -54,10 +61,11 @@ export function UserAvatar({ userId, name, avatarUrl, size = 32, className = '' 
 
   return (
     <div
-      className={`rounded-full shrink-0 flex items-center justify-center font-semibold text-white select-none ${className}`}
+      className={`rounded-full shrink-0 flex items-center justify-center font-semibold select-none ${className}`}
       style={{
         ...dimension,
         background: getAvatarColor(userId),
+        color: contrastTextColor(getAvatarColor(userId)),
         fontSize: Math.round(size * 0.42),
       }}
       title={name}

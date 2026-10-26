@@ -1,13 +1,15 @@
 'use client';
 
+import { TriangleAlert } from 'lucide-react';
+
 import { useState, useId } from 'react';
-import { Card } from 'primereact/card';
-import { Dialog } from 'primereact/dialog';
-import { Dropdown } from 'primereact/dropdown';
-import { InputNumber } from 'primereact/inputnumber';
-import { Button } from 'primereact/button';
-import { Message } from 'primereact/message';
-import { confirmDialog } from 'primereact/confirmdialog';
+import { Card } from '@/components/ui/card';
+import { Dialog } from '@/components/ui/dialog';
+import { Dropdown } from '@/components/ui/dropdown';
+import { InputNumber } from '@/components/ui/input-number';
+import { Button } from '@/components/ui/button';
+import { Message } from '@/components/ui/message';
+import { confirmDialog } from '@/components/ui/confirm-dialog';
 import { useToast } from '@/components/providers/toast-provider';
 import { SubEntityList, MonthPicker } from '@/components/ui/form-primitives';
 import { formatCurrency, formatYearMonthShort, formatRate } from '@/lib/constants';
@@ -51,10 +53,10 @@ export function MortgageHistoryStrips({
     confirmDialog({
       header: 'Delete rate?',
       message: `Delete ${what}? Every member's mortgage projection is recalculated without it.`,
-      icon: 'pi pi-exclamation-triangle',
+      icon: <TriangleAlert size={16} />,
       acceptLabel: 'Delete',
       rejectLabel: 'Cancel',
-      acceptClassName: 'p-button-danger',
+      severity: 'danger',
       accept: async () => {
         const res = await deleteMortgageRate(mortgage.id, id);
         if (res.success) {
@@ -73,10 +75,10 @@ export function MortgageHistoryStrips({
     confirmDialog({
       header: 'Delete fee entry?',
       message: `Delete ${what}? Every member's mortgage projection is recalculated without it.`,
-      icon: 'pi pi-exclamation-triangle',
+      icon: <TriangleAlert size={16} />,
       acceptLabel: 'Delete',
       rejectLabel: 'Cancel',
-      acceptClassName: 'p-button-danger',
+      severity: 'danger',
       accept: async () => {
         const res = await deleteMortgageCost(mortgage.id, id);
         if (res.success) {
@@ -204,7 +206,7 @@ export function MortgageHistoryStrips({
 
       {/* Rate add/edit dialog */}
       <Dialog header={editingRate ? 'Edit Euribor rate' : 'Add Euribor rate'} visible={rateDialog} onHide={() => setRateDialog(false)} style={{ width: '26rem' }}>
-        <p className="text-sm opacity-70 mb-3">The rate applies from the chosen month onward (your loan rate = Euribor + each loan&apos;s margin).</p>
+        <p className="text-sm text-muted-foreground mb-3">The rate applies from the chosen month onward (your loan rate = Euribor + each loan&apos;s margin).</p>
         <div className="space-y-3">
           <div>
             <label htmlFor={`${uid}-effective-from`} className="text-sm font-medium">Effective from</label>
@@ -224,21 +226,21 @@ export function MortgageHistoryStrips({
 
       {/* Cost add/edit dialog */}
       <Dialog header={editingCost ? 'Edit fee or insurance' : 'Add fee or insurance'} visible={costDialog} onHide={() => setCostDialog(false)} style={{ width: '28rem' }}>
-        <p className="text-sm opacity-70 mb-3">The amount applies from the chosen month onward; earlier history is kept.</p>
+        <p className="text-sm text-muted-foreground mb-3">The amount applies from the chosen month onward; earlier history is kept.</p>
         <div className="space-y-3">
           <div>
             <label htmlFor={`${uid}-what`} className="text-sm font-medium">What</label>
             <Dropdown inputId={`${uid}-what`}
               value={type}
               options={(Object.keys(COST_LABELS) as MortgageCostType[]).map((t) => ({ label: COST_LABELS[t], value: t }))}
-              onChange={(e) => setType(e.value)}
+              onChange={(e) => { if (e.value !== null) setType(e.value); }}
               className="w-full"
             />
           </div>
           {type === 'loan-insurance' && (
             <div>
               <label htmlFor={`${uid}-loan`} className="text-sm font-medium">Loan</label>
-              <Dropdown inputId={`${uid}-loan`} value={loanId} options={mortgage.loans.map((l) => ({ label: l.label, value: l.id }))} onChange={(e) => setLoanId(e.value)} className="w-full" />
+              <Dropdown inputId={`${uid}-loan`} value={loanId} options={mortgage.loans.map((l) => ({ label: l.label, value: l.id }))} onChange={(e) => { if (e.value !== null) setLoanId(e.value); }} className="w-full" />
             </div>
           )}
           <div>

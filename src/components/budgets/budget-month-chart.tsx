@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo } from 'react';
-import { Chart } from 'primereact/chart';
+import { Chart } from '@/components/ui/chart';
 import { formatCurrency, formatYearMonthShort } from '@/lib/constants';
 import { useAppContext } from '@/components/layout/app-layout';
 import { ChartExplain, type ReadCue } from '@/components/ui/chart-explain';

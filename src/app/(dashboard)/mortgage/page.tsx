@@ -1,14 +1,16 @@
 'use client';
 
+import { CirclePlus, Percent, RefreshCw, Trash2, TriangleAlert, Upload, Users } from 'lucide-react';
+
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import { useSession } from '@/lib/auth-client';
-import { Card } from 'primereact/card';
-import { Button } from 'primereact/button';
-import { Menu } from 'primereact/menu';
-import { SelectButton } from 'primereact/selectbutton';
-import { confirmDialog } from 'primereact/confirmdialog';
-import { TabView, TabPanel } from 'primereact/tabview';
+import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Menu } from '@/components/ui/menu';
+import { SelectButton } from '@/components/ui/select-button';
+import { confirmDialog } from '@/components/ui/confirm-dialog';
+import { TabView, TabPanel } from '@/components/ui/tab-view';
 import { ChartsPageSkeleton } from '@/components/ui/skeletons';
 import { AlertBanner } from '@/components/ui/alert-banner';
 import { formatCurrency, formatYearMonth, formatDayMonth } from '@/lib/constants';
@@ -170,10 +172,10 @@ export default function MortgagePage() {
     confirmDialog({
       header: 'Delete mortgage?',
       message: 'Delete this mortgage for all members? This cannot be undone.',
-      icon: 'pi pi-exclamation-triangle',
+      icon: <TriangleAlert size={16} />,
       acceptLabel: 'Delete',
       rejectLabel: 'Cancel',
-      acceptClassName: 'p-button-danger',
+      severity: 'danger',
       accept: async () => {
         const res = await deleteMortgage(mortgageId);
         if (res.success) { toast('Mortgage deleted'); notifyDataChanged(); }
@@ -194,10 +196,10 @@ export default function MortgagePage() {
     confirmDialog({
       header: 'Revert to forecast?',
       message: `Revert ${label} back to a forecast? Its recorded figures will be removed.`,
-      icon: 'pi pi-exclamation-triangle',
+      icon: <TriangleAlert size={16} />,
       acceptLabel: 'Revert',
       rejectLabel: 'Cancel',
-      acceptClassName: 'p-button-danger',
+      severity: 'danger',
       accept: async () => {
         const res = await revertMortgageMonth(mortgageId, yearMonth);
         if (res.success) { toast(`${label} reverted to forecast`); notifyDataChanged(); }
@@ -239,20 +241,20 @@ export default function MortgagePage() {
     {
       label: 'Loan',
       items: [
-        { label: 'Update Euribor rate', icon: 'pi pi-percentage', command: () => setEuriborOpen(true) },
-        { label: 'Make an extra payment', icon: 'pi pi-plus-circle', command: () => setExtraOpen(true) },
-        { label: 'Correct a balance', icon: 'pi pi-sync', command: () => setDriftOpen(true) },
+        { label: 'Update Euribor rate', icon: <Percent size={16} />, command: () => setEuriborOpen(true) },
+        { label: 'Make an extra payment', icon: <CirclePlus size={16} />, command: () => setExtraOpen(true) },
+        { label: 'Correct a balance', icon: <RefreshCw size={16} />, command: () => setDriftOpen(true) },
       ],
     },
     {
       label: 'Members',
-      items: [{ label: 'Manage members', icon: 'pi pi-users', command: () => setMembersOpen(true) }],
+      items: [{ label: 'Manage members', icon: <Users size={16} />, command: () => setMembersOpen(true) }],
     },
     {
       label: 'Data',
       items: [
-        { label: 'Import actual history', icon: 'pi pi-upload', command: () => setImportOpen(true) },
-        { label: 'Delete mortgage', icon: 'pi pi-trash', command: handleDelete },
+        { label: 'Import actual history', icon: <Upload size={16} />, command: () => setImportOpen(true) },
+        { label: 'Delete mortgage', icon: <Trash2 size={16} />, command: handleDelete },
       ],
     },
   ];

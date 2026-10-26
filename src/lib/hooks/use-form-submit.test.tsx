@@ -4,13 +4,13 @@ import { useState } from 'react';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import { useFormSubmit } from './use-form-submit';
 
-/** Mimics PrimeReact InputNumber: the value is committed only on blur. */
+/** Mimics a localized number field: the value is committed only on blur. */
 function CommitOnBlurForm({ onSave }: { onSave: (v: number | null) => void }) {
   const [amount, setAmount] = useState<number | null>(null);
   const onSubmit = useFormSubmit(() => onSave(amount));
   return (
     <form onSubmit={onSubmit}>
-      <span className="p-inputnumber">
+      <span data-commit-on-submit="number">
         <input aria-label="Amount" defaultValue="" onBlur={(e) => setAmount(Number(e.target.value))} />
       </span>
       <input aria-label="Name" defaultValue="" />

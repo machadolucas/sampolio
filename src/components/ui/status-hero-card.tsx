@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo } from 'react';
-import { Card } from 'primereact/card';
+import { Card } from '@/components/ui/card';
 import { useTheme } from '@/components/providers/theme-provider';
 import { formatCurrency, MONTHS } from '@/lib/constants';
 import { isZeroMoney, type HeroSummary } from '@/lib/overview-hero';

@@ -2,26 +2,35 @@
 
 import { useState, useEffect } from 'react';
 import { useSession } from '@/lib/auth-client';
-import { Dialog } from 'primereact/dialog';
-import { DataTable } from 'primereact/datatable';
-import { Column } from 'primereact/column';
-import { Button } from 'primereact/button';
-import { InputText } from 'primereact/inputtext';
-import { Password } from 'primereact/password';
-import { Dropdown } from 'primereact/dropdown';
-import { InputSwitch } from 'primereact/inputswitch';
-import { Tag } from 'primereact/tag';
-import { Card } from 'primereact/card';
-import { Message } from 'primereact/message';
-import { confirmDialog } from 'primereact/confirmdialog';
-import { MdWarning, MdEdit, MdDelete, MdLock, MdAdd, MdCheck, MdPhotoCamera, MdFingerprint } from 'react-icons/md';
+import { Dialog } from '@/components/ui/dialog';
+import { DataTable } from '@/components/ui/datatable';
+import { Column } from '@/components/ui/column';
+import { Button } from '@/components/ui/button';
+import { InputText } from '@/components/ui/input-text';
+import { Password } from '@/components/ui/password';
+import { Dropdown } from '@/components/ui/dropdown';
+import { InputSwitch } from '@/components/ui/input-switch';
+import { Tag } from '@/components/ui/tag';
+import { Card } from '@/components/ui/card';
+import { Message } from '@/components/ui/message';
+import { confirmDialog } from '@/components/ui/confirm-dialog';
+import {
+  MdWarning,
+  MdEdit,
+  MdDelete,
+  MdLock,
+  MdAdd,
+  MdCheck,
+  MdPhotoCamera,
+  MdFingerprint,
+} from 'react-icons/md';
 import { useToast } from '@/components/providers/toast-provider';
 import {
-    getUsers,
-    createUser,
-    updateUser,
-    deleteUser,
-    removeUserPasskeys,
+  getUsers,
+  createUser,
+  updateUser,
+  deleteUser,
+  removeUserPasskeys,
 } from '@/lib/actions/admin';
 import { UserAvatar } from '@/components/ui/user-avatar';
 import { AvatarEditorDialog } from '@/components/ui/avatar-editor-dialog';
@@ -31,350 +40,491 @@ import type { AdminUserRow, PublicUser, UserRole } from '@/types';
 import { formatDate } from '@/lib/constants';
 
 interface UsersModalProps {
-    visible: boolean;
-    onHide: () => void;
+  visible: boolean;
+  onHide: () => void;
 }
 
 export function UsersModal({ visible, onHide }: UsersModalProps) {
-    const { data: session } = useSession();
-    const toast = useToast();
+  const { data: session } = useSession();
+  const toast = useToast();
 
-    const [users, setUsers] = useState<AdminUserRow[]>([]);
-    const [isLoading, setIsLoading] = useState(false);
-    const [error, setError] = useState('');
+  const [users, setUsers] = useState<AdminUserRow[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
 
-    const [dialogVisible, setDialogVisible] = useState(false);
-    const [editingUser, setEditingUser] = useState<PublicUser | null>(null);
-    const [isRemovingPasskeys, setIsRemovingPasskeys] = useState(false);
-    const [formData, setFormData] = useState({
-        name: '',
-        email: '',
-        password: '',
-        role: 'user' as UserRole,
-        isActive: true,
+  const [dialogVisible, setDialogVisible] = useState(false);
+  const [editingUser, setEditingUser] = useState<PublicUser | null>(null);
+  const [isRemovingPasskeys, setIsRemovingPasskeys] = useState(false);
+  const [formData, setFormData] = useState({
+    name: '',
+    email: '',
+    password: '',
+    role: 'user' as UserRole,
+    isActive: true,
+  });
+  const [isSaving, setIsSaving] = useState(false);
+  const [avatarDialogVisible, setAvatarDialogVisible] = useState(false);
+
+  useEffect(() => {
+    if (visible && session?.user?.role === 'admin') {
+      fetchUsers();
+    }
+  }, [visible, session]);
+
+  const fetchUsers = async () => {
+    try {
+      setIsLoading(true);
+      const result = await getUsers();
+      if (result.success && result.data) {
+        setUsers(result.data);
+      } else {
+        setError(result.error || 'Failed to fetch users');
+      }
+    } catch {
+      setError('Failed to fetch users');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const openNewDialog = () => {
+    setEditingUser(null);
+    setFormData({
+      name: '',
+      email: '',
+      password: '',
+      role: 'user',
+      isActive: true,
     });
-    const [isSaving, setIsSaving] = useState(false);
-    const [avatarDialogVisible, setAvatarDialogVisible] = useState(false);
+    setDialogVisible(true);
+  };
 
-    useEffect(() => {
-        if (visible && session?.user?.role === 'admin') {
-            fetchUsers();
+  const openEditDialog = (user: PublicUser) => {
+    setEditingUser(user);
+    setFormData({
+      name: user.name,
+      email: user.email,
+      password: '',
+      role: user.role,
+      isActive: user.isActive,
+    });
+    setDialogVisible(true);
+  };
+
+  const handleSave = async () => {
+    setIsSaving(true);
+    try {
+      if (editingUser) {
+        const updateData: Record<string, unknown> = {
+          name: formData.name,
+          email: formData.email,
+          role: formData.role,
+          isActive: formData.isActive,
+        };
+        if (formData.password) {
+          updateData.password = formData.password;
         }
-    }, [visible, session]);
 
-    const fetchUsers = async () => {
-        try {
-            setIsLoading(true);
-            const result = await getUsers();
-            if (result.success && result.data) {
-                setUsers(result.data);
-            } else {
-                setError(result.error || 'Failed to fetch users');
-            }
-        } catch {
-            setError('Failed to fetch users');
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
-    const openNewDialog = () => {
-        setEditingUser(null);
-        setFormData({
-            name: '',
-            email: '',
-            password: '',
-            role: 'user',
-            isActive: true,
-        });
-        setDialogVisible(true);
-    };
-
-    const openEditDialog = (user: PublicUser) => {
-        setEditingUser(user);
-        setFormData({
-            name: user.name,
-            email: user.email,
-            password: '',
-            role: user.role,
-            isActive: user.isActive,
-        });
-        setDialogVisible(true);
-    };
-
-    const handleSave = async () => {
-        setIsSaving(true);
-        try {
-            if (editingUser) {
-                const updateData: Record<string, unknown> = {
-                    name: formData.name,
-                    email: formData.email,
-                    role: formData.role,
-                    isActive: formData.isActive,
-                };
-                if (formData.password) {
-                    updateData.password = formData.password;
-                }
-
-                const result = await updateUser(editingUser.id, updateData as Parameters<typeof updateUser>[1]);
-
-                if (result.success) {
-                    toast.success('Success', 'User updated successfully');
-                    invalidateUserProfiles([editingUser.id]); // a renamed user shows its new name everywhere
-                    notifyDataChanged();
-                    setDialogVisible(false);
-                    fetchUsers();
-                } else {
-                    toast.error('Error', result.error);
-                }
-            } else {
-                if (!formData.password) {
-                    toast.error('Error', 'Password is required');
-                    setIsSaving(false);
-                    return;
-                }
-
-                const result = await createUser(formData);
-
-                if (result.success) {
-                    toast.success('Success', 'User created successfully');
-                    notifyDataChanged();
-                    setDialogVisible(false);
-                    fetchUsers();
-                } else {
-                    toast.error('Error', result.error);
-                }
-            }
-        } catch {
-            toast.error('Error', 'An error occurred');
-        } finally {
-            setIsSaving(false);
-        }
-    };
-
-    const handleSaveAvatar = async (dataUri: string | null) => {
-        if (!editingUser) return { success: false, error: 'No user selected' };
-        const result = await updateUser(editingUser.id, { avatarDataUri: dataUri });
-        if (result.success) {
-            invalidateUserProfiles([editingUser.id]);
-            notifyDataChanged();
-            if (result.data) setEditingUser(result.data);
-            fetchUsers();
-            toast.success('Photo updated', `${editingUser.name}'s profile picture is set.`);
-        }
-        return result;
-    };
-
-    const avatarBodyTemplate = (user: PublicUser) => (
-        <UserAvatar userId={user.id} name={user.name} avatarUrl={user.avatarUrl} size={32} />
-    );
-
-    const handleDelete = (user: PublicUser) => {
-        confirmDialog({
-            message: `Are you sure you want to delete ${user.name}?`,
-            header: 'Confirm Delete',
-            icon: <MdWarning />,
-            acceptClassName: 'p-button-danger',
-            accept: async () => {
-                try {
-                    const result = await deleteUser(user.id);
-                    if (result.success) {
-                        toast.success('Success', 'User deleted successfully');
-                        notifyDataChanged();
-                        fetchUsers();
-                    } else {
-                        toast.error('Error', result.error);
-                    }
-                } catch {
-                    toast.error('Error', 'Failed to delete user');
-                }
-            },
-        });
-    };
-
-    const editingPasskeyCount = editingUser ? users.find((u) => u.id === editingUser.id)?.passkeyCount ?? 0 : 0;
-
-    const handleRemovePasskeys = (user: PublicUser) => {
-        confirmDialog({
-            message: `Remove all passkeys of ${user.name}? They can still sign in with their password and add new passkeys afterwards.`,
-            header: 'Remove passkeys',
-            icon: <MdWarning />,
-            acceptClassName: 'p-button-danger',
-            acceptLabel: 'Remove passkeys',
-            accept: async () => {
-                setIsRemovingPasskeys(true);
-                try {
-                    const result = await removeUserPasskeys(user.id);
-                    if (result.success) {
-                        toast.success('Passkeys removed', `${result.data?.removed ?? 0} passkey(s) removed for ${user.name}.`);
-                        fetchUsers();
-                    } else {
-                        toast.error('Error', result.error);
-                    }
-                } finally {
-                    setIsRemovingPasskeys(false);
-                }
-            },
-        });
-    };
-
-    const passkeyBodyTemplate = (user: AdminUserRow) => (
-        <span className="inline-flex items-center gap-1" title={`${user.passkeyCount} passkey(s)`}>
-            <MdFingerprint aria-hidden="true" />
-            {user.passkeyCount}
-        </span>
-    );
-
-    const roleBodyTemplate = (user: PublicUser) => (
-        <Tag value={user.role} severity={user.role === 'admin' ? 'info' : 'secondary'} />
-    );
-
-    const statusBodyTemplate = (user: PublicUser) => (
-        <Tag value={user.isActive ? 'Active' : 'Inactive'} severity={user.isActive ? 'success' : 'danger'} />
-    );
-
-    const actionsBodyTemplate = (user: PublicUser) => {
-        const isCurrentUser = user.id === session?.user?.id;
-        return (
-            <div className="flex gap-2">
-                <Button icon={<MdEdit />} severity="secondary" text aria-label={`Edit ${user.name}`} onClick={() => openEditDialog(user)} />
-                <Button icon={<MdDelete />} severity="danger" text disabled={isCurrentUser} aria-label={`Delete ${user.name}`} onClick={() => handleDelete(user)} />
-            </div>
+        const result = await updateUser(
+          editingUser.id,
+          updateData as Parameters<typeof updateUser>[1],
         );
-    };
 
-    const roleOptions = [
-        { label: 'User', value: 'user' },
-        { label: 'Admin', value: 'admin' },
-    ];
+        if (result.success) {
+          toast.success('Success', 'User updated successfully');
+          invalidateUserProfiles([editingUser.id]); // a renamed user shows its new name everywhere
+          notifyDataChanged();
+          setDialogVisible(false);
+          fetchUsers();
+        } else {
+          toast.error('Error', result.error);
+        }
+      } else {
+        if (!formData.password) {
+          toast.error('Error', 'Password is required');
+          setIsSaving(false);
+          return;
+        }
 
-    const isAdmin = session?.user?.role === 'admin';
+        const result = await createUser(formData);
 
+        if (result.success) {
+          toast.success('Success', 'User created successfully');
+          notifyDataChanged();
+          setDialogVisible(false);
+          fetchUsers();
+        } else {
+          toast.error('Error', result.error);
+        }
+      }
+    } catch {
+      toast.error('Error', 'An error occurred');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleSaveAvatar = async (dataUri: string | null) => {
+    if (!editingUser) return { success: false, error: 'No user selected' };
+    const result = await updateUser(editingUser.id, { avatarDataUri: dataUri });
+    if (result.success) {
+      invalidateUserProfiles([editingUser.id]);
+      notifyDataChanged();
+      if (result.data) setEditingUser(result.data);
+      fetchUsers();
+      toast.success(
+        'Photo updated',
+        `${editingUser.name}'s profile picture is set.`,
+      );
+    }
+    return result;
+  };
+
+  const avatarBodyTemplate = (user: PublicUser) => (
+    <UserAvatar
+      userId={user.id}
+      name={user.name}
+      avatarUrl={user.avatarUrl}
+      size={32}
+    />
+  );
+
+  const handleDelete = (user: PublicUser) => {
+    confirmDialog({
+      message: `Are you sure you want to delete ${user.name}?`,
+      header: 'Confirm Delete',
+      icon: <MdWarning />,
+      severity: 'danger',
+      accept: async () => {
+        try {
+          const result = await deleteUser(user.id);
+          if (result.success) {
+            toast.success('Success', 'User deleted successfully');
+            notifyDataChanged();
+            fetchUsers();
+          } else {
+            toast.error('Error', result.error);
+          }
+        } catch {
+          toast.error('Error', 'Failed to delete user');
+        }
+      },
+    });
+  };
+
+  const editingPasskeyCount = editingUser
+    ? (users.find((u) => u.id === editingUser.id)?.passkeyCount ?? 0)
+    : 0;
+
+  const handleRemovePasskeys = (user: PublicUser) => {
+    confirmDialog({
+      message: `Remove all passkeys of ${user.name}? They can still sign in with their password and add new passkeys afterwards.`,
+      header: 'Remove passkeys',
+      icon: <MdWarning />,
+      severity: 'danger',
+      acceptLabel: 'Remove passkeys',
+      accept: async () => {
+        setIsRemovingPasskeys(true);
+        try {
+          const result = await removeUserPasskeys(user.id);
+          if (result.success) {
+            toast.success(
+              'Passkeys removed',
+              `${result.data?.removed ?? 0} passkey(s) removed for ${user.name}.`,
+            );
+            fetchUsers();
+          } else {
+            toast.error('Error', result.error);
+          }
+        } finally {
+          setIsRemovingPasskeys(false);
+        }
+      },
+    });
+  };
+
+  const passkeyBodyTemplate = (user: AdminUserRow) => (
+    <span
+      className="inline-flex items-center gap-1"
+      title={`${user.passkeyCount} passkey(s)`}
+    >
+      <MdFingerprint aria-hidden="true" />
+      {user.passkeyCount}
+    </span>
+  );
+
+  const roleBodyTemplate = (user: PublicUser) => (
+    <Tag
+      value={user.role}
+      severity={user.role === 'admin' ? 'info' : 'secondary'}
+    />
+  );
+
+  const statusBodyTemplate = (user: PublicUser) => (
+    <Tag
+      value={user.isActive ? 'Active' : 'Inactive'}
+      severity={user.isActive ? 'success' : 'danger'}
+    />
+  );
+
+  const actionsBodyTemplate = (user: PublicUser) => {
+    const isCurrentUser = user.id === session?.user?.id;
     return (
-        <Dialog
-            header="User Management"
-            visible={visible}
-            onHide={onHide}
-            style={{ width: '95vw', maxWidth: '1200px' }}
-            maximizable
-            modal
-            dismissableMask
-        >
-
-            {!isAdmin ? (
-                <div className="text-center py-8">
-                    <MdLock size={36} className="text-gray-400 mb-4" />
-                    <p className="text-gray-600 dark:text-gray-400">Admin access required</p>
-                </div>
-            ) : (
-                <div className="space-y-4">
-                    <div className="flex items-center justify-between">
-                        <p className="text-gray-600 dark:text-gray-400">Manage user accounts and permissions</p>
-                        <Button label="New User" icon={<MdAdd />} onClick={openNewDialog} />
-                    </div>
-
-                    {error && <Message severity="error" text={error} className="w-full" />}
-
-                    <Card>
-                        <DataTable
-                            value={users}
-                            loading={isLoading}
-                            emptyMessage="No users found"
-                            paginator
-                            rows={10}
-                            rowsPerPageOptions={[5, 10, 25]}
-                            stripedRows
-                        >
-                            <Column header="" body={avatarBodyTemplate} style={{ width: '56px' }} />
-                            <Column field="name" header="Name" sortable />
-                            <Column field="email" header="Email" sortable />
-                            <Column field="role" header="Role" body={roleBodyTemplate} sortable />
-                            <Column field="isActive" header="Status" body={statusBodyTemplate} sortable />
-                            <Column field="passkeyCount" header="Passkeys" body={passkeyBodyTemplate} sortable />
-                            <Column field="createdAt" header="Created" sortable body={(user) => formatDate(user.createdAt)} />
-                            <Column body={actionsBodyTemplate} header="Actions" style={{ width: '120px' }} />
-                        </DataTable>
-                    </Card>
-                </div>
-            )}
-
-            {/* Edit/Create Dialog */}
-            <Dialog
-                visible={dialogVisible}
-                onHide={() => setDialogVisible(false)}
-                header={editingUser ? 'Edit User' : 'New User'}
-                style={{ width: '450px' }}
-                modal
-            >
-                <div className="flex flex-col gap-4 pt-4">
-                    {editingUser && (
-                        <div className="flex items-center gap-3">
-                            <UserAvatar userId={editingUser.id} name={editingUser.name} avatarUrl={editingUser.avatarUrl} size={48} />
-                            <Button
-                                type="button"
-                                label="Change photo"
-                                icon={<MdPhotoCamera />}
-                                outlined
-                                onClick={() => setAvatarDialogVisible(true)}
-                            />
-                        </div>
-                    )}
-                    <div className="flex flex-col gap-2">
-                        <label htmlFor="user-form-name" className="font-medium">Name</label>
-                        <InputText id="user-form-name" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} className="w-full" />
-                    </div>
-                    <div className="flex flex-col gap-2">
-                        <label htmlFor="user-form-email" className="font-medium">Email</label>
-                        <InputText id="user-form-email" type="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} className="w-full" />
-                    </div>
-                    <div className="flex flex-col gap-2">
-                        <label htmlFor="user-form-password" className="font-medium">{editingUser ? 'New Password (leave empty to keep)' : 'Password'}</label>
-                        <Password inputId="user-form-password" value={formData.password} onChange={(e) => setFormData({ ...formData, password: e.target.value })} className="w-full" inputClassName="w-full" toggleMask feedback={!editingUser} />
-                        <small className="text-xs text-gray-500 dark:text-gray-400">8–128 characters, with an uppercase and a lowercase letter, a number and a symbol.</small>
-                    </div>
-                    <div className="flex flex-col gap-2">
-                        <label htmlFor="user-form-role" className="font-medium">Role</label>
-                        <Dropdown inputId="user-form-role" value={formData.role} options={roleOptions} onChange={(e) => setFormData({ ...formData, role: e.value })} className="w-full" disabled={editingUser?.id === session?.user?.id} />
-                    </div>
-                    {editingUser && (
-                        <div className="flex items-center gap-3">
-                            <InputSwitch inputId="user-form-active" checked={formData.isActive} onChange={(e) => setFormData({ ...formData, isActive: e.value })} disabled={editingUser?.id === session?.user?.id} />
-                            <label htmlFor="user-form-active" className="font-medium">Active</label>
-                        </div>
-                    )}
-                    {editingUser && (
-                        <div className="flex items-center justify-between gap-3">
-                            <span className="font-medium inline-flex items-center gap-2">
-                                <MdFingerprint aria-hidden="true" /> Passkeys: {editingPasskeyCount}
-                            </span>
-                            <Button
-                                type="button"
-                                label="Remove passkeys"
-                                severity="danger"
-                                outlined
-                                disabled={editingPasskeyCount === 0}
-                                loading={isRemovingPasskeys}
-                                onClick={() => handleRemovePasskeys(editingUser)}
-                            />
-                        </div>
-                    )}
-                    <div className="flex justify-end gap-2 mt-4">
-                        <Button label="Cancel" severity="secondary" onClick={() => setDialogVisible(false)} />
-                        <Button label={editingUser ? 'Update' : 'Create'} icon={<MdCheck />} loading={isSaving} onClick={handleSave} />
-                    </div>
-                </div>
-
-                {editingUser && (
-                    <AvatarEditorDialog
-                        visible={avatarDialogVisible}
-                        onHide={() => setAvatarDialogVisible(false)}
-                        currentAvatarUrl={editingUser.avatarUrl}
-                        userName={editingUser.name}
-                        userId={editingUser.id}
-                        onSave={handleSaveAvatar}
-                    />
-                )}
-            </Dialog>
-        </Dialog>
+      <div className="flex gap-2">
+        <Button
+          icon={<MdEdit />}
+          severity="secondary"
+          text
+          aria-label={`Edit ${user.name}`}
+          onClick={() => openEditDialog(user)}
+        />
+        <Button
+          icon={<MdDelete />}
+          severity="danger"
+          text
+          disabled={isCurrentUser}
+          aria-label={`Delete ${user.name}`}
+          onClick={() => handleDelete(user)}
+        />
+      </div>
     );
+  };
+
+  const roleOptions = [
+    { label: 'User', value: 'user' },
+    { label: 'Admin', value: 'admin' },
+  ];
+
+  const isAdmin = session?.user?.role === 'admin';
+
+  return (
+    <Dialog
+      header="User Management"
+      visible={visible}
+      onHide={onHide}
+      style={{ width: '95vw', maxWidth: '1200px' }}
+      maximizable
+      modal
+      dismissableMask
+    >
+      {!isAdmin ? (
+        <div className="text-center py-8">
+          <MdLock size={36} className="text-gray-400 mb-4" />
+          <p className="text-gray-600 dark:text-gray-400">
+            Admin access required
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <p className="text-gray-600 dark:text-gray-400">
+              Manage user accounts and permissions
+            </p>
+            <Button label="New User" icon={<MdAdd />} onClick={openNewDialog} />
+          </div>
+
+          {error && (
+            <Message severity="error" text={error} className="w-full" />
+          )}
+
+          <Card>
+            <DataTable
+              value={users}
+              loading={isLoading}
+              emptyMessage="No users found"
+              paginator
+              rows={10}
+              rowsPerPageOptions={[5, 10, 25]}
+              stripedRows
+            >
+              <Column
+                header={<span className="sr-only">Profile picture</span>}
+                body={avatarBodyTemplate}
+                style={{ width: '56px' }}
+              />
+              <Column field="name" header="Name" sortable />
+              <Column field="email" header="Email" sortable />
+              <Column
+                field="role"
+                header="Role"
+                body={roleBodyTemplate}
+                sortable
+              />
+              <Column
+                field="isActive"
+                header="Status"
+                body={statusBodyTemplate}
+                sortable
+              />
+              <Column
+                field="passkeyCount"
+                header="Passkeys"
+                body={passkeyBodyTemplate}
+                sortable
+              />
+              <Column
+                field="createdAt"
+                header="Created"
+                sortable
+                body={(user) => formatDate(user.createdAt)}
+              />
+              <Column
+                body={actionsBodyTemplate}
+                header="Actions"
+                style={{ width: '120px' }}
+              />
+            </DataTable>
+          </Card>
+        </div>
+      )}
+
+      {/* Edit/Create Dialog */}
+      <Dialog
+        visible={dialogVisible}
+        onHide={() => setDialogVisible(false)}
+        header={editingUser ? 'Edit User' : 'New User'}
+        style={{ width: '450px' }}
+        modal
+      >
+        <div className="flex flex-col gap-4 pt-4">
+          {editingUser && (
+            <div className="flex items-center gap-3">
+              <UserAvatar
+                userId={editingUser.id}
+                name={editingUser.name}
+                avatarUrl={editingUser.avatarUrl}
+                size={48}
+              />
+              <Button
+                type="button"
+                label="Change photo"
+                icon={<MdPhotoCamera />}
+                outlined
+                onClick={() => setAvatarDialogVisible(true)}
+              />
+            </div>
+          )}
+          <div className="flex flex-col gap-2">
+            <label htmlFor="user-form-name" className="font-medium">
+              Name
+            </label>
+            <InputText
+              id="user-form-name"
+              value={formData.name}
+              onChange={(e) =>
+                setFormData({ ...formData, name: e.target.value })
+              }
+              className="w-full"
+            />
+          </div>
+          <div className="flex flex-col gap-2">
+            <label htmlFor="user-form-email" className="font-medium">
+              Email
+            </label>
+            <InputText
+              id="user-form-email"
+              type="email"
+              value={formData.email}
+              onChange={(e) =>
+                setFormData({ ...formData, email: e.target.value })
+              }
+              className="w-full"
+            />
+          </div>
+          <div className="flex flex-col gap-2">
+            <label htmlFor="user-form-password" className="font-medium">
+              {editingUser ? 'New Password (leave empty to keep)' : 'Password'}
+            </label>
+            <Password
+              inputId="user-form-password"
+              value={formData.password}
+              onChange={(e) =>
+                setFormData({ ...formData, password: e.target.value })
+              }
+              className="w-full"
+              inputClassName="w-full"
+              toggleMask
+              feedback={!editingUser}
+            />
+            <small className="text-xs text-gray-500 dark:text-gray-400">
+              8–128 characters, with an uppercase and a lowercase letter, a
+              number and a symbol.
+            </small>
+          </div>
+          <div className="flex flex-col gap-2">
+            <label htmlFor="user-form-role" className="font-medium">
+              Role
+            </label>
+            <Dropdown
+              inputId="user-form-role"
+              value={formData.role}
+              options={roleOptions}
+              onChange={(e) => {
+                if (e.value !== null)
+                  setFormData({ ...formData, role: e.value });
+              }}
+              className="w-full"
+              disabled={editingUser?.id === session?.user?.id}
+            />
+          </div>
+          {editingUser && (
+            <div className="flex items-center gap-3">
+              <InputSwitch
+                inputId="user-form-active"
+                checked={formData.isActive}
+                onChange={(e) =>
+                  setFormData({ ...formData, isActive: e.value })
+                }
+                disabled={editingUser?.id === session?.user?.id}
+              />
+              <label htmlFor="user-form-active" className="font-medium">
+                Active
+              </label>
+            </div>
+          )}
+          {editingUser && (
+            <div className="flex items-center justify-between gap-3">
+              <span className="font-medium inline-flex items-center gap-2">
+                <MdFingerprint aria-hidden="true" /> Passkeys:{' '}
+                {editingPasskeyCount}
+              </span>
+              <Button
+                type="button"
+                label="Remove passkeys"
+                severity="danger"
+                outlined
+                disabled={editingPasskeyCount === 0}
+                loading={isRemovingPasskeys}
+                onClick={() => handleRemovePasskeys(editingUser)}
+              />
+            </div>
+          )}
+          <div className="flex justify-end gap-2 mt-4">
+            <Button
+              label="Cancel"
+              severity="secondary"
+              onClick={() => setDialogVisible(false)}
+            />
+            <Button
+              label={editingUser ? 'Update' : 'Create'}
+              icon={<MdCheck />}
+              loading={isSaving}
+              onClick={handleSave}
+            />
+          </div>
+        </div>
+
+        {editingUser && (
+          <AvatarEditorDialog
+            visible={avatarDialogVisible}
+            onHide={() => setAvatarDialogVisible(false)}
+            currentAvatarUrl={editingUser.avatarUrl}
+            userName={editingUser.name}
+            userId={editingUser.id}
+            onSave={handleSaveAvatar}
+          />
+        )}
+      </Dialog>
+    </Dialog>
+  );
 }

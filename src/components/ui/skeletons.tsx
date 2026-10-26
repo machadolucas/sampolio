@@ -1,6 +1,6 @@
 'use client';
 
-import { Skeleton } from 'primereact/skeleton';
+import { Skeleton } from '@/components/ui/skeleton';
 import { DelayedSkeleton } from './delayed-loading';
 
 /**

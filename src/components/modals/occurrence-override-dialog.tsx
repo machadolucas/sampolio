@@ -1,14 +1,15 @@
 'use client';
+import { LoaderCircle as UiSpinnerIcon, Undo2 as UiUndoIcon } from 'lucide-react';
 
 import { useState, useEffect } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Dialog } from 'primereact/dialog';
-import { Button } from 'primereact/button';
-import { InputText } from 'primereact/inputtext';
-import { InputNumber } from 'primereact/inputnumber';
-import { InputSwitch } from 'primereact/inputswitch';
-import { confirmDialog } from 'primereact/confirmdialog';
+import { Dialog } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { InputText } from '@/components/ui/input-text';
+import { InputNumber } from '@/components/ui/input-number';
+import { InputSwitch } from '@/components/ui/input-switch';
+import { confirmDialog } from '@/components/ui/confirm-dialog';
 import { useTheme } from '@/components/providers/theme-provider';
 import { useToast } from '@/components/providers/toast-provider';
 import { formatYearMonth } from '@/lib/constants';
@@ -146,8 +147,8 @@ export function OccurrenceOverrideDialog({
         confirmDialog({
             message: `Remove the override for ${formatYearMonth(yearMonth)}? The original recurring item values will be used.`,
             header: 'Restore Original',
-            icon: 'pi pi-undo',
-            acceptClassName: 'p-button-danger',
+            icon: <UiUndoIcon size={16}/>,
+            severity: 'danger',
             accept: async () => {
                 setIsSaving(true);
                 try {
@@ -219,7 +220,7 @@ export function OccurrenceOverrideDialog({
             >
                 {isLoading ? (
                     <div className="flex items-center justify-center py-8">
-                        <i className="pi pi-spin pi-spinner text-2xl" />
+                        <UiSpinnerIcon className="animate-spin" size={24}/>
                     </div>
                 ) : recurringItem ? (
                     <div className="space-y-4">

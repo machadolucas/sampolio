@@ -1,8 +1,8 @@
 'use client';
 
-import { Tag } from 'primereact/tag';
-import { Button } from 'primereact/button';
-import { ProgressBar } from 'primereact/progressbar';
+import { Tag } from '@/components/ui/tag';
+import { Button } from '@/components/ui/button';
+import { ProgressBar } from '@/components/ui/progress-bar';
 import { MdFlag, MdEdit, MdArchive, MdUnarchive, MdDelete } from 'react-icons/md';
 import { formatCurrency, formatYearMonth } from '@/lib/constants';
 import { useTheme } from '@/components/providers/theme-provider';
@@ -68,22 +68,22 @@ export function GoalCard({
         {injects && <Tag value="In cashflow" severity="info" className="text-xs !py-0.5 !px-1.5" />}
       </div>
 
-      <p className="text-sm opacity-60 mt-1">
+      <p className="text-sm text-muted-foreground mt-1">
         {TRACKING_LABELS[goal.trackingMethod]}
         {goal.targetDate && <> · by {formatYearMonth(goal.targetDate)}</>}
       </p>
-      {goal.description && <p className="text-sm opacity-70 mt-1 line-clamp-2">{goal.description}</p>}
+      {goal.description && <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{goal.description}</p>}
 
       <div className="mt-3">
         <div className="flex items-baseline justify-between text-sm mb-1">
           <span className="font-medium">{formatCurrency(progress.currentAmount, goal.currency)}</span>
-          <span className="opacity-60">of {formatCurrency(goal.targetAmount, goal.currency)} · {percent}%</span>
+          <span className="text-muted-foreground">of {formatCurrency(goal.targetAmount, goal.currency)} · {percent}%</span>
         </div>
         <ProgressBar value={Math.min(100, percent)} showValue={false} style={{ height: '0.5rem' }} />
       </div>
 
       {plan && plan.competingGoalIds.length > 0 && (
-        <p className="text-xs opacity-60 mt-2">
+        <p className="text-xs text-muted-foreground mt-2">
           After {plan.competingGoalIds.length} other goal{plan.competingGoalIds.length > 1 ? 's' : ''}.
         </p>
       )}
@@ -91,15 +91,15 @@ export function GoalCard({
       {warning ? (
         <p className="text-xs mt-2 text-amber-500">{warning}</p>
       ) : progress.projectedDate ? (
-        <p className="text-xs opacity-60 mt-2">Projected to reach the target in {formatYearMonth(progress.projectedDate)}.</p>
+        <p className="text-xs text-muted-foreground mt-2">Projected to reach the target in {formatYearMonth(progress.projectedDate)}.</p>
       ) : goal.trackingMethod !== 'manual' && progress.percentComplete < 100 ? (
-        <p className={`text-xs mt-2 ${goal.targetDate && !progress.onTrack ? 'text-amber-500' : 'opacity-60'}`}>
+        <p className={`text-xs mt-2 ${goal.targetDate && !progress.onTrack ? 'text-amber-500' : 'text-muted-foreground'}`}>
           Not reached within the projection horizon.
         </p>
       ) : null}
 
       {plan && plan.requiredMonthlySaving !== null && plan.requiredMonthlySaving > 0 && goal.targetDate && (
-        <p className="text-xs opacity-60 mt-1">
+        <p className="text-xs text-muted-foreground mt-1">
           Save ~{formatCurrency(plan.requiredMonthlySaving, goal.currency)}/mo to reach it by {formatYearMonth(goal.targetDate)}.
         </p>
       )}

@@ -1,7 +1,8 @@
 'use client';
+import { X as UiCloseIcon } from 'lucide-react';
 
 import React from 'react';
-import { Button } from 'primereact/button';
+import { Button } from '@/components/ui/button';
 import { useTheme } from '@/components/providers/theme-provider';
 
 export type AlertBannerSeverity = 'info' | 'warn' | 'error' | 'success';
@@ -9,7 +10,7 @@ export type AlertBannerSeverity = 'info' | 'warn' | 'error' | 'success';
 interface AlertBannerAction {
     label: string;
     onClick: () => void;
-    /** PrimeReact button severity; defaults to match the banner severity. */
+    /** Shared button severity; defaults to match the banner severity. */
     severity?: 'success' | 'info' | 'warning' | 'danger' | 'secondary';
 }
 
@@ -38,7 +39,7 @@ const DARK_CLASSES: Record<AlertBannerSeverity, string> = {
 };
 
 const ACTION_SEVERITY: Record<AlertBannerSeverity, AlertBannerAction['severity']> = {
-    info: undefined, // PrimeReact default (primary)
+    info: undefined, // Default primary tone
     warn: 'warning',
     error: 'danger',
     success: 'success',
@@ -69,7 +70,7 @@ export function AlertBanner({ severity = 'warn', icon, children, action, onDismi
                 )}
                 {onDismiss && (
                     <Button
-                        icon="pi pi-times"
+                        icon={<UiCloseIcon size={16}/>}
                         rounded
                         text
                         size="small"

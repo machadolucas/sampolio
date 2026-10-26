@@ -82,7 +82,7 @@ A self-hosted personal finance planning tool that replaces budgeting spreadsheet
 - **Onboarding Wizard**: Guided 5-step setup for first-time users (account, income, expenses)
 - **Command Palette**: Quick access to any action via keyboard (Cmd+K)
 - **Keyboard Shortcuts**: Cmd+I (add income), Cmd+E (add expense), Cmd+M (monthly check-in / reconcile)
-- **Dark/Light Theme**: System-wide toggle between custom forest-green light/dark themes with translucent liquid-glass chrome surfaces (generated from PrimeReact's Lara themes plus a hand-tuned override layer)
+- **Dark/Light Theme**: Light/dark material tokens, forest-green accent, translucent navigation and opaque financial content; device-local Reduce transparency setting
 - **Simple/Advanced Display Mode**: Choose during onboarding (or later in Settings) how much of the app surfaces — Simple mode slims every nav surface to the core pages and uses plain-language labels, with everything else still reachable from Home's feature grid
 - **Interactive Month Navigation**: Scrollable month strip for quick date navigation in cashflow view
 - **Data Maintenance**: Prune accumulated reconciliation snapshots/sessions from Settings → Data & storage (preview then compact); projections stay byte-identical and mortgage data is never touched
@@ -512,12 +512,12 @@ docker run -p 3999:3999 \
 
 - **Framework**: Next.js 16 (App Router, Server Actions)
 - **Language**: TypeScript (strict mode)
-- **Authentication**: Better Auth 1.7.5 (DB sessions, email + password, passkeys via `@better-auth/passkey`) on SQLCipher (`better-sqlite3-multiple-ciphers` + Drizzle ORM)
-- **UI Components**: PrimeReact with PrimeIcons
+- **Authentication**: Better Auth 1.7.12 (DB sessions, email + password, passkeys via `@better-auth/passkey`) on SQLCipher (`better-sqlite3-multiple-ciphers` + Drizzle ORM)
+- **UI Components**: App-owned shadcn/Base UI controls, TanStack Table v9, DayPicker v10
 - **Styling**: Tailwind CSS v4
-- **Icons**: PrimeIcons, Lucide React, React Icons
+- **Icons**: Lucide React, React Icons
 - **Forms**: React Hook Form + Zod validation
-- **Charts**: ECharts (via echarts-for-react), Chart.js
+- **Charts**: ECharts (via echarts-for-react), Chart.js (via react-chartjs-2)
 - **Date Handling**: date-fns
 - **Encryption**: Node.js crypto (AES-256-GCM, HKDF-SHA256 with a legacy PBKDF2 read fallback)
 - **Password Hashing**: scrypt (Better Auth); bcryptjs only verifies legacy hashes
@@ -535,6 +535,7 @@ docker run -p 3999:3999 \
 | `pnpm test` | Run the test suite (Vitest) |
 | `pnpm test:watch` | Run tests in watch mode |
 | `pnpm test:coverage` | Run tests with coverage report |
+| `pnpm test:e2e:production` | Guarded synthetic production build + Chromium acceptance suite; clean isolated worktree required |
 | `./scripts/server-deploy.sh` | Install deps + build in place on the server (`--pull` to git pull first, `--run` to start after) |
 | `./scripts/run-sampolio.sh` | Run the production server in the foreground |
 | `./scripts/install-launchd.sh` | Install/reload macOS auto-start (launchd LaunchAgent); `SAMPOLIO_LAUNCHD_DOMAIN=system` prepares a system LaunchDaemon instead |

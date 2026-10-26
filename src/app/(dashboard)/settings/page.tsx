@@ -1,20 +1,21 @@
 'use client';
+import { TriangleAlert as UiWarningIcon } from 'lucide-react';
 
 import { useState, useEffect, useRef, Suspense, useId } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useSession } from '@/lib/auth-client';
-import { Card } from 'primereact/card';
-import { Button } from 'primereact/button';
-import { InputSwitch } from 'primereact/inputswitch';
-import { InputText } from 'primereact/inputtext';
-import { InputNumber } from 'primereact/inputnumber';
-import { Chip } from 'primereact/chip';
-import { Divider } from 'primereact/divider';
-import { Message } from 'primereact/message';
-import { TabView, TabPanel } from 'primereact/tabview';
-import { confirmDialog } from 'primereact/confirmdialog';
-import { Checkbox } from 'primereact/checkbox';
-import { Dialog } from 'primereact/dialog';
+import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { InputSwitch } from '@/components/ui/input-switch';
+import { InputText } from '@/components/ui/input-text';
+import { InputNumber } from '@/components/ui/input-number';
+import { Chip } from '@/components/ui/chip';
+import { Divider } from '@/components/ui/divider';
+import { Message } from '@/components/ui/message';
+import { TabView, TabPanel } from '@/components/ui/tab-view';
+import { confirmDialog } from '@/components/ui/confirm-dialog';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Dialog } from '@/components/ui/dialog';
 import { useTheme } from '@/components/providers/theme-provider';
 import { useAppContext } from '@/components/layout/app-layout';
 import { useToast } from '@/components/providers/toast-provider';
@@ -65,7 +66,7 @@ function SettingsPageInner() {
     // Reactive so a `?tab=…` deep-link switches the tab even when we're already
     // on /settings (e.g. the user-menu "Account" item navigating in place).
     const searchParams = useSearchParams();
-    const { theme, toggleTheme } = useTheme();
+    const { theme, toggleTheme, reducedTransparency, setReducedTransparency } = useTheme();
     const appContext = useAppContext();
     const isDark = theme === 'dark';
     const isAdmin = session?.user?.role === 'admin';
@@ -278,8 +279,8 @@ function SettingsPageInner() {
         if (importReplaceMode) {
             confirmDialog({
                 header: 'Replace all data?',
-                icon: 'pi pi-exclamation-triangle',
-                acceptClassName: 'p-button-danger',
+                icon: <UiWarningIcon size={16}/>,
+                severity: 'danger',
                 acceptLabel: 'Delete and replace',
                 message: importCandidate.hasTrips
                     ? 'This deletes ALL your current accounts, items, investments, debts, receivables, goals, budgets, trips and reconciliation history, then restores the backup. It cannot be undone.'
@@ -310,10 +311,10 @@ function SettingsPageInner() {
         confirmDialog({
             header: 'Remove old history?',
             message: `Remove ${total} old history record(s)? Your latest balances and all forecasts stay the same. This cannot be undone.`,
-            icon: 'pi pi-exclamation-triangle',
+            icon: <UiWarningIcon size={16}/>,
             acceptLabel: 'Remove',
             rejectLabel: 'Cancel',
-            acceptClassName: 'p-button-danger',
+            severity: 'danger',
             accept: async () => {
                 setIsCompacting(true);
                 setCompactMessage(null);
@@ -376,12 +377,16 @@ function SettingsPageInner() {
             <h2 className={heading}>Appearance</h2>
             <div className="flex items-center justify-between">
                 <div>
-                    <label htmlFor="settings-dark-mode" className={`block ${isDark ? 'text-gray-200' : 'text-gray-700'}`}>Dark Mode</label>
+                    <label htmlFor={`${uid}-settings-dark-mode`} className={`block ${isDark ? 'text-gray-200' : 'text-gray-700'}`}>Dark Mode</label>
                     <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
                         Use dark theme for the interface
                     </p>
                 </div>
-                <InputSwitch inputId="settings-dark-mode" checked={isDark} onChange={toggleTheme} />
+                <InputSwitch inputId={`${uid}-settings-dark-mode`} checked={isDark} onChange={toggleTheme} />
+            </div>
+            <div className="mt-4 flex items-center justify-between gap-4 border-t border-border pt-4">
+                <div><label htmlFor={`${uid}-settings-reduce-transparency`} className="block">Reduce transparency</label><p className="text-sm text-muted-foreground">Use solid surfaces on this device for clearer contrast.</p></div>
+                <InputSwitch inputId={`${uid}-settings-reduce-transparency`} checked={reducedTransparency} onChange={event => setReducedTransparency(event.value)}/>
             </div>
         </Card>
     );
@@ -391,14 +396,14 @@ function SettingsPageInner() {
             <h2 className={heading}>Reminders</h2>
             <div className="flex items-center justify-between gap-4">
                 <div className="min-w-0 flex-1">
-                    <label htmlFor="settings-checkin-reminders" className={`block ${isDark ? 'text-gray-200' : 'text-gray-700'}`}>Monthly check-in reminders</label>
+                    <label htmlFor={`${uid}-settings-checkin-reminders`} className={`block ${isDark ? 'text-gray-200' : 'text-gray-700'}`}>Monthly check-in reminders</label>
                     <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
                         Show the &quot;time to check in&quot; banner on Overview each month. With bank sync
                         keeping balances current, you may only need occasional manual check-ins (e.g. investments).
                     </p>
                 </div>
                 <InputSwitch
-                    inputId="settings-checkin-reminders"
+                    inputId={`${uid}-settings-checkin-reminders`}
                     className="shrink-0"
                     checked={checkInReminders}
                     onChange={async (e) => {
@@ -416,9 +421,9 @@ function SettingsPageInner() {
                 />
             </div>
             {/* Sub-toggle: local device notification. Only meaningful while reminders are on. */}
-            <div className={`flex items-center justify-between gap-4 mt-4 pl-4 border-l-2 ${isDark ? 'border-gray-700' : 'border-gray-200'} ${!checkInReminders ? 'opacity-50' : ''}`}>
+            <div className={`flex items-center justify-between gap-4 mt-4 pl-4 border-l-2 ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
                 <div className="min-w-0 flex-1">
-                    <label htmlFor="settings-checkin-notifications" className={`block ${isDark ? 'text-gray-200' : 'text-gray-700'}`}>Also notify on this device</label>
+                    <label htmlFor={`${uid}-settings-checkin-notifications`} className={`block ${isDark ? 'text-gray-200' : 'text-gray-700'}`}>Also notify on this device</label>
                     <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
                         When a monthly check-in is due, show a notification on this device the next time
                         you open the app. Uses the browser&apos;s notification permission — nothing is sent
@@ -426,7 +431,7 @@ function SettingsPageInner() {
                     </p>
                 </div>
                 <InputSwitch
-                    inputId="settings-checkin-notifications"
+                    inputId={`${uid}-settings-checkin-notifications`}
                     className="shrink-0"
                     disabled={!checkInReminders}
                     checked={checkInNotifications}
@@ -566,7 +571,7 @@ function SettingsPageInner() {
                                 type="button"
                                 key={cat}
                                 aria-label={`Restore ${cat}`}
-                                className="p-chip opacity-50 cursor-pointer hover:opacity-80 transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500"
+                                className="ui-badge min-h-11 border border-dashed cursor-pointer text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500"
                                 onClick={() => setRemovedDefaults(prev => prev.filter(c => c !== cat))}
                             >
                                 <span className="p-chip-text">{cat}</span>
@@ -815,12 +820,12 @@ function SettingsPageInner() {
             <div className="space-y-4">
                 <div className="flex items-center justify-between gap-4">
                     <div className="min-w-0 flex-1">
-                        <label htmlFor="settings-self-signup" className={`block ${isDark ? 'text-gray-200' : 'text-gray-700'}`}>Allow Self-Signup</label>
+                        <label htmlFor={`${uid}-settings-self-signup`} className={`block ${isDark ? 'text-gray-200' : 'text-gray-700'}`}>Allow Self-Signup</label>
                         <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
                             Enable new users to register without admin approval
                         </p>
                     </div>
-                    <InputSwitch inputId="settings-self-signup" className="shrink-0" checked={selfSignupEnabled} onChange={(e) => setSelfSignupEnabled(e.value)} />
+                    <InputSwitch inputId={`${uid}-settings-self-signup`} className="shrink-0" checked={selfSignupEnabled} onChange={(e) => setSelfSignupEnabled(e.value)} />
                 </div>
                 <Divider />
                 <div className="flex items-center justify-between gap-4">
@@ -947,7 +952,7 @@ function SettingsPageInner() {
     );
 
     return (
-        <div className="space-y-4 lg:space-y-6 max-w-3xl py-4 mx-auto">
+        <div data-display-mode={isSimple ? 'simple' : 'advanced'} className="space-y-4 lg:space-y-6 max-w-3xl py-4 mx-auto">
             {importDialog}
             {/* Header */}
             <div>

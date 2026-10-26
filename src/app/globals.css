@@ -1,176 +1,782 @@
-@layer theme, base, primereact, components, utilities;
-
-@import "tailwindcss";
-@import 'primereact/resources/primereact.min.css';
-@import 'primeicons/primeicons.css';
-
-:root {
-  --background: #F3F6F4;
-  --foreground: #1A211D;
-
-  /* Motion tokens — the app-wide duration scale. Un-layered so any stylesheet
-   * (including public/themes/glass-overrides.css, which loads after the theme
-   * link) can consume them. Easings live in @theme below (emitted to :root by
-   * Tailwind) so they double as `ease-fluid` / `ease-snap` utilities. */
-  --motion-fast: 120ms;  /* press feedback, micro state changes */
-  --motion-base: 180ms;  /* hovers, fades, content swaps */
-  --motion-slow: 250ms;  /* entrances, expanders, nav indicator */
-}
+@import 'tailwindcss';
+@import '@daypicker/react/style.css';
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+:root {
+  --font-body:
+    -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', sans-serif;
+  --background: #f3f6f4;
+  --foreground: #1a211d;
+  --card: #ffffff;
+  --card-foreground: #1a211d;
+  --popover: #ffffff;
+  --popover-foreground: #1a211d;
+  --primary: #2f6b4f;
+  --primary-foreground: #ffffff;
+  --secondary: #e8efea;
+  --secondary-foreground: #274533;
+  --muted: #e8ede9;
+  --muted-foreground: #56635a;
+  --accent: #deebe3;
+  --accent-foreground: #1f4634;
+  --destructive: #b42332;
+  --border: #d6e0d9;
+  --input: #728477;
+  --ring: #47876a;
+  --radius: 0.875rem;
+  --glass-bg: rgb(255 255 255 / 0.72);
+  --glass-bg-strong: rgb(255 255 255 / 0.86);
+  --glass-border: rgb(255 255 255 / 0.85);
+  --glass-shadow:
+    0 8px 30px rgb(21 50 36 / 0.1), inset 0 1px 0 rgb(255 255 255 / 0.8);
+  --glass-blur: 20px;
+  --motion-fast: 120ms;
+  --motion-base: 180ms;
+  --motion-slow: 250ms;
+  /* App-owned compatibility tokens consumed by chart engines and existing layouts. */
+  --primary-color: var(--primary);
+  --green-500: var(--primary);
+  --primary-color-text: var(--primary-foreground);
+  --surface-card: var(--card);
+  --surface-ground: var(--background);
+  --surface-border: var(--border);
+  --surface-hover: var(--muted);
+  --highlight-bg: var(--accent);
+  --text-color: var(--foreground);
+  --text-color-secondary: var(--muted-foreground);
+}
+.dark {
+  --background: #0f1412;
+  --foreground: #e7ece9;
+  --card: #1c2420;
+  --card-foreground: #e7ece9;
+  --popover: #1c2420;
+  --popover-foreground: #e7ece9;
+  --primary: #9bd2b3;
+  --primary-foreground: #112b1d;
+  --secondary: #2b3830;
+  --secondary-foreground: #e1eee5;
+  --muted: #2a342e;
+  --muted-foreground: #b0bdb4;
+  --accent: #2b4436;
+  --accent-foreground: #d8eee0;
+  --destructive: #ff9aa5;
+  --border: #3b4b41;
+  --input: #80988a;
+  --ring: #a3d4ba;
+  --glass-bg: rgb(28 36 32 / 0.76);
+  --glass-bg-strong: rgb(28 36 32 / 0.9);
+  --glass-border: rgb(191 220 202 / 0.2);
+  --glass-shadow:
+    0 12px 36px rgb(0 0 0 / 0.3), inset 0 1px 0 rgb(255 255 255 / 0.08);
+}
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
   --font-sans: var(--font-body);
-
-  /* Forest-green accent ramp — the app's interactive/selection color
-   * (replaces ad-hoc `blue-*` on nav actives, selections, links, focus
-   * rings). Informational blue stays blue; see the TAILWIND vs PRIMEREACT
-   * override block below for the `.text-accent-*` !important pairs. */
-  --color-accent-50: #F2F7F4;
-  --color-accent-100: #DEEBE3;
-  --color-accent-200: #C2D9CC;
-  --color-accent-300: #9FC3AF;
-  --color-accent-400: #6FA58A;
-  --color-accent-500: #47876A;
-  --color-accent-600: #2F6B4F;
-  --color-accent-700: #285A43;
-  --color-accent-800: #1F4634;
+  --color-accent-50: #f2f7f4;
+  --color-accent-100: #deebe3;
+  --color-accent-200: #c2d9cc;
+  --color-accent-300: #9fc3af;
+  --color-accent-400: #6fa58a;
+  --color-accent-500: #47876a;
+  --color-accent-600: #2f6b4f;
+  --color-accent-700: #285a43;
+  --color-accent-800: #1f4634;
   --color-accent-900: #153224;
 }
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+  html {
+    font-family: var(--font-body);
+    background: var(--background);
+    color: var(--foreground);
+  }
+  body {
+    min-height: 100dvh;
+    background:
+      radial-gradient(ellipse at 80% 0, rgb(71 135 106 / 0.07), transparent 55%)
+        fixed,
+      var(--background);
+  }
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-weight: 650;
+    letter-spacing: -0.025em;
+  }
+  h1 {
+    font-weight: 750;
+  }
+  button:not(:disabled),
+  [role='button']:not([aria-disabled='true']) {
+    cursor: pointer;
+  }
+  button,
+  input,
+  textarea,
+  select {
+    font: inherit;
+  }
+  button:disabled,
+  input:disabled,
+  textarea:disabled {
+    cursor: not-allowed;
+  }
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 3px;
+  }
+  [hidden] {
+    display: none !important;
+  }
+}
+@layer components {
+  .surface-card {
+    background: var(--card);
+    color: var(--card-foreground);
+  }
+  .surface-ground {
+    background: var(--background);
+  }
+  .surface-border {
+    border-color: var(--border);
+  }
+  .ui-card {
+    min-width: 0;
+    border: 1px solid var(--border);
+    border-radius: 1rem;
+    padding: 1.25rem;
+    background: var(--card);
+    color: var(--card-foreground);
+    box-shadow: 0 2px 8px rgb(21 50 36 / 0.025);
+  }
+  .ui-button {
+    display: inline-flex;
+    min-height: 44px;
+    min-width: 44px;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.625rem 0.875rem;
+    border-radius: 0.75rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    border: 1px solid transparent;
+    background: var(--primary);
+    color: var(--primary-foreground);
+    transition:
+      background-color var(--motion-fast),
+      color var(--motion-fast),
+      box-shadow var(--motion-fast);
+  }
+  .ui-button[data-size='small'],
+  .ui-button[data-size='sm'] {
+    padding-inline: 0.625rem;
+    font-size: 0.8125rem;
+  }
+  .ui-button[data-size='large'],
+  .ui-button[data-size='lg'] {
+    min-height: 48px;
+    padding-inline: 1.25rem;
+    font-size: 1rem;
+  }
+  .ui-button[data-variant='outline'] {
+    background: transparent;
+    color: var(--foreground);
+    border-color: var(--input);
+  }
+  .ui-button[data-variant='secondary'] {
+    background: var(--secondary);
+    color: var(--secondary-foreground);
+  }
+  .ui-button[data-variant='ghost'],
+  .ui-button[data-variant='link'] {
+    background: transparent;
+    color: var(--foreground);
+  }
+  .ui-button[data-variant='link'] {
+    color: var(--primary);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+  .ui-button[data-variant='destructive'] {
+    background: var(--destructive);
+    color: var(--card);
+  }
+  .ui-button[data-tone='danger'][data-variant='ghost'],
+  .ui-button[data-tone='danger'][data-variant='outline'] {
+    color: var(--destructive);
+  }
+  .ui-button:disabled {
+    opacity: 0.5;
+  }
+  .ui-input {
+    width: 100%;
+    min-width: 0;
+    min-height: 44px;
+    border: 1px solid var(--input);
+    border-radius: 0.75rem;
+    padding: 0.625rem 0.75rem;
+    background: var(--card);
+    color: var(--foreground);
+    font-size: 1rem;
+    line-height: 1.4;
+    outline: none;
+  }
+  .ui-input::placeholder {
+    color: var(--muted-foreground);
+    opacity: 1;
+  }
+  .ui-input:focus-visible,
+  .ui-input[data-popup-open] {
+    border-color: var(--ring);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 22%, transparent);
+  }
+  .ui-input:disabled {
+    opacity: 0.55;
+  }
+  .ui-input[aria-invalid='true'] {
+    border-color: var(--destructive);
+  }
+  .ui-badge {
+    display: inline-flex;
+    max-width: 100%;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.2rem 0.5rem;
+    border-radius: 0.5rem;
+    background: var(--muted);
+    color: var(--foreground);
+    font-size: 0.75rem;
+    font-weight: 600;
+    line-height: 1.4;
+  }
+  .ui-badge[data-tone='success'],
+  .ui-alert[data-tone='success'] {
+    background: color-mix(in srgb, var(--primary) 14%, var(--card));
+    color: var(--primary);
+  }
+  .ui-badge[data-tone='danger'],
+  .ui-alert[data-tone='error'] {
+    background: color-mix(in srgb, var(--destructive) 12%, var(--card));
+    color: var(--destructive);
+  }
+  .ui-badge[data-tone='warning'],
+  .ui-alert[data-tone='warn'] {
+    background: #fef3c7;
+    color: #854d0e;
+  }
+  .dark .ui-badge[data-tone='warning'],
+  .dark .ui-alert[data-tone='warn'] {
+    background: #453812;
+    color: #f4d989;
+  }
+  .ui-badge[data-tone='info'] {
+    background: #dbeafe;
+    color: #1e40af;
+  }
+  .dark .ui-badge[data-tone='info'] {
+    background: #1d344a;
+    color: #acd1fa;
+  }
+  .ui-alert {
+    border: 1px solid var(--border);
+    border-radius: 0.75rem;
+    padding: 0.875rem 1rem;
+    background: var(--secondary);
+    color: var(--foreground);
+    font-size: 0.875rem;
+  }
+  .ui-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 80;
+    background: rgb(7 19 12 / 0.35);
+    transition: opacity var(--motion-base);
+  }
+  .ui-backdrop[data-starting-style],
+  .ui-backdrop[data-ending-style] {
+    opacity: 0;
+  }
+  .ui-dialog {
+    position: fixed;
+    z-index: 81;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    display: flex;
+    flex-direction: column;
+    width: min(36rem, calc(100vw - 1.5rem));
+    max-width: calc(100vw - 1.5rem);
+    max-height: calc(
+      92dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom)
+    );
+    overflow: hidden;
+    border: 1px solid var(--glass-border);
+    border-radius: 1.5rem;
+    background: var(--glass-bg-strong);
+    color: var(--foreground);
+    box-shadow: var(--glass-shadow);
+    backdrop-filter: blur(var(--glass-blur)) saturate(150%);
+    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(150%);
+    outline: none;
+  }
+  .ui-dialog-maximized {
+    width: calc(100vw - 1.5rem);
+    height: calc(
+      96dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom)
+    );
+    max-height: calc(
+      96dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom)
+    );
+  }
+  .ui-dialog-header {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem 1.25rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .ui-dialog-content {
+    min-height: 0;
+    overflow-y: auto;
+    padding: 1.25rem;
+    background: var(--card);
+  }
+  .ui-dialog-content form {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+  .ui-dialog-footer {
+    display: flex;
+    flex-wrap: wrap;
+    flex-shrink: 0;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    padding: 0.875rem 1.25rem;
+    border-top: 1px solid var(--border);
+  }
+  .ui-confirm-layer {
+    z-index: 120;
+  }
+  .ui-dialog.ui-confirm-layer {
+    z-index: 121;
+  }
+  .ui-sheet {
+    position: fixed;
+    z-index: 81;
+    display: flex;
+    flex-direction: column;
+    width: min(28rem, 95vw);
+    max-width: 95vw;
+    color: var(--foreground);
+    background: var(--card);
+    border: 1px solid var(--border);
+    box-shadow: var(--glass-shadow);
+    outline: none;
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .ui-sheet-left {
+    inset: 0 auto 0 0;
+    border-radius: 0 1.5rem 1.5rem 0;
+    padding-left: env(safe-area-inset-left);
+  }
+  .ui-sheet-right {
+    inset: 0 0 0 auto;
+    border-radius: 1.5rem 0 0 1.5rem;
+    padding-right: env(safe-area-inset-right);
+  }
+  .ui-sheet-top {
+    inset: 0 0 auto;
+    width: 100%;
+    max-width: 100%;
+  }
+  .ui-sheet-bottom {
+    inset: auto 0 0;
+    width: 100%;
+    max-width: 100%;
+    border-radius: 1.5rem 1.5rem 0 0;
+  }
+  .ui-popover-positioner {
+    z-index: 140;
+    max-width: calc(100vw - 1rem);
+    outline: none;
+  }
+  .ui-select-popup {
+    min-width: min(var(--anchor-width, 12rem), calc(100vw - 1rem));
+    max-width: calc(100vw - 1rem);
+    max-height: min(22rem, var(--available-height, 60dvh));
+    overflow-y: auto;
+    padding: 0.375rem;
+    border: 1px solid var(--glass-border);
+    border-radius: 1rem;
+    background: var(--glass-bg-strong);
+    color: var(--foreground);
+    box-shadow: var(--glass-shadow);
+    backdrop-filter: blur(var(--glass-blur)) saturate(150%);
+    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(150%);
+    outline: none;
+  }
+  .ui-select-item,
+  .ui-menu-item {
+    display: flex;
+    min-height: 44px;
+    width: 100%;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.625rem 0.75rem;
+    border-radius: 0.625rem;
+    font-size: 0.875rem;
+    text-align: left;
+    outline: none;
+  }
+  .ui-select-item[data-highlighted],
+  .ui-menu-item[data-highlighted] {
+    background: var(--accent);
+    color: var(--accent-foreground);
+  }
+  .ui-select-item[data-disabled],
+  .ui-menu-item[data-disabled] {
+    opacity: 0.45;
+  }
+  .ui-clear {
+    display: flex;
+    min-width: 44px;
+    min-height: 44px;
+    align-items: center;
+    justify-content: center;
+    margin-left: 0.25rem;
+    color: var(--muted-foreground);
+  }
+  .ui-tooltip {
+    max-width: min(24rem, calc(100vw - 2rem));
+    padding: 0.625rem 0.75rem;
+    border: 1px solid rgb(255 255 255 / 0.15);
+    border-radius: 0.75rem;
+    background: #202b25;
+    color: #f5faf7;
+    box-shadow: var(--glass-shadow);
+    font-size: 0.8125rem;
+    line-height: 1.45;
+  }
+  .ui-toast-viewport {
+    position: fixed;
+    z-index: 160;
+    bottom: calc(6rem + env(safe-area-inset-bottom));
+    left: 50%;
+    display: flex;
+    width: min(26rem, calc(100vw - 1.5rem));
+    transform: translateX(-50%);
+    flex-direction: column;
+    gap: 0.5rem;
+    outline: none;
+  }
+  .ui-toast {
+    border: 1px solid var(--glass-border);
+    border-radius: 1rem;
+    padding: 0.875rem;
+    background: var(--glass-bg-strong);
+    color: var(--foreground);
+    box-shadow: var(--glass-shadow);
+    backdrop-filter: blur(var(--glass-blur));
+    -webkit-backdrop-filter: blur(var(--glass-blur));
+  }
+  .ui-toast[data-limited] {
+    display: none;
+  }
+  .ui-toast[data-tone='error'] {
+    border-color: var(--destructive);
+  }
+  .ui-checkbox {
+    position: relative;
+    display: flex;
+    width: 22px;
+    height: 22px;
+    align-items: center;
+    justify-content: center;
+    border: 1.5px solid var(--input);
+    border-radius: 0.375rem;
+    background: var(--card);
+  }
+  .ui-checkbox::before {
+    content: '';
+    position: absolute;
+    inset: -11px;
+  }
+  .ui-checkbox[data-checked] {
+    background: var(--primary);
+    color: var(--primary-foreground);
+    border-color: var(--primary);
+  }
+  .ui-switch {
+    position: relative;
+    width: 48px;
+    height: 30px;
+    margin-block: 7px;
+    border: 1px solid var(--input);
+    border-radius: 999px;
+    background: var(--muted);
+    outline-offset: 4px;
+  }
+  .ui-switch::before {
+    content: '';
+    position: absolute;
+    inset: -7px -2px;
+  }
+  .ui-switch[data-checked] {
+    background: var(--primary);
+    border-color: var(--primary);
+  }
+  .ui-switch-thumb {
+    display: block;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: var(--card);
+    margin: 3px;
+    box-shadow: 0 1px 3px rgb(0 0 0 / 0.15);
+    transition: transform var(--motion-fast);
+  }
+  .ui-switch[data-checked] .ui-switch-thumb {
+    transform: translateX(18px);
+  }
+  .ui-segmented {
+    display: inline-flex;
+    max-width: 100%;
+    flex-wrap: wrap;
+    gap: 0.2rem;
+    padding: 0.25rem;
+    border: 1px solid var(--border);
+    border-radius: 0.875rem;
+    background: var(--secondary);
+  }
+  .ui-segment {
+    min-height: 44px;
+    padding: 0.5rem 0.75rem;
+    border-radius: 0.625rem;
+    font-size: 0.875rem;
+  }
+  .ui-segment[data-pressed] {
+    background: var(--card);
+    color: var(--primary);
+    box-shadow: 0 1px 4px rgb(0 0 0 / 0.08);
+  }
+  .ui-tab {
+    min-height: 44px;
+    padding: 0.625rem 0.875rem;
+    border-bottom: 2px solid transparent;
+    white-space: nowrap;
+    font-size: 0.875rem;
+  }
+  .ui-tab[data-active] {
+    color: var(--primary);
+    border-color: var(--primary);
+    font-weight: 600;
+  }
+  .ui-calendar {
+    --rdp-accent-color: var(--primary);
+    --rdp-accent-background-color: var(--accent);
+    --rdp-day-height: 44px;
+    --rdp-day-width: 44px;
+  }
+  .ui-calendar-day {
+    display: flex;
+    min-width: 44px;
+    min-height: 44px;
+    align-items: center;
+    justify-content: center;
+    border-radius: 0.625rem;
+  }
+  .ui-calendar-selected .ui-calendar-day {
+    background: var(--primary);
+    color: var(--primary-foreground);
+  }
+  .ui-calendar-today:not(.ui-calendar-selected) {
+    color: var(--primary);
+    font-weight: 700;
+  }
+  .glass-chrome {
+    background: var(--glass-bg-strong);
+    border-color: var(--glass-border);
+    box-shadow: var(--glass-shadow);
+    backdrop-filter: blur(var(--glass-blur)) saturate(150%);
+    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(150%);
+  }
+  .ui-data-table,
+  .sampolio-data-table {
+    color: var(--foreground);
+    background: var(--card);
+    font-variant-numeric: tabular-nums;
+  }
+  .ui-data-table th,
+  .ui-data-table td,
+  .sampolio-data-table th,
+  .sampolio-data-table td {
+    border-color: var(--border);
+  }
+}
+@media (hover: hover) and (pointer: fine) {
+  .ui-button:not(:disabled):hover {
+    filter: brightness(0.97);
+  }
+  .ui-menu-item:not([data-disabled]):hover {
+    background: var(--accent);
+  }
+}
+@media (max-width: 640px) {
+  .ui-card {
+    padding: 0.875rem;
+  }
+  .ui-dialog {
+    top: auto;
+    bottom: 0;
+    left: 0;
+    transform: none;
+    width: 100vw !important;
+    max-width: 100vw !important;
+    max-height: calc(94dvh - env(safe-area-inset-top));
+    border-radius: 1.5rem 1.5rem 0 0;
+  }
+  .ui-dialog-maximized {
+    height: calc(98dvh - env(safe-area-inset-top));
+    max-height: calc(98dvh - env(safe-area-inset-top));
+  }
+  .ui-dialog-footer {
+    padding-bottom: calc(0.875rem + env(safe-area-inset-bottom));
+  }
+  .ui-dialog-header,
+  .ui-dialog-content,
+  .ui-dialog-footer {
+    padding-inline: 1rem;
+  }
+  .ui-calendar {
+    --rdp-day-width: 40px;
+  }
+}
+@media (min-width: 1024px) {
+  .ui-toast-viewport {
+    bottom: calc(1.5rem + env(safe-area-inset-bottom));
+  }
+}
+[data-reduce-transparency] .glass-chrome,
+[data-reduce-transparency] .ui-dialog,
+[data-reduce-transparency] .ui-select-popup,
+[data-reduce-transparency] .ui-toast {
+  background: var(--card);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+@supports not (
+  (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))
+) {
+  .glass-chrome,
+  .ui-dialog,
+  .ui-select-popup,
+  .ui-toast {
+    background: var(--card);
+  }
+}
+@media (prefers-contrast: more) {
+  .glass-chrome,
+  .ui-dialog,
+  .ui-select-popup,
+  .ui-toast {
+    background: var(--card);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    border-color: var(--foreground);
+  }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .glass-chrome,
+  .ui-dialog,
+  .ui-select-popup,
+  .ui-toast {
+    background: var(--card);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
 
-/* Motion utilities — generates `ease-fluid`/`ease-snap` and the entrance
- * animations `animate-fade-in` / `animate-rise-in` / `animate-scale-in`.
- * Rules: 120–250ms, opacity/transform only, never gate input. Entrances
- * deliberately use the default `none` fill: with zero delay the `from` frame
- * still applies from the first paint, and once finished the animation stops
- * "applying" — a `both`/`forwards` fill would keep the element permanently
- * promoted (its own stacking context / composited layer), which breaks
- * `backdrop-filter` on glass headers above it (Chromium doesn't blur
- * still-promoted sibling layers — text under the cashflow header stayed
- * crisp) and lingers for the element's whole life. Never add `both` back. */
 @theme {
-  --ease-fluid: cubic-bezier(0.22, 1, 0.36, 1); /* decisive ease-out — entrances, movement */
-  --ease-snap: cubic-bezier(0.2, 0, 0, 1);      /* press/settle — near-instant start */
+  --ease-fluid: cubic-bezier(
+    0.22,
+    1,
+    0.36,
+    1
+  ); /* decisive ease-out — entrances, movement */
+  --ease-snap: cubic-bezier(
+    0.2,
+    0,
+    0,
+    1
+  ); /* press/settle — near-instant start */
 
   --animate-fade-in: fade-in 180ms var(--ease-fluid);
   --animate-rise-in: rise-in 250ms var(--ease-fluid);
   --animate-scale-in: scale-in 160ms var(--ease-fluid);
 
   @keyframes fade-in {
-    from { opacity: 0; }
-    to   { opacity: 1; }
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
   }
   @keyframes rise-in {
-    from { opacity: 0; transform: translateY(8px); }
-    to   { opacity: 1; transform: none; }
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
   }
   @keyframes scale-in {
-    from { opacity: 0; transform: scale(0.97); }
-    to   { opacity: 1; transform: none; }
+    from {
+      opacity: 0;
+      transform: scale(0.97);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
   }
 }
 
-/* Dark mode variables - set via theme-provider.tsx */
-.dark {
-  --background: #0F1412;
-  --foreground: #E7ECE9;
-}
-
-/* Ambient tint so the glass blur (public/themes/glass-overrides.css) has
- * something to pick up — a flat body color renders backdrop-filter as an
- * invisible no-op. `fixed` keeps the gradient anchored to the viewport
- * instead of scrolling with content. */
-body {
-  background: radial-gradient(1200px 800px at 85% -10%, rgba(47, 107, 79, 0.08), transparent 60%) fixed, var(--background);
-  color: var(--foreground);
-  font-family: var(--font-body), system-ui, sans-serif !important;
-  transition: background-color 0.3s, color 0.3s;
-}
-
-.dark body {
-  background: radial-gradient(1200px 800px at 85% -10%, rgba(133, 197, 163, 0.06), transparent 60%) fixed, var(--background);
-}
-
-/* Headings share the body typeface — bolder weight and tighter tracking do
- * the differentiation instead of a separate font family. */
-h1, h2, h3, h4, h5, h6 {
-  font-family: var(--font-body), system-ui, sans-serif !important;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-}
-
-h1 {
-  font-weight: 800;
-  letter-spacing: -0.025em;
-}
-
-/* Override PrimeReact theme font-family (exclude PrimeIcons) */
-.p-component,
-.p-component *:not(.pi),
-.p-inputtext,
-.p-button,
-.p-dropdown,
-.p-datatable,
-.p-dialog,
-.p-sidebar,
-.p-menubar,
-.p-tabview,
-.p-card,
-.p-tag,
-.p-toast,
-.p-message {
-  font-family: var(--font-body), system-ui, sans-serif !important;
-}
-
-/* Ensure PrimeIcons keep their font */
-.pi {
-  font-family: 'primeicons' !important;
-}
-
-/* Tabular numbers for anything money/date-grid-like, so digits align in
- * columns instead of jittering with proportional widths. */
-.p-datatable,
-.tabular-nums {
-  font-variant-numeric: tabular-nums;
-  font-feature-settings: "tnum";
-}
-
-.p-card {
-  border-radius: 0.75rem;
-}
-
-/* Un-layered so it beats Tailwind's @layer utilities the same way the
- * PrimeReact theme link does (see the "TAILWIND vs PRIMEREACT" note below) —
- * used on the sidebar/top-bar/bottom-nav/command-palette chrome. Actual
- * blur/tint values come from public/themes/glass-overrides.css tokens. */
-.glass-chrome {
-  background: var(--glass-bg-strong);
-  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(160%);
-  backdrop-filter: blur(var(--glass-blur)) saturate(160%);
-  border-color: var(--glass-border);
-}
-
-/* Tailwind v4's preflight no longer sets `cursor: pointer` on buttons (v3
- * did), and PrimeReact's theme CSS covers many sub-widgets but not
- * `.p-button`/`.p-menuitem-link` (those get their own rule in
- * public/themes/glass-overrides.css) — so native buttons and role="button"
- * elements need it restored explicitly here. */
-button:not(:disabled),
-[role="button"]:not([aria-disabled="true"]) {
-  cursor: pointer;
-}
-
-/* Press feedback for custom (non-PrimeReact) interactive surfaces: cards,
- * tiles, tappable rows. Un-layered (same reason as .glass-chrome) so it also
- * wins on PrimeReact Cards, whose un-layered theme rules beat @layer. Only
- * `:active` sets a transform, so Tailwind `hover:scale-*` composes with it —
- * and press deliberately overrides hover lift while held. */
 .pressable {
-  transition: transform var(--motion-fast) var(--ease-snap),
-              box-shadow var(--motion-base) var(--ease-snap),
-              background-color var(--motion-base) var(--ease-snap);
+  transition:
+    transform var(--motion-fast) var(--ease-snap),
+    box-shadow var(--motion-base) var(--ease-snap),
+    background-color var(--motion-base) var(--ease-snap);
 }
 .pressable:active {
   transform: scale(0.98);
@@ -184,7 +790,7 @@ button:not(:disabled),
  * to real hover devices per the repo's hand-written-:hover rule. */
 @media (hover: hover) and (pointer: fine) {
   .pressable:hover {
-    box-shadow: 0 4px 12px rgb(0 0 0 / 0.10);
+    box-shadow: 0 4px 12px rgb(0 0 0 / 0.1);
   }
 }
 
@@ -211,309 +817,56 @@ button:not(:disabled),
    rule; it dies under the global reduced-motion kill-switch and the hook also
    skips it via useReducedMotion. Wobble (rotate, on the inner wrapper) and drag
    shift (translate, on the outer item) must live on different elements. */
-[data-jiggle-item] { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; -webkit-user-drag: none; }
-[data-jiggling] [data-jiggle-item] { touch-action: none; cursor: grab; }
-[data-jiggling] [data-jiggle-item]:not([data-dragging]) { transition: transform var(--motion-base) var(--ease-snap); }
-[data-jiggling] [data-jiggle-item] > [data-jiggle-inner] { animation: jiggle-wobble 250ms ease-in-out infinite; animation-delay: var(--jiggle-phase, 0ms); }
-[data-jiggle-item][data-dragging] { position: relative; z-index: 10; cursor: grabbing; }
-[data-jiggle-item][data-dragging] > [data-jiggle-inner] { animation: none; }
-@keyframes jiggle-wobble { 0% { transform: rotate(-1deg); } 50% { transform: rotate(1deg); } 100% { transform: rotate(-1deg); } }
-
-/* Dialog padding improvements */
-.p-dialog .p-dialog-content {
-  padding: 1.25rem 1.5rem;
+[data-jiggle-item] {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-user-drag: none;
 }
-
-.p-dialog .p-dialog-header {
-  padding: 1rem 1.5rem;
+[data-jiggling] [data-jiggle-item] {
+  touch-action: none;
+  cursor: grab;
 }
-
-.p-dialog .p-dialog-footer {
-  padding: 1rem 1.5rem;
+[data-jiggling] [data-jiggle-item]:not([data-dragging]) {
+  transition: transform var(--motion-base) var(--ease-snap);
 }
-
-/* ============================================================
- * MOBILE DIALOGS — cap width/height so no dialog overflows a phone.
- * A stylesheet !important overrides PrimeReact's inline `style` width, so this
- * one block fixes every Dialog at once (incl. dynamically created ones). The
- * max-height + scroll keeps tall forms reachable. Desktop is untouched.
- * ============================================================ */
-@media (max-width: 640px) {
-  .p-dialog {
-    width: 95vw !important;
-    max-width: 95vw !important;
-    /* Subtract the iOS safe-area insets so a centered dialog clears the dynamic
-     * island / status bar at the top and the home indicator at the bottom. This
-     * also covers `maximized` dialogs: the 95vw width cap above turns them into
-     * a tall centered box, so the same inset-aware height keeps their header out
-     * from under the island in the installed PWA. */
-    max-height: calc(92vh - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+[data-jiggling] [data-jiggle-item] > [data-jiggle-inner] {
+  animation: jiggle-wobble 250ms ease-in-out infinite;
+  animation-delay: var(--jiggle-phase, 0ms);
+}
+[data-jiggle-item][data-dragging] {
+  position: relative;
+  z-index: 10;
+  cursor: grabbing;
+}
+[data-jiggle-item][data-dragging] > [data-jiggle-inner] {
+  animation: none;
+}
+@keyframes jiggle-wobble {
+  0% {
+    transform: rotate(-1deg);
   }
-  .p-dialog .p-dialog-content {
-    overflow-y: auto;
+  50% {
+    transform: rotate(1deg);
   }
-  /* Off-canvas drawers (PrimeReact Sidebar) used left/right shouldn't exceed
-   * the viewport either. */
-  .p-sidebar.p-sidebar-left,
-  .p-sidebar.p-sidebar-right {
-    max-width: 95vw;
-  }
-  /* Denser cards on phones: PrimeReact's default 1.25rem body padding eats a
-   * lot of a 375px viewport. Tap targets inside stay ≥44px. */
-  .p-card .p-card-body {
-    padding: 0.875rem;
-  }
-  .p-card .p-card-content {
-    padding: 0.25rem 0;
+  100% {
+    transform: rotate(-1deg);
   }
 }
 
-/* ============================================================
- * MORTGAGE LEDGER — MOBILE DENSITY
- * The payment-schedule DataTable (mortgage-ledger-table.tsx, wrapper class
- * `mortgage-ledger`) keeps a single frozen-first-column layout at every width
- * (per AGENTS.md's table strategy — the wide mortgage ledger doesn't switch to
- * a card list), but its column sizing is tuned for desktop. Below `lg` a
- * smaller font + tighter cell padding fit more columns on screen, and the
- * Month column's 190px inline min-width (set via the Column `style` prop)
- * would otherwise eat roughly half of a ~390px phone before any amount column
- * is visible, so it's capped narrower here too. Desktop (min-width: 1024px)
- * is completely untouched.
- * ============================================================ */
-@media (max-width: 1023px) {
-  .mortgage-ledger.p-datatable {
-    font-size: 0.75rem;
-  }
-  .mortgage-ledger.p-datatable .p-datatable-tbody > tr > td,
-  .mortgage-ledger.p-datatable .p-datatable-thead > tr > th {
-    padding: 0.375rem 0.5rem;
-  }
-  /* !important beats the Column's inline min-width; `overflow: hidden` is a
-   * safety net so a rare long combination (the actual/forecast tag plus the
-   * reconcile/revert button) clips instead of forcing the frozen column back
-   * out to its old width. */
-  .mortgage-ledger.p-datatable .p-frozen-column {
-    min-width: 150px !important;
-    width: 150px !important;
-    overflow: hidden;
-  }
-}
-
-/* ============================================================
- * iOS SAFE-AREA INSETS FOR FULL-HEIGHT / TOP-EDGE OVERLAYS
- * Portalled overlays render at the viewport edges (top: 0), so in the installed
- * PWA (viewport-fit=cover) their content lands under the dynamic island /
- * status bar and home indicator. The app's own chrome already pads for this;
- * these rules do the same for the PrimeReact portals. env() is 0 where there
- * are no insets (desktop, non-notched), so this is a no-op elsewhere.
- * ============================================================ */
-
-/* Off-canvas drawers (nav drawer, entity-list drawer): pad the panel so its
- * header clears the island and its footer clears the home indicator. The panel
- * background fills the padding, so it still looks edge-to-edge. PrimeReact puts
- * the position class on the *mask*; the panel (.p-sidebar) is its child. */
-.p-sidebar-mask.p-sidebar-left > .p-sidebar {
-  padding-top: env(safe-area-inset-top);
-  padding-bottom: env(safe-area-inset-bottom);
-  padding-left: env(safe-area-inset-left);
-}
-.p-sidebar-mask.p-sidebar-right > .p-sidebar {
-  padding-top: env(safe-area-inset-top);
-  padding-bottom: env(safe-area-inset-bottom);
-  padding-right: env(safe-area-inset-right);
-}
-
-/* Top-anchored toasts (default position for the mortgage / budgets pages) drop
- * below the island instead of tucking under it. */
-.p-toast.p-toast-top-right,
-.p-toast.p-toast-top-left,
-.p-toast.p-toast-top-center {
-  top: calc(20px + env(safe-area-inset-top)) !important;
-}
-
-/* Input field improvements. NOTE: never pad the .p-dropdown/.p-multiselect
- * WRAPPER — its label already carries .p-inputtext padding, so wrapper
- * padding double-pads the control (oversized selects). Sizing is
- * normalized in public/themes/glass-overrides.css. */
-.p-inputtext,
-.p-calendar .p-inputtext {
-  padding: 0.5rem 0.75rem;
-}
-
-/* Form spacing in dialogs */
-.p-dialog .p-dialog-content form {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
-
-/* Card content padding */
-.p-card .p-card-body {
-  padding: 1.25rem;
-}
-
-.p-card .p-card-content {
-  padding: 0;
-}
-
-/* ============================================================
- * TAILWIND vs PRIMEREACT COLOR OVERRIDES
- *
- * PrimeReact theme CSS is loaded via dynamic <link> (un-layered).
- * In CSS, un-layered styles ALWAYS beat layered styles.
- * Since Tailwind v4 uses @layer utilities {}, PrimeReact wins.
- *
- * Fix: use !important on the Tailwind color utilities we need.
- * We duplicate both light and dark variants explicitly.
- * ============================================================ */
-
-/* --- TEXT COLORS --- */
-/* Light mode (default) */
-.text-gray-900 { color: #111827 !important; }
-.text-gray-800 { color: #1f2937 !important; }
-.text-gray-700 { color: #374151 !important; }
-.text-gray-600 { color: #4b5563 !important; }
-.text-gray-500 { color: #6b7280 !important; }
-.text-gray-400 { color: #9ca3af !important; }
-.text-gray-300 { color: #d1d5db !important; }
-.text-gray-200 { color: #e5e7eb !important; }
-.text-gray-100 { color: #f3f4f6 !important; }
-
-/*
- * Dark mode gray text: DO NOT invert the full scale.
- * The codebase uses isDark ? 'text-gray-300' : 'text-gray-700' conditionals,
- * so each class must keep its intended brightness.
- * Only override text-gray-900 (used without isDark conditional in some places).
- */
-.dark .text-gray-900 { color: #EFF2F0 !important; }
-.dark .text-gray-800 { color: #E2E7E4 !important; }
-.dark .text-gray-700 { color: #CFD6D1 !important; }
-.dark .text-gray-600 { color: #9AA69E !important; }
-.dark .text-gray-500 { color: #6F7972 !important; }
-.dark .text-gray-400 { color: #9AA69E !important; }
-.dark .text-gray-300 { color: #CFD6D1 !important; }
-.dark .text-gray-200 { color: #E2E7E4 !important; }
-.dark .text-gray-100 { color: #EFF2F0 !important; }
-
-/*
- * Accent colors: use darker shades in light mode for contrast on white,
- * and lighter shades in dark mode for contrast on dark backgrounds.
- */
-.text-green-400 { color: #15803d !important; }  /* green-700 on light */
-.text-green-500 { color: #15803d !important; }  /* green-700 on light */
-.text-green-600 { color: #166534 !important; }  /* green-800 on light */
-.text-red-400   { color: #dc2626 !important; }  /* red-600 on light */
-.text-red-500   { color: #dc2626 !important; }  /* red-600 on light */
-.text-red-600   { color: #b91c1c !important; }  /* red-700 on light */
-.text-blue-400  { color: #2563eb !important; }  /* blue-600 on light */
-.text-blue-500  { color: #2563eb !important; }  /* blue-600 on light */
-.text-blue-600  { color: #1d4ed8 !important; }  /* blue-700 on light */
-.text-blue-700  { color: #1e40af !important; }  /* blue-800 on light */
-.text-yellow-400 { color: #a16207 !important; } /* yellow-700 on light */
-.text-yellow-600 { color: #854d0e !important; } /* yellow-800 on light */
-.text-green-700 { color: #15803d !important; }  /* keep as-is, good contrast */
-.text-red-700   { color: #b91c1c !important; }
-.text-purple-400 { color: #7e22ce !important; } /* purple-700 on light */
-.text-purple-600 { color: #9333ea !important; }
-.text-amber-500  { color: #b45309 !important; } /* amber-700 on light */
-.text-orange-500 { color: #c2410c !important; }
-.text-accent-400 { color: #2F6B4F !important; }
-.text-accent-500 { color: #2F6B4F !important; }
-.text-accent-600 { color: #285A43 !important; }
-.text-accent-700 { color: #1F4634 !important; }
-
-/* Dark mode accent colors */
-.dark .text-green-400 { color: #4ade80 !important; }
-.dark .text-green-500 { color: #4ade80 !important; }  /* brighter in dark mode */
-.dark .text-green-600 { color: #22c55e !important; }
-.dark .text-red-400   { color: #f87171 !important; }
-.dark .text-red-500   { color: #f87171 !important; }  /* brighter in dark mode */
-.dark .text-red-600   { color: #ef4444 !important; }
-.dark .text-blue-400  { color: #60a5fa !important; }
-.dark .text-blue-500  { color: #3b82f6 !important; }
-.dark .text-blue-600  { color: #2563eb !important; }
-.dark .text-blue-700  { color: #1d4ed8 !important; }
-.dark .text-yellow-400 { color: #facc15 !important; }
-.dark .text-yellow-600 { color: #ca8a04 !important; }
-.dark .text-purple-400 { color: #c084fc !important; }
-.dark .text-amber-500  { color: #f59e0b !important; }
-.dark .text-accent-400 { color: #A3D4BA !important; }
-.dark .text-accent-500 { color: #85C5A3 !important; }
-.dark .text-accent-600 { color: #85C5A3 !important; }
-.dark .text-accent-700 { color: #6FAE8D !important; }
-
-/* --- BACKGROUND COLORS --- */
-.bg-gray-50 { background-color: #f9fafb !important; }
-.bg-gray-100 { background-color: #f3f4f6 !important; }
-.bg-gray-800 { background-color: #1f2937 !important; }
-.bg-gray-900 { background-color: #111827 !important; }
-.bg-white { background-color: #ffffff !important; }
-
-/* Dark surfaces: green-tinted neutrals (match the recolored theme CSS —
- * see scripts/copy-themes.mjs "De-blue the dark surface ramp"). */
-.dark .bg-white { background-color: #1E2420 !important; }
-.dark .bg-gray-50 { background-color: #262C28 !important; }
-.dark .bg-gray-100 { background-color: #333B35 !important; }
-.dark .bg-gray-700 { background-color: #333B35 !important; }
-.dark .bg-gray-800 { background-color: #1E2420 !important; }
-.dark .bg-gray-900 { background-color: #131714 !important; }
-
-/* --- BORDER COLORS --- */
-.dark .border-gray-200 { border-color: #333B35 !important; }
-.dark .border-gray-100 { border-color: #1E2420 !important; }
-.dark .border-gray-700 { border-color: #3F4842 !important; }
-
-/* --- HOVER STATES --- */
-.dark .hover\:bg-gray-100:hover { background-color: #333B35 !important; }
-.dark .hover\:bg-gray-50:hover { background-color: #262C28 !important; }
-.dark .hover\:bg-gray-700:hover { background-color: #3F4842 !important; }
-.dark .hover\:bg-gray-800:hover { background-color: #232A25 !important; }
-
-/* Progress bars driven by the projection scrubber must track it instantly
- * (PrimeReact's base CSS animates .p-progressbar-value-animate over 1s). */
-.progressbar-instant .p-progressbar-value-animate {
-  transition: none;
-}
-
-/* ============================================================
- * PRIMEREACT STEPS — fix text cropping in horizontal layout
- * The MDC theme constrains step titles; ensure they don't clip.
- * ============================================================ */
-.p-steps .p-steps-item .p-menuitem-link .p-steps-title {
-  white-space: nowrap !important;
-  overflow: visible !important;
-  text-overflow: unset !important;
-}
-
-.p-steps .p-steps-item .p-menuitem-link {
-  overflow: visible !important;
-}
-
-.p-steps .p-steps-item {
-  overflow: visible !important;
-}
-
-/* ============================================================
- * PRIMEREACT TOOLTIP — wrap long help text to a readable width.
- * The app-wide tooltip (sidebar-nav, target="[data-pr-tooltip]") has no
- * max-width, so long field-help strings would render as one very wide line.
- * ============================================================ */
-.p-tooltip .p-tooltip-text {
-  max-width: 24rem;
-  white-space: normal;
-  line-height: 1.35;
-}
-
-/* ============================================================
- * FLASH HIGHLIGHT — briefly tints a deep-linked row (bank ledger "?tx=",
- * split expense "?expense=") so the user's eye finds it after a scroll.
- * `--primary-color` comes from the PrimeReact theme link swapped in by
- * theme-provider.tsx (public/themes/sampolio-{light,dark}.css), so this
- * already tracks light/dark without a separate override.
- * ============================================================ */
 @keyframes flash-highlight {
-  0%, 100% { background-color: transparent; }
-  25%, 75% { background-color: color-mix(in srgb, var(--primary-color, #673ab7) 18%, transparent); }
+  0%,
+  100% {
+    background-color: transparent;
+  }
+  25%,
+  75% {
+    background-color: color-mix(
+      in srgb,
+      var(--primary-color, #673ab7) 18%,
+      transparent
+    );
+  }
 }
 
 .flash-highlight {
@@ -535,23 +888,53 @@ button:not(:disabled),
  * (opacity 1) for the last ~50ms and flicker back into view.
  * ============================================================ */
 @keyframes celebrate-pop {
-  0% { transform: scale(0.3); opacity: 0; }
-  20% { transform: scale(1.12); opacity: 1; }
-  32% { transform: scale(0.96); }
-  45% { transform: scale(1); }
-  80% { transform: scale(1); opacity: 1; }
-  100% { transform: scale(1); opacity: 0; }
+  0% {
+    transform: scale(0.3);
+    opacity: 0;
+  }
+  20% {
+    transform: scale(1.12);
+    opacity: 1;
+  }
+  32% {
+    transform: scale(0.96);
+  }
+  45% {
+    transform: scale(1);
+  }
+  80% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 0;
+  }
 }
 @keyframes celebrate-draw {
-  to { stroke-dashoffset: 0; }
+  to {
+    stroke-dashoffset: 0;
+  }
 }
 @keyframes celebrate-ring {
-  0% { transform: scale(1); opacity: 0.45; }
-  100% { transform: scale(1.9); opacity: 0; }
+  0% {
+    transform: scale(1);
+    opacity: 0.45;
+  }
+  100% {
+    transform: scale(1.9);
+    opacity: 0;
+  }
 }
 @keyframes celebrate-dot {
-  0% { transform: translate(0, 0) scale(1); opacity: 1; }
-  100% { transform: translate(var(--dx), var(--dy)) scale(0.3); opacity: 0; }
+  0% {
+    transform: translate(0, 0) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(var(--dx), var(--dy)) scale(0.3);
+    opacity: 0;
+  }
 }
 .celebrate-container {
   position: relative;
@@ -594,20 +977,100 @@ button:not(:disabled),
   animation: celebrate-dot 800ms var(--ease-fluid) forwards;
 }
 
-/* ============================================================
- * REDUCED MOTION — the single, global kill-switch. Un-layered !important
- * beats the un-layered PrimeReact theme link, so this neutralizes PrimeReact's
- * dialog/overlay fades and progressbar animation too, plus everything above.
- * Durations are 0.01ms (not `none`/0) so `animation-fill-mode: both`
- * end-states apply and transitionend-dependent code (PrimeReact CSSTransition)
- * still fires. Never add per-component prefers-reduced-motion blocks — this
- * is the one mechanism; JS-driven motion uses useReducedMotion() instead.
- * ============================================================ */
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
+  *,
+  *::before,
+  *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* A selection above a dialog uses one clear opaque surface, avoiding stacked blur. */
+body:has(.ui-dialog) .ui-select-popup,
+body:has(.ui-sheet) .ui-select-popup {
+  background: var(--card);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+/* Financial status text retains AA contrast on opaque light/dark data surfaces. */
+@layer utilities {
+  .text-green-400,
+  .text-green-500,
+  .text-green-600 {
+    color: #166534;
+  }
+  .text-red-400,
+  .text-red-500,
+  .text-red-600 {
+    color: var(--destructive);
+  }
+  .text-blue-400,
+  .text-blue-500 {
+    color: #1d4ed8;
+  }
+  .text-amber-400,
+  .text-amber-500,
+  .text-yellow-400 {
+    color: #854d0e;
+  }
+  .text-gray-400,
+  .text-gray-500 {
+    color: var(--muted-foreground);
+  }
+  .dark .text-green-400,
+  .dark .text-green-500,
+  .dark .text-green-600 {
+    color: #86d9a2;
+  }
+  .dark .text-red-400,
+  .dark .text-red-500,
+  .dark .text-red-600 {
+    color: #ff9aa5;
+  }
+  .dark .text-blue-400,
+  .dark .text-blue-500 {
+    color: #93c5fd;
+  }
+  .dark .text-amber-400,
+  .dark .text-amber-500,
+  .dark .text-yellow-400 {
+    color: #f4d989;
+  }
+}
+
+@layer utilities {
+  .dark .text-accent-600,
+  .dark .text-accent-700 {
+    color: var(--primary);
+  }
+}
+
+@layer components {
+  .ui-checkbox[data-disabled],
+  .ui-switch[data-disabled],
+  .ui-segmented[data-disabled] {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+@layer components {
+  .ui-checkbox[aria-invalid='true'],
+  .ui-switch[aria-invalid='true'],
+  .ui-segmented[aria-invalid='true'] {
+    border-color: var(--destructive);
+  }
+}
+
+/* DayPicker ships unlayered CSS; these scoped tokens keep weekday text opaque. */
+.ui-calendar {
+  --rdp-accent-color: var(--primary);
+  --rdp-accent-background-color: var(--accent);
+  --rdp-weekday-opacity: 1;
+  --rdp-day-height: 44px;
+  --rdp-day-width: 44px;
 }

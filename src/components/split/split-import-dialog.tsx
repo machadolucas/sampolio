@@ -2,12 +2,12 @@
 /* eslint-disable react-hooks/set-state-in-effect -- the form resets and auto-maps columns when opened / when the pasted CSV changes */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Dialog } from 'primereact/dialog';
-import { InputTextarea } from 'primereact/inputtextarea';
-import { Dropdown } from 'primereact/dropdown';
-import { Checkbox } from 'primereact/checkbox';
-import { Button } from 'primereact/button';
-import { Message } from 'primereact/message';
+import { Dialog } from '@/components/ui/dialog';
+import { InputTextarea } from '@/components/ui/input-textarea';
+import { Dropdown } from '@/components/ui/dropdown';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Button } from '@/components/ui/button';
+import { Message } from '@/components/ui/message';
 import { parseSplitwiseCsv } from '@/lib/split-csv';
 import { importSplitwiseCsv } from '@/lib/actions/split-groups';
 import type { SplitGroup } from '@/types';
@@ -120,7 +120,7 @@ export function SplitImportDialog({
                   <span className="text-gray-400">→</span>
                   <Dropdown
                     value={columnUserIds[i] ?? ''}
-                    onChange={(e) => setColumnUserIds((p) => p.map((v, j) => (j === i ? e.value : v)))}
+                    onChange={(e) => setColumnUserIds((p) => p.map((v, j) => (j === i ? e.value ?? '' : v)))}
                     options={group.members.map((m) => ({ label: m.name, value: m.userId }))}
                     placeholder="Pick member"
                     className="w-48"

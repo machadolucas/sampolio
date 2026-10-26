@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Button } from 'primereact/button';
-import { Dropdown } from 'primereact/dropdown';
+import { Button } from '@/components/ui/button';
+import { Dropdown } from '@/components/ui/dropdown';
 import { useTheme } from '@/components/providers/theme-provider';
 import { useAppContext } from '@/components/layout/app-layout';
 import { formatCurrency } from '@/lib/constants';
@@ -88,7 +88,7 @@ export function CashflowHeader({
             <MdAccountBalanceWallet className="opacity-60 shrink-0" />
             <span className="truncate">{opt.label}</span>
             {balanceLabel(opt.value) && (
-                <span className="opacity-60 text-sm whitespace-nowrap">· {balanceLabel(opt.value)}</span>
+                <span className="text-muted-foreground text-sm whitespace-nowrap">· {balanceLabel(opt.value)}</span>
             )}
         </span>
     );
@@ -108,14 +108,12 @@ export function CashflowHeader({
                     </div>
                     <div className="flex flex-wrap items-center gap-2 sm:gap-3">
                         <Dropdown
-                            // Remount when demo mode flips: the selected-value template's
-                            // formatCurrency output can otherwise survive a toggle inside
-                            // PrimeReact's memoized internals (same convention as DataTables).
+                            // Recreate the selected-value template when money masking changes.
                             key={demoMasked ? 'masked' : 'plain'}
                             value={selectedAccountId}
                             aria-label="Cash account"
                             options={accounts.map(a => ({ label: a.name, value: a.id }))}
-                            onChange={(e) => onSelectAccount(e.value)}
+                            onChange={(e) => { if (e.value !== null) onSelectAccount(e.value); }}
                             placeholder="Select Account"
                             itemTemplate={accountOption}
                             valueTemplate={(opt) => (opt ? accountOption(opt) : <span>Select Account</span>)}
@@ -161,7 +159,7 @@ export function CashflowHeader({
                         <MdAccountBalanceWallet className="opacity-60 shrink-0" />
                         <span className={`font-medium truncate ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>{selectedAccount.name}</span>
                         {typeof balance === 'number' && (
-                            <span className="opacity-70 whitespace-nowrap">· {formatCurrency(balance, selectedAccount.currency as Currency)}</span>
+                            <span className="text-muted-foreground whitespace-nowrap">· {formatCurrency(balance, selectedAccount.currency as Currency)}</span>
                         )}
                     </div>
                 )}

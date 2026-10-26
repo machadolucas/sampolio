@@ -1,9 +1,9 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Card } from 'primereact/card';
-import { Button } from 'primereact/button';
-import { Tag } from 'primereact/tag';
+import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Tag } from '@/components/ui/tag';
 import { MdAutoAwesome, MdAdd, MdClose } from 'react-icons/md';
 import { useToast } from '@/components/providers/toast-provider';
 import { getRecurringSuggestions } from '@/lib/actions/bank';
@@ -106,7 +106,7 @@ export function RecurringSuggestions() {
         <MdAutoAwesome className="text-blue-500" />
         <span className="font-semibold">Looks recurring — track it?</span>
       </div>
-      <p className="text-sm opacity-60 mb-3">
+      <p className="text-sm text-muted-foreground mb-3">
         These appear monthly in your imported transactions but aren&apos;t in your plan yet.
         Tracking them makes your forecast match reality.
       </p>
@@ -119,7 +119,7 @@ export function RecurringSuggestions() {
                 <Tag value={s.type} severity={s.type === 'income' ? 'success' : 'danger'} className="text-xs !py-0 !px-1" />
                 {s.category && <Tag value={s.category} className="text-xs !py-0 !px-1" severity="info" />}
               </div>
-              <div className="text-xs opacity-60">
+              <div className="text-xs text-muted-foreground">
                 ~{formatCurrency(s.amount, currencyOf(s.accountId))}/month · around the {s.dayOfMonth}. ·
                 seen {s.monthsSeen.length} months ({formatYearMonth(s.monthsSeen[0])} – {formatYearMonth(s.monthsSeen[s.monthsSeen.length - 1])})
               </div>

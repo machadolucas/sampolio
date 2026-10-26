@@ -1,8 +1,10 @@
 'use client';
 
+import { Trash2 } from 'lucide-react';
+
 import { useState, useMemo } from 'react';
-import { Button } from 'primereact/button';
-import { confirmDialog } from 'primereact/confirmdialog';
+import { Button } from '@/components/ui/button';
+import { confirmDialog } from '@/components/ui/confirm-dialog';
 import { EmptyState } from '@/components/ui/empty-state';
 import { MdAdd, MdFlightTakeoff } from 'react-icons/md';
 import { useToast } from '@/components/providers/toast-provider';
@@ -67,8 +69,8 @@ export function TripsSection({ trips, accounts, budgets, onChanged }: TripsSecti
         ? `Delete "${trip.name}"? This trip funds “${fundsBudget}” — that budget will keep the trip's last computed amount. This cannot be undone.`
         : `Delete "${trip.name}"? This cannot be undone.`,
       header: 'Delete trip',
-      icon: 'pi pi-trash',
-      acceptClassName: 'p-button-danger',
+      icon: <Trash2 size={16} />,
+      severity: 'danger',
       accept: async () => {
         const res = await deleteTrip(trip.id);
         if (res.success) {
@@ -105,7 +107,7 @@ export function TripsSection({ trips, accounts, budgets, onChanged }: TripsSecti
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h2 className="text-xl font-semibold">Trips</h2>
-          <p className="text-sm opacity-60">
+          <p className="text-sm text-muted-foreground">
             Calculate tax-free per-diem allowances for work travel (Finnish Vero.fi rules) and track their reimbursement.
           </p>
         </div>
@@ -122,7 +124,7 @@ export function TripsSection({ trips, accounts, budgets, onChanged }: TripsSecti
       ) : (
         <>
           {active.length > 0 ? renderGrid(active) : (
-            <p className="text-sm opacity-60 py-4">No active trips — every trip has been reimbursed.</p>
+            <p className="text-sm text-muted-foreground py-4">No active trips — every trip has been reimbursed.</p>
           )}
           {reimbursed.length > 0 && (
             <div className="pt-2">

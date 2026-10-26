@@ -1,15 +1,17 @@
 'use client';
+import { TriangleAlert as UiWarningIcon } from 'lucide-react';
 
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 import { useRouter } from 'next/navigation';
-import { Card } from 'primereact/card';
-import { Button } from 'primereact/button';
-import { Dialog } from 'primereact/dialog';
-import { InputText } from 'primereact/inputtext';
-import { Tag } from 'primereact/tag';
-import { Message } from 'primereact/message';
-import { confirmDialog } from 'primereact/confirmdialog';
+import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Dialog } from '@/components/ui/dialog';
+import { InputText } from '@/components/ui/input-text';
+import { Tag } from '@/components/ui/tag';
+import { Message } from '@/components/ui/message';
+import { confirmDialog } from '@/components/ui/confirm-dialog';
 import { MdAdd, MdDelete, MdEdit, MdFingerprint, MdLogin } from 'react-icons/md';
+import { cancelConfirmations } from '@/components/ui/confirmation';
 import { authClient } from '@/lib/auth-client';
 import { ACCOUNT_SETTINGS_PATH, PASSKEY_REAUTH_REQUIRED } from '@/lib/auth/constants';
 import { listMyPasskeys } from '@/lib/actions/account';
@@ -94,6 +96,7 @@ export function PasskeysPanel({ isDark }: PasskeysPanelProps) {
     };
 
     const handleSignInAgain = async () => {
+        cancelConfirmations();
         await authClient.signOut();
         router.push(`/auth/signin?callbackUrl=${encodeURIComponent(ACCOUNT_SETTINGS_PATH)}`);
     };
@@ -125,8 +128,8 @@ export function PasskeysPanel({ isDark }: PasskeysPanelProps) {
     const handleDelete = (pk: PasskeySummary) => {
         confirmDialog({
             header: 'Delete passkey?',
-            icon: 'pi pi-exclamation-triangle',
-            acceptClassName: 'p-button-danger',
+            icon: <UiWarningIcon size={16}/>,
+            severity: 'danger',
             acceptLabel: 'Delete',
             message: `"${pk.name}" will no longer sign you in. Your password keeps working.`,
             accept: async () => {

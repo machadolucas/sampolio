@@ -1,6 +1,6 @@
 'use client';
 
-import { Dialog } from 'primereact/dialog';
+import { Dialog } from '@/components/ui/dialog';
 import { useTheme } from '@/components/providers/theme-provider';
 import { formatCurrency } from '@/lib/constants';
 import type { Currency } from '@/types';

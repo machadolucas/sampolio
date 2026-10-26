@@ -1,16 +1,16 @@
 'use client';
 
 import { useState, useMemo, useId } from 'react';
-import { Dialog } from 'primereact/dialog';
-import { Steps } from 'primereact/steps';
-import { InputText } from 'primereact/inputtext';
-import { InputNumber } from 'primereact/inputnumber';
-import { Dropdown } from 'primereact/dropdown';
-import { MultiSelect } from 'primereact/multiselect';
-import { SelectButton } from 'primereact/selectbutton';
-import { Checkbox } from 'primereact/checkbox';
-import { Button } from 'primereact/button';
-import { Message } from 'primereact/message';
+import { Dialog } from '@/components/ui/dialog';
+import { Steps } from '@/components/ui/steps';
+import { InputText } from '@/components/ui/input-text';
+import { InputNumber } from '@/components/ui/input-number';
+import { Dropdown } from '@/components/ui/dropdown';
+import { MultiSelect } from '@/components/ui/multi-select';
+import { SelectButton } from '@/components/ui/select-button';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Button } from '@/components/ui/button';
+import { Message } from '@/components/ui/message';
 import { MdDelete } from 'react-icons/md';
 import { MonthPicker, HelpTip } from '@/components/ui/form-primitives';
 import { BUDGET_CATEGORIES, CURRENCIES, formatCurrency } from '@/lib/constants';
@@ -197,7 +197,7 @@ export function BudgetSetupWizard({
             <InputText id={`${uid}-plan-name`} value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Research trip abroad" className="w-full" autoFocus />
           </div>
           <div>
-            <label htmlFor={`${uid}-where-optional`} className="text-sm font-medium">Where? <span className="opacity-50 font-normal">(optional)</span></label>
+            <label htmlFor={`${uid}-where-optional`} className="text-sm font-medium">Where? <span className="text-muted-foreground font-normal">(optional)</span></label>
             <InputText id={`${uid}-where-optional`} value={destination} onChange={(e) => setDestination(e.target.value)} placeholder="e.g. Stockholm" className="w-full" />
             <HelpTip text="Just a label — leave empty if this isn't a trip." />
           </div>
@@ -217,7 +217,7 @@ export function BudgetSetupWizard({
             <Dropdown inputId={`${uid}-currency`}
               value={currency}
               options={CURRENCIES.map((c) => ({ label: `${c.symbol} ${c.label}`, value: c.value }))}
-              onChange={(e) => setCurrency(e.value)}
+              onChange={(e) => { if (e.value !== null) setCurrency(e.value); }}
               className="w-full"
             />
             <HelpTip text="The currency you'll mostly spend in." />
@@ -250,7 +250,7 @@ export function BudgetSetupWizard({
                   <Button icon={<MdDelete />} text severity="danger" size="small" aria-label={`Remove ${line.name || 'cost line'}`} onClick={() => setLines(prev => prev.filter((_, idx) => idx !== i))} />
                 </div>
                 {line.kind === 'monthly' && line.amount > 0 && (
-                  <p className="text-xs opacity-60 mt-1">
+                  <p className="text-xs text-muted-foreground mt-1">
                     {formatCurrency(line.amount, currency)} × {monthCount} months = {formatCurrency(line.amount * monthCount, currency)}
                   </p>
                 )}
@@ -273,7 +273,7 @@ export function BudgetSetupWizard({
             {funding.map((f, i) => (
               <div key={i} className="p-3 rounded-lg surface-ground space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold opacity-60">
+                  <span className="text-xs font-semibold text-muted-foreground">
                     {f.type === 'grant' ? 'Grant or stipend' : f.type === 'per-diem' ? 'Daily allowance' : 'Other money'}
                   </span>
                   <Button icon={<MdDelete />} text severity="danger" size="small" aria-label="Remove this funding source" onClick={() => setFunding(prev => prev.filter((_, idx) => idx !== i))} />
@@ -282,9 +282,9 @@ export function BudgetSetupWizard({
                   <div>
                     <div className="flex flex-wrap gap-2">
                       <InputNumber value={f.rate || null} onValueChange={(e) => updateFunding(i, { rate: e.value ?? 0 })} mode="currency" currency={currency} locale="fi-FI" placeholder="Per day" inputClassName="w-28" />
-                      <span className="self-center text-sm opacity-60">×</span>
+                      <span className="self-center text-sm text-muted-foreground">×</span>
                       <InputNumber value={f.days || null} onValueChange={(e) => updateFunding(i, { days: e.value ?? 0 })} placeholder="Days" inputClassName="w-20" />
-                      <span className="self-center text-sm opacity-60">days</span>
+                      <span className="self-center text-sm text-muted-foreground">days</span>
                     </div>
                     {f.rate > 0 && f.days > 0 && (
                       <p className="text-sm font-semibold mt-1">
@@ -300,7 +300,7 @@ export function BudgetSetupWizard({
                 )}
                 {f.type === 'grant' && (
                   <div>
-                    <label htmlFor={`${uid}-what-is-it-${i}`} className="text-xs font-medium opacity-70">What is it allowed to pay for?</label>
+                    <label htmlFor={`${uid}-what-is-it-${i}`} className="text-xs font-medium text-muted-foreground">What is it allowed to pay for?</label>
                     <MultiSelect inputId={`${uid}-what-is-it-${i}`}
                       value={f.restricted}
                       options={BUDGET_CATEGORIES}
@@ -329,12 +329,12 @@ export function BudgetSetupWizard({
         <div className="space-y-3">
           <div className="p-4 rounded-lg surface-ground">
             <p className="text-lg font-semibold">{verdict.sentence}</p>
-            {verdict.subline && <p className="text-sm opacity-70 mt-1">{verdict.subline}</p>}
+            {verdict.subline && <p className="text-sm text-muted-foreground mt-1">{verdict.subline}</p>}
           </div>
           <div className="grid grid-cols-2 gap-3 text-sm">
             <div className="p-3 rounded-lg surface-ground space-y-1">
-              <p className="text-xs font-semibold opacity-60 mb-1">Costs · {formatCurrency(preview.feasibility.totalCosts, currency)}</p>
-              {realLines.length === 0 && <p className="opacity-50">None yet</p>}
+              <p className="text-xs font-semibold text-muted-foreground mb-1">Costs · {formatCurrency(preview.feasibility.totalCosts, currency)}</p>
+              {realLines.length === 0 && <p className="text-muted-foreground">None yet</p>}
               {realLines.map((l, i) => (
                 <div key={i} className="flex justify-between">
                   <span className="truncate">{l.name}</span>
@@ -343,8 +343,8 @@ export function BudgetSetupWizard({
               ))}
             </div>
             <div className="p-3 rounded-lg surface-ground space-y-1">
-              <p className="text-xs font-semibold opacity-60 mb-1">Money coming in · {formatCurrency(preview.feasibility.usableFunding, currency)}</p>
-              {realFunding.length === 0 && <p className="opacity-50">None yet</p>}
+              <p className="text-xs font-semibold text-muted-foreground mb-1">Money coming in · {formatCurrency(preview.feasibility.usableFunding, currency)}</p>
+              {realFunding.length === 0 && <p className="text-muted-foreground">None yet</p>}
               {realFunding.map((f, i) => (
                 <div key={i} className="flex justify-between">
                   <span className="truncate">{f.name || (f.type === 'per-diem' ? 'Daily allowance' : 'Funding')}</span>
@@ -353,7 +353,7 @@ export function BudgetSetupWizard({
               ))}
             </div>
           </div>
-          <p className="text-xs opacity-60">Nothing goes into your cashflow yet — you&apos;ll get a button for that when you&apos;re ready.</p>
+          <p className="text-xs text-muted-foreground">Nothing goes into your cashflow yet — you&apos;ll get a button for that when you&apos;re ready.</p>
         </div>
       )}
 

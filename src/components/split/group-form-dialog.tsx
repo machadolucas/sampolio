@@ -1,14 +1,16 @@
 'use client';
+
+import { TriangleAlert } from 'lucide-react';
 /* eslint-disable react-hooks/set-state-in-effect -- the form intentionally resets its fields when the dialog opens */
 
 import { useEffect, useState } from 'react';
 import { useSession } from '@/lib/auth-client';
-import { Dialog } from 'primereact/dialog';
-import { InputText } from 'primereact/inputtext';
-import { Dropdown } from 'primereact/dropdown';
-import { Button } from 'primereact/button';
-import { Message } from 'primereact/message';
-import { confirmDialog } from 'primereact/confirmdialog';
+import { Dialog } from '@/components/ui/dialog';
+import { InputText } from '@/components/ui/input-text';
+import { Dropdown } from '@/components/ui/dropdown';
+import { Button } from '@/components/ui/button';
+import { Message } from '@/components/ui/message';
+import { confirmDialog } from '@/components/ui/confirm-dialog';
 import { MdClose } from 'react-icons/md';
 import {
   createSplitGroup,
@@ -89,11 +91,11 @@ export function GroupFormDialog({
     confirmDialog({
       header: 'Remove member',
       message: `Remove ${member.name} from ${group.name}? They will lose access to this group and its expenses.`,
-      icon: 'pi pi-exclamation-triangle',
+      icon: <TriangleAlert size={16} />,
       acceptLabel: 'Remove',
       rejectLabel: 'Cancel',
       defaultFocus: 'reject',
-      acceptClassName: 'p-button-danger',
+      severity: 'danger',
       accept: async () => {
         setSaving(true);
         setError('');
@@ -114,11 +116,11 @@ export function GroupFormDialog({
     confirmDialog({
       header: 'Leave group',
       message: `Leave ${group.name}? You will lose access to its expenses. You can leave once your balance is €0.`,
-      icon: 'pi pi-exclamation-triangle',
+      icon: <TriangleAlert size={16} />,
       acceptLabel: 'Leave',
       rejectLabel: 'Cancel',
       defaultFocus: 'reject',
-      acceptClassName: 'p-button-danger',
+      severity: 'danger',
       accept: async () => {
         setSaving(true);
         const res = await leaveSplitGroup(group.id);
@@ -174,7 +176,7 @@ export function GroupFormDialog({
         <div className="flex items-center gap-2">
           <Dropdown
             value={emoji}
-            onChange={(e) => setEmoji(e.value)}
+            onChange={(e) => { if (e.value !== null) setEmoji(e.value); }}
             options={EMOJI_CHOICES.map((x) => ({ label: x, value: x }))}
             className="w-20"
           />
@@ -186,7 +188,7 @@ export function GroupFormDialog({
             <span className="text-sm text-gray-500 w-20 shrink-0">Currency</span>
             <Dropdown
               value={currency}
-              onChange={(e) => setCurrency(e.value)}
+              onChange={(e) => { if (e.value !== null) setCurrency(e.value); }}
               options={CURRENCIES.map((c) => ({ label: `${c.symbol} ${c.value}`, value: c.value }))}
               className="flex-1"
             />

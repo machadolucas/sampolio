@@ -1,17 +1,19 @@
 'use client';
 
+import { LoaderCircle, TriangleAlert } from 'lucide-react';
+
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
-import { Card } from 'primereact/card';
-import { Button } from 'primereact/button';
-import { Dropdown } from 'primereact/dropdown';
-import { InputNumber } from 'primereact/inputnumber';
-import { InputText } from 'primereact/inputtext';
-import { Tag } from 'primereact/tag';
-import { Message } from 'primereact/message';
-import { Dialog } from 'primereact/dialog';
-import { confirmDialog } from 'primereact/confirmdialog';
-import { ProgressSpinner } from 'primereact/progressspinner';
-import { InputSwitch } from 'primereact/inputswitch';
+import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Dropdown } from '@/components/ui/dropdown';
+import { InputNumber } from '@/components/ui/input-number';
+import { InputText } from '@/components/ui/input-text';
+import { Tag } from '@/components/ui/tag';
+import { Message } from '@/components/ui/message';
+import { Dialog } from '@/components/ui/dialog';
+import { confirmDialog } from '@/components/ui/confirm-dialog';
+import { ProgressSpinner } from '@/components/ui/progress-spinner';
+import { InputSwitch } from '@/components/ui/input-switch';
 import { MdAccountBalance, MdAdd, MdSync, MdLinkOff, MdHelpOutline, MdCheck, MdCreditCard, MdSavings, MdAutorenew } from 'react-icons/md';
 import { useTheme } from '@/components/providers/theme-provider';
 import { useToast } from '@/components/providers/toast-provider';
@@ -174,8 +176,8 @@ export function BankConnectionsPanel() {
     confirmDialog({
       message: `Disconnect ${conn.aspspName}? This removes the cached balances and transactions and revokes the bank consent. Your manually-entered data is untouched.`,
       header: 'Disconnect bank',
-      icon: 'pi pi-exclamation-triangle',
-      acceptClassName: 'p-button-danger',
+      icon: <TriangleAlert size={16} />,
+      severity: 'danger',
       accept: async () => {
         setBusyId(conn.id);
         const res = await disconnectBankConnection(conn.id);
@@ -253,7 +255,7 @@ export function BankConnectionsPanel() {
 
       {configured && connections.length === 0 && (
         <div className={`flex flex-col items-center text-center gap-2 py-6 ${subtle}`}>
-          <MdAccountBalance size={32} className="opacity-50" />
+          <MdAccountBalance size={32} className="text-muted-foreground" />
           <p>No banks connected yet. Connect one to pull balances and transactions automatically.</p>
         </div>
       )}
@@ -268,7 +270,7 @@ export function BankConnectionsPanel() {
             >
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-2">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <MdAccountBalance className="opacity-70" />
+                  <MdAccountBalance className="text-muted-foreground" />
                   <span className="font-semibold">{conn.aspspName}</span>
                   <Tag value={conn.status} severity={statusSeverity(conn.status)} />
                   {(expiry.expired || expiry.expiringSoon) && (
@@ -382,9 +384,8 @@ export function BankConnectionsPanel() {
   );
 }
 
-// Field-level help, shown via the self-contained <HelpHint> (tap-friendly on
-// mobile, works regardless of when this row mounts — unlike a delegated
-// data-pr-tooltip selector bound once by a Tooltip elsewhere in the tree).
+// Field help uses explicit tap/focus/hover triggers that remain attached as
+// these independently saved fields update.
 const TIPS = {
   customName: 'A friendly name for this account, shown everywhere in Sampolio (cashflow lines, overview, the ledger). Cards often arrive unnamed from the bank — e.g. name it “Nordea Platinum”. Leave blank to use the bank’s name.',
   type: 'How Sampolio uses this account. Cash / Savings: its balance auto-anchors the linked account’s forecast on every sync. Credit card: its statement is billed into the paying account and the outstanding counts as a liability. Other: synced for reference only — no forecast impact.',
@@ -448,8 +449,8 @@ function ToggleField({
 function SaveIndicator({ state }: { state: SaveState }) {
   if (state === 'saving')
     return (
-      <span className="text-xs opacity-70 flex items-center gap-1">
-        <i className="pi pi-spin pi-spinner" style={{ fontSize: '0.7rem' }} /> Saving…
+      <span className="text-xs text-muted-foreground flex items-center gap-1">
+        <LoaderCircle size={12} className="animate-spin" aria-hidden /> Saving…
       </span>
     );
   if (state === 'saved')
@@ -519,7 +520,7 @@ function AccountLinkRow({
     <div className={`rounded-md p-3 ${isDark ? 'bg-gray-800' : 'bg-gray-50'}`}>
       <div className="flex items-start justify-between gap-2 mb-3">
         <div className="flex items-center gap-2 min-w-0">
-          <span className="opacity-70 shrink-0">{roleIcon}</span>
+          <span className="text-muted-foreground shrink-0">{roleIcon}</span>
           <div className="min-w-0">
             <div className="font-medium text-sm truncate">{displayName}</div>
             <div className={`${subtle} truncate`}>{idParts.join(' · ')}</div>
@@ -553,7 +554,7 @@ function AccountLinkRow({
             inputId={`${fieldId}-role`}
             value={link.accountRole}
             options={ROLE_OPTIONS}
-            onChange={(e) => patch({ accountRole: e.value })}
+            onChange={(e) => { if (e.value !== null) patch({ accountRole: e.value }); }}
             className="w-full"
           />
         </div>
@@ -569,8 +570,7 @@ function AccountLinkRow({
             inputId={`${fieldId}-linked`}
             value={link.linkedFinancialAccountId ?? null}
             options={accountOptions}
-            // PrimeReact returns the whole option OBJECT (not its value) when the
-            // selected option's value is null/'' — normalize before saving.
+            // Keep the unlinked sentinel normalized at the action boundary.
             onChange={(e) => patch({ linkedFinancialAccountId: typeof e.value === 'string' ? e.value : null })}
             className="w-full"
             placeholder="Choose account"

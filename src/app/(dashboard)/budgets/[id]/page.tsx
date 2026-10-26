@@ -2,11 +2,11 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { Card } from 'primereact/card';
-import { Button } from 'primereact/button';
-import { Menu } from 'primereact/menu';
-import { Tag } from 'primereact/tag';
-import { confirmDialog } from 'primereact/confirmdialog';
+import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Menu } from '@/components/ui/menu';
+import { Tag } from '@/components/ui/tag';
+import { confirmDialog } from '@/components/ui/confirm-dialog';
 import { MdCloudOff, MdFileDownload, MdMoreVert, MdPlace } from 'react-icons/md';
 import { useAppContext } from '@/components/layout/app-layout';
 import { useToast } from '@/components/providers/toast-provider';
@@ -205,7 +205,7 @@ export default function BudgetDetailPage() {
       header: 'Delete budget',
       acceptLabel: 'Delete forever',
       rejectLabel: 'Keep it',
-      acceptClassName: 'p-button-danger',
+      severity: 'danger',
       accept: async () => {
         const res = await deleteBudget(budget.id);
         if (res.success) {

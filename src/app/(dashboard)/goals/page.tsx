@@ -1,9 +1,10 @@
 'use client';
+import { Trash2 as UiTrashIcon } from 'lucide-react';
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useSession } from '@/lib/auth-client';
-import { Button } from 'primereact/button';
-import { confirmDialog } from 'primereact/confirmdialog';
+import { Button } from '@/components/ui/button';
+import { confirmDialog } from '@/components/ui/confirm-dialog';
 import { ListPageSkeleton } from '@/components/ui/skeletons';
 import { MdAdd, MdErrorOutline, MdFlag } from 'react-icons/md';
 import { useToast } from '@/components/providers/toast-provider';
@@ -124,8 +125,8 @@ export default function GoalsPage() {
     confirmDialog({
       message: `Delete "${goal.name}"? This cannot be undone.`,
       header: 'Delete goal',
-      icon: 'pi pi-trash',
-      acceptClassName: 'p-button-danger',
+      icon: <UiTrashIcon size={16}/>,
+      severity: 'danger',
       accept: async () => {
         const res = await deleteGoal(goal.id);
         if (res.success) {
@@ -189,7 +190,7 @@ export default function GoalsPage() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold">Goals</h1>
-          <p className="text-sm opacity-60">Set savings targets and see when your plan reaches them.</p>
+          <p className="text-sm text-muted-foreground">Set savings targets and see when your plan reaches them.</p>
         </div>
         <Button label="New goal" icon={<MdAdd />} className="shrink-0 self-start sm:self-auto" onClick={openCreate} />
       </div>
@@ -204,7 +205,7 @@ export default function GoalsPage() {
         <div className="flex flex-col items-center justify-center py-20 text-center">
           <MdFlag size={48} className="opacity-30 mb-4" />
           <p className="text-lg font-medium mb-1">Set your first goal</p>
-          <p className="text-sm opacity-60 max-w-md mb-4">
+          <p className="text-sm text-muted-foreground max-w-md mb-4">
             A target amount and a date — Sampolio tracks it against an account&apos;s projected balance,
             your total net worth, or a number you update yourself.
           </p>

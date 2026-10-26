@@ -11,7 +11,7 @@ import {
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from 'react';
-import { Button } from 'primereact/button';
+import { Button } from '@/components/ui/button';
 import { arrayMove, siblingOffsets, targetIndexFromCenters } from '@/lib/reorder-utils';
 import { useReducedMotion } from '@/lib/hooks/use-reduced-motion';
 
@@ -533,7 +533,6 @@ export function useJiggleReorder(opts: JiggleReorderOptions): UseJiggleReorderRe
         clearAllTransforms();
         // Reconcile React state with the external mode flag being switched off
         // mid-gesture (e.g. Escape); a rare defensive path, not a render loop.
-        // eslint-disable-next-line react-hooks/set-state-in-effect
         setDraggingId(null);
       }
       endGesture();

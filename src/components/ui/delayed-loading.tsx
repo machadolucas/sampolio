@@ -1,6 +1,6 @@
 'use client';
 
-import { ProgressSpinner } from 'primereact/progressspinner';
+import { ProgressSpinner } from '@/components/ui/progress-spinner';
 import { useDelayedFlag } from '@/lib/hooks/use-delayed-flag';
 
 /**
@@ -21,7 +21,9 @@ export function DelayedSpinner({
   const show = useDelayedFlag(active, delayMs);
   return (
     <div className={className} aria-busy={active} aria-live="polite">
-      {show && <ProgressSpinner style={{ width: 44, height: 44 }} strokeWidth="4" />}
+      {show && (
+        <ProgressSpinner style={{ width: 44, height: 44 }} strokeWidth="4" />
+      )}
     </div>
   );
 }
@@ -39,5 +41,9 @@ export function DelayedSkeleton({
   delayMs?: number;
 }) {
   const show = useDelayedFlag(true, delayMs);
-  return show ? <>{children}</> : null;
+  return show ? (
+    <div role="status" aria-label="Loading" aria-busy="true">
+      {children}
+    </div>
+  ) : null;
 }

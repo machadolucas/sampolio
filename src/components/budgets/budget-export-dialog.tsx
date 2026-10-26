@@ -1,7 +1,7 @@
 'use client';
 
-import { Dialog } from 'primereact/dialog';
-import { Button } from 'primereact/button';
+import { Dialog } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
 import { MdReceiptLong, MdSummarize } from 'react-icons/md';
 import { buildExpenseLogCsv, buildBudgetSummaryCsv } from '@/lib/budget-csv';
 import { downloadCsv, slugifyFilename } from '@/lib/csv-utils';
@@ -25,14 +25,14 @@ export function BudgetExportDialog({
 
   return (
     <Dialog header="Download your report" visible={visible} onHide={onHide} style={{ width: '26rem' }}>
-      <p className="text-sm opacity-70 mb-4">Two simple files that open straight in Excel.</p>
+      <p className="text-sm text-muted-foreground mb-4">Two simple files that open straight in Excel.</p>
       <div className="space-y-3">
         <div className="p-3 rounded-lg surface-ground">
           <div className="flex items-center gap-2 mb-1">
-            <MdReceiptLong className="opacity-60" />
+            <MdReceiptLong className="text-muted-foreground" />
             <span className="font-medium text-sm">Spending log</span>
           </div>
-          <p className="text-xs opacity-60 mb-2">
+          <p className="text-xs text-muted-foreground mb-2">
             Every expense you logged: date, description, category, amount, who paid. This is what grant reports
             usually want.
           </p>
@@ -44,15 +44,15 @@ export function BudgetExportDialog({
             onClick={() => downloadCsv(`${slug}-spending-log-${today()}.csv`, buildExpenseLogCsv(budget))}
           />
           {budget.expenseEntries.length === 0 && (
-            <p className="text-xs opacity-50 mt-1">Nothing logged yet.</p>
+            <p className="text-xs text-muted-foreground mt-1">Nothing logged yet.</p>
           )}
         </div>
         <div className="p-3 rounded-lg surface-ground">
           <div className="flex items-center gap-2 mb-1">
-            <MdSummarize className="opacity-60" />
+            <MdSummarize className="text-muted-foreground" />
             <span className="font-medium text-sm">Budget summary</span>
           </div>
-          <p className="text-xs opacity-60 mb-2">
+          <p className="text-xs text-muted-foreground mb-2">
             Planned costs, actual spending and funding coverage, per category — plus each grant&apos;s totals.
           </p>
           <Button

@@ -1,126 +1,142 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState, useCallback, useSyncExternalStore } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useSyncExternalStore,
+  type ReactNode,
+} from 'react';
 
 type Theme = 'light' | 'dark';
-
 interface ThemeContextType {
-    theme: Theme;
-    toggleTheme: () => void;
-    setTheme: (theme: Theme) => void;
+  theme: Theme;
+  toggleTheme: () => void;
+  setTheme: (theme: Theme) => void;
+  reducedTransparency: boolean;
+  setReducedTransparency: (reduced: boolean) => void;
 }
-
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
-
-interface ThemeProviderProps {
-    children: React.ReactNode;
+const CHANGE_EVENT = 'sampolio-appearance-change';
+const emptySubscribe = () => () => {};
+const clientReady = () => true;
+const serverReady = () => false;
+let memoryTheme: Theme | null = null;
+let memoryTransparency: boolean | null = null;
+function stored(key: string) {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
 }
-
-// SSR-safe check for client-side mounting
-const emptySubscribe = () => () => { };
-const getClientSnapshot = () => true;
-const getServerSnapshot = () => false;
-
-export function ThemeProvider({ children }: ThemeProviderProps) {
-    const [theme, setThemeState] = useState<Theme>('light');
-    const isClient = useSyncExternalStore(emptySubscribe, getClientSnapshot, getServerSnapshot);
-
-    const applyTheme = useCallback((newTheme: Theme) => {
-        const root = document.documentElement;
-
-        // Remove existing theme link if any
-        const existingLink = document.getElementById('primereact-theme');
-        if (existingLink) {
-            existingLink.remove();
-        }
-
-        // Create new theme link
-        const link = document.createElement('link');
-        link.id = 'primereact-theme';
-        link.rel = 'stylesheet';
-        link.href = newTheme === 'dark'
-            ? '/themes/sampolio-dark.css'
-            : '/themes/sampolio-light.css';
-        document.head.appendChild(link);
-
-        // Re-append the glass-overrides stylesheet *after* the theme link so its
-        // (un-layered, no-!important) rules win purely on source order. Remove
-        // any existing copy first so re-theming never accumulates duplicates.
-        const existingOverrides = document.getElementById('glass-overrides');
-        if (existingOverrides) {
-            existingOverrides.remove();
-        }
-        const overridesLink = document.createElement('link');
-        overridesLink.id = 'glass-overrides';
-        overridesLink.rel = 'stylesheet';
-        overridesLink.href = '/themes/glass-overrides.css';
-        document.head.appendChild(overridesLink);
-
-        // Update HTML class for Tailwind dark mode
-        if (newTheme === 'dark') {
-            root.classList.add('dark');
-        } else {
-            root.classList.remove('dark');
-        }
-
-        // Update CSS variables for backgrounds — mirrored in globals.css
-        // :root/.dark for the SSR-rendered first paint (before this runs).
-        if (newTheme === 'dark') {
-            root.style.setProperty('--background', '#0F1412');
-            root.style.setProperty('--foreground', '#E7ECE9');
-        } else {
-            root.style.setProperty('--background', '#F3F6F4');
-            root.style.setProperty('--foreground', '#1A211D');
-        }
-    }, []);
-
-    useEffect(() => {
-        if (!isClient) return;
-
-        // Check localStorage first
-        // Hydrate theme from the external store (localStorage / system pref) on
-        // mount — a legitimate effect→state sync, not derivable during render.
-        const savedTheme = localStorage.getItem('sampolio-theme') as Theme | null;
-        if (savedTheme) {
-            // eslint-disable-next-line react-hooks/set-state-in-effect
-            setThemeState(savedTheme);
-            applyTheme(savedTheme);
-        } else {
-            // Check system preference
-            const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-            const initialTheme = prefersDark ? 'dark' : 'light';
-            // eslint-disable-next-line react-hooks/set-state-in-effect
-            setThemeState(initialTheme);
-            applyTheme(initialTheme);
-        }
-    }, [applyTheme, isClient]);
-
-    const setTheme = useCallback((newTheme: Theme) => {
-        setThemeState(newTheme);
-        localStorage.setItem('sampolio-theme', newTheme);
-        applyTheme(newTheme);
-    }, [applyTheme]);
-
-    const toggleTheme = useCallback(() => {
-        const newTheme = theme === 'light' ? 'dark' : 'light';
-        setTheme(newTheme);
-    }, [theme, setTheme]);
-
-    if (!isClient) {
-        return null;
-    }
-
-    return (
-        <ThemeContext.Provider value={{ theme, toggleTheme, setTheme }}>
-            {children}
-        </ThemeContext.Provider>
+function readTheme(): Theme {
+  const saved = memoryTheme ?? stored('sampolio-theme');
+  return saved === 'light' || saved === 'dark'
+    ? saved
+    : window.matchMedia('(prefers-color-scheme: dark)').matches
+      ? 'dark'
+      : 'light';
+}
+function readTransparency() {
+  return (
+    (memoryTransparency === null
+      ? stored('sampolio-reduce-transparency')
+      : String(memoryTransparency)) === 'true' ||
+    window.matchMedia('(prefers-reduced-transparency: reduce)').matches
+  );
+}
+function subscribe(listener: () => void) {
+  const color = window.matchMedia('(prefers-color-scheme: dark)');
+  const transparency = window.matchMedia(
+    '(prefers-reduced-transparency: reduce)',
+  );
+  const onStorage = () => {
+    memoryTheme = null;
+    memoryTransparency = null;
+    listener();
+  };
+  window.addEventListener('storage', onStorage);
+  window.addEventListener(CHANGE_EVENT, listener);
+  color.addEventListener('change', listener);
+  transparency.addEventListener('change', listener);
+  return () => {
+    window.removeEventListener('storage', onStorage);
+    window.removeEventListener(CHANGE_EVENT, listener);
+    color.removeEventListener('change', listener);
+    transparency.removeEventListener('change', listener);
+  };
+}
+function persist(key: string, value: string) {
+  if (key === 'sampolio-theme') memoryTheme = value as Theme;
+  if (key === 'sampolio-reduce-transparency')
+    memoryTransparency = value === 'true';
+  try {
+    localStorage.setItem(key, value);
+  } catch {}
+  window.dispatchEvent(new Event(CHANGE_EVENT));
+}
+export function ThemeProvider({ children }: { children: ReactNode }) {
+  const hydrated = useSyncExternalStore(
+    emptySubscribe,
+    clientReady,
+    serverReady,
+  );
+  const theme = useSyncExternalStore(
+    subscribe,
+    readTheme,
+    () => 'light' as Theme,
+  );
+  const reducedTransparency = useSyncExternalStore(
+    subscribe,
+    readTransparency,
+    () => false,
+  );
+  const setTheme = useCallback((next: Theme) => {
+    document.documentElement.classList.toggle('dark', next === 'dark');
+    document.documentElement.style.colorScheme = next;
+    persist('sampolio-theme', next);
+  }, []);
+  const setReducedTransparency = useCallback((reduced: boolean) => {
+    document.documentElement.toggleAttribute(
+      'data-reduce-transparency',
+      reduced,
     );
+    persist('sampolio-reduce-transparency', String(reduced));
+  }, []);
+  useEffect(() => {
+    if (!hydrated) return;
+    document.documentElement.classList.toggle('dark', theme === 'dark');
+    document.documentElement.style.colorScheme = theme;
+    document.documentElement.toggleAttribute(
+      'data-reduce-transparency',
+      reducedTransparency,
+    );
+    for (const meta of document.querySelectorAll('meta[name="theme-color"]'))
+      meta.setAttribute('content', theme === 'dark' ? '#0F1412' : '#F3F6F4');
+  }, [theme, reducedTransparency, hydrated]);
+  const toggleTheme = useCallback(
+    () => setTheme(theme === 'dark' ? 'light' : 'dark'),
+    [theme, setTheme],
+  );
+  const value = useMemo(
+    () => ({
+      theme,
+      toggleTheme,
+      setTheme,
+      reducedTransparency,
+      setReducedTransparency,
+    }),
+    [theme, toggleTheme, setTheme, reducedTransparency, setReducedTransparency],
+  );
+  return (
+    <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>
+  );
 }
-
 export function useTheme() {
-    const context = useContext(ThemeContext);
-    if (context === undefined) {
-        throw new Error('useTheme must be used within a ThemeProvider');
-    }
-    return context;
+  const value = useContext(ThemeContext);
+  if (!value) throw new Error('useTheme must be used within ThemeProvider');
+  return value;
 }

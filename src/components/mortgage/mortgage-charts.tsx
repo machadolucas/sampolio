@@ -1,14 +1,14 @@
 'use client';
 
 /**
- * Mortgage visualizations (Chart.js via PrimeReact). Each chart takes an already
+ * Mortgage visualizations (Chart.js via the registered React wrapper). Each chart takes an already
  * time-windowed slice of the projection and renders with plain-language titles
  * and tooltips. Colors follow the app convention: liability red, equity/asset
  * green, "you" blue, partner purple, neutral gray.
  */
 
 import { useMemo } from 'react';
-import { Chart } from 'primereact/chart';
+import { Chart } from '@/components/ui/chart';
 import { formatCurrency, formatYearMonthShort, formatRate } from '@/lib/constants';
 import { getCurrentYearMonth } from '@/lib/projection';
 import { useAppContext } from '@/components/layout/app-layout';

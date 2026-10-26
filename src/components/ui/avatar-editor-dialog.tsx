@@ -3,10 +3,10 @@
 import { useCallback, useEffect, useRef, useState, type ComponentType } from 'react';
 import dynamic from 'next/dynamic';
 import type { Area, Point, CropperProps } from 'react-easy-crop';
-import { Dialog } from 'primereact/dialog';
-import { Button } from 'primereact/button';
-import { Slider } from 'primereact/slider';
-import { Message } from 'primereact/message';
+import { Dialog } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Slider } from '@/components/ui/slider';
+import { Message } from '@/components/ui/message';
 import { MdCloudUpload, MdDeleteOutline, MdArrowBack } from 'react-icons/md';
 import { UserAvatar } from '@/components/ui/user-avatar';
 import { fileToNormalizedImageSrc, cropToAvatarDataUri } from '@/lib/avatar-utils';
@@ -179,7 +179,7 @@ export function AvatarEditorDialog({
         <div className="space-y-3">
           <div className="flex items-center gap-3">
             <UserAvatar userId={userId} name={userName} avatarUrl={currentAvatarUrl} size={56} />
-            <span className="text-sm opacity-70">
+            <span className="text-sm text-muted-foreground">
               {currentAvatarUrl ? 'Your current photo' : `No photo yet — showing your initials`}
             </span>
           </div>
@@ -199,8 +199,8 @@ export function AvatarEditorDialog({
             }`}
           >
             <MdCloudUpload className="text-3xl opacity-50" />
-            <span className="text-sm opacity-70">Drop an image here, or tap to browse</span>
-            <span className="text-xs opacity-40">You can also paste an image</span>
+            <span className="text-sm text-muted-foreground">Drop an image here, or tap to browse</span>
+            <span className="text-xs text-muted-foreground">You can also paste an image</span>
           </button>
           <input
             ref={fileInputRef}
@@ -230,7 +230,7 @@ export function AvatarEditorDialog({
             )}
           </div>
           <div className="flex items-center gap-3">
-            <span className="text-sm opacity-70 shrink-0">Zoom</span>
+            <span className="text-sm text-muted-foreground shrink-0">Zoom</span>
             <Slider
               value={zoom}
               min={1}

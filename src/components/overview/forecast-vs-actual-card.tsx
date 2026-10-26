@@ -1,8 +1,8 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Card } from 'primereact/card';
-import { Tag } from 'primereact/tag';
+import { Card } from '@/components/ui/card';
+import { Tag } from '@/components/ui/tag';
 import {
     comparePlanToActual,
     pickDefaultView,
@@ -116,7 +116,7 @@ function PlanCheckRow({
                         />
                     )}
                 </div>
-                <div className={`text-[11px] opacity-60 mt-1 ${styles.bodyText}`}>{subLine}</div>
+                <div className={`text-xs mt-1 ${styles.bodyText}`}>{subLine}</div>
             </button>
             <div id={panelId} className={`collapse-grid ${open ? 'is-open' : ''}`} inert={open ? undefined : true}>
                 <div className="min-h-0 overflow-hidden">
@@ -364,7 +364,7 @@ export function PlanCheckCard({
                                 renderItem={(item) => (
                                     <div key={item.itemId} className="flex items-center justify-between gap-2 text-xs">
                                         <span className="flex items-center gap-1 min-w-0 flex-wrap">
-                                            <span className={`truncate ${bodyText} ${item.isPaid ? 'line-through opacity-60' : ''}`}>
+                                            <span className={`truncate ${bodyText} ${item.isPaid ? 'line-through text-muted-foreground' : ''}`}>
                                                 {item.name}
                                             </span>
                                             {item.isPaid && (

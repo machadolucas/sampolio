@@ -38,7 +38,12 @@ vi.mock('@/lib/actions/bank', () => ({
   getCreditCardOptions: vi.fn(() => ok([])),
 }));
 vi.mock('@/components/providers/toast-provider', () => ({
-  useToast: () => ({ success: vi.fn(), error: vi.fn(), info: vi.fn(), show: vi.fn() }),
+  useToast: () => ({
+    success: vi.fn(),
+    error: vi.fn(),
+    info: vi.fn(),
+    show: vi.fn(),
+  }),
 }));
 
 function renderModal(initialType: 'income' | 'expense' = 'expense') {
@@ -53,7 +58,7 @@ function renderModal(initialType: 'income' | 'expense' = 'expense') {
       initialType={initialType}
       initialRecurrence="recurring"
       autoOpenForm
-    />
+    />,
   );
 }
 
@@ -70,7 +75,9 @@ describe('CashflowItemModal (quick-add create form)', () => {
     expect(screen.getByText('Amount (EUR)')).toBeInTheDocument();
     expect(screen.getByText('Category')).toBeInTheDocument();
     expect(screen.getByText('Frequency')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /More options/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /More options/i }),
+    ).toBeInTheDocument();
 
     // Secondary fields hidden behind "More options"
     expect(screen.queryByText('Start Month')).not.toBeInTheDocument();
@@ -79,26 +86,31 @@ describe('CashflowItemModal (quick-add create form)', () => {
 
   it('reveals Start Month and Active after clicking More options', async () => {
     renderModal();
-    const moreBtn = await screen.findByRole('button', { name: /More options/i });
+    const moreBtn = await screen.findByRole('button', {
+      name: /More options/i,
+    });
     fireEvent.click(moreBtn);
 
     expect(await screen.findByText('Start Month')).toBeInTheDocument();
     expect(screen.getByText('End Month (opt)')).toBeInTheDocument();
     expect(screen.getByText('Active')).toBeInTheDocument();
     // The button collapses once opened
-    expect(screen.queryByRole('button', { name: /More options/i })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /More options/i }),
+    ).not.toBeInTheDocument();
   });
 
   it('auto-suggests the Entertainment category when the name is Netflix', async () => {
     renderModal();
-    const nameInput = await screen.findByPlaceholderText(/Rent, Groceries, Netflix/);
+    const nameInput = await screen.findByPlaceholderText(
+      /Rent, Groceries, Netflix/,
+    );
     fireEvent.change(nameInput, { target: { value: 'Netflix' } });
 
     expect(await screen.findByText('(suggested)')).toBeInTheDocument();
-    // The Category dropdown's selected label shows the auto-picked category
-    // ('Entertainment' also exists in the option list, so scope to the label)
-    const hits = screen.getAllByText('Entertainment');
-    expect(hits.some((el) => el.className.includes('p-dropdown-label'))).toBe(true);
+    expect(screen.getByLabelText(/Category/)).toHaveTextContent(
+      'Entertainment',
+    );
   });
 
   it('shows the Scheduled Month field when switching Recurrence to One-Off', async () => {
@@ -131,9 +143,23 @@ describe('CashflowItemModal (quick-add create form)', () => {
     fireEvent.click(screen.getByText('Gross income'));
 
     expect(await screen.findByText('Gross Amount (EUR)')).toBeInTheDocument();
-    expect(screen.getByText(/Use my salary.s tax settings/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Use my salary.s tax settings/),
+    ).toBeInTheDocument();
     expect(screen.getByText('Calculated Net')).toBeInTheDocument();
     // The recurring/one-off amount field is hidden for gross income
     expect(screen.queryByText('Amount (EUR)')).not.toBeInTheDocument();
   });
+});
+
+it('connects required field errors to their actual named inputs', async () => {
+  renderModal();
+  await screen.findByText('Add Item');
+  fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+  const name = screen.getByLabelText('Name', { exact: true });
+  await screen.findByText('Name is required');
+  expect(name).toHaveAttribute('aria-invalid', 'true');
+  const errorId = name.getAttribute('aria-describedby');
+  expect(errorId).toBeTruthy();
+  expect(document.getElementById(errorId!)).toHaveTextContent(/required/i);
 });

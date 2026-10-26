@@ -2,14 +2,14 @@
 
 import { useState, useMemo, useEffect, useCallback, useRef, useId } from 'react';
 import dynamic from 'next/dynamic';
-import { Card } from 'primereact/card';
-import { Button } from 'primereact/button';
-import { Calendar } from 'primereact/calendar';
-import { Dropdown } from 'primereact/dropdown';
-import { InputNumber } from 'primereact/inputnumber';
-import { InputText } from 'primereact/inputtext';
-import { SelectButton } from 'primereact/selectbutton';
-import { Tag } from 'primereact/tag';
+import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Calendar } from '@/components/ui/calendar';
+import { Dropdown } from '@/components/ui/dropdown';
+import { InputNumber } from '@/components/ui/input-number';
+import { InputText } from '@/components/ui/input-text';
+import { SelectButton } from '@/components/ui/select-button';
+import { Tag } from '@/components/ui/tag';
 import { useTheme } from '@/components/providers/theme-provider';
 import { useAppContext } from '@/components/layout/app-layout';
 import { useToast } from '@/components/providers/toast-provider';
@@ -310,7 +310,7 @@ export default function PlaygroundPage() {
                 <Dropdown
                     value={selectedAccountId}
                     options={accounts.map((a: FinancialAccount) => ({ label: a.name, value: a.id }))}
-                    onChange={(e) => { setSelectedAccountId(e.value); setResult(null); }}
+                    onChange={(e) => { if (e.value !== null) { setSelectedAccountId(e.value); setResult(null); } }}
                     className="w-full md:w-64"
                     placeholder="Select account"
                 />

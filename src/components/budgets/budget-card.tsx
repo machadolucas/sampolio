@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { Tag } from 'primereact/tag';
+import { Tag } from '@/components/ui/tag';
 import { MdLuggage, MdPlace } from 'react-icons/md';
 import { formatYearMonth } from '@/lib/constants';
 import { computeFeasibility, isBudgetPast } from '@/lib/budget-utils';
@@ -29,16 +29,16 @@ export function BudgetCard({ budget }: { budget: Budget }) {
       href={`/budgets/${budget.id}`}
       className={`block rounded-xl border p-4 pressable cursor-pointer hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 ${
         isDark ? 'border-neutral-700 bg-neutral-800/50 hover:bg-neutral-800' : 'border-neutral-200 bg-white hover:bg-neutral-50'
-      } ${budget.isArchived ? 'opacity-60' : ''}`}
+      } ${budget.isArchived ? 'text-muted-foreground' : ''}`}
     >
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
-          <MdLuggage size={20} className="opacity-50 shrink-0" />
+          <MdLuggage size={20} className="text-muted-foreground shrink-0" />
           <h3 className="text-base font-semibold truncate">{budget.name}</h3>
         </div>
         <Tag value={budget.isArchived ? 'Archived' : tag.value} severity={budget.isArchived ? 'secondary' : tag.severity} className="shrink-0" />
       </div>
-      <p className="text-sm opacity-60 mt-1 flex items-center gap-1">
+      <p className="text-sm text-muted-foreground mt-1 flex items-center gap-1">
         {budget.destination && (
           <>
             <MdPlace size={14} />

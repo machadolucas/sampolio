@@ -4,30 +4,23 @@ React component library for the application.
 
 ## UI Framework
 
-**PrimeReact** is the component library (not shadcn/ui or Material-UI). Import components from `primereact/*`:
-- `primereact/button` — Button
-- `primereact/inputtext` — InputText
-- `primereact/inputnumber` — InputNumber
-- `primereact/dropdown` — Dropdown
-- `primereact/dialog` — Dialog
-- `primereact/datatable` — DataTable
-- `primereact/tabview` — TabView
-- `primereact/steps` — Steps (wizard)
-- `primereact/tag` — Tag
-- `primereact/inputswitch` — InputSwitch
-- `primereact/selectbutton` — SelectButton
-- `primereact/message` — Message
-- `primereact/tooltip` — Tooltip
-- `primereact/progressspinner` — ProgressSpinner
+App-owned shadcn/ui components use **Base UI** behavior primitives and Tailwind v4 styles. Import individual modules from `@/components/ui/*`; `components.json` records the Base UI registry configuration. The UI foundation and source provenance are documented in `docs/architecture.md`. Do not introduce a component barrel that eagerly loads chart dependencies.
 
-**Icons**: `react-icons` (Material Design `Md*`, Font Awesome `Fa*`), `primeicons`, `lucide-react`.
+- `button`, `input`, `input-number`, `select`, `date-picker`, `controls` — accessible form controls; compatibility import modules (`input-text`, `dropdown`, `calendar`, etc.) re-export these app-owned contracts.
+- `dialog` / `sheet` — Base UI modal focus management, optional maximize, caller-controlled dismissal; narrow dialogs become safe-area-aware bottom sheets. Dialogs do not support free dragging/resizing.
+- `confirmation` — one queued Base UI AlertDialog host; details below.
+- `data-table` — TanStack Table sorting, pagination (first/previous/direct-page/next/last), expansion and pinned columns; declarative `Column` children describe columns. Use `scrollRef` for the real `[data-slot="table-scroll"]` viewport.
+- `chart` — `react-chartjs-2` wrapper registering the used Chart.js families; ECharts remains separate and lazy-loaded.
+- `tooltip` — explicit trigger/content composition; never target a global CSS selector.
+
+**Material and accessibility**: system font, green semantic tokens, opaque data cards/forms, strongly filled overlays and glass chrome (`src/app/globals.css`); reserve glass for bounded navigation/control surfaces. Use at least 44px targets, native labels, full-contrast helper/error text, explicit disabled states, and the shared reduced-motion/transparency preferences. Icons use `lucide-react` or existing `react-icons` families.
 
 ## Directory Structure
 
 ### `charts/`
 Data visualization components:
-- `net-worth-chart.tsx` — Chart.js (`primereact/chart`) line/area chart for net worth over time; a Total assets/Liquid scope toggle and net-worth-only/breakdown toggle; reuses `wealth-chart.tsx`'s `WEALTH_COLORS`/`wealthCategoriesForScope()`/`computeScopedNetWorth()` so its tooltip enumerates every in-scope non-zero category.
-- `wealth-chart.tsx` — Chart.js stacked-band chart of wealth composition, scoped `total` (Cash, Investments, Receivables, Home value / Debts, Credit cards, Mortgage) or `liquid` (Cash, Investments, Debts, Credit cards), plus a Net worth line overlay; all-zero series omitted. Exports the shared color map and scope helpers used by `net-worth-chart.tsx`. Its Chart.js legend is the only legend (no separate HTML legend).
+- `net-worth-chart.tsx` — Chart.js (`ui/chart.tsx`) line/area chart for net worth over time; a Total assets/Liquid scope toggle and net-worth-only/breakdown toggle; reuses `src/lib/wealth-chart-style.ts`'s `WEALTH_COLORS`/`wealthCategoriesForScope()`/`computeScopedNetWorth()` so its tooltip enumerates every in-scope non-zero category.
+- `wealth-chart.tsx` — Chart.js stacked-band chart of wealth composition, scoped `total` (Cash, Investments, Receivables, Home value / Debts, Credit cards, Mortgage) or `liquid` (Cash, Investments, Debts, Credit cards), plus a Net worth line overlay; all-zero series omitted. Shares the pure `src/lib/wealth-chart-style.ts` color/scope helpers with `net-worth-chart.tsx`. Its Chart.js legend is the only legend (no separate HTML legend).
 - `monthly-flow-chart.tsx` — ECharts Sankey diagram for income → expenses flow (gross salary **and** gross taxed income split into deduction outflows via `isGrossSource`)
 - `cashflow-waterfall-chart.tsx` — ECharts waterfall chart for balance progression
 - `expense-treemap-chart.tsx` — ECharts treemap for expense proportions
@@ -35,16 +28,16 @@ Data visualization components:
 - `split-spend-chart.tsx` — lazy ECharts stacked bars for the /split Insights section (spend By member (default) / By category / By group toggle; group/member series use the stable hash palette, category mode buckets via `bucketSpendByCategory` top-8 + 'Other' and colors via `getCategoryColor`)
 - `split-net-chart.tsx` — lazy ECharts running-net line for the /split Insights section (viewer net over time, zero markLine) over green/orange monthly-change bars; first bar measured against `viewerNetBaseline`, and when the standing balance dwarfs the deltas the bars use a hidden zero-aligned second y-axis so they stay readable
 
-Charts mix ECharts (`echarts-for-react`, preferred for Sankey/waterfall/treemap) and Chart.js (`primereact/chart`, used by the two net-worth charts above). Feature-specific charts live with their feature: see `mortgage/mortgage-charts.tsx` + `mortgage/mortgage-sankey.tsx` and `budgets/budget-month-chart.tsx`.
+Charts mix ECharts (`echarts-for-react`, preferred for Sankey/waterfall/treemap) and Chart.js (`ui/chart.tsx`, also used by budget and mortgage views). Feature-specific charts live with their feature: see `mortgage/mortgage-charts.tsx` + `mortgage/mortgage-sankey.tsx` and `budgets/budget-month-chart.tsx`.
 
 - **No barrel**: there is no `charts/index.ts` — import each chart from its own module (a barrel would drag the ECharts charts' side effects into every importer and defeat `next/dynamic` code-splitting).
 - **Escape tooltip HTML**: an ECharts `tooltip.formatter` string is assigned to `innerHTML`, so every user-controlled value in it (names, categories, labels, axis values) must go through `escapeHtml` (`src/lib/html-escape.ts`) — a co-member's name like `<img onerror=…>` would otherwise run as script. Canvas-rendered label/axis formatters do not need it. Every ECharts chart above plus `mortgage-sankey.tsx` does this.
 
 ### `layout/`
 - `app-layout.tsx` — Main layout wrapper with AppContext provider. Manages drawer state, the shared account list (`accounts` + `accountsLoaded`, flipped in the same transition as the list — pages such as Cashflow read accounts from here instead of fetching their own), refresh callbacks, sidebar state. This is the central state hub. `ReconcileWizard` and `OnboardingWizard` are `next/dynamic` and mount only once first opened (`reconcileMounted`/`onboardingMounted`), then stay mounted. The lg+ Demo indicator pill is rendered here (fixed, z-45); below `lg` it lives inside `MobileTopBar`.
-- `mobile-top-bar.tsx` — Mobile (< lg) top bar: hamburger, brand, search; while demo mode is on, a 44px "Demo" pill sits in the bar's own flow **before** Search (tap turns demo mode off), so it never covers the Search button.
-- `sidebar-nav.tsx` — Left navigation sidebar with the app routes (from the shared `nav-config.tsx` via `useVisibleNavItems()`, which filters to `simpleModeVisible` entries in Simple display mode), a search quick action (the monthly check-in lives on Overview + ⌘M/palette, not in the chrome), user menu (`useUserMenuItems` in `nav-config.tsx`: a single non-interactive name+email template item, full-contrast name + one opacity-70 truncated email; theme/display-mode/sign-out items use an icon+label template with `flex items-center gap-2`), theme toggle, collapse button.
-- `bottom-nav.tsx` — Mobile (< lg) fixed bottom tab bar: N+1 equal cells — the user's 1–4 chosen tabs (resolved by `resolveBottomNavIds` from `src/lib/bottom-nav-prefs.ts`, i.e. `UserPreferences.bottomNavIds` or the per-display-mode defaults) plus a fixed "More" cell that opens the drawer. Labels/icons come from `navItems`; the sliding active pill positions itself from `100 / cells`.
+- `mobile-top-bar.tsx` — Mobile (< lg) floating top bar: hamburger, truncating brand, **Add shared expense**, search; while demo mode is on, a 44px "Demo" pill sits in the bar's own flow **before** Search (tap turns demo mode off), so toolbar actions never cover scrolling amounts. The global quick-add FAB is desktop-only.
+- `sidebar-nav.tsx` — Left navigation sidebar with the app routes (from the shared `nav-config.tsx` via `useVisibleNavItems()`, which filters to `simpleModeVisible` entries in Simple display mode), a search quick action (the monthly check-in lives on Overview + ⌘M/palette, not in the chrome), user menu (`useUserMenuItems` in `nav-config.tsx`: a name+email template inside the clickable Account menu item, full-contrast name + muted truncated email; theme/display-mode/sign-out items use an icon+label template with `flex items-center gap-2`), theme toggle, collapse button.
+- `bottom-nav.tsx` — Mobile (< lg) floating capsule bottom bar: N+1 equal cells — the user's 1–4 chosen tabs (resolved by `resolveBottomNavIds` from `src/lib/bottom-nav-prefs.ts`, i.e. `UserPreferences.bottomNavIds` or the per-display-mode defaults) plus a fixed "More" cell that opens the drawer. Labels/icons come from `navItems`; the sliding active pill positions itself from `100 / cells`.
 - `brand-logo.tsx` — Inline-SVG brand mark (euro coin + rising chart, money-green) mirroring `public/icons/icon.svg`; gradient id scoped with `useId()` since the sidebar/top-bar/drawer are all mounted at once. Used as the logo in all nav surfaces and the auth pages (replaced the old 💰 emoji).
 
 ### `modals/`
@@ -80,9 +73,8 @@ Trip per-diem UI (rendered as the Trips section of the merged `/budgets` page; `
 ### `bank/`
 Enable Banking (PSD2 AIS, **read-only** sync) UI:
 - `bank-connections-panel.tsx` — Connect/reconnect/disconnect banks; per-linked-account config (role cash/credit-card, anchor account, exclude, card statement/due day, manual credit limit, expected monthly spend, custom name) with autosave + field tooltips; the card summary line renders `effectiveCardNumbers` (owed/available/limit, each independent). Rendered in **Settings → Accounts & Banking**.
-- **PrimeReact Dropdown null-option gotcha**: an option whose `value` is `null`/`''` makes the Dropdown emit the whole **option object** in `onChange` (its `getOptionValue` treats empty as "no value" and falls back to the option itself). Every "— not linked —"-style sentinel option's `onChange` must normalize: `typeof e.value === 'string' ? e.value : null` (see bank-connections-panel, budget-expense-log, mortgage-dialogs).
 - `account-picker.tsx` — Sticky bank-tab row (connection/consent status dots, hidden for a single connection) + account-chip row (name + balance/owed); drives the `/bank` page's selected account.
-- `bank-ledger-table.tsx` — Imported transaction ledger for one linked account: search box, infinite-scroll desktop DataTable (rows revealed as the inner scroll area nears its end) with a "Split" flag-pill column, and compact month-grouped mobile rows — each row is a whole-row `role="button"` that toggles expansion; the "already split" pill and Split-this button sit between the title and the amount (inner buttons `stopPropagation`), so the amount + chevron form a constant-width right rail and amounts right-align across rows. Exact links, recovered pending→booked suggestions, and heuristic matches carry existing split details for duplicate warnings; the split flow can confirm a suggestion or explicitly acknowledge listed expense ids before creating another row. Rendered on the `/bank` page.
+- `bank-ledger-table.tsx` — Imported transaction ledger for one linked account: search box, infinite-scroll desktop DataTable (rows revealed as the inner scroll area nears its end) with a "Split" flag-pill column, and compact month-grouped mobile rows — each row has a named native details button and a pointer-row shortcut that toggle expansion; the "already split" pill and Split-this button sit between the title and the amount (inner buttons `stopPropagation`), so the amount + chevron form a constant-width right rail and amounts right-align across rows. Exact links, recovered pending→booked suggestions, and heuristic matches carry existing split details for duplicate warnings; the split flow can confirm a suggestion or explicitly acknowledge listed expense ids before creating another row. Rendered on the `/bank` page.
 - `account-picker.tsx` — sticky bank/account chip switcher with **jiggle-mode reorder** (`docs/architecture.md` §17 Motion guidance): a long-press enters the mode, and **one shared jiggle state drives two `useJiggleReorder` instances** — the bank-tabs row reorders connections, the account-chips row reorders accounts within the active connection. Every move persists the flat id order to `UserPreferences.bankAccountOrder` (`updateBankAccountOrder`) immediately, and the page applies it via the pure `sortConnectionsByAccountOrder` (`src/lib/bank-utils.ts`) to the picker, the link list, and the default selection. (The old ⇅-button + ◀/▶ nudge-arrow reorder was removed in favor of jiggle mode.)
 
 ### `onboarding/`
@@ -90,9 +82,8 @@ Enable Banking (PSD2 AIS, **read-only** sync) UI:
 
 ### `providers/`
 Context providers wrapped around the app:
-- `theme-provider.tsx` — Dark/light mode management
-- `prime-provider.tsx` — PrimeReact configuration
-- `toast-provider.tsx` — app-wide toast surface. Mounts one `<Toast>` (bottom-center) in `AppLayout`; use `useToast()` (`success`/`error`/`info`/`show`) instead of per-component `<Toast>` refs. Fire it after every mutation.
+- `theme-provider.tsx` — SSR-safe dark/light mode and device-local reduced-transparency stores; root prepaint resolves saved theme/OS preference before hydration, with memory fallback if storage is denied.
+- `toast-provider.tsx` — app-wide toast surface. Mounts one Base UI Toast provider and viewport (bottom-center) in `AppLayout`; use `useToast()` (`success`/`error`/`info`/`show`) instead of per-component `<Toast>` refs. Fire it after every mutation.
 - `celebration-provider.tsx` — `useCelebration().celebrate('checkmark' | 'confetti')`: the celebration overlays (split-expense create / settle-up; see `docs/architecture.md` §17 Motion guidance). The checkmark is a ~900ms badge-pop with an expanding ring + 6-dot burst + check draw (every keyframe uses `forwards` since the overlay unmounts). Mounted inside `ToastProvider` in `AppLayout`; returns `false` under reduced motion so callers fall back to flash-highlight + toast.
 
 ### `settings/`
@@ -105,7 +96,7 @@ Pieces of the `/overview` wealth dashboard:
 - `banner-stack.tsx` — the page's reminder banners (check-in, Euribor, bank consent, budget) on the shared `AlertBanner`, plus `isCheckInBannerVisible`
 - `kpi-group.tsx` — titled grid section wrapping the `KpiTile`s (Net / Assets / Debts & liabilities)
 - `net-worth-explain-dialog.tsx` — plain-words, row-by-row breakdown of the net-worth sum (opened from the Net Worth tile)
-- `wealth-distribution.tsx` — `WealthDistribution`: "Where your wealth sits", a slim CSS segmented bar + legend of the current asset split (Cash / Investments / Receivables / Home equity / positive Split balance), colored from `charts/wealth-chart.tsx`'s shared `WEALTH_COLORS`. Not a canvas chart, so no `ChartExplain`: the bar is `role="img"` with a generated `aria-label` and the legend/footer repeat it as text. Renders in both display modes.
+- `wealth-distribution.tsx` — `WealthDistribution`: "Where your wealth sits", a slim CSS segmented bar + legend of the current asset split (Cash / Investments / Receivables / Home equity / positive Split balance), colored from the pure `src/lib/wealth-chart-style.ts` shared `WEALTH_COLORS`. Not a canvas chart, so no `ChartExplain`: the bar is `role="img"` with a generated `aria-label` and the legend/footer repeat it as text. Renders in both display modes.
 - `forecast-vs-actual-card.tsx` — `PlanCheckCard`: "Plan vs reality" (pure engine in `src/lib/forecast-vs-actual.ts`)
 
 ### `reconcile/`
@@ -115,7 +106,7 @@ Pieces of the `/overview` wealth dashboard:
 Shared UI components:
 - `command-palette.tsx` — Cmd+K command palette with search, navigation, and action commands (incl. `action-demo-mode` toggle)
 - `jiggle-reorder.tsx` — shared iOS-style jiggle-mode reorder primitive (`useJiggleReorder` hook + `JiggleModeBar` pill); long-press → mode, drag/arrow-keys reorder; wobble on `[data-jiggle-inner]`, drag on `[data-jiggle-item]`; pure math in `src/lib/reorder-utils.ts`. Used by /split (group list), /bank (account-picker), and Settings → General (`settings/mobile-nav-card.tsx` bottom-nav tab preview). See `docs/architecture.md` §17 Motion guidance.
-- `user-avatar.tsx` — `<UserAvatar>`: renders a user's avatar image (from `/api/avatars/[userId]`) or initials on a deterministic `getAvatarColor` hsl hash (`src/lib/avatar-utils.ts`). Profiles resolved via the `useUserProfiles` hook (`src/lib/hooks/use-user-profiles.ts`, module cache + inflight dedup).
+- `user-avatar.tsx` — `<UserAvatar>`: renders a user's avatar image (from `/api/avatars/[userId]`) or initials on a deterministic `getAvatarColor` hsl hash (`src/lib/avatar-utils.ts`), with `contrastTextColor` (`src/lib/color-contrast.ts`) selecting a readable foreground. Profiles resolved via the `useUserProfiles` hook (`src/lib/hooks/use-user-profiles.ts`, module cache + inflight dedup).
 - `avatar-editor-dialog.tsx` — `AvatarEditorDialog`: drop/paste/browse → EXIF-normalized ≤2048px source → `react-easy-crop` round crop + zoom (lazy-loaded dependency) → 256×256 WebP q0.85 (JPEG fallback), saved via `updateMyAvatar` / admin `updateUser`.
 - `entity-list-drawer.tsx` — Slide-in drawer showing lists of entities by type (cash, investments, receivables, debts) with inline create/edit/archive forms
 - `entity-modal-router.tsx` — Routes entity types to the correct create/edit form
@@ -164,8 +155,13 @@ const onFormSubmit = useFormSubmit(save, { disabled: saving });
   <Button type="submit" label="Save" loading={saving} />
 </form>
 ```
-Only the primary button is `type="submit"`; every other button inside the form is `type="button"`. The hook blurs a focused `InputNumber` (PrimeReact commits typed text only on blur/Enter) and runs the latest `save` on the next tick. To clear an optional field, send `null` (an absent key keeps the stored value — see `src/lib/actions/AGENTS.md`). Stateful dialogs that stay mounted reset their fields on the closed→open transition during render (e.g. `mortgage-dialogs.tsx`).
+Only the primary button is `type="submit"`; every other button inside the form is `type="button"`. The hook blurs only a focused `[data-commit-on-submit]` number field and runs the latest `save` on the next tick, after the locale-aware commit reaches React state. To clear an optional field, send `null` (an absent key keeps the stored value — see `src/lib/actions/AGENTS.md`). Stateful dialogs that stay mounted reset their fields on the closed→open transition during render (e.g. `mortgage-dialogs.tsx`).
+
+- `InputNumber` wraps Base UI NumberField: controlled `number | null`, `fi-FI` parsing/formatting, raw intermediate text, bounds and precision; currency defaults to two decimals. `onValueChange` reports changes and `onValueCommitted` reports completed edits. Empty means `null`, never an option sentinel or `NaN`.
+- `Calendar` uses `Date | null` at the UI boundary, typed Finnish day entry plus keyboard DayPicker, and local datetime input; `date-picker.tsx`'s `MonthPicker` uses `YYYY-MM | null`; the `form-primitives.tsx` adapter retains `string` with empty-string clearing for existing forms. Respect min/max and preserve local dates without UTC conversion.
+- `Dropdown`/`MultiSelect` normalize scalar values (including zero/false), object options and groups; only `null` clears a single selection. `SelectButton` permits clearing by default; set `allowEmpty={false}` when the choice is required.
+- RHF errors connect the actual control's `aria-invalid`/`aria-describedby` to a unique error id and announced message. Use `useId` prefixes for label/error ids because Next can retain inactive route instances. Password strength uses the shared policy, not length alone.
 
 ### Confirmations, dates
-- Destructive prompts use the imperative `confirmDialog({...})` answered by the one `<ConfirmDialog />` in `AppLayout`; never mount another receiver and never call the browser's `confirm()` (`src/test/no-native-confirm.test.ts` fails on it).
+- The one `<ConfirmDialog />` in `AppLayout` serves queued requests. `confirmDialog({...})` preserves legacy **Yes / No**, accept focus; `requestConfirmation({...}): Promise<boolean>` defaults to **Confirm / Cancel**, reject focus. Explicit labels/focus override either API. Resolve/callbacks run after dismissal; the next request crosses a closed focus boundary, preventing double activation. Sign-out/unmount cancels pending requests. Never mount another receiver or call browser `confirm()` (`src/test/no-native-confirm.test.ts`).
 - Display dates through the fi-FI helpers in `src/lib/constants.ts` — `formatDate`, `formatDateTime`, `formatDayMonth` (bare `YYYY-MM-DD` parsed as a local date) — and months through `formatYearMonth`, never ad-hoc `toLocaleDateString` calls.

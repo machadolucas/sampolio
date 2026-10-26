@@ -368,7 +368,7 @@ item (see "Bank-transaction linking" above); `?expense=&month=`
   flush. A first-ever visit shows no dots and stamps the baseline to now. Accepted
   edges: your own off-page quick-adds self-dot until you open the group, and the
   watermark only considers loaded months.
-- **Global quick-add FAB** (mounted in `app-layout.tsx`) opens the
+- **Global quick-add** (desktop FAB in `app-layout.tsx`, 44px mobile toolbar action in `mobile-top-bar.tsx`) opens the
   `entityType: 'split-expense'` drawer → `QuickAddSplitModal`
   (`quick-add-split-modal.tsx`): title + amount is enough — `quickAddSplitExpense`
   defaults to *you paid, split equally, today*, with `guessCategory` and
@@ -902,7 +902,7 @@ own `AGENTS.md` in the same directory has the full breakdown, including the data
   `src/components/overview/wealth-distribution.tsx`): a slim CSS segmented bar + legend
   below the KPI tiles showing how the current asset total splits across Cash,
   Investments, Receivables, Home equity and a positive Split balance — colored from the
-  shared `WEALTH_COLORS` map, `role="img"` with a generated `aria-label` (no
+  shared pure `WEALTH_COLORS` map (`src/lib/wealth-chart-style.ts`), `role="img"` with a generated `aria-label` (no
   `ChartExplain`, since it is not a canvas chart), shown in **both** display modes, with
   a footer sentence reconciling assets minus debts/cards/owed-split to the Net Worth KPI.
 - **Banners** (all via the shared `AlertBanner` in `BannerStack`,
@@ -927,7 +927,7 @@ own `AGENTS.md` in the same directory has the full breakdown, including the data
   chart's only legend, shown in both modes; there is no separate hard-coded HTML
   legend), omitting any all-zero series. `net-worth-chart.tsx` reuses the shared
   `WEALTH_COLORS` / `wealthCategoriesForScope()` / `computeScopedNetWorth()`
-  exports from `wealth-chart.tsx`; its tooltip enumerates every in-scope
+  exports from `src/lib/wealth-chart-style.ts`; its tooltip enumerates every in-scope
   non-zero category.
 - **This-month impact panel**: top income/expense lines for the current month; account
   balance lines use the same `currentCashBalances` values as the Cash KPI.
@@ -1075,7 +1075,10 @@ only their axis/label/tooltip text masks. Mechanism (`src/lib/demo-mode.ts`):
 - **Persistence is per-device** localStorage (`DEMO_MODE_STORAGE_KEY = 'demo-mode'`), NOT a
   `UserPreferences` field — it's about the screen you're showing, not the account. AppLayout also
   listens for `storage` events, so toggling in one tab/window (e.g. the installed PWA) updates
-  every other open tab of the origin.
+  every other open tab of the origin. The SSR-safe device store resolves before the money-bearing
+  subtree becomes visible; AppLayout keeps it mounted with `visibility: hidden`, `inert` and
+  `aria-hidden` plus a skeleton until ready, preserving chart measurements and preventing an
+  unmasked first paint without suppressing server-rendered children.
 - **No exempt pages**: every page masks, `/mortgage` and `/split` included.
 - **NOT masked**: `formatRate`, input fields, and CSV/JSON exports (only display formatting).
 - **Chart-memo dep + remount-key rule** (future code must follow): any ECharts `option` `useMemo`
@@ -1091,18 +1094,16 @@ only their axis/label/tooltip text masks. Mechanism (`src/lib/demo-mode.ts`):
   amounts after a toggle. Either list `demoMasked` in the deps or format at render time,
   as `StatusHeroCard` (`src/components/ui/status-hero-card.tsx`) does for the Overview
   hero's summary text.
-- **Memoized-widget remount-key rule** (future code must follow): PrimeReact components with
-  memoized internals won't re-run `formatCurrency` on a bare re-render, so any long-lived widget
-  that bakes money into cells or templates remounts via `key={demoMasked ? 'masked' : 'plain'}` —
-  the money `DataTable`s (projection-table, bank-ledger-table, budget-expense-log, and
-  mortgage-ledger-table, whose composite key carries a demo segment) and the cashflow header's
-  account-selector `Dropdown` (money in its `valueTemplate`); modals mount fresh so they need no
-  key.
+- **Money-widget freshness**: app-owned TanStack tables and Base UI selectors still carry a
+  demo remount key where money is baked into cell/option templates (projection-table,
+  bank-ledger-table, budget-expense-log, mortgage-ledger-table, and the cashflow account
+  picker). Preserve this boundary or explicitly include `demoMasked` in every formatter
+  cache dependency; changing a library does not remove the privacy requirement.
 - **Toggle surfaces**: the user-menu item (`nav-config.tsx`) and the command palette
   (`action-demo-mode`). A "Demo" indicator pill (eye-off icon, click to exit) shows while it
   is on: at `lg`+ AppLayout renders it fixed at the top right (z-45, above the chrome,
-  below overlays); below `lg` it sits inside `MobileTopBar`'s own flow before the Search
-  button (44px tap target), so it never covers Search. Context exposes
+  below overlays); below `lg` it sits inside `MobileTopBar`'s own flow alongside the shared-expense and Search
+  actions (44px tap targets), with a truncating brand so the chrome does not overflow or cover amounts. Context exposes
   `demoMode`/`demoMasked`/`setDemoMode`.
 
 ## 11. Simple vs Advanced display mode

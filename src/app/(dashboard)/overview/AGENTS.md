@@ -27,7 +27,7 @@ groups. Tile semantics:
 
 The reminder banners all render through `BannerStack` (`src/components/overview/banner-stack.tsx`, built on the shared `AlertBanner`); the header "Monthly check-in" button hides while the check-in banner shows (`isCheckInBannerVisible`) so the banner is the single entry point.
 
-Clicking a KPI card opens the **EntityListDrawer** (`src/components/ui/entity-list-drawer.tsx`) for Cash/Investments/Receivables/Debts — showing all entities of that type with create/edit/archive actions. The Net Worth tile instead opens the plain-words **NetWorthExplainDialog** (`src/components/overview/net-worth-explain-dialog.tsx`), and the Mortgage share / Credit cards / Split balance tiles navigate to their owning pages (`/mortgage`, `/bank`, `/split`).
+The native title button is the keyboard action for each `KpiTile`; its sibling HelpHint remains independently operable (never nest interactive elements). Clicking a KPI card opens the **EntityListDrawer** (`src/components/ui/entity-list-drawer.tsx`) for Cash/Investments/Receivables/Debts — showing all entities of that type with create/edit/archive actions. The Net Worth tile instead opens the plain-words **NetWorthExplainDialog** (`src/components/overview/net-worth-explain-dialog.tsx`), and the Mortgage share / Credit cards / Split balance tiles navigate to their owning pages (`/mortgage`, `/bank`, `/split`).
 
 ### Status Hero Card
 `StatusHeroCard` (`src/components/ui/status-hero-card.tsx`, props `{ userName, summary, currency }`) renders `deriveHeroSummary` (`src/lib/overview-hero.ts`, pure/tested) over the per-account cash projections:
@@ -48,7 +48,7 @@ nothing is fetched or converted.
 - Categories with a value ≤ €0.005 are dropped; the card renders `null` only when **no**
   asset is positive. A single positive category still renders (a 100% bar is a real
   answer, and hiding it would make the card appear only once a second asset exists).
-- Colors come from the shared `WEALTH_COLORS` map in `charts/wealth-chart.tsx` (via
+- Colors come from the shared `WEALTH_COLORS` map in `src/lib/wealth-chart-style.ts` (via
   `rgb(key)`), so a category reads the same here as in the breakdown chart; the split
   category uses the `split` indigo entry, added there for this card.
 - Not a canvas chart, so it deliberately has **no** `ChartExplain` integration — the bar
@@ -66,7 +66,7 @@ nothing is fetched or converted.
 Tested in `src/components/overview/wealth-distribution.test.tsx` (jsdom).
 
 ### Net Worth Projection Chart
-Chart.js line/area chart (`src/components/charts/net-worth-chart.tsx`, via `primereact/chart`) showing projected net worth over time:
+Chart.js line/area chart (`src/components/charts/net-worth-chart.tsx`, via `src/components/ui/chart.tsx` / `react-chartjs-2`) showing projected net worth over time:
 - A **Total assets / Liquid** scope toggle (`wealthScope`, default `total`), plus a toggle between "Net Worth Only" and "Breakdown" (its `aria-label` names the action: "Show breakdown" / "Show net worth only")
 - Breakdown mode renders **stacked bands** (`WealthChart`, `src/components/charts/wealth-chart.tsx`): total scope = Cash, Investments, Receivables, Home value / Debts, Credit cards, Mortgage; liquid scope = Cash, Investments, Debts, Credit cards — plus a Net worth line overlay; all-zero series are omitted. Chart.js's own legend is the chart's only legend.
 - Time horizon selector: 6M, 1Y, 3Y, 5Y
@@ -111,5 +111,5 @@ When a bank connection's consent is approaching expiry (`getBankConnectionsNeedi
 - `src/lib/overview-hero.ts` — hero summary + net-worth month-over-month badge
 - `src/lib/wealth-projection.ts` — Wealth projection calculation (folds in mortgage equity)
 - `src/lib/mortgage-projection.ts` / `src/lib/mortgage-utils.ts` — Mortgage engine + Euribor-due check
-- `src/components/charts/net-worth-chart.tsx` / `wealth-chart.tsx` — Main chart + shared scoped stacked-band/color helpers
+- `src/components/charts/net-worth-chart.tsx` / `wealth-chart.tsx` — Main charts; pure scoped/color helpers live in `src/lib/wealth-chart-style.ts`
 - `src/components/ui/entity-list-drawer.tsx` — Entity list panel

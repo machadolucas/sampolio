@@ -27,6 +27,9 @@ const eslintConfig = defineConfig([
     ".next-prod/**",
     "out/**",
     "build/**",
+    // Generated browser reports contain vendored Playwright bundles.
+    "playwright-report/**",
+    "test-results/**",
     "next-env.d.ts",
   ]),
 ]);

@@ -1,10 +1,10 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { DataTable } from 'primereact/datatable';
-import { Column } from 'primereact/column';
-import { Tag } from 'primereact/tag';
-import { Button } from 'primereact/button';
+import { DataTable } from '@/components/ui/datatable';
+import { Column } from '@/components/ui/column';
+import { Tag } from '@/components/ui/tag';
+import { Button } from '@/components/ui/button';
 import { useTheme } from '@/components/providers/theme-provider';
 import { useAppContext } from '@/components/layout/app-layout';
 import { formatCurrency, formatYearMonth } from '@/lib/constants';
@@ -56,7 +56,7 @@ export function ProjectionTable({ displayMonths, nowMonth, selectedMonth, select
                 const top = row.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop - headerH;
                 container.scrollTop = Math.max(0, top);
             };
-            scrollToNow(desktopTableRef.current?.querySelector('.p-datatable-wrapper'), '.cf-now-row');
+            scrollToNow(desktopTableRef.current, '.cf-now-row');
             scrollToNow(mobileListRef.current, '.cf-now-card');
         });
         return () => cancelAnimationFrame(id);
@@ -65,8 +65,9 @@ export function ProjectionTable({ displayMonths, nowMonth, selectedMonth, select
     return (
         <>
             {/* Desktop: full table (default-scrolled to the current month) */}
-            <div className="hidden lg:block" ref={desktopTableRef}>
+            <div className="hidden lg:block">
                 <DataTable
+                    scrollRef={desktopTableRef}
                     // Remount when demo mode flips: DataTable's memoized internals
                     // keep stale formatCurrency output across re-renders otherwise.
                     key={demoMasked ? 'masked' : 'plain'}
@@ -87,10 +88,10 @@ export function ProjectionTable({ displayMonths, nowMonth, selectedMonth, select
                             <span className="flex items-center gap-2 flex-wrap">
                                 {formatYearMonth(row.yearMonth)}
                                 {row.isActual && (
-                                    <Tag value="Actual" className="text-xs !py-0 !px-1 !bg-gray-500/15 !text-gray-500" />
+                                    <Tag value="Actual" severity="secondary" className="text-xs !py-0 !px-1" />
                                 )}
                                 {row.isActualized && (
-                                    <Tag value="in progress" className="text-xs !py-0 !px-1 !bg-blue-500/15 !text-blue-500" />
+                                    <Tag value="in progress" severity="info" className="text-xs !py-0 !px-1" />
                                 )}
                             </span>
                         )}
@@ -150,7 +151,7 @@ export function ProjectionTable({ displayMonths, nowMonth, selectedMonth, select
                                     {formatYearMonth(row.yearMonth)}
                                     {row.isActual && <MdHistory className="text-gray-400" size={14} />}
                                     {row.isActualized && (
-                                        <Tag value="in progress" className="text-xs !py-0 !px-1 !bg-blue-500/15 !text-blue-500" />
+                                        <Tag value="in progress" severity="info" className="text-xs !py-0 !px-1" />
                                     )}
                                 </span>
                                 <span className={`text-sm font-medium ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>{formatCurrency(row.endingBalance, currency)}</span>

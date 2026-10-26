@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useSession } from '@/lib/auth-client';
-import { Dialog } from 'primereact/dialog';
+import { Dialog } from '@/components/ui/dialog';
 import { MdAccountBalance, MdChevronRight, MdCreditCard, MdSavings } from 'react-icons/md';
 import { navItems } from '@/components/layout/nav-config';
 import { HomeSkeleton } from '@/components/ui/skeletons';
@@ -250,7 +250,7 @@ export function HomeDashboard() {
                 <button
                   type="button"
                   onClick={() => setExplainOpen(true)}
-                  aria-label="What does this number mean?"
+                  aria-haspopup="dialog" title="Explain the projected month-end balance"
                   className={`pressable text-left cursor-pointer rounded-xl border p-3 ${bankRows.length > 0 ? 'sm:w-64 sm:shrink-0' : 'w-full'} ${glance.endingBalance < 0
                     ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
                     : 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800'}`}

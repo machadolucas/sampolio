@@ -1,14 +1,14 @@
 'use client';
 
 import { useState, useId } from 'react';
-import { Dialog } from 'primereact/dialog';
-import { Steps } from 'primereact/steps';
-import { InputText } from 'primereact/inputtext';
-import { InputNumber } from 'primereact/inputnumber';
-import { Dropdown } from 'primereact/dropdown';
-import { Checkbox } from 'primereact/checkbox';
-import { Button } from 'primereact/button';
-import { Message } from 'primereact/message';
+import { Dialog } from '@/components/ui/dialog';
+import { Steps } from '@/components/ui/steps';
+import { InputText } from '@/components/ui/input-text';
+import { InputNumber } from '@/components/ui/input-number';
+import { Dropdown } from '@/components/ui/dropdown';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Button } from '@/components/ui/button';
+import { Message } from '@/components/ui/message';
 import { MonthPicker, HelpTip } from '@/components/ui/form-primitives';
 import { CURRENCIES, MORTGAGE_PAYMENT_MODES, MORTGAGE_DAY_COUNTS, formatCurrency } from '@/lib/constants';
 import { getCurrentYearMonth } from '@/lib/projection';
@@ -172,7 +172,7 @@ export function MortgageSetupWizard({
             </div>
             <div>
               <label htmlFor={`${uid}-currency`} className="text-sm font-medium">Currency</label>
-              <Dropdown inputId={`${uid}-currency`} value={currency} options={CURRENCIES.map((c) => ({ label: `${c.symbol} ${c.label}`, value: c.value }))} onChange={(e) => setCurrency(e.value)} className="w-full" />
+              <Dropdown inputId={`${uid}-currency`} value={currency} options={CURRENCIES.map((c) => ({ label: `${c.symbol} ${c.label}`, value: c.value }))} onChange={(e) => { if (e.value !== null) setCurrency(e.value); }} className="w-full" />
             </div>
           </div>
         </div>
@@ -238,41 +238,41 @@ export function MortgageSetupWizard({
             <div key={i} className="p-3 rounded-lg surface-ground space-y-2">
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label htmlFor={`${uid}-loan-name-${i}`} className="text-xs opacity-70">Loan name</label>
+                  <label htmlFor={`${uid}-loan-name-${i}`} className="text-xs text-muted-foreground">Loan name</label>
                   <InputText id={`${uid}-loan-name-${i}`} value={loan.label} onChange={(e) => updateLoan(i, { label: e.target.value })} className="w-full" />
                 </div>
                 <div>
-                  <label htmlFor={`${uid}-type-${i}`} className="text-xs opacity-70">Type</label>
-                  <Dropdown inputId={`${uid}-type-${i}`} value={loan.kind} options={[{ label: 'ASP (subsidized)', value: 'asp' }, { label: 'Regular', value: 'regular' }]} onChange={(e) => updateLoan(i, { kind: e.value })} className="w-full" />
+                  <label htmlFor={`${uid}-type-${i}`} className="text-xs text-muted-foreground">Type</label>
+                  <Dropdown inputId={`${uid}-type-${i}`} value={loan.kind} options={[{ label: 'ASP (subsidized)', value: 'asp' }, { label: 'Regular', value: 'regular' }]} onChange={(e) => { if (e.value !== null) updateLoan(i, { kind: e.value }); }} className="w-full" />
                 </div>
                 <div>
-                  <label htmlFor={`${uid}-initial-principal-${i}`} className="text-xs opacity-70">Initial principal</label>
+                  <label htmlFor={`${uid}-initial-principal-${i}`} className="text-xs text-muted-foreground">Initial principal</label>
                   <InputNumber inputId={`${uid}-initial-principal-${i}`} value={loan.initialPrincipal} onValueChange={(e) => updateLoan(i, { initialPrincipal: e.value ?? 0 })} mode="currency" currency={currency} locale="fi-FI" className="w-full" />
                 </div>
                 <div>
-                  <label htmlFor={`${uid}-start-month-${i}`} className="text-xs opacity-70">Start month</label>
+                  <label htmlFor={`${uid}-start-month-${i}`} className="text-xs text-muted-foreground">Start month</label>
                   <MonthPicker inputId={`${uid}-start-month-${i}`} value={loan.startDate} onChange={(v) => updateLoan(i, { startDate: v })} />
                 </div>
                 <div>
-                  <label htmlFor={`${uid}-term-years-${i}`} className="text-xs opacity-70">Term (years)</label>
+                  <label htmlFor={`${uid}-term-years-${i}`} className="text-xs text-muted-foreground">Term (years)</label>
                   <InputNumber inputId={`${uid}-term-years-${i}`} value={loan.termYears} onValueChange={(e) => updateLoan(i, { termYears: e.value ?? 25 })} className="w-full" />
                 </div>
                 <div>
-                  <label htmlFor={`${uid}-margin-${i}`} className="text-xs opacity-70">Margin</label>
+                  <label htmlFor={`${uid}-margin-${i}`} className="text-xs text-muted-foreground">Margin</label>
                   <InputNumber inputId={`${uid}-margin-${i}`} locale="fi-FI" value={loan.margin} onValueChange={(e) => updateLoan(i, { margin: e.value ?? 0 })} suffix=" %" minFractionDigits={2} maxFractionDigits={3} className="w-full" />
                 </div>
                 {!isSimple && (
                   <>
                     <div>
-                      <label htmlFor={`${uid}-payment-mode-${i}`} className="text-xs opacity-70">Payment mode</label>
-                      <Dropdown inputId={`${uid}-payment-mode-${i}`} value={loan.paymentMode} options={MORTGAGE_PAYMENT_MODES} onChange={(e) => updateLoan(i, { paymentMode: e.value })} className="w-full" />
+                      <label htmlFor={`${uid}-payment-mode-${i}`} className="text-xs text-muted-foreground">Payment mode</label>
+                      <Dropdown inputId={`${uid}-payment-mode-${i}`} value={loan.paymentMode} options={MORTGAGE_PAYMENT_MODES} onChange={(e) => { if (e.value !== null) updateLoan(i, { paymentMode: e.value }); }} className="w-full" />
                     </div>
                     <div>
-                      <label htmlFor={`${uid}-day-count-${i}`} className="text-xs opacity-70">Day count</label>
-                      <Dropdown inputId={`${uid}-day-count-${i}`} value={loan.dayCount} options={MORTGAGE_DAY_COUNTS} onChange={(e) => updateLoan(i, { dayCount: e.value })} className="w-full" />
+                      <label htmlFor={`${uid}-day-count-${i}`} className="text-xs text-muted-foreground">Day count</label>
+                      <Dropdown inputId={`${uid}-day-count-${i}`} value={loan.dayCount} options={MORTGAGE_DAY_COUNTS} onChange={(e) => { if (e.value !== null) updateLoan(i, { dayCount: e.value }); }} className="w-full" />
                     </div>
                     <div>
-                      <label htmlFor={`${uid}-insurance-month-${i}`} className="text-xs opacity-70">Insurance / month</label>
+                      <label htmlFor={`${uid}-insurance-month-${i}`} className="text-xs text-muted-foreground">Insurance / month</label>
                       <InputNumber inputId={`${uid}-insurance-month-${i}`} value={loan.insuranceMonthly} onValueChange={(e) => updateLoan(i, { insuranceMonthly: e.value ?? 0 })} mode="currency" currency={currency} locale="fi-FI" className="w-full" />
                     </div>
                   </>
@@ -325,11 +325,11 @@ export function MortgageSetupWizard({
         <div className="space-y-2 text-sm">
           <Message severity="info" text="Review and create. You can correct balances or update the rate any time." />
           <div className="p-3 rounded-lg surface-ground space-y-1">
-            <div className="flex justify-between"><span className="opacity-60">Home</span><span>{name} · {formatCurrency(housePrice, currency)}</span></div>
-            <div className="flex justify-between"><span className="opacity-60">Loans</span><span>{activeLoans.map((l) => `${l.label} (${formatCurrency(l.initialPrincipal, currency)})`).join(', ')}</span></div>
-            <div className="flex justify-between"><span className="opacity-60">Your share</span><span>{(shares[0] * 100).toFixed(1)}%</span></div>
-            {partnerEmail && <div className="flex justify-between"><span className="opacity-60">Partner</span><span>{partnerEmail} · {(shares[1] * 100).toFixed(1)}%</span></div>}
-            <div className="flex justify-between"><span className="opacity-60">Euribor + margin</span><span>{(initialEuribor + (activeLoans[0]?.margin ?? 0)).toFixed(2)}%</span></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">Home</span><span>{name} · {formatCurrency(housePrice, currency)}</span></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">Loans</span><span>{activeLoans.map((l) => `${l.label} (${formatCurrency(l.initialPrincipal, currency)})`).join(', ')}</span></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">Your share</span><span>{(shares[0] * 100).toFixed(1)}%</span></div>
+            {partnerEmail && <div className="flex justify-between"><span className="text-muted-foreground">Partner</span><span>{partnerEmail} · {(shares[1] * 100).toFixed(1)}%</span></div>}
+            <div className="flex justify-between"><span className="text-muted-foreground">Euribor + margin</span><span>{(initialEuribor + (activeLoans[0]?.margin ?? 0)).toFixed(2)}%</span></div>
           </div>
         </div>
       )}

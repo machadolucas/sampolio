@@ -276,6 +276,6 @@ export const config = {
      *   manifest without credentials)
      * - public folder files
      */
-    '/((?!_next/static|_next/image|favicon.ico|manifest.webmanifest|sw.js|offline.html|icons|themes|.*\\.png$|.*\\.jpg$|.*\\.svg$).*)',
+    '/((?!_next/static|_next/image|favicon.ico|manifest.webmanifest|sw.js|offline.html|icons|.*\\.png$|.*\\.jpg$|.*\\.svg$).*)',
   ],
 };

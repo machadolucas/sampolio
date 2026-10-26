@@ -2,10 +2,10 @@
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Card } from 'primereact/card';
-import { Button } from 'primereact/button';
-import { Tag } from 'primereact/tag';
-import { Skeleton } from 'primereact/skeleton';
+import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Tag } from '@/components/ui/tag';
+import { Skeleton } from '@/components/ui/skeleton';
 import { ListPageSkeleton } from '@/components/ui/skeletons';
 import { DelayedSkeleton } from '@/components/ui/delayed-loading';
 import { MdAccountBalance, MdSettings, MdRefresh, MdAutorenew, MdErrorOutline } from 'react-icons/md';

@@ -4,11 +4,11 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import { useSession } from '@/lib/auth-client';
-import { Card } from 'primereact/card';
-import { Button } from 'primereact/button';
-import { SelectButton } from 'primereact/selectbutton';
+import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { SelectButton } from '@/components/ui/select-button';
 import { KpiGridSkeleton } from '@/components/ui/skeletons';
-import { Tag } from 'primereact/tag';
+import { Tag } from '@/components/ui/tag';
 import { useTheme } from '@/components/providers/theme-provider';
 import { useAppContext } from '@/components/layout/app-layout';
 import { formatCurrency, formatYearMonth } from '@/lib/constants';
@@ -34,7 +34,7 @@ import { PlanCheckCard } from '@/components/overview/forecast-vs-actual-card';
 import { MdSync, MdShowChart, MdEuro, MdAccountBalanceWallet, MdBarChart, MdGroup, MdCreditCard, MdArrowForward, MdAddCircle, MdRemoveCircle, MdHouse, MdHomeWork, MdErrorOutline } from 'react-icons/md';
 import { useDataRefresh } from '@/lib/hooks/use-data-refresh';
 
-// Chart.js (primereact/chart) is heavy and client-only — code-split both charts
+// Chart.js (@/components/ui/chart) is heavy and client-only — code-split both charts
 // so they leave the Overview route's first-load JS. Imported from their own
 // modules (never a barrel that would drag in the ECharts charts' side effects).
 const ChartLoading = () => <div className="h-72 lg:h-96 rounded-lg bg-gray-100 dark:bg-gray-800/50 animate-pulse" />;
@@ -522,7 +522,7 @@ export default function OverviewPage() {
             />
 
             {/* Main Chart Section */}
-            <div className={`grid grid-cols-1 lg:grid-cols-3 gap-6 ${isSimple ? 'hidden' : ''}`}>
+            {!isSimple && <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 {/* Net Worth Chart */}
                 <div className="lg:col-span-2">
                     <Card>
@@ -583,7 +583,7 @@ export default function OverviewPage() {
                         onClick={() => router.push('/cashflow')}
                     />
                 </div>
-            </div>
+            </div>}
 
             {/* Projected Net Worth at Horizon */}
             <Card className={isSimple ? 'hidden' : ''}>

@@ -1,7 +1,7 @@
 'use client';
 
-import { Dialog } from 'primereact/dialog';
-import { Button } from 'primereact/button';
+import { Dialog } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
 import { formatCurrency, formatDate } from '@/lib/constants';
 import type { SplitExpenseBankLink } from '@/types';
 
@@ -26,7 +26,7 @@ interface BankLinkDetailsDialogProps {
 export function BankLinkDetailsDialog({ visible, onHide, bankLink, memberName }: BankLinkDetailsDialogProps) {
   const row = (label: string, value: string) => (
     <div className="flex gap-3 py-1.5">
-      <span className="w-24 shrink-0 text-sm opacity-60">{label}</span>
+      <span className="w-24 shrink-0 text-sm text-muted-foreground">{label}</span>
       <span className="text-sm break-words">{value}</span>
     </div>
   );

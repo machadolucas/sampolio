@@ -121,7 +121,7 @@ describe('ReconcileWizard', () => {
     const onHide = vi.fn();
     renderWithProviders(<ReconcileWizard visible onHide={onHide} />);
     await screen.findByText(/Time for a quick check-in/);
-    const mask = document.querySelector('.p-dialog-mask');
+    const mask = document.querySelector('.ui-backdrop');
     expect(mask).not.toBeNull();
     fireEvent.mouseDown(mask!);
     fireEvent.click(mask!);

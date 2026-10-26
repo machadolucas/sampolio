@@ -3,15 +3,15 @@
 import { useState, useCallback, useEffect, useRef, useId } from 'react';
 import { useRouter } from 'next/navigation';
 import { MdAccountBalanceWallet, MdArrowDownward, MdArrowUpward, MdAdd, MdClose, MdArrowBack, MdArrowForward, MdHome } from 'react-icons/md';
-import { Dialog } from 'primereact/dialog';
-import { Button } from 'primereact/button';
-import { Steps } from 'primereact/steps';
-import { InputText } from 'primereact/inputtext';
-import { InputNumber } from 'primereact/inputnumber';
-import { InputSwitch } from 'primereact/inputswitch';
-import { Dropdown } from 'primereact/dropdown';
-import { SelectButton } from 'primereact/selectbutton';
-import { Card } from 'primereact/card';
+import { Dialog } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Steps } from '@/components/ui/steps';
+import { InputText } from '@/components/ui/input-text';
+import { InputNumber } from '@/components/ui/input-number';
+import { InputSwitch } from '@/components/ui/input-switch';
+import { Dropdown } from '@/components/ui/dropdown';
+import { SelectButton } from '@/components/ui/select-button';
+import { Card } from '@/components/ui/card';
 import { useTheme } from '@/components/providers/theme-provider';
 import { getCurrentYearMonth } from '@/lib/projection';
 import { createAccount } from '@/lib/actions/accounts';
@@ -324,7 +324,7 @@ export function OnboardingWizard({ visible, onComplete }: OnboardingWizardProps)
                                 <Dropdown inputId={`${uid}-currency`}
                                     value={currency}
                                     options={CURRENCY_OPTIONS}
-                                    onChange={(e) => setCurrency(e.value)}
+                                    onChange={(e) => { if (e.value !== null) setCurrency(e.value); }}
                                     className="w-full"
                                 />
                             </div>

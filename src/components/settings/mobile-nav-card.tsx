@@ -1,8 +1,8 @@
 'use client';
 
 import { useCallback, useMemo, useState } from 'react';
-import { Card } from 'primereact/card';
-import { Button } from 'primereact/button';
+import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import { MdCheck, MdMoreHoriz } from 'react-icons/md';
 import { useTheme } from '@/components/providers/theme-provider';
 import { useAppContext } from '@/components/layout/app-layout';
@@ -127,7 +127,7 @@ export function MobileNavCard() {
                 {/* Never registered with the jiggle hook — "More" is fixed. */}
                 <div
                     title="Always the last tab"
-                    className={`flex flex-col items-center justify-center gap-0.5 flex-1 min-w-0 text-[0.7rem] font-medium opacity-50 ${idleCls}`}
+                    className={`flex flex-col items-center justify-center gap-0.5 flex-1 min-w-0 text-[0.7rem] font-medium text-muted-foreground ${idleCls}`}
                 >
                     <MdMoreHoriz size={20} />
                     <span>More</span>

@@ -1,7 +1,7 @@
 # Sampolio — AI Agent Instructions
 
 This is a self-hosted personal-finance app: Next.js 16 App Router, TypeScript
-strict, PrimeReact, Tailwind v4, Better Auth 1.7.6 (password + passkeys),
+strict, app-owned shadcn/Base UI controls, Tailwind v4, Better Auth 1.7.12 (password + passkeys),
 Zod/RHF, ECharts/Chart.js, and `date-fns`. Use `pnpm`. Financial data is
 encrypted JSON files; users/auth live in a SQLCipher SQLite DB
 (`src/lib/db/sqlite/`). Enable Banking is optional, read-only, and documented in
@@ -74,7 +74,7 @@ sessions younger than 10 minutes (`src/lib/auth/constants.ts`). Encryption is
 AES-256-GCM with HKDF-SHA256 for new writes and a PBKDF2 compatibility read
 fallback. Use the migration and rotation scripts only as documented in [`docs/operations.md`](docs/operations.md).
 
-The UI uses PrimeReact plus Tailwind and AppContext from
+The UI uses Base UI, TanStack Table, DayPicker and Tailwind with AppContext from
 `src/components/layout/app-layout.tsx`; do not add Redux/Zustand. Client
 freshness goes through `src/lib/hooks/use-data-refresh.ts`: every successful
 mutation calls `notifyDataChanged()`, every data view subscribes with
@@ -89,7 +89,7 @@ Every new UI must work at roughly 390 px and 1280 px with no horizontal
 overflow. Tailwind `lg` (1024 px) separates mobile and desktop chrome; use CSS
 visibility for hydration-safe layout. Keep tap targets at least 44 px, charts
 fluid, tables responsive/frozen as appropriate, and dialogs safe-area aware.
-The PWA shell, service worker, theme assets, and `CACHE_VERSION` rules are in
+The PWA shell, service worker, material tokens, and `CACHE_VERSION` rules are in
 `docs/architecture.md`; preserve them.
 
 Motion is CSS-first and feedback-only: use `--motion-fast/base/slow`, shared
@@ -165,3 +165,13 @@ repo commits directly to `main`; do not open PRs unless explicitly requested.
 
 `.agents/skills` is the canonical skill location for both agents; keep
 compatibility aliases intact. Read a selected `SKILL.md` fully before acting.
+
+<!-- BEGIN:nextjs-agent-rules -->
+
+## This is NOT the Next.js you know
+
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+
+<!-- END:nextjs-agent-rules -->

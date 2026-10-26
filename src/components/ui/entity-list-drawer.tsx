@@ -1,18 +1,19 @@
 'use client';
+import { TriangleAlert as UiWarningIcon } from 'lucide-react';
 
 import { useState, useEffect, useCallback, useId } from 'react';
-import { Button } from 'primereact/button';
-import { Dialog } from 'primereact/dialog';
-import { Sidebar } from 'primereact/sidebar';
-import { InputText } from 'primereact/inputtext';
-import { InputNumber } from 'primereact/inputnumber';
-import { InputTextarea } from 'primereact/inputtextarea';
-import { Dropdown, DropdownChangeEvent } from 'primereact/dropdown';
-import { Checkbox } from 'primereact/checkbox';
-import { ProgressSpinner } from 'primereact/progressspinner';
-import { Message } from 'primereact/message';
-import { Tooltip } from 'primereact/tooltip';
-import { confirmDialog } from 'primereact/confirmdialog';
+import { Button } from '@/components/ui/button';
+import { Dialog } from '@/components/ui/dialog';
+import { Sidebar } from '@/components/ui/sheet';
+import { InputText } from '@/components/ui/input-text';
+import { InputNumber } from '@/components/ui/input-number';
+import { InputTextarea } from '@/components/ui/input-textarea';
+import { Dropdown } from '@/components/ui/dropdown';
+import { Checkbox } from '@/components/ui/checkbox';
+import { ProgressSpinner } from '@/components/ui/progress-spinner';
+import { Message } from '@/components/ui/message';
+import { Tooltip } from '@/components/ui/tooltip';
+import { confirmDialog } from '@/components/ui/confirm-dialog';
 import { MdAccountBalanceWallet, MdBarChart, MdGroup, MdCreditCard, MdAdd, MdCheck, MdInfo, MdVisibility, MdVisibilityOff } from 'react-icons/md';
 import { formatCurrency, formatYearMonth, formatRate, CURRENCIES, FREQUENCIES, PLANNING_HORIZONS } from '@/lib/constants';
 import { getCurrentYearMonth, addMonths } from '@/lib/projection';
@@ -147,7 +148,7 @@ function AccountForm({ account, onSave, onCancel }: {
 
             <div className="flex flex-col gap-1">
                 <label htmlFor={`${uid}-currency`} className="font-medium text-sm">Currency</label>
-                <Dropdown inputId={`${uid}-currency`} value={currency} onChange={(e: DropdownChangeEvent) => setCurrency(e.value)} options={CURRENCIES} optionLabel="label" optionValue="value" placeholder="Select currency" />
+                <Dropdown inputId={`${uid}-currency`} value={currency} onChange={(e) => { if (e.value !== null) setCurrency(e.value); }} options={CURRENCIES} optionLabel="label" optionValue="value" placeholder="Select currency" />
                 <HelpTip text="The currency used for all amounts in this account." />
             </div>
 
@@ -159,7 +160,7 @@ function AccountForm({ account, onSave, onCancel }: {
 
             <div className="flex flex-col gap-1">
                 <label htmlFor={`${uid}-planning-horizon`} className="font-medium text-sm">Planning Horizon</label>
-                <Dropdown inputId={`${uid}-planning-horizon`} value={planningHorizonMonths} onChange={(e: DropdownChangeEvent) => setPlanningHorizonMonths(e.value)} options={PLANNING_HORIZONS} optionLabel="label" optionValue="value" placeholder="How far ahead to project" />
+                <Dropdown inputId={`${uid}-planning-horizon`} value={planningHorizonMonths} onChange={(e) => { if (e.value !== null) setPlanningHorizonMonths(e.value); }} options={PLANNING_HORIZONS} optionLabel="label" optionValue="value" placeholder="How far ahead to project" />
                 <HelpTip text="How many months into the future to project your balance." />
             </div>
 
@@ -236,7 +237,7 @@ function InvestmentForm({ investment, onSave, onCancel }: { investment: Investme
 
             <div className="flex flex-col gap-1">
                 <label htmlFor={`${uid}-currency`} className="font-medium text-sm">Currency</label>
-                <Dropdown inputId={`${uid}-currency`} value={currency} onChange={(e: DropdownChangeEvent) => setCurrency(e.value)} options={CURRENCIES} optionLabel="label" optionValue="value" />
+                <Dropdown inputId={`${uid}-currency`} value={currency} onChange={(e) => { if (e.value !== null) setCurrency(e.value); }} options={CURRENCIES} optionLabel="label" optionValue="value" />
             </div>
 
             <div className="flex flex-col gap-1">
@@ -310,13 +311,13 @@ function ContributionForm({ investmentId, contribution, currency, onSave, onCanc
 
             <div className="flex flex-col gap-1">
                 <label htmlFor={`${uid}-type`} className="font-medium text-sm">Type</label>
-                <Dropdown inputId={`${uid}-type`} value={contribType} onChange={(e: DropdownChangeEvent) => setContribType(e.value)} options={CONTRIBUTION_TYPES} optionLabel="label" optionValue="value" />
+                <Dropdown inputId={`${uid}-type`} value={contribType} onChange={(e) => { if (e.value !== null) setContribType(e.value); }} options={CONTRIBUTION_TYPES} optionLabel="label" optionValue="value" />
                 <HelpTip text="Contribution = money going in. Withdrawal = money coming out." />
             </div>
 
             <div className="flex flex-col gap-1">
                 <label htmlFor={`${uid}-kind`} className="font-medium text-sm">Kind</label>
-                <Dropdown inputId={`${uid}-kind`} value={contribKind} onChange={(e: DropdownChangeEvent) => setContribKind(e.value)} options={CONTRIBUTION_KINDS} optionLabel="label" optionValue="value" />
+                <Dropdown inputId={`${uid}-kind`} value={contribKind} onChange={(e) => { if (e.value !== null) setContribKind(e.value); }} options={CONTRIBUTION_KINDS} optionLabel="label" optionValue="value" />
                 <HelpTip text="One-off = happens once. Recurring = repeats on a schedule." />
             </div>
 
@@ -335,7 +336,7 @@ function ContributionForm({ investmentId, contribution, currency, onSave, onCanc
                 <>
                     <div className="flex flex-col gap-1">
                         <label htmlFor={`${uid}-frequency`} className="font-medium text-sm">Frequency</label>
-                        <Dropdown inputId={`${uid}-frequency`} value={frequency} onChange={(e: DropdownChangeEvent) => setFrequency(e.value)} options={FREQUENCIES} optionLabel="label" optionValue="value" />
+                        <Dropdown inputId={`${uid}-frequency`} value={frequency} onChange={(e) => { if (e.value !== null) setFrequency(e.value); }} options={FREQUENCIES} optionLabel="label" optionValue="value" />
                     </div>
                     <div className="flex flex-col gap-1">
                         <label htmlFor={`${uid}-start-date`} className="font-medium text-sm">Start Date</label>
@@ -356,8 +357,7 @@ function ContributionForm({ investmentId, contribution, currency, onSave, onCanc
             <div className="flex items-center gap-2">
                 <Checkbox inputId="contribActive" checked={isActive} onChange={(e) => setIsActive(e.checked ?? true)} />
                 <label htmlFor="contribActive" className="text-sm">Active</label>
-                <Tooltip target=".contribActiveHelp" />
-                <MdInfo className="contribActiveHelp text-xs opacity-50 cursor-help" data-pr-tooltip="Inactive contributions are paused and won't affect projections" data-pr-position="top" />
+                <Tooltip content="Inactive contributions are paused and won't affect projections"><button type="button" aria-label="More information" className="inline-flex min-h-11 min-w-11 items-center justify-center"><MdInfo className="contribActiveHelp text-xs opacity-50 cursor-help" /></button></Tooltip>
             </div>
 
             <div className="flex justify-end gap-2 pt-4">
@@ -416,7 +416,7 @@ function ReceivableForm({ receivable, onSave, onCancel }: { receivable: Receivab
 
             <div className="flex flex-col gap-1">
                 <label htmlFor={`${uid}-currency`} className="font-medium text-sm">Currency</label>
-                <Dropdown inputId={`${uid}-currency`} value={currency} onChange={(e: DropdownChangeEvent) => setCurrency(e.value)} options={CURRENCIES} optionLabel="label" optionValue="value" />
+                <Dropdown inputId={`${uid}-currency`} value={currency} onChange={(e) => { if (e.value !== null) setCurrency(e.value); }} options={CURRENCIES} optionLabel="label" optionValue="value" />
             </div>
 
             <div className="flex flex-col gap-1">
@@ -433,8 +433,7 @@ function ReceivableForm({ receivable, onSave, onCancel }: { receivable: Receivab
             <div className="flex items-center gap-2">
                 <Checkbox inputId="hasInterest" checked={hasInterest} onChange={(e) => setHasInterest(e.checked ?? false)} />
                 <label htmlFor="hasInterest" className="text-sm">Earns Interest</label>
-                <Tooltip target=".interestHelp" />
-                <MdInfo className="interestHelp text-xs opacity-50 cursor-help" data-pr-tooltip="Check if the person is paying interest on the amount owed" data-pr-position="top" />
+                <Tooltip content="Check if the person is paying interest on the amount owed"><button type="button" aria-label="More information" className="inline-flex min-h-11 min-w-11 items-center justify-center"><MdInfo className="interestHelp text-xs opacity-50 cursor-help" /></button></Tooltip>
             </div>
 
             {hasInterest && (
@@ -583,12 +582,12 @@ function DebtForm({ debt, onSave, onCancel }: { debt: Debt | null; onSave: () =>
 
             <div className="flex flex-col gap-1">
                 <label htmlFor={`${uid}-currency`} className="font-medium text-sm">Currency</label>
-                <Dropdown inputId={`${uid}-currency`} value={currency} onChange={(e: DropdownChangeEvent) => setCurrency(e.value)} options={CURRENCIES} optionLabel="label" optionValue="value" />
+                <Dropdown inputId={`${uid}-currency`} value={currency} onChange={(e) => { if (e.value !== null) setCurrency(e.value); }} options={CURRENCIES} optionLabel="label" optionValue="value" />
             </div>
 
             <div className="flex flex-col gap-1">
                 <label htmlFor={`${uid}-debt-type`} className="font-medium text-sm">Debt Type</label>
-                <Dropdown inputId={`${uid}-debt-type`} value={debtType} onChange={(e: DropdownChangeEvent) => setDebtType(e.value)} options={DEBT_TYPES} optionLabel="label" optionValue="value" />
+                <Dropdown inputId={`${uid}-debt-type`} value={debtType} onChange={(e) => { if (e.value !== null) setDebtType(e.value); }} options={DEBT_TYPES} optionLabel="label" optionValue="value" />
                 <HelpTip text={debtType === 'amortized'
                     ? 'An amortized loan calculates interest on the remaining balance each month. Your monthly payment stays the same, but the interest/principal split changes over time.'
                     : 'A fixed installment debt is repaid in equal payments of a set amount, without interest calculations. Common for buy-now-pay-later or interest-free plans.'} />
@@ -609,7 +608,7 @@ function DebtForm({ debt, onSave, onCancel }: { debt: Debt | null; onSave: () =>
                 <>
                     <div className="flex flex-col gap-1">
                         <label htmlFor={`${uid}-interest-model`} className="font-medium text-sm">Interest Model</label>
-                        <Dropdown inputId={`${uid}-interest-model`} value={interestModelType} onChange={(e: DropdownChangeEvent) => setInterestModelType(e.value)} options={INTEREST_MODELS} optionLabel="label" optionValue="value" />
+                        <Dropdown inputId={`${uid}-interest-model`} value={interestModelType} onChange={(e) => { if (e.value !== null) setInterestModelType(e.value); }} options={INTEREST_MODELS} optionLabel="label" optionValue="value" />
                         <HelpTip text="Fixed = the rate stays the same. Variable = the rate changes based on a reference rate (e.g., Euribor). None = no interest." />
                     </div>
                     {interestModelType === 'fixed' && (
@@ -927,10 +926,10 @@ export function EntityListDrawer({ visible, category, onClose, onRefresh, editEn
         confirmDialog({
             header: 'Delete permanently?',
             message: 'This cannot be undone. Archive it instead if you only want to hide it.',
-            icon: 'pi pi-exclamation-triangle',
+            icon: <UiWarningIcon size={16}/>,
             acceptLabel: 'Delete',
             rejectLabel: 'Cancel',
-            acceptClassName: 'p-button-danger',
+            severity: 'danger',
             accept: () => { void runDelete(id); },
         });
     };
@@ -968,10 +967,10 @@ export function EntityListDrawer({ visible, category, onClose, onRefresh, editEn
         confirmDialog({
             header: `Delete this ${SUB_ENTITY_LABELS[subType]}?`,
             message: 'This cannot be undone.',
-            icon: 'pi pi-exclamation-triangle',
+            icon: <UiWarningIcon size={16}/>,
             acceptLabel: 'Delete',
             rejectLabel: 'Cancel',
-            acceptClassName: 'p-button-danger',
+            severity: 'danger',
             accept: () => { void runDeleteSubEntity(parentId, subId, subType); },
         });
     };
@@ -1160,7 +1159,7 @@ export function EntityListDrawer({ visible, category, onClose, onRefresh, editEn
                 dismissable
             >
                 {/* Category description */}
-                <p className="text-sm opacity-60 mb-4">{config.description}</p>
+                <p className="text-sm text-muted-foreground mb-4">{config.description}</p>
 
                 {/* Toolbar */}
                 <div className="flex items-center justify-between mb-4">

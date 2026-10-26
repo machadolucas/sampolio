@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 /**
  * "Last 30 days" summary card for one split group (rendered on /split/[id]
@@ -17,18 +17,19 @@
  * divs, so the card still never pulls ECharts into the detail page's bundle.
  */
 
-import { useMemo, useState } from 'react';
-import { format, subDays } from 'date-fns';
-import { MdExpandMore } from 'react-icons/md';
-import { useAppContext } from '@/components/layout/app-layout';
-import { UserAvatar } from '@/components/ui/user-avatar';
-import { useUserProfiles } from '@/lib/hooks/use-user-profiles';
-import { getAvatarColor } from '@/lib/avatar-utils';
-import { formatCents, formatDayMonth, getCategoryColor } from '@/lib/constants';
-import { computeGroupPeriodInsights } from '@/lib/split-insights';
-import { computeTreemapLayout } from '@/lib/treemap-layout';
-import { describeGroupPeriod } from '@/lib/chart-descriptions';
-import type { SplitExpense, SplitGroup } from '@/types';
+import { useMemo, useState } from "react";
+import { format, subDays } from "date-fns";
+import { MdExpandMore } from "react-icons/md";
+import { useAppContext } from "@/components/layout/app-layout";
+import { UserAvatar } from "@/components/ui/user-avatar";
+import { useUserProfiles } from "@/lib/hooks/use-user-profiles";
+import { contrastTextColor } from "@/lib/color-contrast";
+import { getAvatarColor } from "@/lib/avatar-utils";
+import { formatCents, formatDayMonth, getCategoryColor } from "@/lib/constants";
+import { computeGroupPeriodInsights } from "@/lib/split-insights";
+import { computeTreemapLayout } from "@/lib/treemap-layout";
+import { describeGroupPeriod } from "@/lib/chart-descriptions";
+import type { SplitExpense, SplitGroup } from "@/types";
 
 /** Days covered by the window, inclusive of today. */
 const WINDOW_DAYS = 30;
@@ -42,13 +43,15 @@ const LABEL_MIN_H = 26;
 
 /** First name only ('You' for the viewer) — matches the detail rows' wording. */
 function shortName(name: string, isMe: boolean): string {
-  return isMe ? 'You' : name.split(' ')[0];
+  return isMe ? "You" : name.split(" ")[0];
 }
 
 /** "Groceries 40%, Dining out 25%" — the treemap's screen-reader equivalent
  * (percentages only: the visual carries no money either). */
 function tilesLabel(tiles: { label: string; share: number }[]): string {
-  return tiles.map((t) => `${t.label} ${Math.round(t.share * 100)}%`).join(', ');
+  return tiles
+    .map((t) => `${t.label} ${Math.round(t.share * 100)}%`)
+    .join(", ");
 }
 
 interface GroupPeriodCardProps {
@@ -58,23 +61,38 @@ interface GroupPeriodCardProps {
   myUserId: string;
 }
 
-export function GroupPeriodCard({ group, expenses, myUserId }: GroupPeriodCardProps) {
+export function GroupPeriodCard({
+  group,
+  expenses,
+  myUserId,
+}: GroupPeriodCardProps) {
   const [open, setOpen] = useState(true);
   // The sentences bake money into strings inside a memo, so the demo-mask flag
   // has to stay in the deps or a toggle would strand stale text.
   const { demoMasked } = useAppContext() ?? {};
 
   const insights = useMemo(() => {
-    const fromDate = format(subDays(new Date(), WINDOW_DAYS - 1), 'yyyy-MM-dd');
-    const toDate = format(new Date(), 'yyyy-MM-dd');
-    return computeGroupPeriodInsights(group.members, expenses, fromDate, toDate);
+    const fromDate = format(subDays(new Date(), WINDOW_DAYS - 1), "yyyy-MM-dd");
+    const toDate = format(new Date(), "yyyy-MM-dd");
+    return computeGroupPeriodInsights(
+      group.members,
+      expenses,
+      fromDate,
+      toDate,
+    );
   }, [group.members, expenses]);
 
-  const payerIds = useMemo(() => insights.paidByMember.map((p) => p.userId), [insights]);
+  const payerIds = useMemo(
+    () => insights.paidByMember.map((p) => p.userId),
+    [insights],
+  );
   const profiles = useUserProfiles(payerIds);
 
   const sentences = useMemo(
-    () => describeGroupPeriod(insights, group.members.length, (n) => formatCents(n, group.currency)),
+    () =>
+      describeGroupPeriod(insights, group.members.length, (n) =>
+        formatCents(n, group.currency),
+      ),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- formatCents output depends on demo mode
     [insights, group.members.length, group.currency, demoMasked],
   );
@@ -89,15 +107,27 @@ export function GroupPeriodCard({ group, expenses, myUserId }: GroupPeriodCardPr
       cents: c.cents,
       color: getCategoryColor(c.category),
     }));
-    const restCents = cats.slice(MAX_CATEGORY_TILES).reduce((s, c) => s + c.cents, 0);
+    const restCents = cats
+      .slice(MAX_CATEGORY_TILES)
+      .reduce((s, c) => s + c.cents, 0);
     if (restCents > 0) {
-      const existingOther = buckets.find((b) => b.key === 'Other');
+      const existingOther = buckets.find((b) => b.key === "Other");
       if (existingOther) existingOther.cents += restCents;
-      else buckets.push({ key: 'Other', label: 'Other', cents: restCents, color: getCategoryColor('Other') });
+      else
+        buckets.push({
+          key: "Other",
+          label: "Other",
+          cents: restCents,
+          color: getCategoryColor("Other"),
+        });
     }
     const total = buckets.reduce((s, b) => s + b.cents, 0);
     const rects = computeTreemapLayout(buckets.map((b) => b.cents));
-    return buckets.map((b, i) => ({ ...b, rect: rects[i], share: total > 0 ? b.cents / total : 0 }));
+    return buckets.map((b, i) => ({
+      ...b,
+      rect: rects[i],
+      share: total > 0 ? b.cents / total : 0,
+    }));
   }, [insights]);
 
   // Member tiles: who fronted the money, already desc with a `pct` fraction.
@@ -107,20 +137,30 @@ export function GroupPeriodCard({ group, expenses, myUserId }: GroupPeriodCardPr
     return payers.map((p, i) => ({ ...p, rect: rects[i] }));
   }, [insights]);
 
-  const categoryTreemapLabel = useMemo(() => tilesLabel(categoryTiles), [categoryTiles]);
+  const categoryTreemapLabel = useMemo(
+    () => tilesLabel(categoryTiles),
+    [categoryTiles],
+  );
 
   if (insights.expenseCount === 0 && insights.settledCents === 0) {
     return (
       <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-3 mb-4">
-        <p className="text-sm text-gray-500 dark:text-gray-400">No expenses in the last 30 days.</p>
+        <p className="text-sm text-gray-500 dark:text-gray-400">
+          No expenses in the last 30 days.
+        </p>
       </div>
     );
   }
 
   const payers = insights.paidByMember;
   const barLabel = payers.length
-    ? payers.map((p) => `${shortName(p.name, p.userId === myUserId)} paid ${Math.round(p.pct * 100)}%`).join(', ')
-    : 'Nobody has fronted money in this period';
+    ? payers
+        .map(
+          (p) =>
+            `${shortName(p.name, p.userId === myUserId)} paid ${Math.round(p.pct * 100)}%`,
+        )
+        .join(", ")
+    : "Nobody has fronted money in this period";
 
   return (
     <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4 mb-4">
@@ -129,14 +169,16 @@ export function GroupPeriodCard({ group, expenses, myUserId }: GroupPeriodCardPr
         <span className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
           Last 30 days
         </span>
-        <span className="text-lg font-semibold">{formatCents(insights.totalSpendCents, group.currency)}</span>
+        <span className="text-lg font-semibold">
+          {formatCents(insights.totalSpendCents, group.currency)}
+        </span>
       </div>
 
       {payers.length === 0 && (
         <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
           {insights.expenseCount === 0
             ? `Only settle-up payments in this period (${formatCents(insights.settledCents, group.currency)}).`
-            : 'Who fronted the money is not recorded for these expenses.'}
+            : "Who fronted the money is not recorded for these expenses."}
         </p>
       )}
 
@@ -147,15 +189,18 @@ export function GroupPeriodCard({ group, expenses, myUserId }: GroupPeriodCardPr
         aria-expanded={open}
         className="mt-2 -mx-1 flex min-h-11 w-full items-center gap-1 rounded-md px-1 text-sm font-medium text-gray-600 dark:text-gray-300 transition-colors hover:bg-black/[0.03] dark:hover:bg-white/[0.05] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500"
       >
-        <span>{open ? 'Hide details' : 'Show details'}</span>
+        <span>{open ? "Hide details" : "Show details"}</span>
         <MdExpandMore
           size={18}
           aria-hidden
-          className={`ml-auto opacity-60 transition-transform ${open ? 'rotate-180' : ''}`}
-          style={{ transitionDuration: 'var(--motion-base)' }}
+          className={`ml-auto text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`}
+          style={{ transitionDuration: "var(--motion-base)" }}
         />
       </button>
-      <div className={`collapse-grid ${open ? 'is-open' : ''}`} inert={open ? undefined : true}>
+      <div
+        className={`collapse-grid ${open ? "is-open" : ""}`}
+        inert={open ? undefined : true}
+      >
         <div>
           <div className="pt-1 flex flex-col gap-3">
             {(categoryTiles.length > 0 || payers.length > 0) && (
@@ -165,7 +210,11 @@ export function GroupPeriodCard({ group, expenses, myUserId }: GroupPeriodCardPr
                     <div className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
                       By category
                     </div>
-                    <div role="img" aria-label={categoryTreemapLabel} className="relative h-24 rounded-lg overflow-hidden">
+                    <div
+                      role="img"
+                      aria-label={categoryTreemapLabel}
+                      className="relative h-24 rounded-lg overflow-hidden"
+                    >
                       {categoryTiles.map((t) => (
                         <div
                           key={t.key}
@@ -179,17 +228,24 @@ export function GroupPeriodCard({ group, expenses, myUserId }: GroupPeriodCardPr
                             background: t.color,
                           }}
                         >
-                          {t.rect.w >= LABEL_MIN_W && t.rect.h >= LABEL_MIN_H && (
-                            <span className="px-1 text-center text-[10px] font-medium leading-tight text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.35)] truncate">
-                              {t.label} {Math.round(t.share * 100)}%
-                            </span>
-                          )}
+                          {t.rect.w >= LABEL_MIN_W &&
+                            t.rect.h >= LABEL_MIN_H && (
+                              <span
+                                className="px-1 text-center text-[10px] font-medium leading-tight truncate"
+                                style={{ color: contrastTextColor(t.color) }}
+                              >
+                                {t.label} {Math.round(t.share * 100)}%
+                              </span>
+                            )}
                         </div>
                       ))}
                     </div>
                     <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-600 dark:text-gray-300">
                       {categoryTiles.slice(0, 3).map((t) => (
-                        <span key={t.key} className="inline-flex items-center gap-1.5 min-w-0">
+                        <span
+                          key={t.key}
+                          className="inline-flex items-center gap-1.5 min-w-0"
+                        >
                           <span
                             aria-hidden
                             className="h-2 w-2 shrink-0 rounded-full"
@@ -210,7 +266,11 @@ export function GroupPeriodCard({ group, expenses, myUserId }: GroupPeriodCardPr
                     <div className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
                       Who paid
                     </div>
-                    <div role="img" aria-label={barLabel} className="relative h-24 rounded-lg overflow-hidden">
+                    <div
+                      role="img"
+                      aria-label={barLabel}
+                      className="relative h-24 rounded-lg overflow-hidden"
+                    >
                       {memberTiles.map((p) => (
                         <div
                           key={p.userId}
@@ -224,26 +284,41 @@ export function GroupPeriodCard({ group, expenses, myUserId }: GroupPeriodCardPr
                             background: getAvatarColor(p.userId),
                           }}
                         >
-                          {p.rect.w >= LABEL_MIN_W && p.rect.h >= LABEL_MIN_H && (
-                            <span className="px-1 text-center text-[10px] font-medium leading-tight text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.35)] truncate">
-                              {shortName(p.name, p.userId === myUserId)} {Math.round(p.pct * 100)}%
-                            </span>
-                          )}
+                          {p.rect.w >= LABEL_MIN_W &&
+                            p.rect.h >= LABEL_MIN_H && (
+                              <span
+                                className="px-1 text-center text-[10px] font-medium leading-tight truncate"
+                                style={{
+                                  color: contrastTextColor(
+                                    getAvatarColor(p.userId),
+                                  ),
+                                }}
+                              >
+                                {shortName(p.name, p.userId === myUserId)}{" "}
+                                {Math.round(p.pct * 100)}%
+                              </span>
+                            )}
                         </div>
                       ))}
                     </div>
                     <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-gray-600 dark:text-gray-300">
                       {payers.map((p) => (
-                        <span key={p.userId} className="inline-flex items-center gap-1.5 min-w-0">
+                        <span
+                          key={p.userId}
+                          className="inline-flex items-center gap-1.5 min-w-0"
+                        >
                           <UserAvatar
                             userId={p.userId}
                             name={p.name}
                             avatarUrl={profiles[p.userId]?.avatarUrl}
                             size={20}
                           />
-                          <span className="truncate">{shortName(p.name, p.userId === myUserId)}</span>
+                          <span className="truncate">
+                            {shortName(p.name, p.userId === myUserId)}
+                          </span>
                           <span className="tabular-nums text-gray-500 dark:text-gray-400">
-                            {Math.round(p.pct * 100)}% · {formatCents(p.cents, group.currency)}
+                            {Math.round(p.pct * 100)}% ·{" "}
+                            {formatCents(p.cents, group.currency)}
                           </span>
                         </span>
                       ))}
@@ -261,7 +336,9 @@ export function GroupPeriodCard({ group, expenses, myUserId }: GroupPeriodCardPr
                     <span className="shrink-0 text-xs text-gray-500 dark:text-gray-400">
                       {formatDayMonth(e.date, { short: true })}
                     </span>
-                    <span className="shrink-0 tabular-nums font-medium">{formatCents(e.cents, group.currency)}</span>
+                    <span className="shrink-0 tabular-nums font-medium">
+                      {formatCents(e.cents, group.currency)}
+                    </span>
                   </li>
                 ))}
               </ul>

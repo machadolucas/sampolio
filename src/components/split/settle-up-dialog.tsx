@@ -2,12 +2,12 @@
 /* eslint-disable react-hooks/set-state-in-effect -- the form intentionally prefills its fields when the dialog opens */
 
 import { useEffect, useState } from 'react';
-import { Dialog } from 'primereact/dialog';
-import { InputNumber } from 'primereact/inputnumber';
-import { Dropdown } from 'primereact/dropdown';
-import { Calendar } from 'primereact/calendar';
-import { Button } from 'primereact/button';
-import { Message } from 'primereact/message';
+import { Dialog } from '@/components/ui/dialog';
+import { InputNumber } from '@/components/ui/input-number';
+import { Dropdown } from '@/components/ui/dropdown';
+import { Calendar } from '@/components/ui/calendar';
+import { Button } from '@/components/ui/button';
+import { Message } from '@/components/ui/message';
 import { recordSettleUp } from '@/lib/actions/split-groups';
 import { toCents } from '@/lib/split-utils';
 import { UserAvatar } from '@/components/ui/user-avatar';
@@ -99,7 +99,7 @@ export function SettleUpDialog({
         <div className="flex flex-col sm:flex-row sm:items-center gap-2">
           <Dropdown
             value={fromUserId}
-            onChange={(e) => setFromUserId(e.value)}
+            onChange={(e) => { if (e.value !== null) setFromUserId(e.value); }}
             options={opts}
             itemTemplate={memberOption}
             valueTemplate={(opt) => (opt ? memberOption(opt) : <span>Select</span>)}
@@ -108,7 +108,7 @@ export function SettleUpDialog({
           <span className="text-xs text-gray-400 text-center shrink-0 sm:px-1">paid</span>
           <Dropdown
             value={toUserId}
-            onChange={(e) => setToUserId(e.value)}
+            onChange={(e) => { if (e.value !== null) setToUserId(e.value); }}
             options={opts}
             itemTemplate={memberOption}
             valueTemplate={(opt) => (opt ? memberOption(opt) : <span>Select</span>)}

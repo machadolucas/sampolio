@@ -12,10 +12,10 @@
 import { useMemo, useState } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { InputNumber } from 'primereact/inputnumber';
-import { InputSwitch } from 'primereact/inputswitch';
-import { SelectButton } from 'primereact/selectbutton';
-import { Tag } from 'primereact/tag';
+import { InputNumber } from '@/components/ui/input-number';
+import { InputSwitch } from '@/components/ui/input-switch';
+import { SelectButton } from '@/components/ui/select-button';
+import { Tag } from '@/components/ui/tag';
 import { MdSwapHoriz, MdExpandMore, MdExpandLess, MdInfoOutline } from 'react-icons/md';
 import { useTheme } from '@/components/providers/theme-provider';
 import { mortgageOfferSchema, type MortgageOfferFormData } from '@/lib/schemas/mortgage.schema';
@@ -112,10 +112,10 @@ export function MortgageTransferComparison({ inputs, months, currentRow, current
           <span className="text-blue-500 text-xl shrink-0"><MdSwapHoriz /></span>
           <div className="min-w-0">
             <h2 className="text-base sm:text-lg font-semibold truncate">Compare a transfer offer from another bank</h2>
-            <p className="text-xs sm:text-sm opacity-60 truncate">See if refinancing to a lower margin is worth the switching costs.</p>
+            <p className="text-xs sm:text-sm text-muted-foreground truncate">See if refinancing to a lower margin is worth the switching costs.</p>
           </div>
         </div>
-        <span className="text-2xl opacity-60 shrink-0">{open ? <MdExpandLess /> : <MdExpandMore />}</span>
+        <span className="text-2xl text-muted-foreground shrink-0">{open ? <MdExpandLess /> : <MdExpandMore />}</span>
       </button>
 
       {open && (
@@ -192,7 +192,7 @@ export function MortgageTransferComparison({ inputs, months, currentRow, current
                 <Controller name="retainAsp" control={control} render={({ field }) => (
                   <div className="flex items-center gap-2 h-[42px]">
                     <InputSwitch checked={field.value} onChange={(e) => field.onChange(e.value)} />
-                    <span className="text-xs opacity-70">{field.value ? 'Kept on transfer' : 'Lost on transfer'}</span>
+                    <span className="text-xs text-muted-foreground">{field.value ? 'Kept on transfer' : 'Lost on transfer'}</span>
                   </div>
                 )} />
               </Field>
@@ -200,15 +200,15 @@ export function MortgageTransferComparison({ inputs, months, currentRow, current
           </div>
 
           {!comparison ? (
-            <p className="text-sm opacity-60">No active balance to refinance, or the offer values are incomplete.</p>
+            <p className="text-sm text-muted-foreground">No active balance to refinance, or the offer values are incomplete.</p>
           ) : (
             <>
               {/* Headline */}
               <div className={`flex flex-col sm:flex-row sm:items-center gap-3 p-4 rounded-lg ${subtleBg}`}>
                 <div className="flex items-center gap-2">
-                  <span className="text-sm opacity-70">Refinancing</span>
+                  <span className="text-sm text-muted-foreground">Refinancing</span>
                   <span className="font-semibold">{formatCurrency(comparison.offer.startBalance, currency)}</span>
-                  <span className="text-sm opacity-70">from {formatYearMonth(refiStart)}</span>
+                  <span className="text-sm text-muted-foreground">from {formatYearMonth(refiStart)}</span>
                 </div>
                 <div className="sm:ml-auto flex flex-wrap items-center gap-3">
                   <Tag
@@ -263,7 +263,7 @@ export function MortgageTransferComparison({ inputs, months, currentRow, current
                   </tbody>
                 </table>
               </div>
-              <p className="text-xs opacity-50">
+              <p className="text-xs text-muted-foreground">
                 &ldquo;Cost of borrowing&rdquo; = interest (net of any ASP subsidy) + fees + insurance + one-off switching costs over each scenario&apos;s own term. Principal is excluded (it builds equity, not cost).
               </p>
 
@@ -283,7 +283,7 @@ export function MortgageTransferComparison({ inputs, months, currentRow, current
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="flex flex-col gap-1">
-      <span className="text-xs opacity-70">{label}</span>
+      <span className="text-xs text-muted-foreground">{label}</span>
       {children}
     </label>
   );

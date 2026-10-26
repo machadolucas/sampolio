@@ -42,7 +42,7 @@ const securityHeaders = [
       // production build never evals, so it is omitted there.
       `script-src 'self' 'unsafe-inline'${process.env.NODE_ENV === 'production' ? '' : " 'unsafe-eval'"}`,
       "worker-src 'self'", // Service worker (PWA)
-      "style-src 'self' 'unsafe-inline'", // Required for PrimeReact
+      "style-src 'self' 'unsafe-inline'", // Charts and positioned controls use inline styles.
       "img-src 'self' data: blob:",
       "font-src 'self' data:",
       "connect-src 'self'",
@@ -79,6 +79,9 @@ const nextConfig: NextConfig = {
 
   // Enable Next.js 16 Cache Components ("use cache" directive)
   cacheComponents: true,
+  // Preserve existing link prefetch behavior during the UI/dependency migration.
+  // https://nextjs.org/docs/app/guides/adopting-partial-prefetching
+  partialPrefetching: false,
 
   // Custom cache lifetime profiles
   cacheLife: {

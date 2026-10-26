@@ -1,12 +1,12 @@
 'use client';
 
 import { useMemo } from 'react';
-import { Chart } from 'primereact/chart';
+import { Chart } from '@/components/ui/chart';
 import { formatCurrency, formatYearMonth } from '@/lib/constants';
 import { useAppContext } from '@/components/layout/app-layout';
 import { ChartExplain, type ReadCue } from '@/components/ui/chart-explain';
 import { describeWealth } from '@/lib/chart-descriptions';
-import { rgb, rgba, computeScopedNetWorth, wealthCategoriesForScope, type WealthScope } from './wealth-chart';
+import { rgb, rgba, computeScopedNetWorth, wealthCategoriesForScope, type WealthScope } from '@/lib/wealth-chart-style';
 import type { WealthProjectionMonth, Currency } from '@/types';
 
 interface NetWorthChartProps {

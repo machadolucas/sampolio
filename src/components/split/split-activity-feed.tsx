@@ -57,8 +57,8 @@ export function SplitActivityFeed({
         const lbl = netLabel(e.viewerNetCents, currency);
         const clickable = !!onEventClick && isEventClickable(e);
         return (
-          <li
-            key={`${e.groupId}-${e.id}`}
+          <li key={`${e.groupId}-${e.id}`}>
+          <div
             role={clickable ? 'button' : undefined}
             tabIndex={clickable ? 0 : undefined}
             onClick={clickable ? () => onEventClick!(e) : undefined}
@@ -102,6 +102,7 @@ export function SplitActivityFeed({
               <div className="text-sm text-gray-500 dark:text-gray-400">{formatCents(e.amountCents, currency)}</div>
               <div className={`text-xs ${lbl.cls}`}>{lbl.text}</div>
             </div>
+          </div>
           </li>
         );
       })}

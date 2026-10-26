@@ -1,15 +1,17 @@
 'use client';
 
+import { Trash2, TriangleAlert } from 'lucide-react';
+
 import { useState, useEffect, useRef, useId } from 'react';
-import { Dialog } from 'primereact/dialog';
-import { InputNumber } from 'primereact/inputnumber';
-import { InputText } from 'primereact/inputtext';
-import { Dropdown } from 'primereact/dropdown';
-import { SelectButton } from 'primereact/selectbutton';
-import { Button } from 'primereact/button';
-import { Message } from 'primereact/message';
-import { Tag } from 'primereact/tag';
-import { confirmDialog } from 'primereact/confirmdialog';
+import { Dialog } from '@/components/ui/dialog';
+import { InputNumber } from '@/components/ui/input-number';
+import { InputText } from '@/components/ui/input-text';
+import { Dropdown } from '@/components/ui/dropdown';
+import { SelectButton } from '@/components/ui/select-button';
+import { Button } from '@/components/ui/button';
+import { Message } from '@/components/ui/message';
+import { Tag } from '@/components/ui/tag';
+import { confirmDialog } from '@/components/ui/confirm-dialog';
 import { MonthPicker, HelpTip } from '@/components/ui/form-primitives';
 import { UserAvatar } from '@/components/ui/user-avatar';
 import { useUserProfiles } from '@/lib/hooks/use-user-profiles';
@@ -67,8 +69,8 @@ export function EuriborUpdateDialog({
   // is always the fallback (a failed/slow fetch leaves the dialog untouched).
   const [prefill, setPrefill] = useState<{ rate: number; date: string; source: string } | null>(null);
   // Mirror of `euribor` — lets the async prefill see the CURRENT value.
-  // (A touched-flag in onValueChange is unreliable: PrimeReact InputNumber can
-  // fire it during initial formatting, before the fetch resolves.)
+  // Compare the current value with its opening default before applying a
+  // delayed public-source prefill, so typed values always win.
   const euriborRef = useRef(euribor);
   const [prefillApplied, setPrefillApplied] = useState(false);
 
@@ -125,7 +127,7 @@ export function EuriborUpdateDialog({
   return (
     <Dialog header="Update your Euribor rate" visible={visible} onHide={handleHide} style={{ width: '32rem' }}>
       <form onSubmit={onFormSubmit} noValidate>
-      <p className="text-sm opacity-70 mb-3">
+      <p className="text-sm text-muted-foreground mb-3">
         Banks reset the 12-month Euribor once a year. Enter the new rate and your payments update automatically.
       </p>
       <div className="space-y-3">
@@ -147,7 +149,7 @@ export function EuriborUpdateDialog({
             className="w-full"
           />
           {prefillApplied && prefill && (
-            <p className="text-xs opacity-70 mt-1">
+            <p className="text-xs text-muted-foreground mt-1">
               Prefilled from {prefill.source} ({prefill.date}) — confirm before saving.
             </p>
           )}
@@ -160,7 +162,7 @@ export function EuriborUpdateDialog({
 
         <div className="p-3 rounded-lg surface-ground text-sm">
           <div className="flex items-center justify-between">
-            <span className="opacity-70">Loan payment (principal + interest)</span>
+            <span className="text-muted-foreground">Loan payment (principal + interest)</span>
             <span>
               {formatCurrency(oldTotal, currency)} → <span className="font-semibold">{formatCurrency(newTotal, currency)}</span>
             </span>
@@ -170,7 +172,7 @@ export function EuriborUpdateDialog({
               value={`${delta >= 0 ? '+' : ''}${formatCurrency(delta, currency)} / month`}
               severity={delta > 0 ? 'danger' : delta < 0 ? 'success' : 'info'}
             />
-            <span className="ml-2 opacity-60">
+            <span className="ml-2 text-muted-foreground">
               {delta > 0 ? 'goes up' : delta < 0 ? 'goes down' : 'no change'} at the new rate ({formatRate(euribor + (previewLoans[0]?.margin ?? 0))})
             </span>
           </div>
@@ -247,13 +249,13 @@ export function DriftAdjustmentDialog({
   return (
     <Dialog header="Correct a balance" visible={visible} onHide={onClose} style={{ width: '30rem' }}>
       <form onSubmit={onFormSubmit} noValidate>
-      <p className="text-sm opacity-70 mb-3">
+      <p className="text-sm text-muted-foreground mb-3">
         If your bank statement differs from our estimate, enter the real balance here. We&apos;ll re-anchor future projections to it.
       </p>
       <div className="space-y-3">
         <div>
           <label htmlFor={`${uid}-loan`} className="text-sm font-medium">Loan</label>
-          <Dropdown inputId={`${uid}-loan`} value={loanId} options={loans.map((l) => ({ label: l.label, value: l.id }))} onChange={(e) => setLoanId(e.value)} className="w-full" />
+          <Dropdown inputId={`${uid}-loan`} value={loanId} options={loans.map((l) => ({ label: l.label, value: l.id }))} onChange={(e) => { if (e.value !== null) setLoanId(e.value); }} className="w-full" />
         </div>
         <div>
           <label htmlFor={`${uid}-month-of-the`} className="text-sm font-medium">Month of the statement</label>
@@ -344,7 +346,7 @@ export function ExtraPaymentDialog({
       <div className="space-y-3">
         <div>
           <label htmlFor={`${uid}-loan`} className="text-sm font-medium">Loan</label>
-          <Dropdown inputId={`${uid}-loan`} value={loanId} options={loans.map((l) => ({ label: l.label, value: l.id }))} onChange={(e) => setLoanId(e.value)} className="w-full" />
+          <Dropdown inputId={`${uid}-loan`} value={loanId} options={loans.map((l) => ({ label: l.label, value: l.id }))} onChange={(e) => { if (e.value !== null) setLoanId(e.value); }} className="w-full" />
         </div>
         <div>
           <label htmlFor={`${uid}-month`} className="text-sm font-medium">Month</label>
@@ -441,10 +443,10 @@ export function MortgageMembersDialog({
     confirmDialog({
       header: 'Remove member?',
       message: `Remove ${name} from this mortgage? They lose access to it, and adding them back means re-entering their down payment and loan share.`,
-      icon: 'pi pi-exclamation-triangle',
+      icon: <TriangleAlert size={16} />,
       acceptLabel: 'Remove',
       rejectLabel: 'Cancel',
-      acceptClassName: 'p-button-danger',
+      severity: 'danger',
       accept: async () => {
         setError('');
         const res = await removeMortgageMember(mortgage.id, userId);
@@ -467,7 +469,7 @@ export function MortgageMembersDialog({
 
   return (
     <Dialog header="Who can see this mortgage" visible={visible} onHide={onClose} style={{ width: '32rem' }}>
-      <p className="text-sm opacity-70 mb-3">Both members can see and edit everything here — there&apos;s no privacy between you.</p>
+      <p className="text-sm text-muted-foreground mb-3">Both members can see and edit everything here — there&apos;s no privacy between you.</p>
       {/* Shared error slot at the top so role/remove failures are visible without scrolling. */}
       {error && <Message severity="error" text={error} className="w-full mb-3" />}
       <div className="space-y-2 mb-4">
@@ -478,7 +480,7 @@ export function MortgageMembersDialog({
                 <UserAvatar userId={m.userId} name={m.name} avatarUrl={profiles[m.userId]?.avatarUrl} size={32} />
                 <div className="min-w-0">
                   <span className="font-medium">{m.name}</span>
-                  <span className="opacity-50 ml-2 break-all">{m.email}</span>
+                  <span className="text-muted-foreground ml-2 break-all">{m.email}</span>
                   {m.userId === currentUserId && <Tag value="you" severity="success" className="ml-2 text-xs" />}
                 </div>
               </div>
@@ -490,7 +492,7 @@ export function MortgageMembersDialog({
                       { label: 'Owner', value: 'owner' },
                       { label: 'Member', value: 'member' },
                     ]}
-                    onChange={(e) => changeRole(m.userId, e.value)}
+                    onChange={(e) => { if (e.value !== null) changeRole(m.userId, e.value); }}
                     style={{ width: '8rem' }}
                   />
                 ) : (
@@ -498,7 +500,7 @@ export function MortgageMembersDialog({
                 )}
                 {isOwner && m.userId !== currentUserId && (
                   <Button
-                    icon="pi pi-trash"
+                    icon={<Trash2 size={16} />}
                     text
                     severity="danger"
                     size="small"
@@ -518,7 +520,7 @@ export function MortgageMembersDialog({
                     mobile; the help text is a full-width block below — putting
                     HelpTip inside the flex row squeezes it into a skinny column. */}
                 <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-                  <span className="text-xs opacity-70 whitespace-nowrap shrink-0">Pay this mortgage from</span>
+                  <span className="text-xs text-muted-foreground whitespace-nowrap shrink-0">Pay this mortgage from</span>
                   <Dropdown
                     value={myLinkedAccountId}
                     options={[{ label: 'Not linked (hide from cashflow)', value: null }, ...accounts.map((a) => ({ label: a.name, value: a.id }))]}
@@ -541,15 +543,15 @@ export function MortgageMembersDialog({
           <InputText id={`${uid}-invite-by-email`} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="partner@example.com" className="w-full" />
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
             <div className="min-w-0">
-              <label htmlFor={`${uid}-down-payment`} className="text-xs opacity-70">Down payment</label>
+              <label htmlFor={`${uid}-down-payment`} className="text-xs text-muted-foreground">Down payment</label>
               <InputNumber inputId={`${uid}-down-payment`} value={initialPayment} onValueChange={(e) => setInitialPayment(e.value ?? 0)} mode="currency" currency={mortgage.currency} locale="fi-FI" className="w-full" inputClassName="w-full" />
             </div>
             <div className="min-w-0">
-              <label htmlFor={`${uid}-loan-share`} className="text-xs opacity-70">Loan share %</label>
+              <label htmlFor={`${uid}-loan-share`} className="text-xs text-muted-foreground">Loan share %</label>
               <InputNumber inputId={`${uid}-loan-share`} locale="fi-FI" value={sharePercent} onValueChange={(e) => setSharePercent(e.value ?? 0)} suffix=" %" className="w-full" inputClassName="w-full" />
             </div>
             <div className="min-w-0">
-              <label htmlFor={`${uid}-target-own`} className="text-xs opacity-70">Target own %</label>
+              <label htmlFor={`${uid}-target-own`} className="text-xs text-muted-foreground">Target own %</label>
               <InputNumber inputId={`${uid}-target-own`} locale="fi-FI" value={targetPercent} onValueChange={(e) => setTargetPercent(e.value ?? 0)} suffix=" %" className="w-full" inputClassName="w-full" />
             </div>
           </div>

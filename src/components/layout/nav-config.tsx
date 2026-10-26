@@ -2,17 +2,31 @@
 
 import type { ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
+import { cancelConfirmations } from '@/components/ui/confirmation';
 import { authClient, useSession } from '@/lib/auth-client';
-import type { MenuItem } from 'primereact/menuitem';
+import type { MenuItem } from '@/components/ui/menu';
 import { useTheme } from '@/components/providers/theme-provider';
 import { useAppContext } from '@/components/layout/app-layout';
 import { UserAvatar } from '@/components/ui/user-avatar';
 import { useUserProfiles } from '@/lib/hooks/use-user-profiles';
 import type { NavigationPage } from '@/types';
 import {
-  MdHome, MdSpaceDashboard, MdSettings, MdLightMode, MdDarkMode, MdLogout,
-  MdExplore, MdTune, MdHouse, MdLuggage, MdAccountBalance, MdInsights, MdGroups, MdFlag,
-  MdVisibility, MdVisibilityOff,
+  MdHome,
+  MdSpaceDashboard,
+  MdSettings,
+  MdLightMode,
+  MdDarkMode,
+  MdLogout,
+  MdExplore,
+  MdTune,
+  MdHouse,
+  MdLuggage,
+  MdAccountBalance,
+  MdInsights,
+  MdGroups,
+  MdFlag,
+  MdVisibility,
+  MdVisibilityOff,
 } from 'react-icons/md';
 
 export interface NavItem {
@@ -31,16 +45,71 @@ export interface NavItem {
  * bottom-nav shows the first N as tabs (see bottom-nav.tsx).
  */
 export const navItems: NavItem[] = [
-  { id: 'home', label: 'Home', icon: <MdHome size={20} />, href: '/', simpleModeVisible: true },
-  { id: 'split', label: 'Split', icon: <MdGroups size={20} />, href: '/split', simpleModeVisible: true },
-  { id: 'overview', label: 'Overview', icon: <MdSpaceDashboard size={20} />, href: '/overview' },
-  { id: 'cashflow', label: 'Cashflow', icon: <MdInsights size={20} />, href: '/cashflow', simpleModeVisible: true },
-  { id: 'mortgage', label: 'Mortgage', icon: <MdHouse size={20} />, href: '/mortgage' },
-  { id: 'budgets', label: 'Trips & Budgets', icon: <MdLuggage size={20} />, href: '/budgets' },
-  { id: 'goals', label: 'Goals', icon: <MdFlag size={20} />, href: '/goals', simpleModeVisible: true },
-  { id: 'bank', label: 'Bank', icon: <MdAccountBalance size={20} />, href: '/bank' },
-  { id: 'playground', label: 'What If?', icon: <MdExplore size={20} />, href: '/playground' },
-  { id: 'settings', label: 'Settings', icon: <MdSettings size={20} />, href: '/settings', simpleModeVisible: true },
+  {
+    id: 'home',
+    label: 'Home',
+    icon: <MdHome size={20} />,
+    href: '/',
+    simpleModeVisible: true,
+  },
+  {
+    id: 'split',
+    label: 'Split',
+    icon: <MdGroups size={20} />,
+    href: '/split',
+    simpleModeVisible: true,
+  },
+  {
+    id: 'overview',
+    label: 'Overview',
+    icon: <MdSpaceDashboard size={20} />,
+    href: '/overview',
+  },
+  {
+    id: 'cashflow',
+    label: 'Cashflow',
+    icon: <MdInsights size={20} />,
+    href: '/cashflow',
+    simpleModeVisible: true,
+  },
+  {
+    id: 'mortgage',
+    label: 'Mortgage',
+    icon: <MdHouse size={20} />,
+    href: '/mortgage',
+  },
+  {
+    id: 'budgets',
+    label: 'Trips & Budgets',
+    icon: <MdLuggage size={20} />,
+    href: '/budgets',
+  },
+  {
+    id: 'goals',
+    label: 'Goals',
+    icon: <MdFlag size={20} />,
+    href: '/goals',
+    simpleModeVisible: true,
+  },
+  {
+    id: 'bank',
+    label: 'Bank',
+    icon: <MdAccountBalance size={20} />,
+    href: '/bank',
+  },
+  {
+    id: 'playground',
+    label: 'What If?',
+    icon: <MdExplore size={20} />,
+    href: '/playground',
+  },
+  {
+    id: 'settings',
+    label: 'Settings',
+    icon: <MdSettings size={20} />,
+    href: '/settings',
+    simpleModeVisible: true,
+  },
 ];
 
 /**
@@ -63,25 +132,17 @@ export function isNavItemActive(pathname: string, href: string): boolean {
   return pathname.startsWith(href);
 }
 
-/**
- * Custom `template` for the actionable items (theme toggle, simple/advanced,
- * sign out): PrimeReact's built-in `.p-menuitem-icon` margin only applies to
- * the default (non-templated) render path, so react-icons JSX passed via
- * `icon` ends up touching the label. Renders the same anchor/label structure
- * (`options.className`/`options.onClick` per the v10 Menu template signature)
- * with an explicit gap instead.
- */
+/** Content templates stay non-interactive; the menu item owns activation. */
 function actionItemTemplate(icon: ReactNode): MenuItem['template'] {
   return function ActionItemTemplate(item, options) {
     return (
-      // Explicit padding: the theme pads menu items via its default
-      // (non-templated) markup, so a templated anchor renders flush without it.
-      <a className={`${options.className} px-3 py-2 cursor-pointer`} onClick={options.onClick}>
+      // The menu item supplies its own padding and keyboard interactions.
+      <span className={`${options.className} py-1`}>
         <span className="flex items-center gap-2">
           {icon}
           <span className={options.labelClassName}>{item.label}</span>
         </span>
-      </a>
+      </span>
     );
   };
 }
@@ -117,23 +178,31 @@ export function useUserMenuItems(onNavigate?: () => void): MenuItem[] {
   return [
     {
       label: myName,
-      // Clickable header → Settings › Account. Rendered via `options.className`
-      // / `options.onClick` (the v10 Menu template signature, same as the
-      // action items below) so it gets the theme's hover styling and cursor.
+      // The header routes to Settings › Account through the parent menu item.
       command: () => {
         router.push('/settings?tab=account');
         onNavigate?.();
       },
       template: (item, options) => (
-        <a className={`${options.className} px-3 py-2 cursor-pointer`} onClick={options.onClick}>
+        <span className={`${options.className} py-1`}>
           <span className="flex items-center gap-3 max-w-[220px]">
-            <UserAvatar userId={myId ?? ''} name={myName} avatarUrl={myAvatarUrl} size={36} className="shrink-0" />
+            <UserAvatar
+              userId={myId ?? ''}
+              name={myName}
+              avatarUrl={myAvatarUrl}
+              size={36}
+              className="shrink-0"
+            />
             <span className="min-w-0">
-              <span className="block text-sm font-semibold truncate">{myName}</span>
-              <span className="block text-xs opacity-70 truncate">{myEmail}</span>
+              <span className="block text-sm font-semibold truncate">
+                {myName}
+              </span>
+              <span className="block text-xs text-muted-foreground truncate">
+                {myEmail}
+              </span>
             </span>
           </span>
-        </a>
+        </span>
       ),
     },
     { separator: true },
@@ -146,7 +215,8 @@ export function useUserMenuItems(onNavigate?: () => void): MenuItem[] {
     {
       label: isSimple ? 'Switch to Advanced' : 'Switch to Simple',
       icon: <MdTune />,
-      command: () => appContext?.setDisplayMode(isSimple ? 'advanced' : 'simple'),
+      command: () =>
+        appContext?.setDisplayMode(isSimple ? 'advanced' : 'simple'),
       template: actionItemTemplate(<MdTune />),
     },
     {
@@ -160,6 +230,7 @@ export function useUserMenuItems(onNavigate?: () => void): MenuItem[] {
       label: 'Sign Out',
       icon: <MdLogout />,
       command: async () => {
+        cancelConfirmations();
         await authClient.signOut();
         router.push('/auth/signin');
         router.refresh();

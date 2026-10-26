@@ -3,10 +3,10 @@
 import { useState, useEffect, useCallback, useMemo, startTransition } from 'react';
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
-import { Card } from 'primereact/card';
-import { Button } from 'primereact/button';
-import { Tag } from 'primereact/tag';
-import { Dialog } from 'primereact/dialog';
+import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Tag } from '@/components/ui/tag';
+import { Dialog } from '@/components/ui/dialog';
 import { useTheme } from '@/components/providers/theme-provider';
 import { useAppContext } from '@/components/layout/app-layout';
 import { formatCurrency, formatYearMonth } from '@/lib/constants';
@@ -39,7 +39,7 @@ import { ProjectionTable } from '@/components/cashflow/projection-table';
 import { useMonthSelection } from '@/lib/hooks/use-month-selection';
 import type { FinancialAccount, MonthFlowData, CashflowItem, Currency, SalaryConfig, TaxedIncome, MonthlyProjection } from '@/types';
 import { MdAccountBalanceWallet, MdAdd, MdAccountTree, MdBarChart, MdTableChart, MdInfoOutline, MdHistory } from 'react-icons/md';
-import { Tooltip } from 'primereact/tooltip';
+import { Tooltip } from '@/components/ui/tooltip';
 import { useDataRefresh } from '@/lib/hooks/use-data-refresh';
 import { resolveSeriesEditTarget } from '@/lib/cashflow-edit-target';
 
@@ -601,19 +601,17 @@ export default function CashflowPage() {
                                         {formatYearMonth(selectedMonth)}
                                     </h2>
                                     {selectedProjection.isActual && (
-                                        <Tag
+                                        <Tooltip content="Figures from real bank transactions, not a forecast"><button type="button" aria-label="About actual months" className="inline-flex min-h-11 items-center"><Tag
                                             icon={<MdHistory className="mr-1" size={13} />}
                                             value={isSimple ? 'From your bank' : 'Actual'}
                                             className="!bg-purple-500/15 !text-purple-500"
-                                            data-pr-tooltip="Figures from real bank transactions, not a forecast"
-                                        />
+                                        /></button></Tooltip>
                                     )}
                                     {selectedProjection.isActualized && (
-                                        <Tag
+                                        <Tooltip content={helpText('stillAhead')}><button type="button" aria-label="More information" className="inline-flex min-h-11 min-w-11 items-center justify-center"><Tag
                                             value="adjusted for what's already happened"
-                                            className="!bg-blue-500/15 !text-blue-500"
-                                            data-pr-tooltip={helpText('stillAhead')}
-                                        />
+                                            severity="info"
+                                        /></button></Tooltip>
                                     )}
                                 </div>
                                 {/* Simple mode leads with a sentence, not numbers. */}
@@ -674,16 +672,14 @@ export default function CashflowPage() {
                 {/* Charts: Left 2/3 (Flow + Projection stacked) | Right 1/3 (Details + Treemap stacked) */}
                 <div className={`grid grid-cols-1 ${isSimple && !showMoreCharts ? '' : 'lg:grid-cols-3'} gap-6`}>
                     {/* Left column: 2/3 width — hidden in simple mode unless "Show more" */}
-                    <div className={`lg:col-span-2 space-y-6 ${isSimple && !showMoreCharts ? 'hidden' : ''}`}>
+                    {(!isSimple || showMoreCharts) && <div className="lg:col-span-2 space-y-6">
                         <Card>
-                            <Tooltip target=".info-monthly-flow" position="top" />
                             <h3 className={`flex items-center font-semibold ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
                                 <MdAccountTree className="mr-2" />Monthly Flow
-                                <MdInfoOutline
+                                <Tooltip content="Sankey diagram showing how your income flows into expenses. Left side shows individual income sources, center aggregates into your budget, right side breaks down expenses by category and individual items."><button type="button" aria-label="More information" className="inline-flex min-h-11 min-w-11 items-center justify-center"><MdInfoOutline
                                     className="info-monthly-flow ml-auto opacity-40 cursor-help"
                                     size={16}
-                                    data-pr-tooltip="Sankey diagram showing how your income flows into expenses. Left side shows individual income sources, center aggregates into your budget, right side breaks down expenses by category and individual items."
-                                />
+                                /></button></Tooltip>
                             </h3>
                             {/* The Sankey uses GROSS salary and taxed income with
                                 taxes/deductions as outflows, so its income figure is
@@ -725,14 +721,12 @@ export default function CashflowPage() {
                         </Card>
 
                         <Card>
-                            <Tooltip target=".info-waterfall" position="top" />
                             <h3 className={`flex items-center font-semibold mb-3 ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
                                 <MdBarChart className="mr-2" />Cashflow Projection
-                                <MdInfoOutline
+                                <Tooltip content="Waterfall chart showing your projected balance over time. Green bars represent income, red bars represent expenses, and the line tracks your running balance across months."><button type="button" aria-label="More information" className="inline-flex min-h-11 min-w-11 items-center justify-center"><MdInfoOutline
                                     className="info-waterfall ml-auto opacity-40 cursor-help"
                                     size={16}
-                                    data-pr-tooltip="Waterfall chart showing your projected balance over time. Green bars represent income, red bars represent expenses, and the line tracks your running balance across months."
-                                />
+                                /></button></Tooltip>
                             </h3>
                             <CashflowWaterfallChart
                                 data={displayMonths}
@@ -741,19 +735,17 @@ export default function CashflowPage() {
                                 nowMonth={nowMonth}
                             />
                         </Card>
-                    </div>
+                    </div>}
 
                     {/* Right column: 1/3 width */}
                     <div className="space-y-6">
                         <Card>
-                            <Tooltip target=".info-month-details" position="top" />
                             <h3 className={`flex items-center font-semibold mb-2 ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
                                 Month Details
-                                <MdInfoOutline
+                                <Tooltip content="Detailed breakdown of all income and expense items for the selected month. Shows starting and ending balance with the net change. Click any item to edit it."><button type="button" aria-label="More information" className="inline-flex min-h-11 min-w-11 items-center justify-center"><MdInfoOutline
                                     className="info-month-details ml-auto opacity-40 cursor-help"
                                     size={16}
-                                    data-pr-tooltip="Detailed breakdown of all income and expense items for the selected month. Shows starting and ending balance with the net change. Click any item to edit it."
-                                />
+                                /></button></Tooltip>
                             </h3>
                             {/* Keyed on the month so switching months fade-rises the panel in
                                 (cheap remount — the heavy projection table below is NOT keyed). */}
@@ -769,14 +761,12 @@ export default function CashflowPage() {
 
                         {selectedProjection && selectedProjection.expenseBreakdown.length > 0 && (!isSimple || showMoreCharts) && (
                             <Card className="overflow-visible">
-                                <Tooltip target=".info-treemap" position="top" />
                                 <h3 className={`flex items-center font-semibold mb-3 ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
                                     <MdBarChart className="mr-2" />Expenses Breakdown
-                                    <MdInfoOutline
+                                    <Tooltip content="Treemap showing the proportional size of each expense category and item for the selected month. Larger blocks represent bigger expenses, making it easy to spot where most money goes."><button type="button" aria-label="More information" className="inline-flex min-h-11 min-w-11 items-center justify-center"><MdInfoOutline
                                         className="info-treemap ml-auto opacity-40 cursor-help"
                                         size={16}
-                                        data-pr-tooltip="Treemap showing the proportional size of each expense category and item for the selected month. Larger blocks represent bigger expenses, making it easy to spot where most money goes."
-                                    />
+                                    /></button></Tooltip>
                                 </h3>
                                 <ExpenseTreemapChart
                                     expenses={selectedProjection.expenseBreakdown}
@@ -808,14 +798,12 @@ export default function CashflowPage() {
                         <p className={`text-xs uppercase tracking-wider mb-3 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>All Months Overview</p>
                     </div>
                     <Card>
-                        <Tooltip target=".info-projection" position="top" />
                         <h3 className={`flex items-center font-semibold mb-3 ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
                             <MdTableChart className="mr-2" />Projection Data
-                            <MdInfoOutline
+                            <Tooltip content="Table showing the full projection across all months — not just the selected one. Displays income, expenses, net change, and running balance. Click any row to jump to that month."><button type="button" aria-label="More information" className="inline-flex min-h-11 min-w-11 items-center justify-center"><MdInfoOutline
                                 className="info-projection ml-auto opacity-40 cursor-help"
                                 size={16}
-                                data-pr-tooltip="Table showing the full projection across all months — not just the selected one. Displays income, expenses, net change, and running balance. Click any row to jump to that month."
-                            />
+                            /></button></Tooltip>
                         </h3>
                         <ProjectionTable
                             displayMonths={displayMonths}

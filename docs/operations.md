@@ -263,6 +263,8 @@ reconnect banner before expiry (Overview) and a Reconnect button in
 | `rotate-encryption-key.mjs` | Rotates the data set to a **new** `ENCRYPTION_KEY`: decrypts every `.enc` with `OLD_ENCRYPTION_KEY`, re-encrypts with the new key, then `PRAGMA hexrekey`s `sampolio.db` and rewrites its snapshot (see §8). `--dry-run` supported. |
 | `db-snapshot.mjs` | `pnpm db:snapshot`: verified encrypted `VACUUM INTO` copy of `sampolio.db` → `<DATA_DIR>/snapshots/sampolio.db` (key from `ENCRYPTION_KEY` or `<DATA_DIR>/.encryption_key`). Safe while running. |
 | `sqlcipher-lib.mjs` | Shared SQLCipher helpers for the two scripts above; mirrors `src/lib/db/sqlite/{key,client,snapshot}.ts`. |
+| `browser-fixture.mjs` | Synthetic dev/build/serve harness: disposable encrypted fixtures, blank banking/webhook configuration, loopback 4999, refuses workspace `.env*` files. |
+| `bundle-metrics.mjs` | Aggregate static JS/CSS raw and gzip measurements from the specified build directory. |
 | `generate-icons.mjs` | Regenerates the committed PWA PNG icon set from the master SVGs in `public/icons/` (uses `sharp`). Run after editing the SVGs. |
 | `lib-node.sh` | Shared shell helpers (Node/nvm resolution) sourced by the other scripts. |
 
@@ -353,3 +355,20 @@ key, the Cloudflare account/app/IdP IDs, the tunnel UUID, the Zero Trust team
 domain, and the allow-listed personal emails. Real values live in `~/sampolio/.env`,
 `~/.sampolio/`, and the Cloudflare dashboard. The daily backup script and its
 launchd plist also live outside the repo.
+
+
+### Synthetic acceptance and host limits
+
+Use a clean isolated worktree for `pnpm test:e2e:production`: it builds and starts
+with disposable data through `scripts/browser-fixture.mjs`. A worktree alone does
+not isolate `next build`/`next start` from environment credentials; use this harness,
+not production's environment or `.next-prod`. `pnpm test:e2e` uses the same fixture
+boundary with the development server. Reports, screenshots, auth state and bundle
+measurements remain ignored; never publish real-data fixtures.
+
+All installs in new worktrees, full tests/typechecks, builds, browser tests and deploy
+jobs run serially through `~/claude/scripts/heavy-job.sh`. Set both
+`HEAVY_MIN_DISK_GB=40` and `HEAVY_ABORT_DISK_GB=40`, keep at least 40GB free,
+use Node 26, at most two Vitest workers and one Chromium worker. Exit 75 means stop
+and report. Never run WebKit/WebGL here. The `test:e2e`, `build:synthetic` and
+`test:e2e:production` scripts already include the guard; do not nest it.

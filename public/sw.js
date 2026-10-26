@@ -12,13 +12,13 @@
  *    responses are stored (never a 404/5xx from a deploy restart), and the
  *    /_next/static/ entries are capped at MAX_STATIC_ENTRIES (oldest first), so
  *    dead chunks from earlier builds don't pile up between CACHE_VERSION bumps.
- *  - /themes/*.css and /icons/*: stale-while-revalidate (stable, non-hashed names).
+ *  - /icons/*: stale-while-revalidate (stable, non-hashed names).
  *
  * Updates: bump CACHE_VERSION whenever cached assets change. install→skipWaiting,
  * activate→drop old caches + clients.claim. /sw.js is served no-cache (next.config.ts)
  * so the browser re-checks this script every load.
  */
-const CACHE_VERSION = 'v11';
+const CACHE_VERSION = 'v12';
 const CACHE = `sampolio-${CACHE_VERSION}`;
 const OFFLINE_URL = '/offline.html';
 // ~3 builds' worth of hashed chunks (one build emits ~100 files under /_next/static/).
@@ -122,8 +122,8 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Stable-named static assets (theme CSS, icons): stale-while-revalidate.
-  if (url.pathname.startsWith('/themes/') || url.pathname.startsWith('/icons/')) {
+  // Stable-named icons: stale-while-revalidate. Styles live in hashed bundles.
+  if (url.pathname.startsWith('/icons/')) {
     event.respondWith(
       caches.open(CACHE).then((cache) =>
         cache.match(request).then((cached) => {

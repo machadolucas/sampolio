@@ -2,9 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSession } from '@/lib/auth-client';
-import { Card } from 'primereact/card';
-import { Tag } from 'primereact/tag';
-import { Message } from 'primereact/message';
+import { Card } from '@/components/ui/card';
+import { Tag } from '@/components/ui/tag';
+import { Message } from '@/components/ui/message';
 import { getSplitGroupView, getSplitExpenses } from '@/lib/actions/split-groups';
 import { buildSplitBudgetEntries, getBudgetMonths } from '@/lib/budget-utils';
 import { formatCurrency } from '@/lib/constants';
@@ -74,7 +74,7 @@ export function BudgetSplitExpenses({ budget }: { budget: Budget }) {
       <h3 className="text-base font-semibold mb-1">
         From split group{group ? ` — ${group.emoji ? group.emoji + ' ' : ''}${group.name}` : ''}
       </h3>
-      <p className="text-sm opacity-60 mb-3">
+      <p className="text-sm text-muted-foreground mb-3">
         Your share of the group&apos;s expenses during the budget period. Read-only — it doesn&apos;t change the
         budget math or the spending-log totals.
       </p>
@@ -88,7 +88,7 @@ export function BudgetSplitExpenses({ budget }: { budget: Budget }) {
       )}
 
       {!error && view !== null && view.entries.length === 0 && (
-        <p className="text-sm opacity-50">No split expenses with your share fall inside this budget&apos;s period.</p>
+        <p className="text-sm text-muted-foreground">No split expenses with your share fall inside this budget&apos;s period.</p>
       )}
 
       {!error && view !== null && view.entries.length > 0 && (
@@ -98,10 +98,10 @@ export function BudgetSplitExpenses({ budget }: { budget: Budget }) {
               <li key={e.id} className="py-2 flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <div className="text-sm font-medium truncate">{e.description || '—'}</div>
-                  <div className="text-xs opacity-60 flex items-center gap-2 flex-wrap">
+                  <div className="text-xs text-muted-foreground flex items-center gap-2 flex-wrap">
                     <span>{e.date}</span>
                     <Tag value={e.category} severity="secondary" />
-                    {e.splitCategory !== e.category && <span className="opacity-70">({e.splitCategory})</span>}
+                    {e.splitCategory !== e.category && <span className="text-muted-foreground">({e.splitCategory})</span>}
                   </div>
                 </div>
                 <span className="text-sm font-medium shrink-0">{formatCurrency(e.amount, budget.currency)}</span>

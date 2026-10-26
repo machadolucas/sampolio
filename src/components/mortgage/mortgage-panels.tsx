@@ -1,11 +1,11 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Card } from 'primereact/card';
-import { Tag } from 'primereact/tag';
-import { ProgressBar } from 'primereact/progressbar';
-import { Slider } from 'primereact/slider';
-import { Tooltip } from 'primereact/tooltip';
+import { Card } from '@/components/ui/card';
+import { Tag } from '@/components/ui/tag';
+import { ProgressBar } from '@/components/ui/progress-bar';
+import { Slider } from '@/components/ui/slider';
+import { HelpHint } from '@/components/ui/help-hint';
 import { MdHouse, MdPercent, MdEvent, MdCheckCircle, MdPayments } from 'react-icons/md';
 import { formatCurrency, formatYearMonth, formatRate, formatDayMonth } from '@/lib/constants';
 import { MortgageOwnershipSankey } from '@/components/mortgage/mortgage-sankey';
@@ -15,7 +15,7 @@ import type { SharedMortgage, MortgageProjectionMonth, MortgageLoan, Currency } 
 
 /** A hover-info icon that teaches without crowding the layout. */
 function InfoIcon({ tip }: { tip: string }) {
-  return <i className="pi pi-info-circle text-xs opacity-40 ml-1" data-pr-tooltip={tip} data-pr-position="top" />;
+  return <HelpHint text={tip} />;
 }
 
 function findCurrentRow(months: MortgageProjectionMonth[], currentMonth: string): MortgageProjectionMonth | undefined {
@@ -26,12 +26,12 @@ function findCurrentRow(months: MortgageProjectionMonth[], currentMonth: string)
 function HeroStat({ icon, label, value, sub, valueClass }: { icon: React.ReactNode; label: string; value: string; sub?: string; valueClass?: string }) {
   return (
     <div className="flex flex-col">
-      <div className="flex items-center gap-1.5 text-xs font-medium opacity-60">
+      <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
         {icon}
         <span>{label}</span>
       </div>
       <span className={`text-xl font-bold mt-0.5 ${valueClass ?? ''}`}>{value}</span>
-      {sub && <span className="text-xs opacity-50 mt-0.5">{sub}</span>}
+      {sub && <span className="text-xs text-muted-foreground mt-0.5">{sub}</span>}
     </div>
   );
 }
@@ -100,7 +100,7 @@ export function MyMortgageSummaryCard({
   return (
     <Card className="border border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-900/10">
       <h2 className="text-lg font-semibold mb-1">You and this mortgage</h2>
-      <p className="text-sm opacity-70 mb-4">
+      <p className="text-sm text-muted-foreground mb-4">
         Every month you pay {formatCurrency(pos.monthlyDeposit, currency)}, and a bit more of the home becomes yours.
       </p>
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -161,9 +161,8 @@ export function OwnershipBalancePanel({
 
   return (
     <Card>
-      <Tooltip target="[data-pr-tooltip]" />
       <h2 className="text-lg font-semibold mb-1">Who owns how much</h2>
-      <p className="text-sm opacity-70 mb-4">
+      <p className="text-sm text-muted-foreground mb-4">
         You both own this home together. Because someone paid more up front, they own more right now — but every
         payment moves you both toward your agreed {splitLabel} split.
         {canScrub && ' Drag the slider to see how your shares converge over time.'}
@@ -173,10 +172,10 @@ export function OwnershipBalancePanel({
       {canScrub && (
         <div className="mb-5 p-3 rounded-lg surface-ground">
           <div className="flex items-center justify-between mb-2 text-sm">
-            <span className="opacity-70">Your position at</span>
+            <span className="text-muted-foreground">Your position at</span>
             <span className="flex items-center gap-2">
               <span className="font-semibold">{isNow ? 'Today' : formatYearMonth(row.yearMonth)}</span>
-              {!isNow && <span className="text-xs opacity-50">in {aheadLabel}</span>}
+              {!isNow && <span className="text-xs text-muted-foreground">in {aheadLabel}</span>}
               {!isNow && (
                 <button
                   type="button"
@@ -194,7 +193,7 @@ export function OwnershipBalancePanel({
             max={payoffIdx}
             onChange={(e) => setIdx(Array.isArray(e.value) ? e.value[0] : e.value)}
           />
-          <div className="flex items-center justify-between mt-1 text-xs opacity-50">
+          <div className="flex items-center justify-between mt-1 text-xs text-muted-foreground">
             <span>Today</span>
             <span>Paid off · {formatYearMonth(months[payoffIdx].yearMonth)}</span>
           </div>
@@ -220,28 +219,28 @@ export function OwnershipBalancePanel({
                   <span className="font-medium">{member.name}</span>
                   {isYou && <Tag value="you" severity="info" className="text-xs" />}
                 </div>
-                <span className="text-sm opacity-70">Owns {ownershipPct.toFixed(1)}% {isNow ? 'now' : `by ${formatYearMonth(row.yearMonth)}`} · aiming for {Math.round(memberTargetPct)}%</span>
+                <span className="text-sm text-muted-foreground">Owns {ownershipPct.toFixed(1)}% {isNow ? 'now' : `by ${formatYearMonth(row.yearMonth)}`} · aiming for {Math.round(memberTargetPct)}%</span>
               </div>
               <ProgressBar value={progressToTarget} showValue={false} style={{ height: '8px' }} className="progressbar-instant" />
               <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-3 text-sm">
                 <div>
-                  <div className="opacity-60 text-xs">Equity built<InfoIcon tip="What you've actually paid toward the home: your up-front down payment plus your share of the principal paid off since." /></div>
+                  <div className="text-muted-foreground text-xs">Equity built<InfoIcon tip="What you've actually paid toward the home: your up-front down payment plus your share of the principal paid off since." /></div>
                   <div className="font-semibold text-green-500">{formatCurrency(pos.equity, currency)}</div>
-                  <div className="text-[11px] opacity-60 mt-0.5 leading-tight">
+                  <div className="text-[11px] text-muted-foreground mt-0.5 leading-tight">
                     {formatCurrency(downPayment, currency)} down
                     <br />+ {formatCurrency(paidOffSince, currency)} paid off
                   </div>
                 </div>
                 <div>
-                  <div className="opacity-60 text-xs">Loan left for you<InfoIcon tip="Your share of what's still owed on the loans." /></div>
+                  <div className="text-muted-foreground text-xs">Loan left for you<InfoIcon tip="Your share of what's still owed on the loans." /></div>
                   <div className="font-semibold text-red-500">{formatCurrency(pos.liability, currency)}</div>
                 </div>
                 <div>
-                  <div className="opacity-60 text-xs">Left to reach {Math.round(memberTargetPct)}%<InfoIcon tip="How much more you need to pay to own your target share of the home outright." /></div>
+                  <div className="text-muted-foreground text-xs">Left to reach {Math.round(memberTargetPct)}%<InfoIcon tip="How much more you need to pay to own your target share of the home outright." /></div>
                   <div className="font-semibold">{formatCurrency(Math.max(0, pos.leftToOwnTarget), currency)}</div>
                 </div>
                 <div>
-                  <div className="opacity-60 text-xs">Transfer / month<InfoIcon tip="What you transfer to the loan account each month: your share of the installment plus the per-person service fee." /></div>
+                  <div className="text-muted-foreground text-xs">Transfer / month<InfoIcon tip="What you transfer to the loan account each month: your share of the installment plus the per-person service fee." /></div>
                   <div className="font-semibold">{formatCurrency(pos.monthlyDeposit, currency)}</div>
                 </div>
               </div>
@@ -255,14 +254,14 @@ export function OwnershipBalancePanel({
         <h3 className="text-sm font-semibold mb-1">
           Where the money flows · {isNow ? 'Today' : formatYearMonth(row.yearMonth)}
         </h3>
-        <p className="text-xs opacity-60 mb-2">
+        <p className="text-xs text-muted-foreground mb-2">
           What each of you has paid in so far (down payment + monthly transfers), against the whole mortgage and how
           much of its interest and amortization is already behind you.
         </p>
         <MortgageOwnershipSankey months={months} mortgage={mortgage} currency={currency} idx={safeIdx} currentUserId={currentUserId} />
       </div>
       {!isSimple && (
-        <p className="text-xs opacity-60 mt-4">
+        <p className="text-xs text-muted-foreground mt-4">
           You each pay a different share of the monthly bill (set from your down payments). The person who paid less up
           front pays a slightly larger monthly share, so ownership gradually evens out to your {splitLabel} split.
         </p>
@@ -303,25 +302,25 @@ export function SubLoanCard({
         )}
       </div>
       <div className="text-2xl font-bold text-red-500">{formatCurrency(remaining, currency)}</div>
-      <div className="text-xs opacity-60 mb-2">still owed</div>
+      <div className="text-xs text-muted-foreground mb-2">still owed</div>
       <ProgressBar value={percentPaid} showValue={false} style={{ height: '8px' }} />
-      <div className="text-xs opacity-60 mt-1">{percentPaid.toFixed(0)}% paid off</div>
+      <div className="text-xs text-muted-foreground mt-1">{percentPaid.toFixed(0)}% paid off</div>
       <div className="grid grid-cols-2 gap-2 mt-3 text-sm">
         <div>
-          <div className="opacity-60 text-xs">Rate now</div>
+          <div className="text-muted-foreground text-xs">Rate now</div>
           <div className="font-medium">{formatRate(loanRow?.effectiveAnnualRate ?? 0)}</div>
         </div>
         <div>
-          <div className="opacity-60 text-xs">Monthly (loan)</div>
+          <div className="text-muted-foreground text-xs">Monthly (loan)</div>
           <div className="font-medium">{formatCurrency(monthlyPI, currency)}</div>
         </div>
         <div>
-          <div className="opacity-60 text-xs">Paid off</div>
+          <div className="text-muted-foreground text-xs">Paid off</div>
           <div className="font-medium">{payoff ? formatYearMonth(payoff) : '—'}</div>
         </div>
         {!isSimple && (
           <div>
-            <div className="opacity-60 text-xs flex items-center gap-1">Margin</div>
+            <div className="text-muted-foreground text-xs flex items-center gap-1">Margin</div>
             <div className="font-medium">{formatRate(loan.margin)}</div>
           </div>
         )}

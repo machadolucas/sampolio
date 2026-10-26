@@ -60,10 +60,10 @@ function setup(fetchImpl: (req: FakeRequest) => Promise<FakeResponse>) {
   };
   vm.runInNewContext(SW_SOURCE, { self, caches, fetch: fetchImpl, URL, Response, Promise, console });
 
-  async function dispatchFetch(pathname: string) {
+  async function dispatchFetch(pathname: string, overrides: Partial<FakeRequest> = {}) {
     const pending: Promise<unknown>[] = [];
     let response: Promise<FakeResponse> | undefined;
-    const request: FakeRequest = { url: `${ORIGIN}${pathname}`, method: 'GET', mode: 'no-cors', headers: new Headers() };
+    const request: FakeRequest = { url: `${ORIGIN}${pathname}`, method: 'GET', mode: 'no-cors', headers: new Headers(), ...overrides };
     listeners.get('fetch')!({
       request,
       respondWith: (p: Promise<FakeResponse>) => { response = p; },
@@ -128,9 +128,28 @@ describe('service worker cache-first branch', () => {
   it('activate drops old cache versions and trims the current one', async () => {
     const fresh = setup(async () => makeResponse(200));
     for (let i = 0; i < 3; i++) await fresh.dispatchFetch(`/_next/static/chunks/${i}.js`);
-    fresh.stores.set('sampolio-v1', new Map([[`${ORIGIN}/_next/static/old.js`, makeResponse(200)]]));
+    fresh.stores.set('sampolio-v11', new Map([
+      [`${ORIGIN}/_next/static/old.js`, makeResponse(200)],
+      [`${ORIGIN}/themes/sampolio-light.css`, makeResponse(200)],
+    ]));
     await fresh.activate();
-    expect(fresh.stores.has('sampolio-v1')).toBe(false);
+    expect(fresh.stores.has('sampolio-v11')).toBe(false);
     expect(fresh.staticUrls()).toHaveLength(3);
+  });
+
+  it.each([
+    ['/api/auth/get-session', {}],
+    ['/auth/signin', {}],
+    ['/_next/data/build/home.json', {}],
+    ['/?_rsc=route', {}],
+    ['/', { headers: new Headers({ RSC: '1' }) }],
+    ['/', { method: 'POST' }],
+    ['/themes/sampolio-light.css', {}],
+  ] as const)('does not intercept sensitive requests or retired styles: %s', async (pathname, overrides) => {
+    let fetches = 0;
+    const fresh = setup(async () => { fetches += 1; return makeResponse(200); });
+    expect(await fresh.dispatchFetch(pathname, overrides)).toBeUndefined();
+    expect(fetches).toBe(0);
+    expect(fresh.stores.size).toBe(0);
   });
 });

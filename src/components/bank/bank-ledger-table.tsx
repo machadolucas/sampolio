@@ -1,46 +1,75 @@
-'use client';
+"use client";
 
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { format, parseISO } from 'date-fns';
-import { DataTable, type DataTableExpandedRows, type DataTableValueArray } from 'primereact/datatable';
-import { Column } from 'primereact/column';
-import { Tag } from 'primereact/tag';
-import { InputText } from 'primereact/inputtext';
-import { IconField } from 'primereact/iconfield';
-import { InputIcon } from 'primereact/inputicon';
-import { Button } from 'primereact/button';
-import { MdCallSplit, MdExpandMore } from 'react-icons/md';
-import { formatCurrency, formatYearMonth, formatDate, formatDateTime, LOCALE } from '@/lib/constants';
-import { useAppContext } from '@/components/layout/app-layout';
-import { maskIban, txDisplayDate } from '@/lib/bank-utils';
-import { guessCategory } from '@/lib/split-utils';
-import { QuickAddSplitModal, type QuickAddSplitInitial } from '@/components/split/quick-add-split-modal';
-import type { BankSplitMatch } from '@/lib/bank-split-match';
-import type { BankTransaction, Currency, BankTransactionStatus, SplitExpense } from '@/types';
+import { Search } from "lucide-react";
+
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { format, parseISO } from "date-fns";
+import {
+  DataTable,
+  type DataTableExpandedRows,
+} from "@/components/ui/datatable";
+import { Column } from "@/components/ui/column";
+import { Tag } from "@/components/ui/tag";
+import { InputText } from "@/components/ui/input-text";
+import { IconField } from "@/components/ui/icon-field";
+import { InputIcon } from "@/components/ui/input-icon";
+import { Button } from "@/components/ui/button";
+import { MdCallSplit, MdExpandMore } from "react-icons/md";
+import {
+  formatCurrency,
+  formatYearMonth,
+  formatDate,
+  formatDateTime,
+  LOCALE,
+} from "@/lib/constants";
+import { useAppContext } from "@/components/layout/app-layout";
+import { maskIban, txDisplayDate } from "@/lib/bank-utils";
+import { guessCategory } from "@/lib/split-utils";
+import {
+  QuickAddSplitModal,
+  type QuickAddSplitInitial,
+} from "@/components/split/quick-add-split-modal";
+import type { BankSplitMatch } from "@/lib/bank-split-match";
+import type {
+  BankTransaction,
+  Currency,
+  BankTransactionStatus,
+  SplitExpense,
+} from "@/types";
 
 const STATUS_TIP: Record<BankTransactionStatus, string> = {
-  booked: 'Booked — settled and final; it appears on your statement and won’t change.',
-  pending: 'Pending — authorized but not yet settled. The amount or date can still change, and it may merge into a booked entry later.',
-  other: 'Other — the bank didn’t mark this entry as booked or pending.',
+  booked:
+    "Booked — settled and final; it appears on your statement and won’t change.",
+  pending:
+    "Pending — authorized but not yet settled. The amount or date can still change, and it may merge into a booked entry later.",
+  other: "Other — the bank didn’t mark this entry as booked or pending.",
 };
 
-function statusSeverity(s: BankTransactionStatus): 'success' | 'warning' | 'info' {
-  return s === 'booked' ? 'success' : s === 'pending' ? 'warning' : 'info';
+function statusSeverity(
+  s: BankTransactionStatus,
+): "success" | "warning" | "info" {
+  return s === "booked" ? "success" : s === "pending" ? "warning" : "info";
 }
 
 /** Compact status dot color for the mobile row (green/amber/gray, no label). */
 function statusDotClass(s: BankTransactionStatus): string {
-  return s === 'booked' ? 'bg-green-500' : s === 'pending' ? 'bg-amber-500' : 'bg-gray-400';
+  return s === "booked"
+    ? "bg-green-500"
+    : s === "pending"
+      ? "bg-amber-500"
+      : "bg-gray-400";
 }
 
 /** Format a date string that may or may not carry a time component. */
 function fmtDateTime(value: string): { date: string; time: string | null } {
-  const hasTime = value.length > 10 || value.includes('T');
+  const hasTime = value.length > 10 || value.includes("T");
   const d = new Date(hasTime ? value : `${value}T00:00:00`);
   if (Number.isNaN(d.getTime())) return { date: value, time: null };
   const date = formatDate(d);
-  const time = hasTime ? d.toLocaleTimeString(LOCALE, { hour: '2-digit', minute: '2-digit' }) : null;
+  const time = hasTime
+    ? d.toLocaleTimeString(LOCALE, { hour: "2-digit", minute: "2-digit" })
+    : null;
   return { date, time };
 }
 
@@ -63,7 +92,7 @@ function matchesQuery(t: BankTransaction, q: string): boolean {
   if (t.referenceNumber?.toLowerCase().includes(needle)) return true;
   // Amount search: compare against both '.'- and ','-decimal renderings.
   const abs = Math.abs(t.amount);
-  if (abs.toFixed(2).includes(needle.replace(',', '.'))) return true;
+  if (abs.toFixed(2).includes(needle.replace(",", "."))) return true;
   return false;
 }
 
@@ -71,40 +100,58 @@ function matchesQuery(t: BankTransaction, q: string): boolean {
  * from this exact transaction ("Split this"), dashed/outlined when it's only a
  * same-amount/nearby-date heuristic guess. Tapping deep-links into the split
  * group, landing on the matched expense's month. */
-function SplitFlag({ match, txDate, onReview }: { match: BankSplitMatch; txDate: string; onReview?: () => void }) {
+function SplitFlag({
+  match,
+  txDate,
+  onReview,
+}: {
+  match: BankSplitMatch;
+  txDate: string;
+  onReview?: () => void;
+}) {
   const router = useRouter();
-  const isLinked = match.kind === 'linked';
+  const isLinked = match.kind === "linked";
   return (
     <button
       type="button"
       onClick={(e) => {
         e.stopPropagation();
-        if ((match.kind !== 'linked' || (match.related?.length ?? 0) > 0) && onReview) {
+        if (
+          (match.kind !== "linked" || (match.related?.length ?? 0) > 0) &&
+          onReview
+        ) {
           onReview();
           return;
         }
         const month = match.date.slice(0, 7) || txDate.slice(0, 7);
-        router.push(`/split/${match.groupId}?expense=${match.expenseId}&month=${month}`);
+        router.push(
+          `/split/${match.groupId}?expense=${match.expenseId}&month=${month}`,
+        );
       }}
-      title={isLinked ? `Split in ${match.groupName}` : `Possibly already split in ${match.groupName}`}
+      title={
+        isLinked
+          ? `Split in ${match.groupName}`
+          : `Possibly already split in ${match.groupName}`
+      }
       className={`inline-flex min-h-[44px] min-w-[44px] justify-center items-center gap-0.5 shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium leading-none ${
         isLinked
-          ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-          : 'border border-dashed border-gray-400 dark:border-gray-500 text-gray-500 dark:text-gray-400'
+          ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+          : "border border-dashed border-gray-400 dark:border-gray-500 text-gray-500 dark:text-gray-400"
       }`}
     >
       <MdCallSplit className="text-[11px]" />
-      {isLinked ? 'split' : 'split?'}{match.related?.length ? ` · ${match.related.length + 1}` : ''}
+      {isLinked ? "split" : "split?"}
+      {match.related?.length ? ` · ${match.related.length + 1}` : ""}
     </button>
   );
 }
 
 /** Read-only transaction ledger for one linked bank account. Desktop: a
- * scrollable, paginated PrimeReact DataTable with expandable detail rows.
+ * scrollable TanStack table with expandable detail rows.
  * Mobile: month-grouped sections with sticky headers + "Load older months"
  * (the split ledger pattern) so one account can't inflate the page to
- * thousands of pixels. Each mobile row is a whole-row `role="button"` `<li>`
- * (the split detail page's pattern) that toggles its own expansion. The row
+ * thousands of pixels. Each mobile list row has an explicit keyboard details
+ * button and also toggles on a pointer click outside its action buttons. The row
  * leads with a stacked date column (month initials over day number, matching
  * the split detail rows), then a single title+remittance text column so a
  * second remittance line adds height only to that column, never to the
@@ -129,23 +176,35 @@ export function BankLedgerTable({
   linkedAccountId: string;
   bankName: string;
   splitMatches?: Map<string, BankSplitMatch>;
-  onSplitSaved?: (expense?: SplitExpense, group?: { id: string; name: string }) => void;
-  onConfirmSplitSuggestion?: (tx: BankTransaction, match: BankSplitMatch) => Promise<void> | void;
+  onSplitSaved?: (
+    expense?: SplitExpense,
+    group?: { id: string; name: string },
+  ) => void;
+  onConfirmSplitSuggestion?: (
+    tx: BankTransaction,
+    match: BankSplitMatch,
+  ) => Promise<void> | void;
   highlightTxId?: string;
 }) {
   const router = useRouter();
   const demoMasked = useAppContext()?.demoMasked ?? false;
-  const [expanded, setExpanded] = useState<DataTableExpandedRows | DataTableValueArray>([]);
-  const [expandedMobile, setExpandedMobile] = useState<Record<string, boolean>>({});
-  const [query, setQuery] = useState('');
+  const [expanded, setExpanded] = useState<DataTableExpandedRows>({});
+  const [expandedMobile, setExpandedMobile] = useState<Record<string, boolean>>(
+    {},
+  );
+  const [query, setQuery] = useState("");
   const [visibleMonths, setVisibleMonths] = useState(INITIAL_MONTHS);
   const [visibleRows, setVisibleRows] = useState(INITIAL_ROWS);
   // "Split this" — quick-add split dialog prefilled from a spend transaction.
-  const [splitInitial, setSplitInitial] = useState<QuickAddSplitInitial | null>(null);
-  const [reviewConfirm, setReviewConfirm] = useState<((match: BankSplitMatch) => Promise<void> | void) | undefined>();
+  const [splitInitial, setSplitInitial] = useState<QuickAddSplitInitial | null>(
+    null,
+  );
+  const [reviewConfirm, setReviewConfirm] = useState<
+    ((match: BankSplitMatch) => Promise<void> | void) | undefined
+  >();
 
   const openSplitFor = (t: BankTransaction) => {
-    const title = t.counterpartyName ?? t.remittanceInfo?.split('\n')[0] ?? '';
+    const title = t.counterpartyName ?? t.remittanceInfo?.split("\n")[0] ?? "";
     setSplitInitial({
       title,
       amount: Math.abs(t.amount),
@@ -164,7 +223,11 @@ export function BankLedgerTable({
   };
 
   const openReviewFor = (t: BankTransaction, match: BankSplitMatch) => {
-    setReviewConfirm(() => onConfirmSplitSuggestion ? (candidate: BankSplitMatch) => onConfirmSplitSuggestion(t, candidate) : undefined);
+    setReviewConfirm(() =>
+      onConfirmSplitSuggestion
+        ? (candidate: BankSplitMatch) => onConfirmSplitSuggestion(t, candidate)
+        : undefined,
+    );
     setSplitInitial({
       reviewMatch: match,
       date: txDisplayDate(t),
@@ -191,19 +254,19 @@ export function BankLedgerTable({
         .filter((t) => matchesQuery(t, query.trim()))
         .slice()
         .sort(
-          (a, b) => txDisplayDate(b).localeCompare(txDisplayDate(a)) || b.dedupKey.localeCompare(a.dedupKey)
+          (a, b) =>
+            txDisplayDate(b).localeCompare(txDisplayDate(a)) ||
+            b.dedupKey.localeCompare(a.dedupKey),
         ),
-    [transactions, query]
+    [transactions, query],
   );
 
-  // Desktop rows carry their split match ON the row object: PrimeReact memoizes
-  // BodyRow/BodyCell, so a `splitMatches` map that arrives after first render
-  // (candidates load async) never reaches already-rendered cells through the
-  // column-body closure alone — fresh row identities force the re-render.
+  // Keep asynchronously resolved split-match metadata on each desktop row so
+  // cell rendering and the mobile list consume the same match result.
   type LedgerRow = BankTransaction & { _splitMatch?: BankSplitMatch };
   const desktopRows = useMemo<LedgerRow[]>(
     () => filtered.map((t) => ({ ...t, _splitMatch: splitMatches?.get(t.id) })),
-    [filtered, splitMatches]
+    [filtered, splitMatches],
   );
 
   // Month-grouped (desc) for the mobile list.
@@ -220,23 +283,28 @@ export function BankLedgerTable({
   const visibleByMonth = byMonth.slice(0, visibleMonths);
 
   // Desktop infinite scroll: reveal more rows when the DataTable's inner
-  // scroll area (`.p-datatable-wrapper`, the `scrollHeight` container) nears
+  // explicitly referenced scroll viewport nears
   // its end. Listener re-binds per selected account (the wrapper node is
   // recreated) via the transactions dep.
   const desktopWrapRef = useRef<HTMLDivElement | null>(null);
+  const desktopScrollRef = useRef<HTMLDivElement | null>(null);
   const visibleRowsRef = useRef(visibleRows);
   visibleRowsRef.current = visibleRows;
   useEffect(() => {
-    const scroller = desktopWrapRef.current?.querySelector('.p-datatable-wrapper');
+    const scroller = desktopScrollRef.current;
     if (!scroller) return;
     const onScroll = () => {
-      if (scroller.scrollTop + scroller.clientHeight < scroller.scrollHeight - 300) return;
+      if (
+        scroller.scrollTop + scroller.clientHeight <
+        scroller.scrollHeight - 300
+      )
+        return;
       if (visibleRowsRef.current >= filtered.length) return;
       setVisibleRows((v) => Math.min(v + ROWS_STEP, filtered.length));
     };
-    scroller.addEventListener('scroll', onScroll, { passive: true });
-    return () => scroller.removeEventListener('scroll', onScroll);
-  }, [transactions, filtered.length]);
+    scroller.addEventListener("scroll", onScroll, { passive: true });
+    return () => scroller.removeEventListener("scroll", onScroll);
+  }, [transactions, filtered.length, demoMasked]);
 
   // Mobile infinite scroll: auto-load older months when the sentinel below the
   // list enters the viewport (the mobile list scrolls with the page, not an
@@ -245,11 +313,14 @@ export function BankLedgerTable({
   useEffect(() => {
     const el = mobileSentinelRef.current;
     if (!el) return;
-    const obs = new IntersectionObserver((entries) => {
-      if (entries.some((e) => e.isIntersecting)) {
-        setVisibleMonths((v) => (v < byMonth.length ? v + MONTHS_STEP : v));
-      }
-    }, { rootMargin: '200px' });
+    const obs = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          setVisibleMonths((v) => (v < byMonth.length ? v + MONTHS_STEP : v));
+        }
+      },
+      { rootMargin: "200px" },
+    );
     obs.observe(el);
     return () => obs.disconnect();
     // visibleMonths dep: re-observe after each reveal so a sentinel that is
@@ -278,13 +349,17 @@ export function BankLedgerTable({
 
     const ym = txDisplayDate(tx).slice(0, 7);
     const monthIdx = byMonth.findIndex(([m]) => m === ym);
-    if (monthIdx >= 0 && monthIdx >= visibleMonths) setVisibleMonths(monthIdx + 1);
+    if (monthIdx >= 0 && monthIdx >= visibleMonths)
+      setVisibleMonths(monthIdx + 1);
     setExpandedMobile((m) => ({ ...m, [tx.id]: true }));
 
     const idx = filtered.findIndex((t) => t.id === highlightTxId);
     if (idx >= 0) setVisibleRows((v) => Math.max(v, idx + 1 + ROWS_STEP / 2));
     setExpanded((prev) => {
-      const base = prev && typeof prev === 'object' && !Array.isArray(prev) ? (prev as DataTableExpandedRows) : {};
+      const base =
+        prev && typeof prev === "object" && !Array.isArray(prev)
+          ? (prev as DataTableExpandedRows)
+          : {};
       return { ...base, [tx.id]: true };
     });
 
@@ -310,12 +385,19 @@ export function BankLedgerTable({
       const nodes = document.querySelectorAll(`.bank-tx-row-${tx.id}`);
       let el: HTMLElement | null = null;
       nodes.forEach((n) => {
-        if (!el && (n as HTMLElement).offsetParent !== null) el = n as HTMLElement;
+        if (!el && (n as HTMLElement).offsetParent !== null)
+          el = n as HTMLElement;
       });
       if (el) {
-        (el as HTMLElement).scrollIntoView({ block: 'center', behavior: 'smooth' });
-        (el as HTMLElement).classList.add('flash-highlight');
-        setTimeout(() => (el as HTMLElement).classList.remove('flash-highlight'), 2000);
+        (el as HTMLElement).scrollIntoView({
+          block: "center",
+          behavior: "smooth",
+        });
+        (el as HTMLElement).classList.add("flash-highlight");
+        setTimeout(
+          () => (el as HTMLElement).classList.remove("flash-highlight"),
+          2000,
+        );
         finish();
         return;
       }
@@ -333,7 +415,11 @@ export function BankLedgerTable({
   }, [highlightTxId, transactions]);
 
   if (transactions.length === 0) {
-    return <p className="text-sm opacity-60">No transactions cached yet — try Refresh now in Settings.</p>;
+    return (
+      <p className="text-sm text-muted-foreground">
+        No transactions cached yet — try Refresh now in Settings.
+      </p>
+    );
   }
 
   const dateBody = (t: BankTransaction) => {
@@ -341,32 +427,39 @@ export function BankLedgerTable({
     return (
       <div className="whitespace-nowrap">
         <div>{date}</div>
-        {time && <div className="text-xs opacity-60">{time}</div>}
+        {time && <div className="text-xs text-muted-foreground">{time}</div>}
       </div>
     );
   };
 
   const counterpartyBody = (t: BankTransaction) => (
     <div className="min-w-[12rem]">
-      <div className="font-medium text-sm">{t.counterpartyName ?? '—'}</div>
+      <div className="font-medium text-sm">{t.counterpartyName ?? "—"}</div>
       {t.remittanceInfo && (
-        <div className="text-xs opacity-70 whitespace-pre-line">{t.remittanceInfo}</div>
+        <div className="text-xs text-muted-foreground whitespace-pre-line">
+          {t.remittanceInfo}
+        </div>
       )}
       {t.bankTransactionCode && (
-        <div className="text-xs opacity-50 italic mt-0.5">{t.bankTransactionCode}</div>
+        <div className="text-xs text-muted-foreground italic mt-0.5">
+          {t.bankTransactionCode}
+        </div>
       )}
     </div>
   );
 
   const amountBody = (t: BankTransaction) => (
-    <span className={t.amount < 0 ? 'text-red-500 font-medium' : 'text-green-600 font-medium'}>
+    <span
+      className={
+        t.amount < 0 ? "text-red-500 font-medium" : "text-green-600 font-medium"
+      }
+    >
       {formatCurrency(t.amount, currency)}
     </span>
   );
 
-  // Native `title` for the hover hint: the app-wide PrimeReact tooltip
-  // (sidebar-nav, target="[data-pr-tooltip]") doesn't reliably bind to these
-  // dynamically-rendered DataTable cells, and a co-located one double-renders.
+  // The native title offers a hover hint; the expandable row repeats its
+  // complete meaning for touch and keyboard users.
   // The full meaning is also repeated in the expandable row for touch devices,
   // where no hover tooltip can ever show.
   const statusBody = (t: BankTransaction) => (
@@ -375,15 +468,23 @@ export function BankLedgerTable({
     </span>
   );
 
-  const splitFlagBody = (t: BankTransaction & { _splitMatch?: BankSplitMatch }) => {
+  const splitFlagBody = (
+    t: BankTransaction & { _splitMatch?: BankSplitMatch },
+  ) => {
     const match = t._splitMatch ?? splitMatches?.get(t.id);
-    return match ? <SplitFlag match={match} txDate={txDisplayDate(t)} onReview={() => openReviewFor(t, match)} /> : null;
+    return match ? (
+      <SplitFlag
+        match={match}
+        txDate={txDisplayDate(t)}
+        onReview={() => openReviewFor(t, match)}
+      />
+    ) : null;
   };
 
   const detailRow = (label: string, value: string | null | undefined) =>
     value ? (
       <div className="flex gap-2">
-        <span className="opacity-60 w-40 shrink-0">{label}</span>
+        <span className="text-muted-foreground w-40 shrink-0">{label}</span>
         <span className="break-all">{value}</span>
       </div>
     ) : null;
@@ -393,34 +494,39 @@ export function BankLedgerTable({
       {/* Repeat the status with its full meaning here: hover tooltips don't
           exist on touch devices, but the row expands on tap. */}
       <div className="flex gap-2">
-        <span className="opacity-60 w-40 shrink-0">Status</span>
+        <span className="text-muted-foreground w-40 shrink-0">Status</span>
         <span>{STATUS_TIP[t.status]}</span>
       </div>
       {/* Always shown: the row can now display the purchase date instead of
           the booking date (see txDisplayDate), so the true booking date must
           stay inspectable here. */}
-      {detailRow('Booking date', t.bookingDate)}
-      {detailRow('Value date', t.valueDate)}
-      {detailRow('Transaction date', t.transactionDate)}
-      {detailRow('Counterparty account', maskIban(t.counterpartyAccount) || undefined)}
-      {detailRow('Bank transaction type', t.bankTransactionCode)}
-      {detailRow('Merchant category', t.merchantCategoryCode)}
+      {detailRow("Booking date", t.bookingDate)}
+      {detailRow("Value date", t.valueDate)}
+      {detailRow("Transaction date", t.transactionDate)}
       {detailRow(
-        'Balance after',
-        typeof t.balanceAfter === 'number' ? formatCurrency(t.balanceAfter, currency) : undefined
+        "Counterparty account",
+        maskIban(t.counterpartyAccount) || undefined,
       )}
-      {detailRow('Note', t.note)}
-      {detailRow('Bank reference', t.entryReference)}
+      {detailRow("Bank transaction type", t.bankTransactionCode)}
+      {detailRow("Merchant category", t.merchantCategoryCode)}
       {detailRow(
-        'Reference number',
+        "Balance after",
+        typeof t.balanceAfter === "number"
+          ? formatCurrency(t.balanceAfter, currency)
+          : undefined,
+      )}
+      {detailRow("Note", t.note)}
+      {detailRow("Bank reference", t.entryReference)}
+      {detailRow(
+        "Reference number",
         t.referenceNumber
           ? t.referenceNumberSchema
             ? `${t.referenceNumber} (${t.referenceNumberSchema})`
             : t.referenceNumber
-          : undefined
+          : undefined,
       )}
       <div className="flex gap-2">
-        <span className="opacity-60 w-40 shrink-0">First seen</span>
+        <span className="text-muted-foreground w-40 shrink-0">First seen</span>
         <span>{formatDateTime(t.firstSeenAt)}</span>
       </div>
       {t.amount < 0 && (
@@ -457,7 +563,9 @@ export function BankLedgerTable({
       {/* Search — counterparty, description, or amount */}
       <div className="mb-2">
         <IconField iconPosition="left" className="w-full">
-          <InputIcon className="pi pi-search" />
+          <InputIcon>
+            <Search size={16} />
+          </InputIcon>
           <InputText
             value={query}
             onChange={(e) => {
@@ -466,20 +574,13 @@ export function BankLedgerTable({
               setVisibleRows(INITIAL_ROWS);
             }}
             placeholder="Search counterparty or amount…"
-            // `!pl-10` (matches the theme's own .p-icon-field-left > .p-inputtext
-            // rule): globals.css's unlayered "Input field improvements" padding
-            // override always beats PrimeReact's @layer-wrapped theme CSS
-            // regardless of specificity, so without this the icon overlaps the
-            // placeholder text. Same !important idiom the color-override block
-            // in globals.css documents for this exact unlayered-vs-layered gap.
-            // `!text-base` below lg: iOS zooms the page into any focused input
-            // under 16px (the theme's p-inputtext-sm is 14px).
-            className="w-full !pl-10 p-inputtext-sm !text-base lg:!text-sm"
+            // Reserve room for the icon and keep mobile inputs at16px to avoid iOS zoom.
+            className="w-full !pl-10 !text-base lg:!text-sm"
             aria-label="Search transactions"
           />
         </IconField>
         {query.trim() && (
-          <p className="text-xs opacity-60 mt-1">
+          <p className="text-xs text-muted-foreground mt-1">
             {filtered.length} of {transactions.length} transactions match
           </p>
         )}
@@ -487,15 +588,17 @@ export function BankLedgerTable({
 
       {/* Desktop: full DataTable — infinite scroll (rows revealed as the inner
           scroll area approaches its end) instead of a paginator. All data is
-          already client-side; PrimeReact's virtualScroller is incompatible
-          with rowExpansion (fixed itemSize), so windowed reveal it is. */}
+          already client-side; reveal in batches while keeping expanded rows
+          at their natural height. */}
       <div className="hidden lg:block" ref={desktopWrapRef}>
         <DataTable
           // Remount when demo mode flips: DataTable's memoized internals keep
           // stale formatCurrency output across re-renders otherwise.
-          key={demoMasked ? 'masked' : 'plain'}
+          key={demoMasked ? "masked" : "plain"}
           value={desktopRows.slice(0, visibleRows)}
           scrollable
+          scrollRef={desktopScrollRef}
+          showColumnVisibility
           scrollHeight="60vh"
           size="small"
           stripedRows
@@ -505,15 +608,47 @@ export function BankLedgerTable({
           rowExpansionTemplate={rowExpansion}
           rowClassName={(rowData) => `bank-tx-row-${rowData.id}`}
         >
-          <Column expander style={{ width: '2.5rem' }} />
-          <Column header="Date" body={dateBody} style={{ width: '8rem' }} />
-          <Column header="Counterparty / details" body={counterpartyBody} />
-          <Column header="Amount" body={amountBody} style={{ width: '9rem' }} align="right" />
-          <Column header="Split" body={splitFlagBody} style={{ width: '6rem' }} />
-          <Column header="Status" body={statusBody} style={{ width: '7rem' }} />
-          <Column body={splitActionBody} style={{ width: '3rem' }} />
+          <Column
+            header={<span className="sr-only">Details</span>}
+            expander
+            style={{ width: "4.5rem" }}
+          />
+          <Column
+            hideable
+            header="Date"
+            body={dateBody}
+            style={{ width: "8rem" }}
+          />
+          <Column
+            header="Counterparty / details"
+            body={counterpartyBody}
+            style={{ minWidth: "14rem" }}
+          />
+          <Column
+            header="Amount"
+            body={amountBody}
+            style={{ width: "9rem" }}
+            align="right"
+          />
+          <Column
+            hideable
+            header="Split"
+            body={splitFlagBody}
+            style={{ width: "6rem" }}
+          />
+          <Column
+            hideable
+            header="Status"
+            body={statusBody}
+            style={{ width: "7rem" }}
+          />
+          <Column
+            header={<span className="sr-only">Actions</span>}
+            body={splitActionBody}
+            style={{ width: "4.5rem" }}
+          />
         </DataTable>
-        <p className="text-xs opacity-50 text-right mt-1">
+        <p className="text-xs text-muted-foreground text-right mt-1">
           {visibleRows < filtered.length
             ? `Showing ${Math.min(visibleRows, filtered.length)} of ${filtered.length} — scroll for more`
             : `${filtered.length} transactions`}
@@ -531,34 +666,27 @@ export function BankLedgerTable({
               {rows.map((t) => {
                 const open = !!expandedMobile[t.id];
                 const match = splitMatches?.get(t.id);
-                const displayTitle = t.counterpartyName ?? t.remittanceInfo?.split('\n')[0] ?? '—';
-                const remittanceLine = t.remittanceInfo?.split('\n')[0];
-                const hasLine2 = !!remittanceLine && remittanceLine !== displayTitle;
+                const displayTitle =
+                  t.counterpartyName ?? t.remittanceInfo?.split("\n")[0] ?? "—";
+                const remittanceLine = t.remittanceInfo?.split("\n")[0];
+                const hasLine2 =
+                  !!remittanceLine && remittanceLine !== displayTitle;
                 return (
                   <li
                     key={t.id}
-                    role="button"
-                    tabIndex={0}
-                    aria-expanded={open}
-                    onClick={() => setExpandedMobile((m) => ({ ...m, [t.id]: !m[t.id] }))}
-                    onKeyDown={(ev) => {
-                      // Only toggle for keys pressed on the row itself — Enter on a button
-                      // inside the expanded panel bubbles its keydown up here otherwise.
-                      if (ev.target !== ev.currentTarget) return;
-                      if (ev.key !== 'Enter' && ev.key !== ' ') return;
-                      ev.preventDefault();
-                      setExpandedMobile((m) => ({ ...m, [t.id]: !m[t.id] }));
-                    }}
+                    onClick={() =>
+                      setExpandedMobile((m) => ({ ...m, [t.id]: !m[t.id] }))
+                    }
                     className={`flex flex-wrap items-center min-h-[44px] px-2 py-1.5 cursor-pointer transition-colors hover:bg-gray-50 dark:hover:bg-gray-800/60 active:bg-gray-100 dark:active:bg-gray-700/70 bank-tx-row-${t.id}`}
                   >
                     <div className="flex w-full min-w-0 items-center gap-2">
                       {/* Stacked date column — same style as the split detail rows */}
                       <div className="w-9 shrink-0 text-center">
                         <div className="text-[11px] uppercase tracking-wide text-gray-400 leading-tight">
-                          {format(parseISO(txDisplayDate(t)), 'MMM')}
+                          {format(parseISO(txDisplayDate(t)), "MMM")}
                         </div>
                         <div className="text-base font-medium text-gray-500 dark:text-gray-400 leading-tight">
-                          {format(parseISO(txDisplayDate(t)), 'd')}
+                          {format(parseISO(txDisplayDate(t)), "d")}
                         </div>
                       </div>
                       {/* Title + optional remittance share one column so the trailing
@@ -571,15 +699,25 @@ export function BankLedgerTable({
                           >
                             <span className="sr-only">{t.status}</span>
                           </span>
-                          <span className="truncate text-sm font-medium leading-snug">{displayTitle}</span>
+                          <span className="truncate text-sm font-medium leading-snug">
+                            {displayTitle}
+                          </span>
                         </div>
                         {hasLine2 && (
-                          <div className="truncate text-xs opacity-60 leading-snug pl-4">{remittanceLine}</div>
+                          <div className="truncate text-xs text-muted-foreground leading-snug pl-4">
+                            {remittanceLine}
+                          </div>
                         )}
                       </div>
                       {/* Variable-width extras stay BETWEEN the text and the amount so the
                           amount + chevron remain a constant-width right rail (aligned amounts). */}
-                      {match && <SplitFlag match={match} txDate={txDisplayDate(t)} onReview={() => openReviewFor(t, match)} />}
+                      {match && (
+                        <SplitFlag
+                          match={match}
+                          txDate={txDisplayDate(t)}
+                          onReview={() => openReviewFor(t, match)}
+                        />
+                      )}
                       {t.amount < 0 && (
                         <Button
                           icon={<MdCallSplit />}
@@ -593,15 +731,35 @@ export function BankLedgerTable({
                           }}
                         />
                       )}
-                      <span
-                        className={`shrink-0 text-right tabular-nums text-sm font-medium ${t.amount < 0 ? 'text-red-500' : 'text-green-600'}`}
+                      <button
+                        type="button"
+                        className="flex min-h-11 shrink-0 items-center gap-1 rounded text-right"
+                        aria-label={`${open ? "Hide" : "Show"} details for ${displayTitle}, ${formatCurrency(t.amount, currency)}`}
+                        aria-expanded={open}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setExpandedMobile((m) => ({
+                            ...m,
+                            [t.id]: !m[t.id],
+                          }));
+                        }}
                       >
-                        {formatCurrency(t.amount, currency)}
-                      </span>
-                      <MdExpandMore className={`shrink-0 opacity-50 transition-transform ${open ? 'rotate-180' : ''}`} />
+                        <span
+                          className={`tabular-nums text-sm font-medium ${t.amount < 0 ? "text-red-500" : "text-green-600"}`}
+                        >
+                          {formatCurrency(t.amount, currency)}
+                        </span>
+                        <MdExpandMore
+                          aria-hidden
+                          className={`shrink-0 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`}
+                        />
+                      </button>
                     </div>
                     {open && (
-                      <div className="basis-full cursor-auto" onClick={(ev) => ev.stopPropagation()}>
+                      <div
+                        className="basis-full cursor-auto"
+                        onClick={(ev) => ev.stopPropagation()}
+                      >
                         {rowExpansion(t)}
                       </div>
                     )}
@@ -614,18 +772,28 @@ export function BankLedgerTable({
         <div ref={mobileSentinelRef} aria-hidden className="h-px" />
         {byMonth.length > visibleMonths && (
           <div className="text-center">
-            <Button label="Load older months" text size="small" onClick={() => setVisibleMonths((v) => v + MONTHS_STEP)} />
+            <Button
+              label="Load older months"
+              text
+              size="small"
+              onClick={() => setVisibleMonths((v) => v + MONTHS_STEP)}
+            />
           </div>
         )}
         {filtered.length === 0 && (
-          <p className="text-sm opacity-60 text-center py-4">No transactions match your search.</p>
+          <p className="text-sm text-muted-foreground text-center py-4">
+            No transactions match your search.
+          </p>
         )}
       </div>
 
       {/* "Split this" — self-contained quick-add dialog, prefilled from the row */}
       <QuickAddSplitModal
         visible={!!splitInitial}
-        onHide={() => { setSplitInitial(null); setReviewConfirm(undefined); }}
+        onHide={() => {
+          setSplitInitial(null);
+          setReviewConfirm(undefined);
+        }}
         onSaved={onSplitSaved}
         initial={splitInitial ?? undefined}
         onConfirmLink={reviewConfirm}

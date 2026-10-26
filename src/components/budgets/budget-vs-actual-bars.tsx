@@ -37,7 +37,7 @@ export function BudgetVsActualBars({
           <div key={cat.category}>
             <div className="flex justify-between items-baseline text-sm mb-1">
               <span className="font-medium">{cat.category}</span>
-              <span className="opacity-70">
+              <span className="text-muted-foreground">
                 {cat.planned > 0 ? (
                   <>
                     {formatCurrency(cat.actual, currency)} of {formatCurrency(cat.planned, currency)} used
