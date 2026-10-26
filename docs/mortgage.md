@@ -226,7 +226,10 @@ material contracts are in [architecture.md](architecture.md) §17.
 The **Schedule** pane uses `MortgageLedgerTable` (`mortgage-ledger-table.tsx`)
 over the shared TanStack-backed `DataTable`. Its explicit scroll viewport opens
 centered on the current month, and the Month column stays pinned during horizontal
-scrolling. Column controls hide optional details and reset visibility; Month and
+scrolling. Below the desktop breakpoint it also adjusts document scrolling when the
+current row would sit behind mobile chrome or below the fold; bounds ignore hidden
+retained layouts. Positioning retries stop after pointer, touch, wheel or keyboard
+interaction, so initial centering does not fight subsequent navigation. Column controls hide optional details and reset visibility; Month and
 total columns remain available. A changed loan/member/breakdown column set resets
 the table layout. Month inputs use local `YYYY-MM` values; displayed money uses
 the shared currency formatter, including Demo-mode masking.

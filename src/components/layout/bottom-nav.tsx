@@ -24,12 +24,8 @@ interface BottomNavProps {
  * pulled from the shared nav-config by id so they never drift. Each cell is a
  * ≥44px touch target. Sits at z-40 (below overlays).
  *
- * Height is `4rem + env(safe-area-inset-bottom)` with matching bottom padding, so
- * the 4rem content area is preserved and the inset extends the bar *below* it over
- * the iOS home indicator (in a standalone PWA). Do NOT use a fixed `h-16` plus the
- * inset padding — border-box sizing would subtract the inset from the 4rem and
- * squish the icons/labels. `<main>` reserves the same `4rem + inset` so content
- * never hides behind the bar.
+ * The 4rem capsule floats above the home indicator; main reserves bottom space.
+ * Its padded inner track owns both equal-width cells and the active indicator.
  *
  * A small pill under the active cell slides between tabs (`left` animated with
  * `ease-fluid`) and fades out when no primary tab matches the current route
@@ -60,43 +56,48 @@ export function BottomNav({ onOpenMore }: BottomNavProps) {
 
   return (
     <nav
-      // No `relative` here: `fixed` already makes the nav the containing block
-      // for the absolutely-positioned indicator (and `relative` would win the
-      // cascade and un-fix the bar).
+      data-slot="bottom-nav"
+      aria-label="Primary mobile navigation"
       className="lg:hidden fixed bottom-[calc(0.75rem+env(safe-area-inset-bottom))] left-3 right-3 z-40 flex items-stretch h-16 rounded-full border p-1 glass-chrome"
     >
-      <span
-        aria-hidden
-        className={`absolute top-1 bottom-1 rounded-full transition-[left,opacity] duration-[250ms] ease-fluid ${isDark ? 'bg-accent-400/20' : 'bg-accent-100'} ${activeIndex >= 0 ? 'opacity-100' : 'opacity-0'}`}
-        // Pill centers on the active cell: (index + 0.5) × cell width.
-        style={{
-          left: `calc(${(activeIndex >= 0 ? activeIndex : 0) * (100 / cells)}% + 0.25rem)`,
-          width: `calc(${100 / cells}% - 0.5rem)`,
-        }}
-      />
-      {primary.map((item) => {
-        const active = isNavItemActive(pathname, item.href);
-        return (
-          <Link
-            key={item.id}
-            href={item.href}
-            aria-current={active ? 'page' : undefined}
-            className={`${cell} no-underline ${active ? activeCls : idleCls}`}
-          >
-            {item.icon}
-            <span className="truncate max-w-full px-0.5">{item.label}</span>
-          </Link>
-        );
-      })}
-      <button
-        type="button"
-        onClick={onOpenMore}
-        aria-label="More"
-        className={`${cell} ${idleCls}`}
+      <div
+        data-slot="bottom-nav-track"
+        className="relative flex h-full w-full min-w-0 items-stretch"
       >
-        <MdMoreHoriz size={20} />
-        <span>More</span>
-      </button>
+        <span
+          data-slot="bottom-nav-indicator"
+          aria-hidden
+          className={`absolute inset-y-0 rounded-full transition-[left,opacity] duration-[250ms] ease-fluid ${isDark ? 'bg-accent-400/20' : 'bg-accent-100'} ${activeIndex >= 0 ? 'opacity-100' : 'opacity-0'}`}
+          // Pill centers on the active cell: (index + 0.5) × cell width.
+          style={{
+            left: `${(activeIndex >= 0 ? activeIndex : 0) * (100 / cells)}%`,
+            width: `${100 / cells}%`,
+          }}
+        />
+        {primary.map((item) => {
+          const active = isNavItemActive(pathname, item.href);
+          return (
+            <Link
+              key={item.id}
+              href={item.href}
+              aria-current={active ? 'page' : undefined}
+              className={`${cell} no-underline ${active ? activeCls : idleCls}`}
+            >
+              {item.icon}
+              <span className="truncate max-w-full px-0.5">{item.label}</span>
+            </Link>
+          );
+        })}
+        <button
+          type="button"
+          onClick={onOpenMore}
+          aria-label="More"
+          className={`${cell} ${idleCls}`}
+        >
+          <MdMoreHoriz size={20} />
+          <span>More</span>
+        </button>
+      </div>
     </nav>
   );
 }

@@ -213,6 +213,14 @@ for (const theme of ["light", "dark"] as const) {
       );
       const current = viewport.locator("tr.ledger-current");
       await expect(current).toBeInViewport();
+      if (page.viewportSize()!.width < 1024) {
+        await expect.poll(async () => {
+          const row = (await current.boundingBox())!;
+          const top = (await page.locator('[data-slot="mobile-top-bar"]').filter({ visible: true }).boundingBox())!;
+          const bottom = (await page.locator('[data-slot="bottom-nav"]').filter({ visible: true }).boundingBox())!;
+          return row.y >= top.y + top.height && row.y + row.height <= bottom.y;
+        }).toBe(true);
+      }
       await viewport.evaluate((element) => {
         element.scrollLeft = 400;
       });

@@ -146,7 +146,7 @@ export function AccountPicker({
   };
 
   return (
-    <MaterialToolbar sticky aria-label="Bank and account selection" className="flex-col items-stretch gap-2">
+    <MaterialToolbar sticky aria-label="Bank and account selection" className="w-full max-w-full min-w-0 flex-col items-stretch gap-2">
       {canReorder && (
         <button
           type="button"
@@ -159,9 +159,10 @@ export function AccountPicker({
 
       {connections.length > 1 && (
         <div
+          data-slot="bank-connection-scroll"
           ref={banksRef as React.Ref<HTMLDivElement>}
           {...banksRest}
-          className="flex gap-2 overflow-x-auto pb-1.5"
+          className="flex w-full min-w-0 max-w-full gap-2 overflow-x-auto overscroll-x-contain px-1 pb-1.5"
         >
           {connections.map((conn) => {
             const dot = connectionDot(conn);
@@ -176,10 +177,11 @@ export function AccountPicker({
                 type="button"
                 onClick={() => selectBank(conn)}
                 {...itemRest}
-                className={`shrink-0 inline-flex items-center whitespace-nowrap rounded-full px-3 min-h-[36px] text-sm font-medium transition-colors ${
+                aria-pressed={active}
+                className={`shrink-0 inline-flex items-center whitespace-nowrap rounded-full px-3 min-h-[44px] text-sm font-medium transition-colors ${
                   active
                     ? "bg-[var(--primary-color)] text-[var(--primary-color-text)]"
-                    : "border surface-border  hover:opacity-100"
+                    : "border border-border bg-card text-foreground hover:opacity-100"
                 }`}
               >
                 <span
@@ -199,9 +201,10 @@ export function AccountPicker({
       )}
 
       <div
+        data-slot="bank-account-scroll"
         ref={accountsRef as React.Ref<HTMLDivElement>}
         {...accountsRest}
-        className="flex gap-2 overflow-x-auto py-1"
+        className="flex w-full min-w-0 max-w-full gap-2 overflow-x-auto overscroll-x-contain px-1 py-1"
       >
         {activeConn.linkedAccounts.length === 0 ? (
           <button
@@ -225,6 +228,7 @@ export function AccountPicker({
                 type="button"
                 onClick={() => onSelect(link.id)}
                 {...itemRest}
+                aria-pressed={selected}
                 className={`shrink-0 inline-flex items-center rounded-lg px-3 min-h-[44px] text-left transition-colors ${
                   selected
                     ? "bg-[var(--primary-color)] text-[var(--primary-color-text)]"

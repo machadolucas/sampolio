@@ -322,7 +322,7 @@ is double-counted. Split balances are *not* injected into the cashflow projectio
   when any are in-window). Then an **Expenses / Activity** toggle (Activity reuses
   `SplitActivityFeed` with `showGroup={false}`, fetched lazily via
   `getSplitActivity(30, groupId)` — the same action as Home's cross-group feed, now
-  taking an optional `groupId`), month-paginated ledger (sticky month headers; older
+  taking an optional `groupId`), month-paginated ledger (padded, rounded sticky month headings within filled group cards; older
   months load via **infinite scroll** — an IntersectionObserver sentinel with
   `rootMargin` 300px, re-observed on each reveal + view switch, mirroring
   `bank-ledger-table.tsx`, wraps the kept "Load older months" button as the a11y

@@ -227,7 +227,22 @@ async function seed() {
       lastBalance: 2400,
       lastSyncedAt: timestamp,
     },
+    ...["Synthetic savings account", "Synthetic holiday account", "Synthetic long household reserve account"].map((name, index) => ({
+      id: uuidv4(),
+      connectionId: connection.id,
+      accountUid: `synthetic-extra-${index}`,
+      name,
+      currency: "EUR" as const,
+      accountRole: "cash" as const,
+      lastBalance: 300 + index * 100,
+      lastSyncedAt: timestamp,
+    })),
   ]);
+  await createBankConnection(alex.id, {
+    aspspName: "Synthetic Second Bank",
+    aspspCountry: "FI",
+    status: "active",
+  });
   const transactions: BankTransaction[] = Array.from(
     { length: 125 },
     (_, index) => ({

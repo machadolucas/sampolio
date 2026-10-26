@@ -353,7 +353,7 @@ export function CommandPalette({
         <>
             {/* Backdrop */}
             <div
-                className="animate-fade-in fixed inset-0 z-50 bg-black/50"
+                data-slot="modal-backdrop" className="animate-fade-in ui-backdrop ui-palette-backdrop"
                 onClick={onClose}
             />
 

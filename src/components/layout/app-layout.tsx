@@ -390,6 +390,9 @@ export function AppLayout({ children }: AppLayoutProps) {
                         Paint a glass strip under the status bar so scrolled
                         content never shows through the clock/battery area.
                         env() is 0 in a normal desktop browser — zero height. */}
+            {/* A solid mobile safe-area cap reaches the viewport edge without
+                filtering status-bar text; installed iOS behavior needs device verification. */}
+            <div aria-hidden="true" data-slot="mobile-safearea-cap" className="mobile-safearea-cap lg:hidden" />
             <div className="hidden lg:block fixed top-0 inset-x-0 h-[env(safe-area-inset-top)] z-40 glass-chrome" />
 
             {/* Demo-mode indicator pill (lg+) — shown on ALL pages while demo

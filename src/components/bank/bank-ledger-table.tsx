@@ -650,20 +650,20 @@ export function BankLedgerTable({
             style={{ width: "4.5rem" }}
           />
         </DataTable>
-        <p className="text-xs text-muted-foreground text-right mt-1">
+        <p className="px-1 text-xs text-muted-foreground text-right mt-2">
           {visibleRows < filtered.length
             ? `Showing ${Math.min(visibleRows, filtered.length)} of ${filtered.length} — scroll for more`
             : `${filtered.length} transactions`}
         </p>
       </div>
 
-      {/* Mobile: month-grouped compact list with sticky headers + incremental load */}
+      {/* Mobile: static month headings stay below the sticky picker; older groups load incrementally. */}
       <div className="lg:hidden space-y-3">
         {visibleByMonth.map(([ym, rows]) => (
-          <div key={ym}>
-            <div className="sticky top-[calc(3.5rem+env(safe-area-inset-top))] z-10 bg-muted py-1 text-sm font-semibold text-muted-foreground">
+          <div key={ym} className="rounded-2xl border border-border bg-card p-3">
+            <h2 data-slot="bank-month-heading" className="mb-2 rounded-xl border border-border bg-muted px-3 py-3 text-sm font-semibold tracking-tight text-foreground">
               {formatYearMonth(ym)}
-            </div>
+            </h2>
             <ul className="divide-y divide-border">
               {rows.map((t) => {
                 const open = !!expandedMobile[t.id];

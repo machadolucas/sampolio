@@ -307,12 +307,13 @@ export function DataTable<T extends object>({
   const pageCount = Math.max(1, table.getPageCount());
   return (
     <div
-      className={`sampolio-data-table min-w-0 ${className}`}
+      data-slot="table-surface"
+      className={`sampolio-data-table w-full min-w-0 max-w-full overflow-hidden rounded-2xl border border-border bg-card shadow-sm ${className}`}
       style={style}
       aria-busy={loading || undefined}
     >
       {showColumnVisibility && configs.some((config) => config.hideable) && (
-        <div className="mb-2 flex justify-end">
+        <div data-slot="table-controls" className="flex min-w-0 flex-wrap justify-end gap-2 border-b border-border bg-muted px-3 py-2">
           <Popover.Root>
             <Popover.Trigger
               className="ui-button"
@@ -375,7 +376,7 @@ export function DataTable<T extends object>({
       <div
         ref={scrollRef}
         data-slot="table-scroll"
-        className="max-w-full overflow-auto rounded-lg border border-[var(--surface-border)]"
+        className="max-w-full overflow-auto"
         style={{ maxHeight: scrollHeight }}
       >
         <table

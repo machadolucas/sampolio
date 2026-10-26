@@ -172,9 +172,43 @@ export function MortgageLedgerTable({
       const rowRect = row.getBoundingClientRect();
       wrap.scrollTop +=
         rowRect.top - wrapRect.top - wrap.clientHeight / 2 + rowRect.height / 2;
+
+      // On phones the wrapped controls can place the table below the fold.
+      // Centering inside its own viewport alone cannot reveal an early row
+      // when scrollTop clamps to zero, so coordinate the document scroll too.
+      if (!window.matchMedia("(min-width: 1024px)").matches) {
+        const chromeBounds = (slot: string) =>
+          Array.from(document.querySelectorAll(`[data-slot="${slot}"]`))
+            .map((element) => element.getBoundingClientRect())
+            .find((rect) => rect.width > 0 && rect.height > 0);
+        const visibleTop = Math.max(0, chromeBounds("mobile-top-bar")?.bottom ?? 0);
+        const visibleBottom = Math.min(
+          window.innerHeight,
+          chromeBounds("bottom-nav")?.top ?? window.innerHeight,
+        );
+        const centeredRow = row.getBoundingClientRect();
+        if (centeredRow.top < visibleTop || centeredRow.bottom > visibleBottom) {
+          window.scrollBy({
+            top: (centeredRow.top + centeredRow.bottom - visibleTop - visibleBottom) / 2,
+            behavior: "instant",
+          });
+        }
+      }
     };
     const timers = [200, 500, 900, 1400].map((d) => setTimeout(center, d));
-    return () => timers.forEach(clearTimeout);
+    // Retried positioning must yield as soon as the person starts interacting.
+    // Do not listen to scroll: our own positioning also dispatches that event.
+    const cancelCentering = () => timers.forEach(clearTimeout);
+    const interactions = ["wheel", "touchstart", "pointerdown", "keydown"] as const;
+    interactions.forEach((event) =>
+      window.addEventListener(event, cancelCentering, { passive: true }),
+    );
+    return () => {
+      cancelCentering();
+      interactions.forEach((event) =>
+        window.removeEventListener(event, cancelCentering),
+      );
+    };
   }, [months.length, showBreakdown]);
 
   // ── Build the columns as a keyed array (stable keys avoid header/body

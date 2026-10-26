@@ -857,10 +857,10 @@ export default function SplitGroupDetailPage() {
       ) : (
         <div className="flex flex-col gap-4">
           {byMonth.map(([ym, rows]) => (
-            <div key={ym} className="rounded-2xl border border-border bg-card px-3 pb-2">
-              <div className="sticky top-[calc(4.5rem+env(safe-area-inset-top))] lg:top-[calc(0.5rem+env(safe-area-inset-top))] z-10 bg-muted py-1 text-sm font-semibold text-muted-foreground">
+            <div key={ym} className="rounded-2xl border border-border bg-card p-3">
+              <h2 data-slot="split-month-heading" className="sticky top-[calc(4.5rem+env(safe-area-inset-top))] lg:top-[calc(0.5rem+env(safe-area-inset-top))] z-10 mb-2 rounded-xl border border-border bg-muted px-3 py-3 text-sm font-semibold tracking-tight text-foreground">
                 {formatYearMonth(ym)}
-              </div>
+              </h2>
               <ul className="flex flex-col divide-y divide-border">
                 {rows.map((e) => {
                   const viewerNet = e.netByUserId[myId] ?? 0;

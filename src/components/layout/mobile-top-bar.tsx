@@ -29,11 +29,21 @@ export function MobileTopBar({
   demoMode = false,
   onExitDemo,
 }: MobileTopBarProps) {
-  const iconBtn = 'material-icon-control flex items-center justify-center w-11 h-11 shrink-0 transition-colors duration-(--motion-fast)';
+  const iconBtn =
+    'material-icon-control flex items-center justify-center w-11 h-11 shrink-0 transition-colors duration-(--motion-fast)';
 
   return (
-    <header className="lg:hidden fixed top-[calc(0.5rem+env(safe-area-inset-top))] left-2 right-2 z-40 flex items-center justify-between px-2 border rounded-2xl h-14 glass-chrome">
-      <div className="flex min-w-0 flex-1 items-center">
+    <header
+      data-slot="mobile-top-bar"
+      aria-label="Mobile controls"
+      className="mobile-top-bar lg:hidden fixed top-[calc(0.5rem+env(safe-area-inset-top))] left-2 right-2 z-40 flex items-center justify-between px-2 border rounded-2xl h-14"
+    >
+      <span
+        aria-hidden="true"
+        data-slot="mobile-toolbar-material"
+        className="mobile-toolbar-material glass-chrome"
+      />
+      <div className="relative z-10 flex min-w-0 flex-1 items-center">
         <button
           type="button"
           onClick={onOpenMenu}
@@ -47,14 +57,12 @@ export function MobileTopBar({
           className="flex min-w-0 items-center gap-2 no-underline ml-1"
         >
           <BrandLogo size={28} className="shrink-0" />
-          <span
-            className="truncate text-xl font-extrabold text-foreground"
-          >
+          <span className="truncate text-xl font-extrabold text-foreground">
             Sampolio
           </span>
         </Link>
       </div>
-      <div className="flex shrink-0 items-center gap-1">
+      <div className="relative z-10 flex shrink-0 items-center gap-1">
         {demoMode && onExitDemo && (
           <button
             type="button"
