@@ -88,8 +88,8 @@ export function ChartExplainButton({
       aria-expanded={open}
       aria-controls={controls}
       className={`inline-flex items-center gap-1 min-h-11 rounded-full px-3 py-1.5 text-xs font-medium
-                text-gray-600 dark:text-gray-300 bg-black/[0.04] dark:bg-white/[0.06]
-                hover:bg-black/[0.07] dark:hover:bg-white/[0.1] transition-colors
+                text-muted-foreground bg-muted
+                hover:bg-accent transition-colors
                 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 ${className ?? ''}`}
     >
       <MdLightbulbOutline size={15} aria-hidden />
@@ -253,7 +253,7 @@ export function ChartExplainPanel({
               type="button"
               onClick={() => setIntroOpen((o) => !o)}
               aria-expanded={introOpen}
-              className="flex w-full items-center gap-2 text-sm font-semibold text-gray-800 dark:text-gray-100 transition-colors"
+              className="flex w-full items-center gap-2 text-sm font-semibold text-foreground transition-colors"
             >
               <MdLightbulbOutline
                 size={16}
@@ -273,7 +273,7 @@ export function ChartExplainPanel({
               inert={introOpen ? undefined : true}
             >
               <div>
-                <ul className="mt-2 space-y-1.5 text-sm leading-relaxed text-gray-700 dark:text-gray-300">
+                <ul className="mt-2 space-y-1.5 text-sm leading-relaxed text-foreground">
                   {howToRead.map((cue, i) => (
                     <li key={i} className="flex items-start gap-2">
                       <ChartCueSwatch
@@ -302,10 +302,10 @@ export function ChartExplainPanel({
 
           {/* Plain-words summary (always shown while the panel is open) */}
           <div className="text-sm">
-            <p className="mb-1 font-semibold text-gray-800 dark:text-gray-100">
+            <p className="mb-1 font-semibold text-foreground">
               {plainWordsLabel}
             </p>
-            <ul className="list-disc space-y-1 pl-5 leading-relaxed text-gray-700 dark:text-gray-300">
+            <ul className="list-disc space-y-1 pl-5 leading-relaxed text-foreground">
               {description.map((s, i) => (
                 <li key={i}>{s}</li>
               ))}
@@ -546,12 +546,12 @@ export function ChartTourBar({ tour, label, className }: ChartTourBarProps) {
           onClick={tour.prev}
           disabled={tour.index === 0}
           aria-label="Previous step"
-          className="inline-flex h-11 w-11 items-center justify-center rounded-full text-gray-600 dark:text-gray-300 transition-colors hover:bg-black/5 dark:hover:bg-white/10 disabled:opacity-30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500"
+          className="inline-flex h-11 w-11 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent disabled:opacity-30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500"
         >
           <MdChevronLeft size={20} aria-hidden />
         </button>
         <span
-          className="tabular-nums text-xs font-medium text-gray-500 dark:text-gray-400"
+          className="tabular-nums text-xs font-medium text-muted-foreground"
           aria-hidden
         >
           {tour.index + 1}/{tour.total}
@@ -560,12 +560,12 @@ export function ChartTourBar({ tour, label, className }: ChartTourBarProps) {
           type="button"
           onClick={tour.next}
           aria-label={atEnd ? 'Finish walkthrough' : 'Next step'}
-          className="inline-flex h-11 w-11 items-center justify-center rounded-full text-gray-600 dark:text-gray-300 transition-colors hover:bg-black/5 dark:hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500"
+          className="inline-flex h-11 w-11 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500"
         >
           <MdChevronRight size={20} aria-hidden />
         </button>
       </div>
-      <p className="min-w-0 flex-1 text-gray-700 dark:text-gray-200">
+      <p className="min-w-0 flex-1 text-foreground">
         {tour.step?.text}
       </p>
       <button

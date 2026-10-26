@@ -1,4 +1,6 @@
 'use client';
+
+import { PageHeader, ControlGroup } from '@/components/ui/page-header';
 import { TriangleAlert as UiWarningIcon } from 'lucide-react';
 
 import { useState, useEffect, useRef, Suspense, useId } from 'react';
@@ -341,7 +343,7 @@ function SettingsPageInner() {
     const displayModeCard = (
         <Card>
             <h2 className={heading}>Display Mode</h2>
-            <div className="grid grid-cols-2 gap-4">
+            <ControlGroup className="grid grid-cols-1 sm:grid-cols-2 gap-3" aria-label="Display mode">
                 <button
                     onClick={() => appContext?.setDisplayMode('simple')}
                     className={`p-4 rounded-lg border-2 text-left transition-colors ${
@@ -368,7 +370,7 @@ function SettingsPageInner() {
                         Full details, charts, and projections
                     </p>
                 </button>
-            </div>
+            </ControlGroup>
         </Card>
     );
 
@@ -954,15 +956,7 @@ function SettingsPageInner() {
     return (
         <div data-display-mode={isSimple ? 'simple' : 'advanced'} className="space-y-4 lg:space-y-6 max-w-3xl py-4 mx-auto">
             {importDialog}
-            {/* Header */}
-            <div>
-                <h1 className="text-2xl font-bold text-foreground">
-                    Settings
-                </h1>
-                <p className="text-sm mt-1 text-muted-foreground">
-                    Configure your preferences and application settings
-                </p>
-            </div>
+            <PageHeader title="Settings" description="Configure your preferences and application settings" />
 
             <TabView scrollable activeIndex={activeIndex} onTabChange={(e) => setActiveIndex(e.index)}>
                 <TabPanel header="General">
@@ -1023,7 +1017,10 @@ function SettingsPageInner() {
 // rule), or the whole route errors during prerendering.
 export default function SettingsPage() {
     return (
-        <Suspense>
+        <Suspense fallback={<div className="space-y-4 max-w-3xl py-4 mx-auto">
+            <PageHeader title="Settings" description="Configure your preferences and application settings" />
+            <DelayedSpinner className="flex justify-center py-12" />
+        </div>}>
             <SettingsPageInner />
         </Suspense>
     );

@@ -14,6 +14,7 @@ import { getGoalsPageData } from '@/lib/actions/dashboard-data';
 import { calculateGoalProgress, computeGoalPlan } from '@/lib/goal-utils';
 import { assembleWealthProjection } from '@/lib/wealth-assembly';
 import { AlertBanner } from '@/components/ui/alert-banner';
+import { PageHeader } from '@/components/ui/page-header';
 import { GoalCard } from '@/components/goals/goal-card';
 import { GoalDialog } from '@/components/goals/goal-dialog';
 import type { FinancialAccount, Goal, MonthlyProjection, WealthProjectionMonth } from '@/types';
@@ -147,7 +148,10 @@ export default function GoalsPage() {
   const archived = goals.filter((g) => g.isArchived);
 
   if (isLoading) {
-    return <ListPageSkeleton />;
+    return <div className="p-4 md:p-6 max-w-5xl mx-auto space-y-4">
+      <PageHeader title="Goals" description="Set savings targets and see when your plan reaches them." />
+      <ListPageSkeleton showTitle={false} />
+    </div>;
   }
 
   // Active goals render in plan order (priority, then target date, then name)
@@ -191,13 +195,10 @@ export default function GoalsPage() {
 
   return (
     <div className="p-4 md:p-6 max-w-5xl mx-auto space-y-4">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold">Goals</h1>
-          <p className="text-sm text-muted-foreground">Set savings targets and see when your plan reaches them.</p>
-        </div>
-        <Button label="New goal" icon={<MdAdd />} className="shrink-0 self-start sm:self-auto" onClick={openCreate} />
-      </div>
+      <PageHeader title="Goals"
+        description="Set savings targets and see when your plan reaches them."
+        actions={<Button label="New goal" icon={<MdAdd />} className="shrink-0" onClick={openCreate} />}
+      />
 
       {loadError && (
         <AlertBanner severity="error" icon={<MdErrorOutline />} action={{ label: 'Retry', onClick: () => { void fetchData(); } }}>

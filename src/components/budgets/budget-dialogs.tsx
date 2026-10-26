@@ -1,5 +1,7 @@
 'use client';
 
+import { ControlGroup } from '@/components/ui/page-header';
+
 import { useEffect, useMemo, useState, useId } from 'react';
 import { Dialog } from '@/components/ui/dialog';
 import { InputText } from '@/components/ui/input-text';
@@ -156,10 +158,10 @@ export function BudgetLineDialog({
           </div>
         )}
         {error && <Message severity="error" text={error} className="w-full" />}
-        <div className="flex justify-end gap-2 pt-1">
+        <ControlGroup className="justify-end mt-4">
           <Button type="button" label="Cancel" text severity="secondary" onClick={onHide} disabled={saving} />
           <Button label={line ? 'Save' : 'Add cost'} loading={saving} type="submit" />
-        </div>
+        </ControlGroup>
       </form>
     </Dialog>
   );
@@ -454,10 +456,10 @@ export function BudgetFundingDialog({
         )}
 
         {error && <Message severity="error" text={error} className="w-full" />}
-        <div className="flex justify-end gap-2 pt-1">
+        <ControlGroup className="justify-end mt-4">
           <Button type="button" label="Cancel" text severity="secondary" onClick={onHide} disabled={saving} />
           <Button label={source ? 'Save' : 'Add funding'} loading={saving} type="submit" />
-        </div>
+        </ControlGroup>
       </form>
     </Dialog>
 
@@ -608,10 +610,10 @@ export function BudgetDetailsDialog({
           <HelpTip text="Show your share of a split group’s expenses next to the spending log — read-only, it never changes the budget math. Only groups in the budget’s currency can be linked." />
         </div>
         {error && <Message severity="error" text={error} className="w-full" />}
-        <div className="flex justify-end gap-2 pt-1">
+        <ControlGroup className="justify-end mt-4">
           <Button type="button" label="Cancel" text severity="secondary" onClick={onHide} disabled={saving} />
           <Button label="Save" loading={saving} type="submit" />
-        </div>
+        </ControlGroup>
       </form>
     </Dialog>
   );

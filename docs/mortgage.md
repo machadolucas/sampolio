@@ -218,7 +218,10 @@ selector, the seven lazy charts + a "Payoff at a glance" summary card) /
 mobile isn't one ~7 000px scroll. Entry points: a header **"Update Euribor rate"**
 button appears only while the update is due (plus the `AlertBanner` reminder);
 everything else lives under a single **"Manage"** menu grouped Loan · Members ·
-Data; per-month **Reconcile** stays on the ledger rows.
+Data; per-month **Reconcile** stays on the ledger rows. The title/manage actions use
+the shared material header, tabs use raised capsule selection, and horizon/schedule
+controls use solid inset groups. Charts, ledger data and forms stay filled; shared
+material contracts are in [architecture.md](architecture.md) §17.
 
 The **Schedule** pane uses `MortgageLedgerTable` (`mortgage-ledger-table.tsx`)
 over the shared TanStack-backed `DataTable`. Its explicit scroll viewport opens

@@ -1,4 +1,6 @@
 "use client";
+
+import { ControlGroup } from '@/components/ui/page-header';
 /* eslint-disable react-hooks/set-state-in-effect -- the form intentionally resets its fields when the dialog opens */
 
 import { useEffect, useState } from "react";
@@ -194,7 +196,7 @@ export function SplitExpenseDialog({
         />
 
         {error && <Message severity="error" text={error} />}
-        <div className="flex justify-end gap-2 pt-1">
+        <ControlGroup aria-label="Expense actions" className="justify-end mt-1">
           <Button label="Cancel" text onClick={onHide} disabled={saving} />
           <Button
             label={editing ? "Save" : "Add"}
@@ -202,7 +204,7 @@ export function SplitExpenseDialog({
             loading={saving}
             onClick={save}
           />
-        </div>
+        </ControlGroup>
       </div>
     </Dialog>
   );

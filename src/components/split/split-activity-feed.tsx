@@ -52,7 +52,7 @@ export function SplitActivityFeed({
     return <p className="text-sm text-muted-foreground py-6 text-center">{emptyText}</p>;
   }
   return (
-    <ul className="flex flex-col divide-y divide-gray-100 dark:divide-gray-800">
+    <ul className="flex flex-col divide-y divide-border">
       {events.map((e) => {
         const lbl = netLabel(e.viewerNetCents, currency);
         const clickable = !!onEventClick && isEventClickable(e);

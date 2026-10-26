@@ -2,7 +2,6 @@
 
 import { useMemo } from 'react';
 import { Card } from '@/components/ui/card';
-import { useTheme } from '@/components/providers/theme-provider';
 import { formatCurrency, MONTHS } from '@/lib/constants';
 import { isZeroMoney, type HeroSummary } from '@/lib/overview-hero';
 import type { Currency } from '@/types';
@@ -52,8 +51,6 @@ export function StatusHeroCard({
     summary,
     currency,
 }: StatusHeroCardProps) {
-    const { theme } = useTheme();
-    const isDark = theme === 'dark';
 
     const monthName = useMemo(() => {
         const now = new Date();
@@ -86,7 +83,7 @@ export function StatusHeroCard({
         <Card className={`border ${colors.border} ${colors.bg}`}>
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                 <div>
-                    <h2 className={`text-xl font-semibold ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
+                    <h2 className="text-xl font-semibold text-foreground">
                         Hi {firstName}, here&apos;s your {monthName} overview
                     </h2>
                     <p className={`text-lg mt-1 ${colors.text} font-medium`}>
@@ -97,10 +94,10 @@ export function StatusHeroCard({
                 {summary && (
                 <div className="flex items-center gap-6">
                     <div className="text-right">
-                        <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                        <p className="text-sm text-muted-foreground">
                             Projected end balance
                         </p>
-                        <p className={`text-2xl font-bold ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
+                        <p className="text-2xl font-bold text-foreground">
                             {formatCurrency(summary.endBalance, currency)}
                         </p>
                         {showTrend && trend !== null && (

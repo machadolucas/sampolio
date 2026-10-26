@@ -1,5 +1,7 @@
 'use client';
 
+import { ControlGroup } from '@/components/ui/page-header';
+
 import { useState, useId } from 'react';
 import { Dialog } from '@/components/ui/dialog';
 import { Steps } from '@/components/ui/steps';
@@ -336,14 +338,14 @@ export function MortgageSetupWizard({
 
       {error && <Message severity="error" text={error} className="mt-3 block" />}
 
-      <div className="flex justify-between mt-4">
+      <ControlGroup aria-label="Mortgage setup actions" className="justify-between mt-4">
         <Button label="Back" text onClick={() => setStep((s) => Math.max(0, s - 1))} disabled={step === 0 || saving} />
         {step < STEPS.length - 1 ? (
           <Button label="Next" onClick={() => setStep((s) => s + 1)} disabled={!canNext()} />
         ) : (
           <Button label="Create mortgage" loading={saving} onClick={submit} />
         )}
-      </div>
+      </ControlGroup>
     </Dialog>
   );
 }

@@ -34,7 +34,7 @@ const GRAY = 'rgb(148, 163, 184)';
 const MEMBER_COLORS = [BLUE, PURPLE, AMBER, GREEN];
 
 function EmptyState({ label }: { label: string }) {
-  return <div className="flex items-center justify-center h-64 text-gray-500 text-sm">{label}</div>;
+  return <div className="flex items-center justify-center h-64 text-muted-foreground text-sm">{label}</div>;
 }
 
 /** Index of the current month within a month slice (−1 if not in range). */
@@ -80,7 +80,7 @@ function todayLinePlugin(index: number) {
       const label = 'Today';
       const tw = ctx.measureText(label).width;
       const boxW = tw + 8;
-      ctx.fillStyle = 'rgba(120,120,120,0.9)';
+      ctx.fillStyle = '#35463b';
       ctx.beginPath();
       ctx.roundRect(px - boxW / 2, chartArea.top + 2, boxW, 14, 3);
       ctx.fill();

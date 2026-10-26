@@ -368,7 +368,7 @@ item (see "Bank-transaction linking" above); `?expense=&month=`
   flush. A first-ever visit shows no dots and stamps the baseline to now. Accepted
   edges: your own off-page quick-adds self-dot until you open the group, and the
   watermark only considers loaded months.
-- **Global quick-add** (desktop FAB in `app-layout.tsx`, 44px mobile toolbar action in `mobile-top-bar.tsx`) opens the
+- **Global quick-add** (44px sidebar action in `sidebar-nav.tsx`, 44px mobile toolbar action in `mobile-top-bar.tsx`, both using `AppLayout.openSplitQuickAdd`) opens the
   `entityType: 'split-expense'` drawer → `QuickAddSplitModal`
   (`quick-add-split-modal.tsx`): title + amount is enough — `quickAddSplitExpense`
   defaults to *you paid, split equally, today*, with `guessCategory` and
@@ -853,8 +853,8 @@ resolving empty (logged) on failure instead of failing the page. It shows:
     expected end balance, with an Overview link inside). The region's skeleton waits
     for the first `getHomeData` result — the row's geometry depends on whether bank rows
     exist;
-- a greeting (adding a shared expense happens via the global quick-add FAB — see
-  §1 — which is always visible on Home);
+- a material greeting header (adding a shared expense happens via the sidebar or
+  mobile toolbar quick-add — see §1 — without covering content);
 - one merged **Split card**: an overall-position line from `aggregatePairwiseNets`'
   `totalByCurrency` (single currency → colored owed/owe amount; several → a neutral
   "Balances across multiple currencies" — never a naive cross-currency sum), an

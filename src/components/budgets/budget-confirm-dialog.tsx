@@ -1,5 +1,7 @@
 'use client';
 
+import { ControlGroup } from '@/components/ui/page-header';
+
 import { useState, useMemo, useId } from 'react';
 import { Dialog } from '@/components/ui/dialog';
 import { Dropdown } from '@/components/ui/dropdown';
@@ -104,10 +106,10 @@ export function BudgetConfirmDialog({
           </div>
         )}
         {error && <Message severity="error" text={error} className="w-full" />}
-        <div className="flex justify-end gap-2 pt-1">
+        <ControlGroup className="justify-end mt-4">
           <Button type="button" label="Cancel" text severity="secondary" onClick={onHide} disabled={saving} />
           <Button label="Add to my cashflow" loading={saving} type="submit" />
-        </div>
+        </ControlGroup>
       </form>
     </Dialog>
   );

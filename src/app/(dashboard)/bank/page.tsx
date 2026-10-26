@@ -1,5 +1,7 @@
 'use client';
 
+import { PageHeader } from '@/components/ui/page-header';
+
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Card } from '@/components/ui/card';
@@ -449,19 +451,12 @@ function BankPageInner() {
   const selected = allLinks.find((x) => x.link.id === selectedLinkId);
 
   if (loading) {
-    return <ListPageSkeleton />;
+    return <div className="space-y-4 max-w-4xl mx-auto py-4 lg:py-8"><PageHeader title="Bank" /><ListPageSkeleton showTitle={false} /></div>;
   }
 
   return (
     <div className="space-y-4 lg:space-y-6 max-w-4xl mx-auto py-4 lg:py-8">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold">Bank</h1>
-          <p className="text-sm opacity-60">
-            Connected accounts and imported transactions (read-only, via Enable Banking).
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2 shrink-0 self-start sm:self-auto">
+      <PageHeader title="Bank" description="Connected accounts and imported transactions (read-only, via Enable Banking)." actions={<>
           <Button
             label="Refresh"
             icon={<MdRefresh />}
@@ -478,8 +473,7 @@ function BankPageInner() {
             size="small"
             onClick={() => router.push('/settings?tab=banking')}
           />
-        </div>
-      </div>
+      </>} />
 
       <RecurringSuggestions />
 
@@ -508,7 +502,7 @@ function BankPageInner() {
               {/* Selected-account summary: icon, name, masked IBAN, currency,
                   role, balance, plus the owning connection's status + consent
                   Tags (moved here from the removed per-connection Card). */}
-              <div className="rounded-xl border surface-border p-4">
+              <div className="rounded-xl border border-border bg-card p-4">
                 <div className="flex items-start justify-between gap-3 flex-wrap">
                   <div className="flex items-center gap-2 min-w-0">
                     {roleIcon(selected.link.accountRole)}
@@ -518,7 +512,7 @@ function BankPageInner() {
                           selected.link.name ||
                           (selected.link.accountRole === 'credit-card' ? 'Credit card' : 'Account')}
                       </div>
-                      <div className="text-xs opacity-60">
+                      <div className="text-xs text-muted-foreground">
                         {maskIban(selected.link.iban)} · {selected.link.currency} · {selected.link.accountRole}
                       </div>
                     </div>

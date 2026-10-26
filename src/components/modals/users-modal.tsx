@@ -309,15 +309,15 @@ export function UsersModal({ visible, onHide }: UsersModalProps) {
     >
       {!isAdmin ? (
         <div className="text-center py-8">
-          <MdLock size={36} className="text-gray-400 mb-4" />
-          <p className="text-gray-600 dark:text-gray-400">
+          <MdLock size={36} className="text-muted-foreground mb-4" />
+          <p className="text-muted-foreground">
             Admin access required
           </p>
         </div>
       ) : (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <p className="text-gray-600 dark:text-gray-400">
+            <p className="text-muted-foreground">
               Manage user accounts and permissions
             </p>
             <Button label="New User" icon={<MdAdd />} onClick={openNewDialog} />
@@ -446,7 +446,7 @@ export function UsersModal({ visible, onHide }: UsersModalProps) {
               toggleMask
               feedback={!editingUser}
             />
-            <small className="text-xs text-gray-500 dark:text-gray-400">
+            <small className="text-xs text-muted-foreground">
               8–128 characters, with an uppercase and a lowercase letter, a
               number and a symbol.
             </small>

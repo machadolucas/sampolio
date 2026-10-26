@@ -1,6 +1,19 @@
 "use client";
 
-import type { CanvasHTMLAttributes, Ref } from "react";
+import {
+  useEffect,
+  useMemo,
+  useState,
+  type CanvasHTMLAttributes,
+  type Ref,
+} from "react";
+import { useTheme } from "@/components/providers/theme-provider";
+import {
+  CHART_PALETTES,
+  resolveChartPalette,
+  themedChartOptions,
+  type ChartPalette,
+} from "./chart-theme";
 import {
   Chart as ChartJS,
   LineController,
@@ -17,7 +30,6 @@ import {
   Tooltip,
   type ChartType,
   type ChartData,
-  type ChartOptions,
   type Plugin,
 } from "chart.js";
 import { Chart as ReactChart } from "react-chartjs-2";
@@ -65,12 +77,42 @@ export function Chart({
   ref,
   ...canvasProps
 }: ChartProps) {
+  const { theme } = useTheme();
+  const [resolved, setResolved] = useState<{
+    theme: typeof theme;
+    palette: ChartPalette;
+  } | null>(null);
+  // Re-render immediately from context with the correct semantic fallback.
+  // Then resolve CSS after all parent effects (including OS-driven theme DOM
+  // changes) have run. No key/remount, global defaults mutation or dataset copy.
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      const palette = resolveChartPalette(
+        getComputedStyle(document.documentElement),
+        CHART_PALETTES[theme],
+      );
+      setResolved((previous) =>
+        previous?.theme === theme &&
+        previous.palette.text === palette.text &&
+        previous.palette.grid === palette.grid
+          ? previous
+          : { theme, palette },
+      );
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [theme]);
+  const palette =
+    resolved?.theme === theme ? resolved.palette : CHART_PALETTES[theme];
+  const chartOptions = useMemo(
+    () => themedChartOptions(type, options, palette),
+    [type, options, palette],
+  );
   return (
     <div className={`relative h-full min-w-0 ${className ?? ""}`} style={style}>
       <ReactChart
         type={type}
         data={data as ChartData<ChartType>}
-        options={options as ChartOptions<ChartType>}
+        options={chartOptions}
         plugins={plugins as Plugin<ChartType>[] | undefined}
         ref={ref}
         // ChartExplain supplies the named image and tested description.

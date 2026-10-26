@@ -6,6 +6,10 @@ The **wealth dashboard**. It is a normal page at `/overview` — the root `/` is
 
 `page.tsx` — Client component (`'use client'`) that loads everything through **one** aggregate read (`getOverviewData`, see Data Flow), assembles the wealth projection in the browser, then renders the KPI/chart components.
 
+The title/check-in action uses `PageHeader`, quick actions use `MaterialToolbar`,
+and projection controls use a solid `ControlGroup`; KPI/chart data stays filled.
+Shared material contracts live in `src/components/AGENTS.md`.
+
 ## Features
 
 ### KPI Tiles (grouped)

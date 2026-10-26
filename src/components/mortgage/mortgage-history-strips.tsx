@@ -1,5 +1,7 @@
 'use client';
 
+import { ControlGroup } from '@/components/ui/page-header';
+
 import { TriangleAlert } from 'lucide-react';
 
 import { useState, useId } from 'react';
@@ -218,10 +220,10 @@ export function MortgageHistoryStrips({
           </div>
           {error && <Message severity="error" text={error} />}
         </div>
-        <div className="flex justify-end gap-2 mt-4">
+        <ControlGroup className="justify-end mt-4">
           <Button label="Cancel" text onClick={() => setRateDialog(false)} />
           <Button label="Save" loading={saving} onClick={saveRate} />
-        </div>
+        </ControlGroup>
       </Dialog>
 
       {/* Cost add/edit dialog */}
@@ -253,10 +255,10 @@ export function MortgageHistoryStrips({
           </div>
           {error && <Message severity="error" text={error} />}
         </div>
-        <div className="flex justify-end gap-2 mt-4">
+        <ControlGroup className="justify-end mt-4">
           <Button label="Cancel" text onClick={() => setCostDialog(false)} />
           <Button label="Save" loading={saving} onClick={saveCost} />
-        </div>
+        </ControlGroup>
       </Dialog>
     </div>
   );

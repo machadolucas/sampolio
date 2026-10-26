@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useRef } from 'react';
-import { ChevronLeft, ChevronRight, Search } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, Search } from 'lucide-react';
 import { useSession } from '@/lib/auth-client';
 import { Button } from '@/components/ui/button';
 import { Menu } from '@/components/ui/menu';
@@ -20,11 +20,13 @@ import { useUserProfiles } from '@/lib/hooks/use-user-profiles';
 
 interface SidebarNavProps {
   onOpenCommandPalette: () => void;
+  onOpenSplitQuickAdd?: () => void;
   collapsed?: boolean;
   onToggleCollapse?: () => void;
 }
 export function SidebarNav({
   onOpenCommandPalette,
+  onOpenSplitQuickAdd,
   collapsed = false,
   onToggleCollapse,
 }: SidebarNavProps) {
@@ -56,7 +58,7 @@ export function SidebarNav({
           )}
         </Link>
       </div>
-      <div className="px-2 pb-3">
+      <div className="flex shrink-0 flex-col gap-1 px-2 pb-3">
         <Tooltip content="Search (⌘K)" position="right">
           <button
             type="button"
@@ -69,13 +71,25 @@ export function SidebarNav({
             {expanded && (
               <>
                 <span className="flex-1 text-left text-sm">Search</span>
-                <kbd aria-hidden="true" className="text-xs opacity-70">
+                <kbd aria-hidden="true" className="text-xs">
                   ⌘K
                 </kbd>
               </>
             )}
           </button>
         </Tooltip>
+        {onOpenSplitQuickAdd && (
+          <Tooltip content="Add shared expense" position="right">
+            <Button
+              variant="outline"
+              icon={<Plus />}
+              label={expanded ? 'Add shared expense' : undefined}
+              aria-label="Add shared expense"
+              onClick={onOpenSplitQuickAdd}
+              className={`w-full ${expanded ? 'justify-start' : 'justify-center px-0'}`}
+            />
+          </Tooltip>
+        )}
       </div>
       <nav className="min-h-0 flex-1 overflow-y-auto px-2">
         <ul className="space-y-1">

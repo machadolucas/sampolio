@@ -278,7 +278,7 @@ for (const theme of ["light", "dark"] as const) {
       await noOverflow(page);
     });
 
-    test("collapsed desktop navigation centers brand, search, route and footer icons", async ({
+    test("desktop navigation keeps quick-add beside content and centers collapsed icons", async ({
       page,
     }) => {
       test.skip(page.viewportSize()!.width < 1024, "Desktop sidebar only");
@@ -286,6 +286,19 @@ for (const theme of ["light", "dark"] as const) {
       const aside = page.getByRole("complementary", {
         name: "Main navigation",
       });
+      const quickAdd = aside.getByRole("button", {
+        name: "Add shared expense", exact: true,
+      });
+      await expect(quickAdd).toBeVisible();
+      const main = page.getByRole("main");
+      const actionBox = (await quickAdd.boundingBox())!;
+      const mainBox = (await main.boundingBox())!;
+      expect(actionBox.x + actionBox.width).toBeLessThanOrEqual(mainBox.x);
+      await quickAdd.click();
+      const quickDialog = page.getByRole("dialog");
+      await expect(quickDialog).toBeVisible();
+      await page.keyboard.press("Escape");
+      await expect(quickDialog).toBeHidden();
       await aside
         .getByRole("button", { name: "Collapse sidebar", exact: true })
         .click();
@@ -294,6 +307,7 @@ for (const theme of ["light", "dark"] as const) {
       for (const control of [
         aside.getByRole("link", { name: "Sampolio home", exact: true }),
         aside.getByRole("button", { name: "Search", exact: true }),
+        quickAdd,
         aside.getByRole("link", { name: "Home", exact: true }),
         aside.getByRole("button", { name: "Expand sidebar", exact: true }),
         aside.getByRole("button", { name: /Alex account menu/ }),
@@ -315,6 +329,14 @@ for (const theme of ["light", "dark"] as const) {
       await page.screenshot({
         path: test.info().outputPath("sidebar-collapsed.png"),
       });
+      await page.setViewportSize({ width: 1280, height: 500 });
+      for (const control of [quickAdd, aside.getByRole("button", { name: /Alex account menu/ })]) {
+        const box = (await control.boundingBox())!;
+        expect(box.y).toBeGreaterThanOrEqual(0);
+        expect(box.y + box.height).toBeLessThanOrEqual(500);
+      }
+      await aside.getByRole("link", { name: "Settings", exact: true }).scrollIntoViewIfNeeded();
+      expect(await aside.locator("nav").evaluate((nav) => nav.scrollTop)).toBeGreaterThan(0);
     });
 
     test("Cashflow keeps a floating sticky material toolbar, selected month and opaque reduced-transparency fallback", async ({

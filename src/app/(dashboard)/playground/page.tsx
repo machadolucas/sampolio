@@ -1,5 +1,7 @@
 'use client';
 
+import { PageHeader, ControlGroup } from '@/components/ui/page-header';
+
 import { useState, useMemo, useEffect, useCallback, useRef, useId } from 'react';
 import dynamic from 'next/dynamic';
 import { Card } from '@/components/ui/card';
@@ -296,17 +298,8 @@ export default function PlaygroundPage() {
 
     return (
         <div className="space-y-4 lg:space-y-6 max-w-360 mx-auto py-4 lg:py-8">
-            <div>
-                <h1 className="text-4xl font-bold text-foreground">
-                    What If?
-                </h1>
-                <p className="text-sm mt-1 text-muted-foreground">
-                    Test changes against your real plan — the same account, income, and bills as your Cashflow — without saving anything.
-                </p>
-            </div>
-
-            {/* Account selector */}
-            {accounts.length > 1 && (
+            <PageHeader title="What If?" description="Test changes against your real plan — the same account, income, and bills as your Cashflow — without saving anything.">
+{accounts.length > 1 && (
                 <Dropdown
                     value={selectedAccountId}
                     options={accounts.map((a: FinancialAccount) => ({ label: a.name, value: a.id }))}
@@ -315,9 +308,10 @@ export default function PlaygroundPage() {
                     placeholder="Select account"
                 />
             )}
+            </PageHeader>
 
             {/* Scenario templates */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <ControlGroup className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3" aria-label="Scenario templates">
                 {TEMPLATES.map(template => (
                     <button
                         key={template.value}
@@ -335,7 +329,7 @@ export default function PlaygroundPage() {
                         </p>
                     </button>
                 ))}
-            </div>
+            </ControlGroup>
 
             {/* Input form */}
             <Card>
@@ -470,7 +464,7 @@ export default function PlaygroundPage() {
                         </div>
                     )}
 
-                    <div className="flex flex-wrap gap-3">
+                    <ControlGroup aria-label="Scenario actions">
                         <Button
                             label="Run Scenario"
                             icon={<MdPlayArrow />}
@@ -497,7 +491,7 @@ export default function PlaygroundPage() {
                                 onClick={handleReset}
                             />
                         )}
-                    </div>
+                    </ControlGroup>
                 </div>
             </Card>
 

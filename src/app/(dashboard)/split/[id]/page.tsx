@@ -1,5 +1,7 @@
 "use client";
 
+import { PageHeader, MaterialToolbar, ControlGroup } from '@/components/ui/page-header';
+
 import { TriangleAlert } from "lucide-react";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -565,18 +567,18 @@ export default function SplitGroupDetailPage() {
   );
 
   if (loading) {
-    return <SplitDetailSkeleton />;
+    return <div className="space-y-4 max-w-3xl mx-auto py-4 lg:py-6"><PageHeader title="Split" /><SplitDetailSkeleton /></div>;
   }
   if (notFound || !group) {
     return (
-      <div className="text-center py-16 text-muted-foreground">
+      <div className="max-w-3xl mx-auto space-y-4 py-4"><PageHeader title="Split" /><div className="rounded-2xl border border-border bg-card text-center py-16 text-muted-foreground">
         <p>Group not found.</p>
         <Button
           label="Back to Split"
           link
           onClick={() => router.push("/split")}
         />
-      </div>
+      </div></div>
     );
   }
 
@@ -614,7 +616,7 @@ export default function SplitGroupDetailPage() {
       />
 
       {/* Header */}
-      <div className="flex items-center gap-2 mb-3">
+      <PageHeader title={group.name} className="mb-4" leading={<div className="flex items-center gap-2">
         <Button
           icon={<MdArrowBack />}
           text
@@ -622,8 +624,7 @@ export default function SplitGroupDetailPage() {
           onClick={() => router.push("/split")}
           aria-label="Back"
         />
-        <span className="text-2xl">{group.emoji ?? "🧾"}</span>
-        <h1 className="text-xl font-bold flex-1 truncate">{group.name}</h1>
+        <span className="text-2xl">{group.emoji ?? "🧾"}</span></div>} actions={<>
         <Button
           icon={<MdSettings />}
           text
@@ -631,7 +632,7 @@ export default function SplitGroupDetailPage() {
           onClick={() => setShowSettings(true)}
           aria-label="Group settings"
         />
-      </div>
+            </>} />
 
       {/* Balance banner */}
       <div className="rounded-xl border border-border bg-card p-4 mb-4">
@@ -672,7 +673,7 @@ export default function SplitGroupDetailPage() {
             )}
           </div>
         </div>
-        <div className="flex flex-wrap gap-2 mt-3">
+        <ControlGroup aria-label="Shared expense actions" className="mt-3">
           <Button
             label="Add expense"
             icon={<MdAdd />}
@@ -706,7 +707,7 @@ export default function SplitGroupDetailPage() {
             size="small"
             onClick={() => setShowImport(true)}
           />
-        </div>
+        </ControlGroup>
       </div>
 
       {/* Last-30-days snapshot (hidden until the group has any expense) */}
@@ -815,7 +816,7 @@ export default function SplitGroupDetailPage() {
       )}
 
       {/* Ledger / Activity toggle */}
-      <div className="flex justify-center">
+      <MaterialToolbar aria-label="Split group view" className="justify-center mb-4">
         <SelectButton
           value={view}
           onChange={(e) => e.value && setView(e.value)}
@@ -825,7 +826,7 @@ export default function SplitGroupDetailPage() {
           ]}
           className="text-sm"
         />
-      </div>
+      </MaterialToolbar>
 
       {view === "activity" ? (
         activity === null ? (
@@ -844,23 +845,23 @@ export default function SplitGroupDetailPage() {
       ) : expenses.length === 0 ? (
         monthsDesc.length > visibleCount ? (
           // The loaded window is empty but older months hold history.
-          <div className="text-center py-10">
+          <div className="rounded-2xl border border-border bg-card text-center py-10">
             <p className="text-muted-foreground mb-2">Nothing this month.</p>
             <Button label="Load older months" text onClick={loadMore} />
           </div>
         ) : (
-          <p className="text-center text-muted-foreground py-10">
+          <p className="rounded-2xl border border-border bg-card text-center text-muted-foreground py-10">
             No expenses yet. Add one above.
           </p>
         )
       ) : (
         <div className="flex flex-col gap-4">
           {byMonth.map(([ym, rows]) => (
-            <div key={ym}>
-              <div className="sticky top-[calc(3.5rem+env(safe-area-inset-top))] lg:top-[env(safe-area-inset-top)] z-10 bg-muted py-1 text-sm font-semibold text-muted-foreground">
+            <div key={ym} className="rounded-2xl border border-border bg-card px-3 pb-2">
+              <div className="sticky top-[calc(4.5rem+env(safe-area-inset-top))] lg:top-[calc(0.5rem+env(safe-area-inset-top))] z-10 bg-muted py-1 text-sm font-semibold text-muted-foreground">
                 {formatYearMonth(ym)}
               </div>
-              <ul className="flex flex-col divide-y divide-gray-100 dark:divide-gray-800">
+              <ul className="flex flex-col divide-y divide-border">
                 {rows.map((e) => {
                   const viewerNet = e.netByUserId[myId] ?? 0;
                   const isPayment = e.kind === "payment";

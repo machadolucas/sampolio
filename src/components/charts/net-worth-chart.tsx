@@ -46,7 +46,7 @@ export function NetWorthChart({ data, currency, scope, maxMonths = 60 }: NetWort
 
     if (displayData.length === 0) {
         return (
-            <div className="flex items-center justify-center h-64 text-gray-500">
+            <div className="flex items-center justify-center h-64 text-muted-foreground">
                 No wealth projection data available.
             </div>
         );

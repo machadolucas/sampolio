@@ -56,8 +56,8 @@ export function AccountPanel({ isDark }: AccountPanelProps) {
   const appContext = useAppContext();
   const toast = useToast();
 
-  const heading = `text-lg font-semibold mb-4 ${isDark ? 'text-gray-100' : 'text-gray-900'}`;
-  const subtext = `text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`;
+  const heading = `text-lg font-semibold mb-4 text-foreground`;
+  const subtext = `text-sm text-muted-foreground`;
 
   // ---- Profile picture ----
   const myId = session?.user?.id;
@@ -244,7 +244,7 @@ export function AccountPanel({ isDark }: AccountPanelProps) {
             <div className="flex flex-col gap-2">
               <label
                 htmlFor={`${uid}-currentPassword`}
-                className={isDark ? 'text-gray-300' : 'text-gray-700'}
+                className="text-foreground"
               >
                 Current password
               </label>
@@ -286,7 +286,7 @@ export function AccountPanel({ isDark }: AccountPanelProps) {
             <div className="flex flex-col gap-2">
               <label
                 htmlFor={`${uid}-newPassword`}
-                className={isDark ? 'text-gray-300' : 'text-gray-700'}
+                className="text-foreground"
               >
                 New password
               </label>
@@ -326,7 +326,7 @@ export function AccountPanel({ isDark }: AccountPanelProps) {
             <div className="flex flex-col gap-2">
               <label
                 htmlFor={`${uid}-confirmPassword`}
-                className={isDark ? 'text-gray-300' : 'text-gray-700'}
+                className="text-foreground"
               >
                 Confirm new password
               </label>
@@ -385,7 +385,7 @@ export function AccountPanel({ isDark }: AccountPanelProps) {
         <div className="space-y-6">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="min-w-0 flex-1">
-              <p className={isDark ? 'text-gray-200' : 'text-gray-700'}>
+              <p className="text-foreground">
                 Start fresh
               </p>
               <p className={subtext}>
@@ -406,7 +406,7 @@ export function AccountPanel({ isDark }: AccountPanelProps) {
 
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="min-w-0 flex-1">
-              <p className={isDark ? 'text-gray-200' : 'text-gray-700'}>
+              <p className="text-foreground">
                 Delete account
               </p>
               <p className={subtext}>
@@ -462,12 +462,12 @@ export function AccountPanel({ isDark }: AccountPanelProps) {
         <div className="space-y-4">
           <div>
             <p
-              className={`text-sm font-medium mb-1 ${isDark ? 'text-gray-200' : 'text-gray-700'}`}
+              className="text-sm font-medium mb-1 text-foreground"
             >
               This wipes:
             </p>
             <ul
-              className={`list-disc pl-5 text-sm space-y-0.5 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}
+              className="list-disc pl-5 text-sm space-y-0.5 text-muted-foreground"
             >
               <li>Accounts &amp; balances</li>
               <li>Recurring and planned income/expense items</li>
@@ -482,12 +482,12 @@ export function AccountPanel({ isDark }: AccountPanelProps) {
           </div>
           <div>
             <p
-              className={`text-sm font-medium mb-1 ${isDark ? 'text-gray-200' : 'text-gray-700'}`}
+              className="text-sm font-medium mb-1 text-foreground"
             >
               This keeps:
             </p>
             <ul
-              className={`list-disc pl-5 text-sm space-y-0.5 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}
+              className="list-disc pl-5 text-sm space-y-0.5 text-muted-foreground"
             >
               <li>Your login and preferences</li>
               <li>
@@ -504,7 +504,7 @@ export function AccountPanel({ isDark }: AccountPanelProps) {
             />
             <label
               htmlFor="reset-understood"
-              className={`text-sm ${isDark ? 'text-gray-300' : 'text-gray-600'}`}
+              className="text-sm text-muted-foreground"
             >
               I understand this permanently deletes my financial data
             </label>
@@ -549,7 +549,7 @@ export function AccountPanel({ isDark }: AccountPanelProps) {
         ) : preflight && preflight.blockers.length > 0 ? (
           <div className="space-y-3">
             <p
-              className={`text-sm ${isDark ? 'text-gray-300' : 'text-gray-600'}`}
+              className="text-sm text-muted-foreground"
             >
               Resolve the following before you can delete your account:
             </p>
@@ -569,12 +569,12 @@ export function AccountPanel({ isDark }: AccountPanelProps) {
           <div className="space-y-4">
             <div>
               <p
-                className={`text-sm font-medium mb-1 ${isDark ? 'text-gray-200' : 'text-gray-700'}`}
+                className="text-sm font-medium mb-1 text-foreground"
               >
                 This will permanently delete:
               </p>
               <ul
-                className={`list-disc pl-5 text-sm space-y-0.5 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}
+                className="list-disc pl-5 text-sm space-y-0.5 text-muted-foreground"
               >
                 <li>
                   {preflight.summary.accounts} account(s), all items,
@@ -606,7 +606,7 @@ export function AccountPanel({ isDark }: AccountPanelProps) {
             {(preflight.summary.splitGroupsToLeave > 0 ||
               preflight.summary.mortgagesToLeave > 0) && (
               <p
-                className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}
+                className="text-sm text-muted-foreground"
               >
                 You will leave {preflight.summary.splitGroupsToLeave} shared
                 split group(s) and {preflight.summary.mortgagesToLeave} shared
@@ -619,7 +619,7 @@ export function AccountPanel({ isDark }: AccountPanelProps) {
             <div className="flex flex-col gap-2">
               <label
                 htmlFor="delete-confirm-email"
-                className={`text-sm ${isDark ? 'text-gray-300' : 'text-gray-600'}`}
+                className="text-sm text-muted-foreground"
               >
                 Type your email ({session?.user?.email}) to confirm
               </label>

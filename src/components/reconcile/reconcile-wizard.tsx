@@ -1,5 +1,7 @@
 'use client';
 
+import { ControlGroup } from '@/components/ui/page-header';
+
 import { useState, useEffect, useCallback, useRef, useId } from 'react';
 import { MdArrowBack, MdArrowForward, MdCheck, MdError } from 'react-icons/md';
 import { Dialog } from '@/components/ui/dialog';
@@ -473,7 +475,7 @@ export function ReconcileWizard({
                             We&apos;ll compare what we expected with what actually happened, so your projections stay accurate.
                         </p>
 
-                        <div className="flex gap-4">
+                        <ControlGroup className="flex-nowrap gap-4" aria-label="Check-in month">
                             <div className="flex-1 min-w-0">
                                 <label htmlFor={`${uid}-year`} className={`block text-sm font-medium mb-2 ${isDark ? 'text-muted-foreground' : 'text-foreground'}`}>
                                     Year
@@ -496,7 +498,7 @@ export function ReconcileWizard({
                                     className="w-full"
                                 />
                             </div>
-                        </div>
+                        </ControlGroup>
 
                         <Card className="mt-6">
                             <div className="text-sm text-muted-foreground">

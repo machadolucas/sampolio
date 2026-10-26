@@ -1,5 +1,7 @@
 'use client';
 
+import { ControlGroup } from '@/components/ui/page-header';
+
 import { ExternalLink, Link2 } from 'lucide-react';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -294,7 +296,7 @@ export function QuickAddSplitModal({ visible, onHide, onSaved, initial, onConfir
               : review.kind === 'recovered'
                 ? 'The bank appears to have booked a transaction you split while it was pending. Confirm to reconnect the existing expense.'
                 : 'Check the details below. Confirming links the existing expense without adding another one.'} />
-            <div className="rounded-xl border border-blue-200 bg-blue-50/60 p-3 text-sm dark:border-blue-900/60 dark:bg-blue-950/20">
+            <div className="rounded-xl border border-border bg-muted p-3 text-sm">
               <div className="text-xs uppercase tracking-wide text-muted-foreground">Bank transaction</div>
               <div className="mt-1 font-medium">{initial?.bankLink?.counterpartyName ?? 'Unknown merchant'}</div>
               <div className="mt-1 text-muted-foreground">{initial?.date ? dateLabel(initial.date) : initial?.bankLink?.bookingDate ? dateLabel(initial.bankLink.bookingDate) : '—'} · {initial?.bankLink ? formatCurrency(Math.abs(initial.bankLink.amount), initial.bankLink.currency) : '—'}</div>
@@ -438,10 +440,10 @@ export function QuickAddSplitModal({ visible, onHide, onSaved, initial, onConfir
 
             {error && <Message severity="error" text={error} />}
 
-            <div className="flex gap-2 pt-1">
+            <ControlGroup aria-label="Quick expense actions" className="mt-1">
               <Button label="Save" className="flex-1" loading={saving} disabled={!!bankLink && group?.currency !== bankLink.currency} onClick={() => save(false)} severity="success" />
               <Button label="Save & add another" outlined onClick={() => save(true)} disabled={saving || (!!bankLink && group?.currency !== bankLink.currency)} />
-            </div>
+            </ControlGroup>
           </div>
         )}
       </Dialog>

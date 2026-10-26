@@ -1,5 +1,7 @@
 'use client';
 
+import { ControlGroup } from '@/components/ui/page-header';
+
 import { Trash2, TriangleAlert } from 'lucide-react';
 
 import { useState, useEffect, useRef, useId } from 'react';
@@ -180,10 +182,10 @@ export function EuriborUpdateDialog({
 
         {error && <Message severity="error" text={error} />}
       </div>
-      <div className="flex justify-end gap-2 mt-4">
+      <ControlGroup className="justify-end mt-4">
         <Button type="button" label="Cancel" text onClick={handleHide} />
         <Button label="Update rate" loading={saving} type="submit" />
-      </div>
+      </ControlGroup>
       </form>
     </Dialog>
   );
@@ -278,10 +280,10 @@ export function DriftAdjustmentDialog({
         </div>
         {error && <Message severity="error" text={error} />}
       </div>
-      <div className="flex justify-end gap-2 mt-4">
+      <ControlGroup className="justify-end mt-4">
         <Button type="button" label="Cancel" text onClick={onClose} />
         <Button label="Save correction" loading={saving} type="submit" disabled={!loanId || actualBalance === null} />
-      </div>
+      </ControlGroup>
       </form>
     </Dialog>
   );
@@ -376,10 +378,10 @@ export function ExtraPaymentDialog({
         </div>
         {error && <Message severity="error" text={error} />}
       </div>
-      <div className="flex justify-end gap-2 mt-4">
+      <ControlGroup className="justify-end mt-4">
         <Button type="button" label="Cancel" text onClick={onClose} />
         <Button label="Add payment" loading={saving} type="submit" disabled={!loanId || !(amount > 0)} />
-      </div>
+      </ControlGroup>
       </form>
     </Dialog>
   );

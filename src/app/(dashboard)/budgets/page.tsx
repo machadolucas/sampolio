@@ -1,5 +1,7 @@
 'use client';
 
+import { PageHeader } from '@/components/ui/page-header';
+
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { ListPageSkeleton } from '@/components/ui/skeletons';
 import { useAppContext } from '@/components/layout/app-layout';
@@ -45,12 +47,12 @@ export default function TripsAndBudgetsPage() {
   useDataRefresh(fetchData);
 
   if (isLoading) {
-    return <ListPageSkeleton />;
+    return <div className="space-y-4 max-w-5xl mx-auto p-4 md:p-6"><PageHeader title="Trips & Budgets" /><ListPageSkeleton showTitle={false} /></div>;
   }
 
   return (
     <div className="p-4 md:p-6 max-w-5xl mx-auto space-y-10">
-      <h1 className="text-2xl font-bold">Trips &amp; Budgets</h1>
+      <PageHeader title="Trips & Budgets" />
       <TripsSection trips={trips} accounts={accounts} budgets={budgets} onChanged={fetchData} />
       <BudgetsSection budgets={budgets} onChanged={fetchData} />
     </div>

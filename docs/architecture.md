@@ -47,7 +47,7 @@ runbook: [`operations.md`](operations.md).
 
 | Route | File | Purpose |
 |---|---|---|
-| `/` | `src/app/page.tsx` | Home dashboard (bank-account glance strip + projected-month tile, merged split balances+activity card; add via the global FAB). Server component: `auth()` + `redirect('/auth/signin')`; wraps `AppLayout` itself (outside the route group). |
+| `/` | `src/app/page.tsx` | Home dashboard (bank-account glance strip + projected-month tile, merged split balances+activity card; add via the sidebar/mobile toolbar quick action). Server component: `auth()` + `redirect('/auth/signin')`; wraps `AppLayout` itself (outside the route group). |
 | `/overview` | `src/app/(dashboard)/overview/page.tsx` | Wealth dashboard (net worth, KPIs, reminders). |
 | `/cashflow` | `src/app/(dashboard)/cashflow/page.tsx` | Monthly cash-flow projection + retrospective. |
 | `/mortgage` | `src/app/(dashboard)/mortgage/page.tsx` | Shared-mortgage ledger, charts, reconcile/import. |
@@ -576,6 +576,11 @@ number/date entry, nested overlays, table controls, preferences and accessibilit
 without `.env*` files, creates disposable encrypted data and secrets, blanks external
 banking/webhook configuration and binds loopback port 4999. Production mode builds
 and starts that isolated bundle. One Chromium worker, no WebKit/WebGL on this host.
+`e2e/material-surfaces.spec.ts` exercises every Settings and Mortgage tab, auth/offline
+surfaces, capsule selection, contrast and reduced-transparency fallbacks. Route smoke
+checks wait for loaded content before checking material bounds and opaque data cards.
+`e2e/material-regressions.spec.ts` also checks sidebar centering, short-height scrolling,
+calendar placement, modal blur and immediate Demo updates without losing drafts.
 Screenshots require manual material/readability review; axe alone is insufficient.
 Real iPhone Safari/PWA keyboard and compositing behavior remains a separate device check.
 `scripts/bundle-metrics.mjs` reports aggregate raw/gzip static chunks, not per-route
@@ -630,6 +635,39 @@ rounded controls and the green accent retain Sampolio's identity. Semantic categ
 colors remain; `src/lib/color-contrast.ts` chooses legible text on solid fills.
 Neutral surfaces use `bg-card`/`bg-muted`, `border-border` and foreground tokens
 instead of fixed gray or blue palettes.
+
+Shared composition lives in `src/components/ui/page-header.tsx`:
+
+- `PageHeader` is a nonsticky bounded title/action rail, with wrapping mobile actions.
+- `MaterialToolbar` groups independent controls. Opt-in sticky rails clear mobile
+  chrome at `4.5rem + safe-area-inset-top`; desktop uses `0.5rem + safe-area-inset-top`.
+- `ControlGroup` is solid inset material inside existing cards or glass. Tabs,
+  segmented controls and wizard Steps own inset rails; selection is a raised capsule.
+  Inputs keep inset edges, buttons use rounded filled/outlined treatments, and table
+  pagination uses the same control materials. Neutral text uses foreground tokens.
+
+| Surface | Material composition |
+|---|---|
+| Home, Overview, Goals, What If?, Settings | Shared title rail, filled financial/form cards; Overview quick actions use a separate toolbar. Loading/error shells retain the heading. |
+| Cashflow | Sticky material toolbar with selected-month controls; month rows, mobile cards and editable forms stay filled. |
+| Bank | Title rail, sticky bank/account toolbar and separate ledger search rail; account chips, summary and transaction data stay filled. |
+| Mortgage | Title/manage rail, capsule tabs, solid chart/schedule controls and setup steps; ledger and charts remain opaque. |
+| Trips & Budgets, budget detail | Title/section-action rails with filled planning, expenses and calculator forms; `/trips` redirects to `/budgets`. |
+| Split list/detail | Title/actions and inset view controls; expense, group, settlement and import dialogs retain filled editable content. |
+| Authentication, command palette, overlays | Glass header without a filtered parent; opaque form/results/footer. Public auth uses a green-tinted background. |
+| Offline | Existing readable offline surface and 44px retry action; stable asset/cache rules remain in §12. |
+
+Glass is a control layer, not a requirement to blur every element. Nested
+`.glass-chrome` surfaces flatten to an opaque card. Reduced-transparency and increased-
+contrast preferences override all rails; semantic category and status colors remain.
+The desktop shared-expense shortcut stays in the sidebar above independently scrolling
+routes, and mobile uses the top bar, so neither overlays financial rows.
+
+`ui/chart.tsx` and `ui/chart-theme.ts` apply `--muted-foreground` and `--border`
+to Chart.js legend/axis text and neutral grid/borders per instance. Immediate light/dark
+fallbacks cover the theme update until CSS tokens resolve after the DOM commit.
+Theme changes redraw options without remounting; datasets, callbacks, filters, inline
+plugins and tooltip settings retain their identity. Doughnuts do not gain cartesian axes.
 
 Dialog/sheet roots remain transparent and do not establish a backdrop filter: the
 strongly filled header alone blurs the page, while content and action rows stay opaque.

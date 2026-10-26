@@ -77,17 +77,18 @@ export default function SignUpPage() {
   };
 
   const header = (
-    <div className="text-center pt-4">
+    <div data-slot="auth-header" className="auth-brand-header glass-chrome text-center">
       <BrandLogo size={56} className="mx-auto mb-3" />
-      <h2 className="text-2xl font-semibold text-foreground">
+      <h1 className="text-2xl font-semibold text-foreground">
         Create your account
-      </h2>
+      </h1>
     </div>
   );
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background px-4">
-      <Card header={header} className="w-full max-w-md shadow-lg">
+    <div className="auth-shell min-h-dvh flex items-center justify-center px-4 py-8">
+      <Card header={header} className="auth-card w-full max-w-md">
+        <div data-slot="auth-body" className="auth-form-body">
         <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
           {error && (
             <Message severity="error" text={error} className="w-full" />
@@ -282,6 +283,7 @@ export default function SignUpPage() {
             Sign in
           </Link>
         </p>
+        </div>
       </Card>
     </div>
   );

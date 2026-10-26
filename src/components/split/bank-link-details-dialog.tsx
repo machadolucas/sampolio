@@ -40,7 +40,7 @@ export function BankLinkDetailsDialog({ visible, onHide, bankLink, memberName }:
       dismissableMask
       style={{ width: '28rem' }}
     >
-      <div className="flex flex-col divide-y divide-gray-100 dark:divide-gray-800">
+      <div className="flex flex-col divide-y divide-border">
         {row('From', `${memberName}'s bank${bankLink.bankName ? ` · ${bankLink.bankName}` : ''}`)}
         {row('Date', formatIsoDate(bankLink.bookingDate))}
         {row('Amount', formatCurrency(bankLink.amount, bankLink.currency))}

@@ -1,5 +1,7 @@
 "use client";
 
+import { ControlGroup } from '@/components/ui/page-header';
+
 import { useState, useMemo, useId } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -166,8 +168,9 @@ export function BudgetExpenseLog({
       </p>
 
       {/* Quick entry */}
+      <ControlGroup aria-label="Quick expense entry" className="mb-4">
       <form
-        className="flex flex-wrap gap-2 items-start mb-4"
+        className="flex w-full flex-wrap gap-2 items-start"
         onSubmit={(e) => {
           e.preventDefault();
           submitQuickEntry();
@@ -222,6 +225,7 @@ export function BudgetExpenseLog({
         )}
         <Button label="Add" type="submit" loading={saving} />
       </form>
+      </ControlGroup>
       {error && (
         <Message severity="error" text={error} className="w-full mb-3" />
       )}
@@ -250,7 +254,7 @@ export function BudgetExpenseLog({
                 <button
                   type="button"
                   onClick={() => setEditEntry(e)}
-                  className="flex-1 min-w-0 flex items-center gap-3 py-2.5 px-1 text-left rounded transition-colors active:bg-black/5 dark:active:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500"
+                  className="flex-1 min-w-0 flex items-center gap-3 py-2.5 px-1 text-left rounded transition-colors active:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500"
                 >
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm">

@@ -36,7 +36,7 @@ export function HelpHint({ text, ariaLabel = 'What does this mean?' }: HelpHintP
                 aria-label={ariaLabel}
                 aria-describedby={`${id}-desc`}
                 onClick={(e) => e.stopPropagation()}
-                className="relative inline-flex items-center justify-center align-middle ml-1 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 rounded-full before:absolute before:-inset-1 pointer-coarse:before:-inset-3.5 before:content-['']"
+                className="relative inline-flex items-center justify-center align-middle ml-1 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 rounded-full before:absolute before:-inset-1 pointer-coarse:before:-inset-3.5 before:content-['']"
             >
                 <MdHelpOutline size={16} aria-hidden />
             </button>

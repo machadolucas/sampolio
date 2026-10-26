@@ -15,11 +15,11 @@ import { DelayedSkeleton } from './delayed-loading';
  */
 
 /** Overview: title + KPI tiles + a chart block. */
-export function KpiGridSkeleton() {
+export function KpiGridSkeleton({ showTitle = true }: { showTitle?: boolean } = {}) {
   return (
     <DelayedSkeleton>
       <div className="space-y-6 max-w-360 mx-auto py-8">
-        <Skeleton width="14rem" height="2.5rem" />
+        {showTitle && <Skeleton width="14rem" height="2.5rem" />}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           {Array.from({ length: 4 }).map((_, i) => (
             <Skeleton key={i} height="7rem" borderRadius="0.75rem" />

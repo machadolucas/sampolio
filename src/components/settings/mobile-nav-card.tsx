@@ -1,5 +1,7 @@
 'use client';
 
+import { ControlGroup } from '@/components/ui/page-header';
+
 import { useCallback, useMemo, useState } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -101,7 +103,7 @@ export function MobileNavCard() {
             <div
                 ref={previewRef as React.Ref<HTMLDivElement>}
                 {...previewRest}
-                className="mt-4 rounded-xl border surface-border overflow-hidden flex items-stretch h-16"
+                className="material-control-group mt-4 overflow-hidden flex items-stretch h-16"
             >
                 {chosen.map((id) => {
                     const item = navItems.find((n) => n.id === id);
@@ -132,7 +134,7 @@ export function MobileNavCard() {
             </div>
             <p className={`mt-2 ${subtext}`}>Press and hold a tab to reorder</p>
 
-            <div className="mt-4 flex flex-wrap gap-2">
+            <ControlGroup className="mt-4" aria-label="Choose mobile navigation">
                 {navItems.map((item) => {
                     const selected = chosen.includes(item.id);
                     const disabled = !selected && chosen.length >= MAX_BOTTOM_NAV_TABS;
@@ -143,7 +145,7 @@ export function MobileNavCard() {
                             aria-pressed={selected}
                             disabled={disabled}
                             onClick={() => toggle(item.id)}
-                            className={`inline-flex items-center gap-2 rounded-lg border-2 px-3 min-h-[44px] text-sm font-medium transition-colors ${
+                            className={`inline-flex items-center gap-2 rounded-full border-2 px-3 min-h-[44px] text-sm font-medium transition-colors ${
                                 selected
                                     ? 'border-accent-500 bg-accent-50 dark:bg-accent-400/15'
                                     : 'border-border hover:border-input'
@@ -155,7 +157,7 @@ export function MobileNavCard() {
                         </button>
                     );
                 })}
-            </div>
+            </ControlGroup>
 
             <p className={`mt-3 ${subtext}`} aria-live="polite">
                 {chosen.length} of {MAX_BOTTOM_NAV_TABS} tabs selected — at least 1 tab plus More.

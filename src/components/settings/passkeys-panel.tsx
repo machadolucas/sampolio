@@ -1,7 +1,7 @@
 'use client';
 import { TriangleAlert as UiWarningIcon } from 'lucide-react';
 
-import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useState, useSyncExternalStore, type FC } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -36,7 +36,7 @@ function formatPasskeyDate(iso?: string): string {
  * replace it). Add/rename/delete go through the Better Auth passkey client;
  * the list comes from the `listMyPasskeys` server action (adds last-used).
  */
-export function PasskeysPanel({ isDark }: PasskeysPanelProps) {
+export const PasskeysPanel: FC<PasskeysPanelProps> = () => {
     const toast = useToast();
     const router = useRouter();
     const [needsReauth, setNeedsReauth] = useState(false);
@@ -53,7 +53,7 @@ export function PasskeysPanel({ isDark }: PasskeysPanelProps) {
         () => true,
     );
 
-    const subtext = `text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`;
+    const subtext = `text-sm text-muted-foreground`;
 
     const load = useCallback(async () => {
         const result = await listMyPasskeys();
@@ -148,7 +148,7 @@ export function PasskeysPanel({ isDark }: PasskeysPanelProps) {
         <Card>
             <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 mb-4">
                 <div className="min-w-0">
-                    <h2 className={`text-lg font-semibold ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>Passkeys</h2>
+                    <h2 className="text-lg font-semibold text-foreground">Passkeys</h2>
                     <p className={subtext}>
                         Sign in with Face ID, Touch ID or your password manager instead of typing your password.
                         Your password keeps working.
@@ -189,7 +189,7 @@ export function PasskeysPanel({ isDark }: PasskeysPanelProps) {
                         <li key={pk.id} className="flex items-center gap-3 py-3">
                             <MdFingerprint size={24} className="shrink-0 text-accent-600" aria-hidden="true" />
                             <div className="min-w-0 flex-1">
-                                <p className={`font-medium truncate ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
+                                <p className="font-medium truncate text-foreground">
                                     {pk.name}
                                     {pk.backedUp && <Tag value="Synced" severity="info" className="ml-2 align-middle text-xs" />}
                                 </p>
@@ -232,7 +232,7 @@ export function PasskeysPanel({ isDark }: PasskeysPanelProps) {
                     </div>
                 }
             >
-                <label htmlFor="passkey-name" className={`block text-sm mb-2 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                <label htmlFor="passkey-name" className="block text-sm mb-2 text-foreground">
                     Name
                 </label>
                 <InputText
@@ -249,4 +249,4 @@ export function PasskeysPanel({ isDark }: PasskeysPanelProps) {
             </Dialog>
         </Card>
     );
-}
+};

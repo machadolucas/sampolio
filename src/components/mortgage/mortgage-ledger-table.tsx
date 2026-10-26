@@ -1,5 +1,7 @@
 "use client";
 
+import { ControlGroup } from '@/components/ui/page-header';
+
 import { Check, Undo2 } from "lucide-react";
 
 import { useEffect, useMemo, useRef } from "react";
@@ -429,7 +431,7 @@ export function MortgageLedgerTable({
             an elapsed month to mark it as actual.
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-3 sm:shrink-0">
+        <ControlGroup aria-label="Payment schedule controls" className="sm:shrink-0">
           {canReconcile && monthToReconcile && (
             <Button
               label={`Reconcile ${formatYearMonthShort(monthToReconcile)}`}
@@ -451,7 +453,7 @@ export function MortgageLedgerTable({
               />
             </div>
           )}
-        </div>
+        </ControlGroup>
       </div>
 
       {/* A new column set starts with default column visibility and widths. */}

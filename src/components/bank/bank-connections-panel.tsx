@@ -1,5 +1,7 @@
 "use client";
 
+import { ControlGroup } from '@/components/ui/page-header';
+
 import { LoaderCircle, TriangleAlert } from "lucide-react";
 
 import { useCallback, useEffect, useId, useRef, useState } from "react";
@@ -339,7 +341,7 @@ export function BankConnectionsPanel() {
                     />
                   )}
                 </div>
-                <div className="flex items-center gap-2 flex-wrap">
+                <ControlGroup aria-label="Bank connection actions" className="shrink-0">
                   <Button
                     label={expiry.expired ? "Reconnect" : "Renew consent"}
                     icon={<MdAutorenew />}
@@ -372,7 +374,7 @@ export function BankConnectionsPanel() {
                     aria-label={`Disconnect ${conn.aspspName}`}
                     onClick={() => handleDisconnect(conn)}
                   />
-                </div>
+                </ControlGroup>
               </div>
 
               <p className={`${subtle} mb-3`}>

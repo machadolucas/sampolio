@@ -1,5 +1,7 @@
 "use client";
 
+import { ControlGroup } from '@/components/ui/page-header';
+
 import { useEffect, useMemo, useState, useId } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -262,7 +264,7 @@ export function TripDialog({
   };
 
   const footer = (
-    <div className="flex justify-end gap-2">
+    <ControlGroup aria-label="Trip actions" className="justify-end mt-1">
       <Button
         label="Cancel"
         icon={<MdClose />}
@@ -277,7 +279,7 @@ export function TripDialog({
         onClick={handleSubmit(handleSave)}
         loading={isSaving}
       />
-    </div>
+    </ControlGroup>
   );
 
   return (

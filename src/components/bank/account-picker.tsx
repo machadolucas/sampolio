@@ -1,5 +1,7 @@
 "use client";
 
+import { MaterialToolbar } from '@/components/ui/page-header';
+
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { MdAccountBalance, MdCreditCard, MdSavings } from "react-icons/md";
@@ -144,7 +146,7 @@ export function AccountPicker({
   };
 
   return (
-    <div className="sticky top-[calc(3.5rem+env(safe-area-inset-top))] lg:top-0 z-30 bg-muted bg-card -mx-2 px-2 sm:-mx-4 sm:px-4 lg:-mx-6 lg:px-6 pt-2 pb-1">
+    <MaterialToolbar sticky aria-label="Bank and account selection" className="flex-col items-stretch gap-2">
       {canReorder && (
         <button
           type="button"
@@ -226,7 +228,7 @@ export function AccountPicker({
                 className={`shrink-0 inline-flex items-center rounded-lg px-3 min-h-[44px] text-left transition-colors ${
                   selected
                     ? "bg-[var(--primary-color)] text-[var(--primary-color-text)]"
-                    : "border surface-border"
+                    : "border border-border bg-card text-foreground"
                 }`}
               >
                 <span data-jiggle-inner="" className="flex items-center gap-2">
@@ -247,6 +249,6 @@ export function AccountPicker({
           })
         )}
       </div>
-    </div>
+    </MaterialToolbar>
   );
 }

@@ -32,7 +32,7 @@ import { CelebrationProvider } from '@/components/providers/celebration-provider
 import { CheckinNotifier } from '@/components/providers/checkin-notifier';
 import { getAccounts } from '@/lib/actions/accounts';
 import { getUserPreferences } from '@/lib/actions/user-preferences';
-import { MdAdd, MdVisibilityOff } from 'react-icons/md';
+import { MdVisibilityOff } from 'react-icons/md';
 import { setDemoMask, DEMO_MODE_STORAGE_KEY } from '@/lib/demo-mode';
 import {
   notifyDataChanged,
@@ -365,6 +365,7 @@ export function AppLayout({ children }: AppLayoutProps) {
             {/* Desktop (lg+) sidebar */}
             <SidebarNav
               onOpenCommandPalette={commandPalette.open}
+              onOpenSplitQuickAdd={openSplitQuickAdd}
               collapsed={sidebarCollapsed}
               onToggleCollapse={handleToggleSidebar}
             />
@@ -473,17 +474,6 @@ export function AppLayout({ children }: AppLayoutProps) {
                 }}
               />
             )}
-
-            {/* Desktop quick-add stays in the corner; mobile uses the top toolbar
-                so this action never covers money in scrolling data rows. */}
-            <button
-              type="button"
-              onClick={openSplitQuickAdd}
-              aria-label="Add shared expense"
-              className="fixed right-6 bottom-6 z-40 hidden lg:flex items-center justify-center w-14 h-14 rounded-full bg-accent-700 hover:bg-accent-800 border border-white/25 dark:border-white/15 text-white shadow-lg transition-colors"
-            >
-              <MdAdd size={28} />
-            </button>
           </div>
         </CelebrationProvider>
       </ToastProvider>

@@ -1,5 +1,7 @@
 'use client';
 
+import { MaterialToolbar } from '@/components/ui/page-header';
+
 import { Trash2 } from 'lucide-react';
 
 import { useState, useMemo } from 'react';
@@ -104,7 +106,7 @@ export function TripsSection({ trips, accounts, budgets, onChanged }: TripsSecti
 
   return (
     <section id="trips" className="space-y-4">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+      <MaterialToolbar aria-label="Trips controls" className="justify-between">
         <div>
           <h2 className="text-xl font-semibold">Trips</h2>
           <p className="text-sm text-muted-foreground">
@@ -112,10 +114,10 @@ export function TripsSection({ trips, accounts, budgets, onChanged }: TripsSecti
           </p>
         </div>
         <Button label="New trip" icon={<MdAdd />} className="shrink-0 self-start sm:self-auto" onClick={openCreate} />
-      </div>
+      </MaterialToolbar>
 
       {trips.length === 0 ? (
-        <EmptyState
+        <EmptyState className="rounded-2xl border border-border bg-card"
           icon={<MdFlightTakeoff />}
           title="Plan your first trip"
           body="Enter the departure and return date/time and Sampolio works out the tax-free per-diem for you, using the official Vero.fi rates."

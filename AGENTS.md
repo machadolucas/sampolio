@@ -80,7 +80,8 @@ freshness goes through `src/lib/hooks/use-data-refresh.ts`: every successful
 mutation calls `notifyDataChanged()`, every data view subscribes with
 `useDataRefresh` (rules in `docs/architecture.md` §13). Use the
 shared `ToastProvider`, `AlertBanner`, `KpiTile`, `HelpHint`, `EmptyState`,
-delayed loading/skeletons, and lazy heavy charts. Every canvas chart uses
+delayed loading/skeletons, and lazy heavy charts. Use shared page/control materials
+from `ui/page-header.tsx` (contracts in `src/components/AGENTS.md`). Every canvas chart uses
 `ChartExplain` plus a tested description in `src/lib/chart-descriptions.ts`.
 Use `CATEGORY_COLORS`/`getCategoryColor`, `plainTerm`/`helpText`, and shared
 hooks/utilities instead of local copies.

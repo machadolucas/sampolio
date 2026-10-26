@@ -174,7 +174,7 @@ export function MortgageTransferComparison({
         <div className="px-4 sm:px-5 pb-5 space-y-5">
           {/* Explainer */}
           <div
-            className={`flex gap-3 p-3 rounded-lg text-xs sm:text-sm ${isDark ? "bg-blue-900/20 text-blue-200" : "bg-blue-50 text-blue-800"}`}
+            className="flex gap-3 p-3 rounded-lg bg-blue-50 text-blue-800 dark:bg-blue-900/20 dark:text-blue-200 text-xs sm:text-sm"
           >
             <span className="text-base shrink-0 mt-0.5">
               <MdInfoOutline />

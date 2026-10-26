@@ -1,5 +1,7 @@
 'use client';
 
+import { PageHeader, ControlGroup } from '@/components/ui/page-header';
+
 import { CirclePlus, Percent, RefreshCw, Trash2, TriangleAlert, Upload, Users } from 'lucide-react';
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
@@ -16,7 +18,6 @@ import { AlertBanner } from '@/components/ui/alert-banner';
 import { formatCurrency, formatYearMonth, formatDayMonth } from '@/lib/constants';
 import { MdHouse, MdPercent, MdMoreVert, MdFlag } from 'react-icons/md';
 import { useAppContext } from '@/components/layout/app-layout';
-import { useTheme } from '@/components/providers/theme-provider';
 import { useToast } from '@/components/providers/toast-provider';
 import { getMyMortgages, getMortgageProjectionInputs, deleteMortgage, revertMortgageMonth } from '@/lib/actions/shared-mortgages';
 import type { MortgageProjectionInputsResult } from '@/lib/actions/shared-mortgages';
@@ -66,8 +67,6 @@ function ChartCard({ title, children }: { title: string; children: React.ReactNo
 export default function MortgagePage() {
   const { data: session } = useSession();
   const appContext = useAppContext();
-  const { theme } = useTheme();
-  const isDark = theme === 'dark';
   const isSimple = appContext?.displayMode === 'simple';
   const userId = session?.user?.id;
   const appToast = useToast();
@@ -209,23 +208,14 @@ export default function MortgagePage() {
   };
 
   if (isLoading) {
-    return <ChartsPageSkeleton />;
+    return <div className="space-y-4 max-w-360 mx-auto py-4 lg:py-8"><PageHeader title="Mortgage" /><ChartsPageSkeleton /></div>;
   }
 
   // Empty state
   if (!inputs) {
     return (
       <div className="max-w-2xl mx-auto py-16 text-center">
-        <div className={`inline-flex p-4 rounded-full mb-4 ${isDark ? 'bg-card' : 'bg-muted'} text-blue-500 text-3xl`}>
-          <MdHouse />
-        </div>
-        <h1 className="text-3xl font-bold mb-2">Track your home loan together</h1>
-        <p className="opacity-70 mb-6 max-w-md mx-auto">
-          Set up your mortgage once — its loans, the yearly Euribor rate, and your down payments — and Sampolio shows
-          the full payment schedule, who owns how much, and your path to an equal split. Share it with your partner so
-          you both see the same picture.
-        </p>
-        <Button label="Set up your mortgage" icon={<MdHouse />} onClick={() => setSetupOpen(true)} />
+        <PageHeader title="Track your home loan together" leading={<MdHouse className="text-primary" size={32} />} description={<>Set up your mortgage once — its loans, the yearly Euribor rate, and your down payments — and Sampolio shows the full payment schedule, who owns how much, and your path to an equal split. Share it with your partner so you both see the same picture.</>} actions={<Button label="Set up your mortgage" icon={<MdHouse />} onClick={() => setSetupOpen(true)} />} />
         <MortgageSetupWizard visible={setupOpen} isSimple={!!isSimple} onClose={() => setSetupOpen(false)} onCreated={() => { setSetupOpen(false); toast('Mortgage created'); }} />
       </div>
     );
@@ -262,14 +252,7 @@ export default function MortgagePage() {
   return (
     <div className="space-y-4 lg:space-y-6 max-w-360 mx-auto py-4 lg:py-8">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div>
-          <h1 className="text-3xl sm:text-4xl font-bold text-foreground">{mortgage.name}</h1>
-          <p className="text-sm opacity-60 mt-1">
-            {partner ? `Shared with ${partner.name}` : 'Not shared yet — invite your partner'}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
+      <PageHeader title={mortgage.name} description={partner ? `Shared with ${partner.name}` : 'Not shared yet — invite your partner'} actions={<>
           {euriborDue?.due && (
             <Button
               label="Update Euribor rate"
@@ -281,8 +264,7 @@ export default function MortgagePage() {
           )}
           <Button label="Manage" icon={<MdMoreVert />} outlined severity="secondary" onClick={(e) => menuRef.current?.toggle(e)} aria-label="Manage mortgage" />
           <Menu model={menuItems} popup ref={menuRef} />
-        </div>
-      </div>
+      </>} />
 
       {/* Euribor reminder banner */}
       {euriborDue?.due && (
@@ -320,9 +302,9 @@ export default function MortgagePage() {
 
         <TabPanel header="Charts">
           <div className="space-y-4 lg:space-y-6">
-            <div className="flex items-center justify-end">
+            <ControlGroup aria-label="Mortgage chart horizon" className="justify-end">
               <SelectButton value={horizon} options={HORIZON_OPTIONS} onChange={(e) => e.value && setHorizon(e.value)} className="text-sm" />
-            </div>
+            </ControlGroup>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <ChartCard title="What you still owe, over time"><MortgageBalanceChart months={windowedMonths} mortgage={mortgage} currency={mortgage.currency} /></ChartCard>
               <ChartCard title={`Path to owning the home ${mortgage.members.map((m) => Math.round(m.ownershipTargetPercent * 100)).join('/')}`}><OwnershipProgressChart months={windowedMonths} mortgage={mortgage} currency={mortgage.currency} /></ChartCard>

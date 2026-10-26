@@ -366,9 +366,9 @@ export function CommandPalette({
                 aria-label="Command palette"
                 className="fixed top-[8%] sm:top-[20%] left-1/2 -translate-x-1/2 z-50 w-[95vw] sm:w-full max-w-xl"
             >
-            <div className="animate-scale-in rounded-2xl shadow-2xl overflow-hidden glass-chrome">
+            <div className="animate-scale-in rounded-3xl border border-border shadow-2xl overflow-hidden">
                 {/* Search Input */}
-                <div className="flex items-center gap-3 px-4 py-3 border-b border-border">
+                <div className="glass-chrome flex items-center gap-3 px-4 py-3 border-b border-border">
                     <MdSearch className={'text-muted-foreground'} />
                     <InputText
                         ref={inputRef}
@@ -390,7 +390,7 @@ export function CommandPalette({
                 </div>
 
                 {/* Results */}
-                <div id="command-palette-listbox" role="listbox" aria-label="Commands" className="max-h-80 overflow-y-auto py-2">
+                <div id="command-palette-listbox" role="listbox" aria-label="Commands" className="max-h-80 overflow-y-auto bg-card p-2">
                     {filteredCommands.length === 0 ? (
                         <div role="status" aria-live="polite" className="px-4 py-8 text-center text-muted-foreground">
                             <MdSearch size={24} className="mb-2" />
@@ -404,9 +404,9 @@ export function CommandPalette({
                                 role="option"
                                 aria-selected={index === selectedIndex}
                                 onClick={() => executeCommand(command)}
-                                className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors duration-100 ${index === selectedIndex
-                                    ? isDark ? 'bg-card active:bg-muted' : 'bg-muted active:bg-muted'
-                                    : isDark ? 'hover:bg-card active:bg-card' : 'hover:bg-muted active:bg-muted'
+                                className={`w-full min-h-11 rounded-xl flex items-center gap-3 px-3 py-2.5 text-left transition-colors duration-(--motion-fast) ${index === selectedIndex
+                                    ? 'bg-accent text-accent-foreground active:bg-accent'
+                                    : 'hover:bg-muted active:bg-accent'
                                     }`}
                             >
                                 <span className={getTypeColor(command.type)}>{command.icon}</span>
@@ -432,7 +432,7 @@ export function CommandPalette({
                 </div>
 
                 {/* Footer Hint */}
-                <div className="px-4 py-2 border-t text-xs border-border text-muted-foreground">
+                <div className="bg-card px-4 py-3 border-t text-xs border-border text-muted-foreground">
                     <span>Try: </span>
                     <span className={'text-muted-foreground'}>&quot;add 120 groceries feb&quot;</span>
                     <span> or </span>

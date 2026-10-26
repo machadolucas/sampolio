@@ -1,5 +1,7 @@
 'use client';
 
+import { PageHeader } from '@/components/ui/page-header';
+
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Card } from '@/components/ui/card';
@@ -152,18 +154,18 @@ export default function BudgetDetailPage() {
 
   if (loadError && !budget) {
     return (
-      <EmptyState
+      <div className="max-w-5xl mx-auto space-y-4 p-4 md:p-6"><PageHeader title="Budget" /><div className="rounded-2xl border border-border bg-card">      <EmptyState
         className="py-16"
         icon={<MdCloudOff />}
         title="Couldn't load this budget"
         body="Check your connection and try again."
         action={{ label: 'Retry', onClick: () => { setLoadError(false); hasLoadedOnce.current = false; void fetchData(); } }}
-      />
+      /></div></div>
     );
   }
 
   if (isLoading || !budget || !feasibility || !rollup) {
-    return <ListPageSkeleton rows={4} />;
+    return <div className="space-y-4 max-w-5xl mx-auto p-4 md:p-6"><PageHeader title="Budget" /><ListPageSkeleton rows={4} showTitle={false} /></div>;
   }
 
   const tag = statusTag(budget);
@@ -220,22 +222,14 @@ export default function BudgetDetailPage() {
 
       {/* Header — stacks on mobile so the title gets the full width instead of
           truncating beside a full-width export button. */}
-      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 sm:gap-3">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <h1 className="text-2xl font-bold">{budget.name}</h1>
-            <Tag value={budget.isArchived ? 'Archived' : tag.value} severity={budget.isArchived ? 'secondary' : tag.severity} />
-          </div>
-          <p className="text-sm opacity-60 mt-0.5 flex items-center gap-1 flex-wrap">
+      <PageHeader title={<span className="flex flex-wrap items-center gap-2">{budget.name}<Tag value={budget.isArchived ? 'Archived' : tag.value} severity={budget.isArchived ? 'secondary' : tag.severity} /></span>} description={<span className="flex flex-wrap items-center gap-1">
             {budget.destination && (
               <>
                 <MdPlace size={14} /> {budget.destination} ·
               </>
             )}
             {formatYearMonth(budget.startMonth)} – {formatYearMonth(budget.endMonth)} · {getCurrencySymbol(budget.currency)} ({budget.currency})
-          </p>
-        </div>
-        <div className="flex gap-2 shrink-0 self-start">
+      </span>} actions={<>
           <Button label="Export for reporting" icon={<MdFileDownload />} outlined size="small" onClick={() => setExportOpen(true)} />
           <Button icon={<MdMoreVert />} text severity="secondary" aria-label="More budget actions" aria-haspopup="menu" onClick={(e) => menuRef.current?.toggle(e)} />
           <Menu
@@ -248,8 +242,7 @@ export default function BudgetDetailPage() {
               { label: 'Delete…', command: handleDelete },
             ]}
           />
-        </div>
-      </div>
+      </>} />
 
       {missingLinkedAccount && (
         <div className="p-3 rounded-lg border border-yellow-300 bg-yellow-50 dark:border-yellow-800 dark:bg-yellow-900/20 text-sm">

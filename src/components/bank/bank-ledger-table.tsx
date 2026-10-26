@@ -1,5 +1,7 @@
 "use client";
 
+import { MaterialToolbar } from '@/components/ui/page-header';
+
 import { Search } from "lucide-react";
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -490,7 +492,7 @@ export function BankLedgerTable({
     ) : null;
 
   const rowExpansion = (t: BankTransaction) => (
-    <div className="px-4 py-3 text-xs space-y-1 bg-black/5 dark:bg-card">
+    <div className="px-4 py-3 text-xs space-y-1 bg-muted">
       {/* Repeat the status with its full meaning here: hover tooltips don't
           exist on touch devices, but the row expands on tap. */}
       <div className="flex gap-2">
@@ -561,7 +563,7 @@ export function BankLedgerTable({
   return (
     <>
       {/* Search — counterparty, description, or amount */}
-      <div className="mb-2">
+      <MaterialToolbar aria-label="Transaction search" className="mb-3">
         <IconField iconPosition="left" className="w-full">
           <InputIcon>
             <Search size={16} />
@@ -584,7 +586,7 @@ export function BankLedgerTable({
             {filtered.length} of {transactions.length} transactions match
           </p>
         )}
-      </div>
+      </MaterialToolbar>
 
       {/* Desktop: full DataTable — infinite scroll (rows revealed as the inner
           scroll area approaches its end) instead of a paginator. All data is
@@ -662,7 +664,7 @@ export function BankLedgerTable({
             <div className="sticky top-[calc(3.5rem+env(safe-area-inset-top))] z-10 bg-muted py-1 text-sm font-semibold text-muted-foreground">
               {formatYearMonth(ym)}
             </div>
-            <ul className="divide-y divide-gray-200 dark:divide-gray-700">
+            <ul className="divide-y divide-border">
               {rows.map((t) => {
                 const open = !!expandedMobile[t.id];
                 const match = splitMatches?.get(t.id);

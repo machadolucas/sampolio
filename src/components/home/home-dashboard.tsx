@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAppContext } from "@/components/layout/app-layout";
 import { useSession } from "@/lib/auth-client";
+import { PageHeader } from '@/components/ui/page-header';
 import { Dialog } from "@/components/ui/dialog";
 import {
   MdAccountBalance,
@@ -231,9 +232,11 @@ export function HomeDashboard() {
         data-demo-masked={demoMasked}
         className="max-w-3xl mx-auto py-4 lg:py-6"
       >
-        <h1 className="text-2xl font-bold mb-4">
-          {firstName ? `Hi, ${firstName}` : "Sampolio"}
-        </h1>
+        <PageHeader
+          title={firstName ? `Hi, ${firstName}` : 'Sampolio'}
+          description="Your accounts, shared expenses, and plans at a glance."
+          className="mb-5"
+        />
 
         {/* Bank consent/sync attention — same banner as Overview (see
           BankAttentionBanner). Fetched independently of the glance/split data so

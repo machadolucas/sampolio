@@ -1,5 +1,7 @@
 'use client';
 
+import { PageHeader, ControlGroup, MaterialToolbar } from '@/components/ui/page-header';
+
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
@@ -278,7 +280,10 @@ export default function OverviewPage() {
     const cardUtilization = cardCredit ? (cardCredit.limit - cardCredit.available) / cardCredit.limit : null;
 
     if (isLoading) {
-        return <KpiGridSkeleton />;
+        return <div className="space-y-4 max-w-360 mx-auto py-4 lg:py-8">
+            <PageHeader title="Overview" description="Your balances and long-term picture." />
+            <KpiGridSkeleton showTitle={false} />
+        </div>;
     }
 
     const errorBanner = loadError && (
@@ -297,9 +302,7 @@ export default function OverviewPage() {
     if (!snapshot) {
         return (
             <div className="space-y-4 lg:space-y-6 max-w-360 mx-auto py-4 lg:py-8">
-                <h1 className="text-3xl sm:text-4xl font-bold text-foreground">
-                    Overview
-                </h1>
+                <PageHeader title="Overview" description="Your balances and long-term picture." />
                 {errorBanner || (
                     <AlertBanner severity="error" icon={<MdErrorOutline />} action={{ label: 'Retry', onClick: handleRetry }}>
                         Couldn&apos;t load the overview. Try again.
@@ -311,30 +314,10 @@ export default function OverviewPage() {
 
     return (
         <div className="space-y-4 lg:space-y-6 max-w-360 mx-auto py-4 lg:py-8">
-            {/* Header */}
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                <div>
-                    <h1 className="text-3xl sm:text-4xl font-bold text-foreground">
-                        Overview
-                    </h1>
-                    {lastReconciled && (
-                        <p className="text-sm mt-1 text-muted-foreground">
-                            Last check-in: {formatYearMonth(lastReconciled)}
-                        </p>
-                    )}
-                </div>
-                {/* Hidden while the reminder banner shows — the banner is the
-                    single entry point then (no duplicate affordances). */}
-                {!checkInBannerVisible && (
-                    <Button
-                        label="Monthly check-in"
-                        icon={<MdSync />}
-                        severity="success"
-                        className="shrink-0 self-start sm:self-auto"
-                        onClick={() => appContext?.openReconcile()}
-                    />
-                )}
-            </div>
+            <PageHeader title="Overview"
+                description={lastReconciled ? `Last check-in: ${formatYearMonth(lastReconciled)}` : 'Your balances and long-term picture.'}
+                actions={!checkInBannerVisible && <Button label="Monthly check-in" icon={<MdSync />} severity="success" onClick={() => appContext?.openReconcile()} />}
+            />
 
             {errorBanner}
 
@@ -538,7 +521,7 @@ export default function OverviewPage() {
                                     onClick={() => setShowBreakdown(!showBreakdown)}
                                 />
                             </div>
-                            <div className="flex flex-wrap items-center gap-3">
+                            <ControlGroup aria-label="Projection controls">
                                 <SelectButton
                                     value={horizon}
                                     options={HORIZON_OPTIONS}
@@ -551,7 +534,7 @@ export default function OverviewPage() {
                                     onChange={(e) => e.value && setWealthScope(e.value)}
                                     className="text-sm"
                                 />
-                            </div>
+                            </ControlGroup>
                         </div>
 
                         {showBreakdown ? (
@@ -607,7 +590,7 @@ export default function OverviewPage() {
             </Card>
 
             {/* Quick Actions */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <MaterialToolbar aria-label="Quick actions" className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 <Button
                     label="Add Income"
                     icon={<MdAddCircle />}
@@ -640,7 +623,7 @@ export default function OverviewPage() {
                     className="justify-center"
                     onClick={() => appContext?.openDrawer({ mode: 'create', entityType: 'debt' })}
                 />
-            </div>
+            </MaterialToolbar>
 
             {entityDrawerMounted && (
             <EntityListDrawer

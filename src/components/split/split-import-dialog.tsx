@@ -1,4 +1,6 @@
 'use client';
+
+import { ControlGroup } from '@/components/ui/page-header';
 /* eslint-disable react-hooks/set-state-in-effect -- the form resets and auto-maps columns when opened / when the pasted CSV changes */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -92,7 +94,7 @@ export function SplitImportDialog({
   return (
     <Dialog header="Import from Splitwise" visible={visible} onHide={onHide} modal dismissableMask style={{ width: '40rem' }}>
       <div className="flex flex-col gap-3 pt-1">
-        <p className="text-sm text-gray-500">
+        <p className="text-sm text-muted-foreground">
           Paste your Splitwise CSV export (or upload the file). Then map each person column to a group member.
         </p>
         <div className="flex gap-2">
@@ -117,7 +119,7 @@ export function SplitImportDialog({
               {parsed.memberNames.map((mn, i) => (
                 <div key={mn + i} className="flex items-center gap-2">
                   <span className="text-sm flex-1 truncate">{mn}</span>
-                  <span className="text-gray-400">→</span>
+                  <span className="text-muted-foreground">→</span>
                   <Dropdown
                     value={columnUserIds[i] ?? ''}
                     onChange={(e) => setColumnUserIds((p) => p.map((v, j) => (j === i ? e.value ?? '' : v)))}
@@ -134,7 +136,7 @@ export function SplitImportDialog({
                 Replace all existing expenses in this group
               </label>
             </div>
-            <div className="text-sm text-gray-500">
+            <div className="text-sm text-muted-foreground">
               {parsed.rows.length} row(s) ready
               {parsed.warnings.length ? ` · ${parsed.warnings.length} warning(s)` : ''}
             </div>
@@ -142,7 +144,7 @@ export function SplitImportDialog({
         )}
 
         {error && <Message severity="error" text={error} />}
-        <div className="flex justify-end gap-2 pt-1">
+        <ControlGroup aria-label="Import actions" className="justify-end mt-1">
           <Button label="Cancel" text onClick={onHide} disabled={saving} />
           <Button
             label={`Import ${parsed?.rows.length ?? 0} rows`}
@@ -151,7 +153,7 @@ export function SplitImportDialog({
             disabled={!parsed || parsed.rows.length === 0}
             onClick={doImport}
           />
-        </div>
+        </ControlGroup>
       </div>
     </Dialog>
   );

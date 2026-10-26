@@ -1,5 +1,7 @@
 'use client';
 
+import { MaterialToolbar } from '@/components/ui/page-header';
+
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
@@ -29,7 +31,7 @@ export function BudgetsSection({ budgets, onChanged }: BudgetsSectionProps) {
 
   return (
     <section id="budgets" className="space-y-4">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+      <MaterialToolbar aria-label="Budgets controls" className="justify-between">
         <div>
           <h2 className="text-xl font-semibold">Budgets</h2>
           <p className="text-sm text-muted-foreground">
@@ -37,10 +39,10 @@ export function BudgetsSection({ budgets, onChanged }: BudgetsSectionProps) {
           </p>
         </div>
         <Button label="Plan a new budget" icon={<MdAdd />} className="shrink-0 self-start sm:self-auto" onClick={() => setWizardOpen(true)} />
-      </div>
+      </MaterialToolbar>
 
       {active.length === 0 && archived.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 text-center">
+        <div className="rounded-2xl border border-border bg-card flex flex-col items-center justify-center px-4 py-16 text-center">
           <MdLuggage size={48} className="opacity-30 mb-4" />
           <p className="text-lg font-medium mb-1">Plan a trip or a project</p>
           <p className="text-sm text-muted-foreground max-w-md mb-4">

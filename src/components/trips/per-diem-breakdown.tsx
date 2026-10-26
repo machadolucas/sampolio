@@ -35,7 +35,7 @@ export function PerDiemBreakdown({ result }: { result: PerDiemResult }) {
       {result.days.map((d) => (
         <div
           key={d.index}
-          className="flex flex-wrap items-center justify-between gap-2 px-2 py-1.5 rounded text-sm bg-black/5 dark:bg-white/5"
+          className="flex flex-wrap items-center justify-between gap-2 px-2 py-1.5 rounded text-sm bg-muted"
         >
           <div className="flex items-center gap-2 min-w-0 flex-wrap">
             <span className="font-medium whitespace-nowrap">{d.date}</span>

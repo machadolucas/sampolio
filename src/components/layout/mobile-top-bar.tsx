@@ -1,7 +1,6 @@
 'use client';
 
 import Link from 'next/link';
-import { useTheme } from '@/components/providers/theme-provider';
 import { BrandLogo } from '@/components/layout/brand-logo';
 import { MdAdd, MdMenu, MdSearch, MdVisibilityOff } from 'react-icons/md';
 
@@ -30,10 +29,7 @@ export function MobileTopBar({
   demoMode = false,
   onExitDemo,
 }: MobileTopBarProps) {
-  const { theme } = useTheme();
-  const isDark = theme === 'dark';
-
-  const iconBtn = `flex items-center justify-center w-11 h-11 shrink-0 rounded-lg transition-colors duration-150 active:opacity-60 ${isDark ? 'text-muted-foreground hover:bg-card' : 'text-muted-foreground hover:bg-muted'}`;
+  const iconBtn = 'material-icon-control flex items-center justify-center w-11 h-11 shrink-0 transition-colors duration-(--motion-fast)';
 
   return (
     <header className="lg:hidden fixed top-[calc(0.5rem+env(safe-area-inset-top))] left-2 right-2 z-40 flex items-center justify-between px-2 border rounded-2xl h-14 glass-chrome">

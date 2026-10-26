@@ -581,12 +581,12 @@ export function DataTable<T extends object>({
       </div>
       {footer != null && <div className="p-3">{footer}</div>}
       {paginator && (
-        <div className="flex flex-wrap items-center justify-between gap-3 py-3 text-sm">
+        <div className="material-control-group mt-3 flex flex-wrap items-center justify-between gap-3 p-3 text-sm">
           <label className="inline-flex min-h-11 items-center gap-2">
             Rows per page
             <select
               aria-label="Rows per page"
-              className="min-h-11 rounded-md border border-[var(--surface-border)] bg-[var(--surface-card)] px-2"
+              className="material-control"
               value={pagination.pageSize}
               onChange={(event) =>
                 table.setPageSize(Number(event.target.value))
@@ -606,7 +606,7 @@ export function DataTable<T extends object>({
             Go to page
             <select
               aria-label="Go to page"
-              className="min-h-11 rounded-md border border-[var(--surface-border)] bg-[var(--surface-card)] px-2"
+              className="material-control"
               value={Math.min(pagination.pageIndex, pageCount - 1)}
               onChange={(event) =>
                 table.setPageIndex(Number(event.target.value))
@@ -622,7 +622,7 @@ export function DataTable<T extends object>({
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
-              className="min-h-11 rounded-md border px-3 disabled:opacity-40"
+              className="material-control disabled:opacity-40"
               disabled={!table.getCanPreviousPage()}
               onClick={() => table.setPageIndex(0)}
             >
@@ -630,7 +630,7 @@ export function DataTable<T extends object>({
             </button>
             <button
               type="button"
-              className="min-h-11 rounded-md border px-3 disabled:opacity-40"
+              className="material-control disabled:opacity-40"
               disabled={!table.getCanPreviousPage()}
               onClick={() => table.previousPage()}
             >
@@ -638,7 +638,7 @@ export function DataTable<T extends object>({
             </button>
             <button
               type="button"
-              className="min-h-11 rounded-md border px-3 disabled:opacity-40"
+              className="material-control disabled:opacity-40"
               disabled={!table.getCanNextPage()}
               onClick={() => table.nextPage()}
             >
@@ -646,7 +646,7 @@ export function DataTable<T extends object>({
             </button>
             <button
               type="button"
-              className="min-h-11 rounded-md border px-3 disabled:opacity-40"
+              className="material-control disabled:opacity-40"
               disabled={!table.getCanNextPage()}
               onClick={() => table.setPageIndex(pageCount - 1)}
             >

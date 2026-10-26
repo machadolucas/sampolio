@@ -6,6 +6,10 @@ User preferences, banking, and administration panel.
 
 `page.tsx` — The shared Base UI **TabView**. Tabs (`tabKeys`): `general`, `finance`, `banking`, `data` (hidden in Simple display mode), `admin` (admin users only, also hidden in Simple mode), `account` (visible in BOTH modes — account safety is never gated behind Advanced), `about`. The active tab is **deep-linkable** via `?tab=<key>` (e.g. `/settings?tab=banking`) — a controlled `activeIndex` reads the query param on load and updates the URL on tab change. Other pages link straight to a tab (e.g. the Overview reconnect banner → `/settings?tab=banking`).
 
+The title uses `PageHeader`; tab selection and preference groups use shared inset
+control materials while each settings form stays on a filled card (component contracts
+in `src/components/AGENTS.md`).
+
 ## Tabs
 
 ### General

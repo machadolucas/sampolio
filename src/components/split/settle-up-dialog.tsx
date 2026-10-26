@@ -1,4 +1,6 @@
 'use client';
+
+import { ControlGroup } from '@/components/ui/page-header';
 /* eslint-disable react-hooks/set-state-in-effect -- the form intentionally prefills its fields when the dialog opens */
 
 import { useEffect, useState } from 'react';
@@ -105,7 +107,7 @@ export function SettleUpDialog({
             valueTemplate={(opt) => (opt ? memberOption(opt) : <span>Select</span>)}
             className="w-full sm:flex-1 sm:min-w-0"
           />
-          <span className="text-xs text-gray-400 text-center shrink-0 sm:px-1">paid</span>
+          <span className="text-xs text-muted-foreground text-center shrink-0 sm:px-1">paid</span>
           <Dropdown
             value={toUserId}
             onChange={(e) => { if (e.value !== null) setToUserId(e.value); }}
@@ -125,14 +127,14 @@ export function SettleUpDialog({
           inputClassName="w-full text-xl font-semibold"
         />
         <div className="flex items-center gap-2">
-          <span className="text-sm text-gray-500 w-12 shrink-0">Date</span>
+          <span className="text-sm text-foreground w-12 shrink-0">Date</span>
           <Calendar value={date} onChange={(e) => e.value && setDate(e.value as Date)} dateFormat="dd.mm.yy" className="flex-1" />
         </div>
         {error && <Message severity="error" text={error} />}
-        <div className="flex justify-end gap-2 pt-1">
+        <ControlGroup aria-label="Settlement actions" className="justify-end mt-1">
           <Button label="Cancel" text onClick={onHide} disabled={saving} />
           <Button label="Record payment" severity="success" loading={saving} onClick={save} />
-        </div>
+        </ControlGroup>
       </div>
     </Dialog>
   );

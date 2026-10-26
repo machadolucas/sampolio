@@ -620,7 +620,7 @@ export function MonthlyFlowChart({
             {tour.active && <ChartTourBar tour={tour} label="Monthly flow" />}
 
             {/* Balance footer */}
-            <div className={`flex items-center justify-between px-1 text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+            <div className="flex items-center justify-between px-1 text-xs text-muted-foreground">
                 <span>Start: {formatCurrency(data.startingBalance, currency)}</span>
                 <span>End: {formatCurrency(data.endingBalance, currency)}</span>
             </div>

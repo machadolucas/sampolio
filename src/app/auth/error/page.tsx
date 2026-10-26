@@ -21,19 +21,23 @@ function ErrorMessage() {
 
 export default function AuthErrorPage() {
     return (
-        <div className="min-h-screen flex items-center justify-center bg-background px-4">
-            <div className="w-full max-w-md rounded-xl bg-card shadow-lg p-6 text-center">
+        <div className="auth-shell min-h-dvh flex items-center justify-center px-4 py-8">
+            <div className="auth-card w-full max-w-md border text-center">
+                <div data-slot="auth-header" className="auth-brand-header glass-chrome">
                 <BrandLogo size={56} className="mx-auto mb-3" />
                 <h1 className="text-2xl font-semibold text-foreground mb-2">Sign-in problem</h1>
+                </div>
+                <div data-slot="auth-body" className="auth-form-body">
                 <Suspense fallback={<p className="text-muted-foreground mb-6">{FALLBACK}</p>}>
                     <ErrorMessage />
                 </Suspense>
                 <Link
                     href="/auth/signin"
-                    className="inline-flex min-h-11 items-center justify-center rounded-lg bg-accent-600 px-5 font-medium text-white hover:bg-accent-700"
+                    className="ui-button no-underline"
                 >
                     Back to sign in
                 </Link>
+                </div>
             </div>
         </div>
     );

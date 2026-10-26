@@ -1,4 +1,6 @@
 'use client';
+
+import { PageHeader } from '@/components/ui/page-header';
 /* eslint-disable react-hooks/set-state-in-effect -- loads groups on mount and stores them in state */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -302,9 +304,7 @@ export default function SplitPage() {
 
   return (
     <div className="max-w-3xl mx-auto py-4 lg:py-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
-        <h1 className="text-2xl font-bold">Split</h1>
-        <div className="flex gap-2">
+      <PageHeader title="Split" className="mb-5" actions={<>
           <Button
             label="Add expense"
             icon={<MdAdd />}
@@ -313,13 +313,12 @@ export default function SplitPage() {
             onClick={() => appContext?.openDrawer({ mode: 'create', entityType: 'split-expense' })}
           />
           <Button label="New group" outlined className="flex-1 sm:flex-none" onClick={() => setShowCreate(true)} />
-        </div>
-      </div>
+      </>} />
 
       {!loaded ? (
         <ListPageSkeleton rows={3} showTitle={false} />
       ) : cards.length === 0 ? (
-        <div className="text-center py-16 text-muted-foreground animate-fade-in">
+        <div className="rounded-2xl border border-border bg-card text-center py-16 px-4 text-muted-foreground animate-fade-in">
           <MdGroups size={48} className="mx-auto mb-3 opacity-40" />
           <p className="mb-4">No split groups yet. Create one to start tracking shared expenses.</p>
           <Button label="Create your first group" icon={<MdAdd />} severity="success" onClick={() => setShowCreate(true)} />

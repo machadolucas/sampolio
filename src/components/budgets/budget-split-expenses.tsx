@@ -93,7 +93,7 @@ export function BudgetSplitExpenses({ budget }: { budget: Budget }) {
 
       {!error && view !== null && view.entries.length > 0 && (
         <>
-          <ul className="divide-y divide-gray-100 dark:divide-gray-800">
+          <ul className="divide-y divide-border">
             {view.entries.map((e) => (
               <li key={e.id} className="py-2 flex items-center justify-between gap-3">
                 <div className="min-w-0">

@@ -41,7 +41,7 @@ export function TabView({
     >
       <Tabs.List
         className={cn(
-          'mb-5 flex max-w-full gap-1 border-b border-border',
+          'ui-tabs-list material-control-group mb-5 flex max-w-full gap-1',
           scrollable ? 'overflow-x-auto' : 'flex-wrap',
         )}
       >

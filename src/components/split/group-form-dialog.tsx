@@ -1,5 +1,7 @@
 'use client';
 
+import { ControlGroup } from '@/components/ui/page-header';
+
 import { TriangleAlert } from 'lucide-react';
 /* eslint-disable react-hooks/set-state-in-effect -- the form intentionally resets its fields when the dialog opens */
 
@@ -185,7 +187,7 @@ export function GroupFormDialog({
 
         {!editing && (
           <div className="flex items-center gap-2">
-            <span className="text-sm text-gray-500 w-20 shrink-0">Currency</span>
+            <span className="text-sm text-foreground w-20 shrink-0">Currency</span>
             <Dropdown
               value={currency}
               onChange={(e) => { if (e.value !== null) setCurrency(e.value); }}
@@ -197,7 +199,7 @@ export function GroupFormDialog({
 
         {/* Members */}
         <div className="flex flex-col gap-2">
-          <span className="text-sm text-gray-500">Members</span>
+          <span className="text-sm text-foreground">Members</span>
           {editing &&
             group!.members.map((m) => (
               <div key={m.userId} className="flex items-center justify-between gap-2 text-sm">
@@ -222,7 +224,7 @@ export function GroupFormDialog({
                       }}
                     />
                   ) : (
-                    <span className="text-xs text-gray-400 capitalize">{m.role}</span>
+                    <span className="text-xs text-muted-foreground capitalize">{m.role}</span>
                   )}
                   {isOwner && m.role !== 'owner' && m.userId !== myId && (
                     <Button
@@ -272,10 +274,10 @@ export function GroupFormDialog({
         </div>
 
         {error && <Message severity="error" text={error} />}
-        <div className="flex justify-end gap-2 pt-1">
+        <ControlGroup aria-label="Group actions" className="justify-end mt-1">
           <Button label="Cancel" text onClick={onHide} disabled={saving} />
           <Button label={editing ? 'Save' : 'Create group'} severity="success" loading={saving} onClick={save} />
-        </div>
+        </ControlGroup>
       </div>
     </Dialog>
   );

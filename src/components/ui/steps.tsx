@@ -17,7 +17,7 @@ export function Steps({
   return (
     <ol
       aria-label="Progress"
-      className={cn('mb-6 flex min-w-0 gap-1 overflow-x-auto', className)}
+      className={cn('material-control-group mb-6 flex min-w-0 gap-2 overflow-x-auto', className)}
     >
       {model.map((item, index) => (
         <li
@@ -36,7 +36,7 @@ export function Steps({
           >
             <span
               className={cn(
-                'flex size-7 shrink-0 items-center justify-center rounded-full',
+                'ui-step-marker flex size-8 shrink-0 items-center justify-center rounded-full',
                 index <= activeIndex
                   ? 'bg-primary text-primary-foreground'
                   : 'bg-muted',

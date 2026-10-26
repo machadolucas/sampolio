@@ -2,7 +2,6 @@
 
 import React from 'react';
 import { Button } from '@/components/ui/button';
-import { useTheme } from '@/components/providers/theme-provider';
 
 interface EmptyStateProps {
     icon?: React.ReactNode;
@@ -14,19 +13,17 @@ interface EmptyStateProps {
 
 /** Shared empty-state block: icon, one-line title, optional body + action. */
 export function EmptyState({ icon, title, body, action, className = '' }: EmptyStateProps) {
-    const { theme } = useTheme();
-    const isDark = theme === 'dark';
 
     return (
         <div className={`flex flex-col items-center justify-center gap-2 py-10 px-4 text-center ${className}`}>
             {icon && (
-                <div className={`text-4xl mb-1 ${isDark ? 'text-gray-600' : 'text-gray-300'}`} aria-hidden>
+                <div className="mb-2 flex size-16 items-center justify-center rounded-2xl border border-border bg-muted text-3xl text-muted-foreground shadow-sm" aria-hidden>
                     {icon}
                 </div>
             )}
-            <p className={`font-medium ${isDark ? 'text-gray-200' : 'text-gray-700'}`}>{title}</p>
+            <p className="font-semibold text-foreground">{title}</p>
             {body && (
-                <p className={`text-sm max-w-md ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>{body}</p>
+                <p className="text-sm max-w-md text-muted-foreground">{body}</p>
             )}
             {action && (
                 <Button

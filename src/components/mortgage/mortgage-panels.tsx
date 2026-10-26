@@ -170,7 +170,7 @@ export function MyMortgageSummaryCard({
   const targetPct = member.ownershipTargetPercent * 100;
 
   return (
-    <Card className="border border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-900/10">
+    <Card className="border border-primary/25 bg-accent">
       <h2 className="text-lg font-semibold mb-1">You and this mortgage</h2>
       <p className="text-sm text-muted-foreground mb-4">
         Every month you pay {formatCurrency(pos.monthlyDeposit, currency)}, and
