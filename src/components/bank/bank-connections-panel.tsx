@@ -1,23 +1,34 @@
-'use client';
+"use client";
 
-import { LoaderCircle, TriangleAlert } from 'lucide-react';
+import { LoaderCircle, TriangleAlert } from "lucide-react";
 
-import { useCallback, useEffect, useId, useRef, useState } from 'react';
-import { Card } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Dropdown } from '@/components/ui/dropdown';
-import { InputNumber } from '@/components/ui/input-number';
-import { InputText } from '@/components/ui/input-text';
-import { Tag } from '@/components/ui/tag';
-import { Message } from '@/components/ui/message';
-import { Dialog } from '@/components/ui/dialog';
-import { confirmDialog } from '@/components/ui/confirm-dialog';
-import { ProgressSpinner } from '@/components/ui/progress-spinner';
-import { InputSwitch } from '@/components/ui/input-switch';
-import { MdAccountBalance, MdAdd, MdSync, MdLinkOff, MdHelpOutline, MdCheck, MdCreditCard, MdSavings, MdAutorenew } from 'react-icons/md';
-import { useTheme } from '@/components/providers/theme-provider';
-import { useToast } from '@/components/providers/toast-provider';
-import { HelpHint } from '@/components/ui/help-hint';
+import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Dropdown } from "@/components/ui/dropdown";
+import { InputNumber } from "@/components/ui/input-number";
+import { InputText } from "@/components/ui/input-text";
+import { Tag } from "@/components/ui/tag";
+import { Message } from "@/components/ui/message";
+import { Dialog } from "@/components/ui/dialog";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
+import { ProgressSpinner } from "@/components/ui/progress-spinner";
+import { InputSwitch } from "@/components/ui/input-switch";
+import {
+  MdAccountBalance,
+  MdAdd,
+  MdSync,
+  MdLinkOff,
+  MdHelpOutline,
+  MdCheck,
+  MdCreditCard,
+  MdSavings,
+  MdAutorenew,
+} from "react-icons/md";
+import { useAppContext } from "@/components/layout/app-layout";
+import { useTheme } from "@/components/providers/theme-provider";
+import { useToast } from "@/components/providers/toast-provider";
+import { HelpHint } from "@/components/ui/help-hint";
 import {
   getBankFeatureStatus,
   getBankConnections,
@@ -27,45 +38,52 @@ import {
   reconnectBankConnection,
   disconnectBankConnection,
   updateBankAccountLink,
-} from '@/lib/actions/bank';
-import { getAccounts } from '@/lib/actions/accounts';
-import { notifyDataChanged } from '@/lib/hooks/use-data-refresh';
-import { maskIban, getConsentExpiryInfo, effectiveCardNumbers } from '@/lib/bank-utils';
-import { suggestStatementDay } from '@/lib/bank/card-billing';
-import { STATEMENT_GRACE_DAYS } from '@/lib/bank/constants';
-import { formatCurrency, formatDate, formatDateTime } from '@/lib/constants';
+} from "@/lib/actions/bank";
+import { getAccounts } from "@/lib/actions/accounts";
+import { notifyDataChanged } from "@/lib/hooks/use-data-refresh";
+import {
+  maskIban,
+  getConsentExpiryInfo,
+  effectiveCardNumbers,
+} from "@/lib/bank-utils";
+import { suggestStatementDay } from "@/lib/bank/card-billing";
+import { STATEMENT_GRACE_DAYS } from "@/lib/bank/constants";
+import { formatCurrency, formatDate, formatDateTime } from "@/lib/constants";
 import type {
   BankConnection,
   BankAccountLink,
   BankAccountRole,
   BankConnectionStatus,
   FinancialAccount,
-} from '@/types';
+} from "@/types";
 
 const ROLE_OPTIONS: { label: string; value: BankAccountRole }[] = [
-  { label: 'Cash account', value: 'cash' },
-  { label: 'Savings', value: 'savings' },
-  { label: 'Credit card', value: 'credit-card' },
-  { label: 'Other', value: 'other' },
+  { label: "Cash account", value: "cash" },
+  { label: "Savings", value: "savings" },
+  { label: "Credit card", value: "credit-card" },
+  { label: "Other", value: "other" },
 ];
 
-function statusSeverity(status: BankConnectionStatus): 'success' | 'warning' | 'danger' | 'info' {
+function statusSeverity(
+  status: BankConnectionStatus,
+): "success" | "warning" | "danger" | "info" {
   switch (status) {
-    case 'active':
-      return 'success';
-    case 'pending':
-      return 'info';
-    case 'expired':
-    case 'revoked':
-      return 'warning';
-    case 'error':
-      return 'danger';
+    case "active":
+      return "success";
+    case "pending":
+      return "info";
+    case "expired":
+    case "revoked":
+      return "warning";
+    case "error":
+      return "danger";
   }
 }
 
 export function BankConnectionsPanel() {
+  const { demoMasked = false } = useAppContext() ?? {};
   const { theme } = useTheme();
-  const isDark = theme === 'dark';
+  const isDark = theme === "dark";
   const appToast = useToast();
   const hasLoadedOnce = useRef(false);
 
@@ -77,18 +95,20 @@ export function BankConnectionsPanel() {
 
   // Connect dialog
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [aspsps, setAspsps] = useState<{ label: string; value: string; country: string }[]>([]);
+  const [aspsps, setAspsps] = useState<
+    { label: string; value: string; country: string }[]
+  >([]);
   const [selectedBank, setSelectedBank] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
 
   const toast = useCallback(
-    (msg: string, severity: 'success' | 'error' | 'info' = 'success') =>
-      severity === 'error'
-        ? appToast.error('Error', msg)
-        : severity === 'info'
-          ? appToast.info('Info', msg)
-          : appToast.success('Done', msg),
-    [appToast]
+    (msg: string, severity: "success" | "error" | "info" = "success") =>
+      severity === "error"
+        ? appToast.error("Error", msg)
+        : severity === "info"
+          ? appToast.info("Info", msg)
+          : appToast.success("Done", msg),
+    [appToast],
   );
 
   const load = useCallback(async () => {
@@ -98,9 +118,13 @@ export function BankConnectionsPanel() {
       const isConfigured = status.success && !!status.data?.configured;
       setConfigured(isConfigured);
       if (isConfigured) {
-        const [connRes, acctRes] = await Promise.all([getBankConnections(), getAccounts()]);
+        const [connRes, acctRes] = await Promise.all([
+          getBankConnections(),
+          getAccounts(),
+        ]);
         if (connRes.success && connRes.data) setConnections(connRes.data);
-        if (acctRes.success && acctRes.data) setAccounts(acctRes.data.filter((a) => !a.isArchived));
+        if (acctRes.success && acctRes.data)
+          setAccounts(acctRes.data.filter((a) => !a.isArchived));
       }
     } finally {
       hasLoadedOnce.current = true;
@@ -115,36 +139,49 @@ export function BankConnectionsPanel() {
   // Surface the result of a returning consent (?bankConnected / ?bankError).
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const connected = params.get('bankConnected');
-    const error = params.get('bankError');
-    if (connected) toast(`Connected ${decodeURIComponent(connected)} — syncing your accounts`);
-    else if (error) toast(`Bank connection failed (${error})`, 'error');
+    const connected = params.get("bankConnected");
+    const error = params.get("bankError");
+    if (connected)
+      toast(
+        `Connected ${decodeURIComponent(connected)} — syncing your accounts`,
+      );
+    else if (error) toast(`Bank connection failed (${error})`, "error");
     if (connected || error) {
-      window.history.replaceState({}, '', '/settings');
+      window.history.replaceState({}, "", "/settings");
     }
   }, [toast]);
 
   const openConnectDialog = async () => {
     setDialogOpen(true);
     setSelectedBank(null);
-    const res = await listBankAspsps('FI');
+    const res = await listBankAspsps("FI");
     if (res.success && res.data) {
-      setAspsps(res.data.map((a) => ({ label: a.name, value: a.name, country: a.country })));
+      setAspsps(
+        res.data.map((a) => ({
+          label: a.name,
+          value: a.name,
+          country: a.country,
+        })),
+      );
     } else {
-      toast(res.error ?? 'Could not load banks', 'error');
+      toast(res.error ?? "Could not load banks", "error");
     }
   };
 
   const handleConnect = async () => {
     if (!selectedBank) return;
     setConnecting(true);
-    const country = aspsps.find((a) => a.value === selectedBank)?.country ?? 'FI';
-    const res = await startBankConnection({ aspspName: selectedBank, aspspCountry: country });
+    const country =
+      aspsps.find((a) => a.value === selectedBank)?.country ?? "FI";
+    const res = await startBankConnection({
+      aspspName: selectedBank,
+      aspspCountry: country,
+    });
     setConnecting(false);
     if (res.success && res.data?.authUrl) {
       window.location.href = res.data.authUrl; // off to the bank for SCA
     } else {
-      toast(res.error ?? 'Could not start the connection', 'error');
+      toast(res.error ?? "Could not start the connection", "error");
     }
   };
 
@@ -153,11 +190,11 @@ export function BankConnectionsPanel() {
     const res = await refreshBankConnection(connectionId);
     setBusyId(null);
     if (res.success) {
-      toast('Refreshed');
+      toast("Refreshed");
       notifyDataChanged();
       load();
     } else {
-      toast(res.error ?? 'Refresh failed', 'error');
+      toast(res.error ?? "Refresh failed", "error");
     }
   };
 
@@ -168,26 +205,26 @@ export function BankConnectionsPanel() {
     if (res.success && res.data?.authUrl) {
       window.location.href = res.data.authUrl; // re-run SCA; mappings are preserved
     } else {
-      toast(res.error ?? 'Could not start reconnection', 'error');
+      toast(res.error ?? "Could not start reconnection", "error");
     }
   };
 
   const handleDisconnect = (conn: BankConnection) =>
     confirmDialog({
       message: `Disconnect ${conn.aspspName}? This removes the cached balances and transactions and revokes the bank consent. Your manually-entered data is untouched.`,
-      header: 'Disconnect bank',
+      header: "Disconnect bank",
       icon: <TriangleAlert size={16} />,
-      severity: 'danger',
+      severity: "danger",
       accept: async () => {
         setBusyId(conn.id);
         const res = await disconnectBankConnection(conn.id);
         setBusyId(null);
         if (res.success) {
-          toast('Disconnected');
+          toast("Disconnected");
           notifyDataChanged();
           load();
         } else {
-          toast(res.error ?? 'Disconnect failed', 'error');
+          toast(res.error ?? "Disconnect failed", "error");
         }
       },
     });
@@ -195,20 +232,22 @@ export function BankConnectionsPanel() {
   const patchLink = async (
     connectionId: string,
     linkId: string,
-    data: Parameters<typeof updateBankAccountLink>[2]
+    data: Parameters<typeof updateBankAccountLink>[2],
   ): Promise<boolean> => {
     const res = await updateBankAccountLink(connectionId, linkId, data);
     if (res.success && res.data) {
-      setConnections((prev) => prev.map((c) => (c.id === connectionId ? res.data! : c)));
+      setConnections((prev) =>
+        prev.map((c) => (c.id === connectionId ? res.data! : c)),
+      );
       notifyDataChanged();
       return true;
     }
-    toast(res.error ?? 'Update failed', 'error');
+    toast(res.error ?? "Update failed", "error");
     return false;
   };
 
-  const heading = `text-lg font-semibold mb-1 ${isDark ? 'text-gray-100' : 'text-gray-900'}`;
-  const subtle = `text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`;
+  const heading = `text-lg font-semibold mb-1 text-foreground`;
+  const subtle = `text-sm text-muted-foreground`;
 
   if (loading) {
     return (
@@ -222,16 +261,16 @@ export function BankConnectionsPanel() {
   }
 
   return (
-    <Card>
-
+    <Card data-slot="bank-connections" data-demo-masked={demoMasked}>
       <div className="flex items-start justify-between gap-4 mb-3">
         <div>
           <h2 className={heading}>Bank connections</h2>
           <p className={subtle}>
-            Read-only PSD2 (AIS) sync via Enable Banking. Balances auto-anchor your forecasts; the
-            app only ever reads the local encrypted cache. IBANs are masked and never logged.
-            Hover (or tap) the <MdHelpOutline className="inline align-text-bottom" /> icons for help —
-            every change here <b>saves automatically</b>.
+            Read-only PSD2 (AIS) sync via Enable Banking. Balances auto-anchor
+            your forecasts; the app only ever reads the local encrypted cache.
+            IBANs are masked and never logged. Hover (or tap) the{" "}
+            <MdHelpOutline className="inline align-text-bottom" /> icons for
+            help — every change here <b>saves automatically</b>.
           </p>
         </div>
         {configured && (
@@ -254,9 +293,14 @@ export function BankConnectionsPanel() {
       )}
 
       {configured && connections.length === 0 && (
-        <div className={`flex flex-col items-center text-center gap-2 py-6 ${subtle}`}>
+        <div
+          className={`flex flex-col items-center text-center gap-2 py-6 ${subtle}`}
+        >
           <MdAccountBalance size={32} className="text-muted-foreground" />
-          <p>No banks connected yet. Connect one to pull balances and transactions automatically.</p>
+          <p>
+            No banks connected yet. Connect one to pull balances and
+            transactions automatically.
+          </p>
         </div>
       )}
 
@@ -266,36 +310,49 @@ export function BankConnectionsPanel() {
           return (
             <div
               key={conn.id}
-              className={`rounded-lg border p-4 ${isDark ? 'border-gray-700' : 'border-gray-200'}`}
+              className="rounded-lg border p-4 border-border"
             >
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-2">
                 <div className="flex items-center gap-2 flex-wrap">
                   <MdAccountBalance className="text-muted-foreground" />
                   <span className="font-semibold">{conn.aspspName}</span>
-                  <Tag value={conn.status} severity={statusSeverity(conn.status)} />
+                  <Tag
+                    value={conn.status}
+                    severity={statusSeverity(conn.status)}
+                  />
                   {(expiry.expired || expiry.expiringSoon) && (
                     <Tag
-                      value={expiry.expired ? 'consent expired' : `expires in ${expiry.daysUntilExpiry}d`}
+                      value={
+                        expiry.expired
+                          ? "consent expired"
+                          : `expires in ${expiry.daysUntilExpiry}d`
+                      }
                       severity="warning"
                     />
                   )}
-                  {conn.lastSyncStatus && conn.lastSyncStatus !== 'ok' && (
+                  {conn.lastSyncStatus && conn.lastSyncStatus !== "ok" && (
                     <Tag
-                      value={`sync ${conn.lastSyncStatus}${conn.lastError ? `: ${conn.lastError}` : ''}`}
-                      severity={conn.lastSyncStatus === 'error' ? 'danger' : 'warning'}
+                      value={`sync ${conn.lastSyncStatus}${conn.lastError ? `: ${conn.lastError}` : ""}`}
+                      severity={
+                        conn.lastSyncStatus === "error" ? "danger" : "warning"
+                      }
                     />
                   )}
                 </div>
                 <div className="flex items-center gap-2 flex-wrap">
                   <Button
-                    label={expiry.expired ? 'Reconnect' : 'Renew consent'}
+                    label={expiry.expired ? "Reconnect" : "Renew consent"}
                     icon={<MdAutorenew />}
                     size="small"
                     outlined={!(expiry.expired || expiry.expiringSoon)}
-                    severity={expiry.expired || expiry.expiringSoon ? 'warning' : 'secondary'}
+                    severity={
+                      expiry.expired || expiry.expiringSoon
+                        ? "warning"
+                        : "secondary"
+                    }
                     loading={busyId === conn.id}
                     tooltip="Re-run the bank's secure authentication to renew consent (every ~180 days). Your account mappings and settings are kept, and full transaction history (~24 months) is re-fetched — deepening the cashflow retrospective."
-                    tooltipOptions={{ position: 'top' }}
+                    tooltipOptions={{ position: "top" }}
                     onClick={() => handleReconnect(conn.id)}
                   />
                   <Button
@@ -320,9 +377,10 @@ export function BankConnectionsPanel() {
 
               <p className={`${subtle} mb-3`}>
                 {conn.lastSyncAt
-                  ? `Last synced ${formatDateTime(conn.lastSyncAt)} · ${conn.lastSyncStatus ?? ''}`
-                  : 'Not synced yet'}
-                {expiry.expiresAt && ` · consent valid until ${formatDate(expiry.expiresAt)}`}
+                  ? `Last synced ${formatDateTime(conn.lastSyncAt)} · ${conn.lastSyncStatus ?? ""}`
+                  : "Not synced yet"}
+                {expiry.expiresAt &&
+                  ` · consent valid until ${formatDate(expiry.expiresAt)}`}
                 {/* The bank's own ceiling on consent length — makes it obvious
                     whether a short consent is the bank's rule or our request. */}
                 {conn.aspspMaxConsentValiditySeconds != null &&
@@ -330,7 +388,9 @@ export function BankConnectionsPanel() {
               </p>
 
               {conn.linkedAccounts.length === 0 && (
-                <p className={subtle}>No accounts returned yet — try Refresh now.</p>
+                <p className={subtle}>
+                  No accounts returned yet — try Refresh now.
+                </p>
               )}
 
               <div className="space-y-3">
@@ -353,19 +413,20 @@ export function BankConnectionsPanel() {
         header="Connect a bank"
         visible={dialogOpen}
         onHide={() => setDialogOpen(false)}
-        style={{ width: '28rem' }}
+        style={{ width: "28rem" }}
       >
         <div className="space-y-4">
           <p className={subtle}>
-            Pick your bank. You&apos;ll be sent to the bank to approve read-only access (strong
-            authentication is required by law). Only whitelisted IBANs return data.
+            Pick your bank. You&apos;ll be sent to the bank to approve read-only
+            access (strong authentication is required by law). Only whitelisted
+            IBANs return data.
           </p>
           <Dropdown
             value={selectedBank}
             aria-label="Your bank"
             options={aspsps}
             onChange={(e) => setSelectedBank(e.value)}
-            placeholder={aspsps.length ? 'Select your bank' : 'Loading banks…'}
+            placeholder={aspsps.length ? "Select your bank" : "Loading banks…"}
             filter
             className="w-full"
           />
@@ -387,31 +448,43 @@ export function BankConnectionsPanel() {
 // Field help uses explicit tap/focus/hover triggers that remain attached as
 // these independently saved fields update.
 const TIPS = {
-  customName: 'A friendly name for this account, shown everywhere in Sampolio (cashflow lines, overview, the ledger). Cards often arrive unnamed from the bank — e.g. name it “Nordea Platinum”. Leave blank to use the bank’s name.',
-  type: 'How Sampolio uses this account. Cash / Savings: its balance auto-anchors the linked account’s forecast on every sync. Credit card: its statement is billed into the paying account and the outstanding counts as a liability. Other: synced for reference only — no forecast impact.',
+  customName:
+    "A friendly name for this account, shown everywhere in Sampolio (cashflow lines, overview, the ledger). Cards often arrive unnamed from the bank — e.g. name it “Nordea Platinum”. Leave blank to use the bank’s name.",
+  type: "How Sampolio uses this account. Cash / Savings: its balance auto-anchors the linked account’s forecast on every sync. Credit card: its statement is billed into the paying account and the outstanding counts as a liability. Other: synced for reference only — no forecast impact.",
   anchors:
-    'The Sampolio cash account this bank account keeps truthful. After each sync, that account’s forecast re-anchors to this real balance (a “bank-sync” snapshot for the current month). Leave unlinked to store transactions only, without touching any forecast.',
+    "The Sampolio cash account this bank account keeps truthful. After each sync, that account’s forecast re-anchors to this real balance (a “bank-sync” snapshot for the current month). Leave unlinked to store transactions only, without touching any forecast.",
   paidFrom:
-    'The Sampolio cash account that pays this card. The latest statement balance is injected as a future expense on the payment-due day, and the current outstanding is subtracted from your net worth as a liability.',
+    "The Sampolio cash account that pays this card. The latest statement balance is injected as a future expense on the payment-due day, and the current outstanding is subtracted from your net worth as a liability.",
   statementDay:
-    'Day of the month your statement closes (1–31). Sampolio groups transactions into billing cycles around this day to work out each statement’s total. It’s printed on your card statement.',
+    "Day of the month your statement closes (1–31). Sampolio groups transactions into billing cycles around this day to work out each statement’s total. It’s printed on your card statement.",
   dueDay:
-    'Day of the month the card bill must be paid (1–31). The statement total appears as an expense in the paying account’s cashflow on this day.',
+    "Day of the month the card bill must be paid (1–31). The statement total appears as an expense in the paying account’s cashflow on this day.",
   creditLimit:
-    'Optional. Your card’s total credit limit. Only needed when your bank doesn’t report one (OP, for example, sends only the balance) — Sampolio then uses it to show your available credit (limit minus what you owe). Leave blank if your bank already reports a limit.',
+    "Optional. Your card’s total credit limit. Only needed when your bank doesn’t report one (OP, for example, sends only the balance) — Sampolio then uses it to show your available credit (limit minus what you owe). Leave blank if your bank already reports a limit.",
   expectedSpend:
-    'Forecast buffer for untracked card spend. Future card bills = your expenses tagged “paid by this card” that month + this amount. For the current, still-open cycle only the share of the days still ahead is added on top of the real synced transactions — so as the cycle progresses, actuals take over from the estimate. Set it to roughly your typical untracked monthly card spend; it replaces a manual lump “credit card” expense.',
+    "Forecast buffer for untracked card spend. Future card bills = your expenses tagged “paid by this card” that month + this amount. For the current, still-open cycle only the share of the days still ahead is added on top of the real synced transactions — so as the cycle progresses, actuals take over from the estimate. Set it to roughly your typical untracked monthly card spend; it replaces a manual lump “credit card” expense.",
   exclude:
-    'Ignore this account completely — no balance, no transactions, no forecast or net-worth impact. Use it for accounts you don’t want Sampolio to track.',
+    "Ignore this account completely — no balance, no transactions, no forecast or net-worth impact. Use it for accounts you don’t want Sampolio to track.",
 };
 
-type SaveState = 'idle' | 'saving' | 'saved' | 'error';
+type SaveState = "idle" | "saving" | "saved" | "error";
 
 // The HelpHint sits beside (not inside) the <label> so the input's accessible
 // name is just the caption, not the caption plus the help button and text.
-function FieldLabel({ label, tip, isDark, htmlFor }: { label: string; tip: string; isDark: boolean; htmlFor: string }) {
+function FieldLabel({
+  label,
+  tip,
+  htmlFor,
+}: {
+  label: string;
+  tip: string;
+  isDark: boolean;
+  htmlFor: string;
+}) {
   return (
-    <div className={`flex items-center gap-1 pointer-coarse:gap-3 text-xs mb-1 pointer-coarse:mb-3 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+    <div
+      className="flex items-center gap-1 pointer-coarse:gap-3 text-xs mb-1 pointer-coarse:mb-3 text-muted-foreground"
+    >
       <label htmlFor={htmlFor}>{label}</label>
       <HelpHint text={tip} />
     </div>
@@ -435,31 +508,38 @@ function ToggleField({
 }) {
   return (
     <div
-      className={`flex items-center justify-between gap-3 rounded-md px-3 py-2 border ${isDark ? 'border-gray-700' : 'border-gray-200'}`}
+      className="flex items-center justify-between gap-3 rounded-md px-3 py-2 border border-border"
     >
-      <span className={`flex items-center gap-1 text-xs ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
+      <span
+        className={`flex items-center gap-1 text-xs ${isDark ? "text-foreground" : "text-muted-foreground"}`}
+      >
         <label htmlFor={inputId}>{label}</label>
         <HelpHint text={tip} />
       </span>
-      <InputSwitch inputId={inputId} checked={checked} onChange={(e) => onChange(!!e.value)} />
+      <InputSwitch
+        inputId={inputId}
+        checked={checked}
+        onChange={(e) => onChange(!!e.value)}
+      />
     </div>
   );
 }
 
 function SaveIndicator({ state }: { state: SaveState }) {
-  if (state === 'saving')
+  if (state === "saving")
     return (
       <span className="text-xs text-muted-foreground flex items-center gap-1">
         <LoaderCircle size={12} className="animate-spin" aria-hidden /> Saving…
       </span>
     );
-  if (state === 'saved')
+  if (state === "saved")
     return (
       <span className="text-xs text-green-600 flex items-center gap-1">
         <MdCheck /> Saved
       </span>
     );
-  if (state === 'error') return <span className="text-xs text-red-500">Save failed — retry</span>;
+  if (state === "error")
+    return <span className="text-xs text-red-500">Save failed — retry</span>;
   return null;
 }
 
@@ -472,58 +552,81 @@ function AccountLinkRow({
   link: BankAccountLink;
   accounts: FinancialAccount[];
   isDark: boolean;
-  onPatch: (data: Parameters<typeof updateBankAccountLink>[2]) => Promise<boolean>;
+  onPatch: (
+    data: Parameters<typeof updateBankAccountLink>[2],
+  ) => Promise<boolean>;
 }) {
-  const subtle = `text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`;
+  const subtle = `text-xs text-muted-foreground`;
   const fieldId = useId();
-  const [saveState, setSaveState] = useState<SaveState>('idle');
-  const [nameDraft, setNameDraft] = useState(link.customName ?? '');
+  const [saveState, setSaveState] = useState<SaveState>("idle");
+  const [nameDraft, setNameDraft] = useState(link.customName ?? "");
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Clear the "Saved" auto-hide timer if the row unmounts mid-flight.
-  useEffect(() => () => {
-    if (timerRef.current) clearTimeout(timerRef.current);
-  }, []);
+  useEffect(
+    () => () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    },
+    [],
+  );
 
   const patch = async (data: Parameters<typeof updateBankAccountLink>[2]) => {
     if (timerRef.current) clearTimeout(timerRef.current);
-    setSaveState('saving');
+    setSaveState("saving");
     const ok = await onPatch(data);
-    setSaveState(ok ? 'saved' : 'error');
-    if (ok) timerRef.current = setTimeout(() => setSaveState('idle'), 1800);
+    setSaveState(ok ? "saved" : "error");
+    if (ok) timerRef.current = setTimeout(() => setSaveState("idle"), 1800);
   };
 
   const accountOptions = [
-    { label: '— not linked —', value: null as string | null },
+    { label: "— not linked —", value: null as string | null },
     ...accounts.map((a) => ({ label: a.name, value: a.id })),
   ];
-  const isCard = link.accountRole === 'credit-card';
-  const roleIcon = isCard ? <MdCreditCard /> : link.accountRole === 'savings' ? <MdSavings /> : <MdAccountBalance />;
-  const displayName = link.customName?.trim() || link.name?.trim() || (isCard ? 'Credit card' : 'Account');
+  const isCard = link.accountRole === "credit-card";
+  const roleIcon = isCard ? (
+    <MdCreditCard />
+  ) : link.accountRole === "savings" ? (
+    <MdSavings />
+  ) : (
+    <MdAccountBalance />
+  );
+  const displayName =
+    link.customName?.trim() ||
+    link.name?.trim() ||
+    (isCard ? "Credit card" : "Account");
   const fmt = (n: number) => formatCurrency(n, link.currency);
-  const idParts: string[] = [maskIban(link.iban), link.currency].filter(Boolean) as string[];
+  const idParts: string[] = [maskIban(link.iban), link.currency].filter(
+    Boolean,
+  ) as string[];
   if (isCard) {
     // Card figures with the bank's gaps filled (owed from balance, limit from the
     // manual fallback, available derived) — see effectiveCardNumbers.
     const eff = effectiveCardNumbers(link);
     const before = idParts.length;
-    if (typeof eff.outstanding === 'number') idParts.push(`owed ${fmt(eff.outstanding)}`);
-    if (typeof eff.availableCredit === 'number') idParts.push(`${fmt(eff.availableCredit)} available`);
-    if (typeof eff.creditLimit === 'number') idParts.push(`limit ${fmt(eff.creditLimit)}`);
+    if (typeof eff.outstanding === "number")
+      idParts.push(`owed ${fmt(eff.outstanding)}`);
+    if (typeof eff.availableCredit === "number")
+      idParts.push(`${fmt(eff.availableCredit)} available`);
+    if (typeof eff.creditLimit === "number")
+      idParts.push(`limit ${fmt(eff.creditLimit)}`);
     // Nothing derivable → show the raw last balance, like a deposit account.
-    if (idParts.length === before && typeof link.lastBalance === 'number') idParts.push(fmt(link.lastBalance));
-  } else if (typeof link.lastBalance === 'number') {
+    if (idParts.length === before && typeof link.lastBalance === "number")
+      idParts.push(fmt(link.lastBalance));
+  } else if (typeof link.lastBalance === "number") {
     idParts.push(fmt(link.lastBalance));
   }
 
   return (
-    <div className={`rounded-md p-3 ${isDark ? 'bg-gray-800' : 'bg-gray-50'}`}>
+    <div
+      data-slot="bank-account-config"
+      className="rounded-lg border border-border bg-muted p-3"
+    >
       <div className="flex items-start justify-between gap-2 mb-3">
         <div className="flex items-center gap-2 min-w-0">
           <span className="text-muted-foreground shrink-0">{roleIcon}</span>
           <div className="min-w-0">
             <div className="font-medium text-sm truncate">{displayName}</div>
-            <div className={`${subtle} truncate`}>{idParts.join(' · ')}</div>
+            <div className={`${subtle} truncate`}>{idParts.join(" · ")}</div>
           </div>
         </div>
         <div className="shrink-0 min-h-[1rem]">
@@ -533,35 +636,51 @@ function AccountLinkRow({
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3">
         <div className="sm:col-span-2">
-          <FieldLabel label="Display name" tip={TIPS.customName} isDark={isDark} htmlFor={`${fieldId}-name`} />
+          <FieldLabel
+            label="Display name"
+            tip={TIPS.customName}
+            isDark={isDark}
+            htmlFor={`${fieldId}-name`}
+          />
           <InputText
             id={`${fieldId}-name`}
             value={nameDraft}
             onChange={(e) => setNameDraft(e.target.value)}
             onBlur={() => {
               const next = nameDraft.trim();
-              if (next !== (link.customName ?? '')) patch({ customName: next || null });
+              if (next !== (link.customName ?? ""))
+                patch({ customName: next || null });
             }}
-            placeholder={link.name?.trim() || (isCard ? 'e.g. Nordea Platinum' : 'Account name')}
+            placeholder={
+              link.name?.trim() ||
+              (isCard ? "e.g. Nordea Platinum" : "Account name")
+            }
             className="w-full"
             maxLength={60}
           />
         </div>
 
         <div>
-          <FieldLabel label="Type" tip={TIPS.type} isDark={isDark} htmlFor={`${fieldId}-role`} />
+          <FieldLabel
+            label="Type"
+            tip={TIPS.type}
+            isDark={isDark}
+            htmlFor={`${fieldId}-role`}
+          />
           <Dropdown
             inputId={`${fieldId}-role`}
             value={link.accountRole}
             options={ROLE_OPTIONS}
-            onChange={(e) => { if (e.value !== null) patch({ accountRole: e.value }); }}
+            onChange={(e) => {
+              if (e.value !== null) patch({ accountRole: e.value });
+            }}
             className="w-full"
           />
         </div>
 
         <div>
           <FieldLabel
-            label={isCard ? 'Paid from account' : 'Anchors account'}
+            label={isCard ? "Paid from account" : "Anchors account"}
             tip={isCard ? TIPS.paidFrom : TIPS.anchors}
             isDark={isDark}
             htmlFor={`${fieldId}-linked`}
@@ -571,7 +690,12 @@ function AccountLinkRow({
             value={link.linkedFinancialAccountId ?? null}
             options={accountOptions}
             // Keep the unlinked sentinel normalized at the action boundary.
-            onChange={(e) => patch({ linkedFinancialAccountId: typeof e.value === 'string' ? e.value : null })}
+            onChange={(e) =>
+              patch({
+                linkedFinancialAccountId:
+                  typeof e.value === "string" ? e.value : null,
+              })
+            }
             className="w-full"
             placeholder="Choose account"
           />
@@ -580,7 +704,12 @@ function AccountLinkRow({
         {isCard && (
           <>
             <div>
-              <FieldLabel label="Statement closes (day)" tip={TIPS.statementDay} isDark={isDark} htmlFor={`${fieldId}-statement`} />
+              <FieldLabel
+                label="Statement closes (day)"
+                tip={TIPS.statementDay}
+                isDark={isDark}
+                htmlFor={`${fieldId}-statement`}
+              />
               <InputNumber
                 inputId={`${fieldId}-statement`}
                 value={link.statementDay ?? null}
@@ -594,7 +723,12 @@ function AccountLinkRow({
               />
             </div>
             <div>
-              <FieldLabel label="Payment due (day)" tip={TIPS.dueDay} isDark={isDark} htmlFor={`${fieldId}-due`} />
+              <FieldLabel
+                label="Payment due (day)"
+                tip={TIPS.dueDay}
+                isDark={isDark}
+                htmlFor={`${fieldId}-due`}
+              />
               <InputNumber
                 inputId={`${fieldId}-due`}
                 value={link.paymentDueDay ?? null}
@@ -603,7 +737,13 @@ function AccountLinkRow({
                   // Convenience: when the close day isn't set yet, infer it from
                   // the due day (typical grace period). The user can adjust it.
                   if (due != null && link.statementDay == null) {
-                    patch({ paymentDueDay: due, statementDay: suggestStatementDay(due, STATEMENT_GRACE_DAYS) });
+                    patch({
+                      paymentDueDay: due,
+                      statementDay: suggestStatementDay(
+                        due,
+                        STATEMENT_GRACE_DAYS,
+                      ),
+                    });
                   } else {
                     patch({ paymentDueDay: due });
                   }
@@ -617,11 +757,18 @@ function AccountLinkRow({
               />
             </div>
             <div className="sm:col-span-2">
-              <FieldLabel label="Credit limit" tip={TIPS.creditLimit} isDark={isDark} htmlFor={`${fieldId}-limit`} />
+              <FieldLabel
+                label="Credit limit"
+                tip={TIPS.creditLimit}
+                isDark={isDark}
+                htmlFor={`${fieldId}-limit`}
+              />
               <InputNumber
                 inputId={`${fieldId}-limit`}
                 value={link.manualCreditLimit ?? null}
-                onValueChange={(e) => patch({ manualCreditLimit: e.value ?? null })}
+                onValueChange={(e) =>
+                  patch({ manualCreditLimit: e.value ?? null })
+                }
                 mode="currency"
                 currency={link.currency}
                 locale="fi-FI"
@@ -632,11 +779,18 @@ function AccountLinkRow({
               />
             </div>
             <div className="sm:col-span-2">
-              <FieldLabel label="Expected monthly spend (forecast buffer)" tip={TIPS.expectedSpend} isDark={isDark} htmlFor={`${fieldId}-spend`} />
+              <FieldLabel
+                label="Expected monthly spend (forecast buffer)"
+                tip={TIPS.expectedSpend}
+                isDark={isDark}
+                htmlFor={`${fieldId}-spend`}
+              />
               <InputNumber
                 inputId={`${fieldId}-spend`}
                 value={link.expectedMonthlySpend ?? null}
-                onValueChange={(e) => patch({ expectedMonthlySpend: e.value ?? null })}
+                onValueChange={(e) =>
+                  patch({ expectedMonthlySpend: e.value ?? null })
+                }
                 mode="currency"
                 currency={link.currency}
                 locale="fi-FI"
@@ -646,11 +800,15 @@ function AccountLinkRow({
                 inputClassName="w-full"
               />
             </div>
-            <p className={`sm:col-span-2 text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-              Tip: enter the payment-due day and Sampolio fills in a likely statement-closing
-              day for you (≈{STATEMENT_GRACE_DAYS} days earlier) — adjust it to match your statement.
-              The card&apos;s amount owed and available credit are read live from the bank; if your
-              bank doesn&apos;t report a credit limit, set one above so Sampolio can show available credit.
+            <p
+              className="sm:col-span-2 text-xs text-muted-foreground"
+            >
+              Tip: enter the payment-due day and Sampolio fills in a likely
+              statement-closing day for you (≈{STATEMENT_GRACE_DAYS} days
+              earlier) — adjust it to match your statement. The card&apos;s
+              amount owed and available credit are read live from the bank; if
+              your bank doesn&apos;t report a credit limit, set one above so
+              Sampolio can show available credit.
             </p>
           </>
         )}

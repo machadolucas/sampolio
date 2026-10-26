@@ -13,16 +13,16 @@ interface DebtProgressCardProps {
 
 function getProgressColor(percentPaid: number, isDark: boolean): string {
   if (percentPaid > 50) {
-    return isDark ? 'bg-green-500' : 'bg-green-500';
+    return 'bg-green-500';
   }
   if (percentPaid >= 25) {
-    return isDark ? 'bg-yellow-500' : 'bg-yellow-500';
+    return 'bg-yellow-500';
   }
   return isDark ? 'bg-blue-400' : 'bg-blue-500';
 }
 
-function getProgressTrackColor(isDark: boolean): string {
-  return isDark ? 'bg-neutral-700' : 'bg-neutral-200';
+function getProgressTrackColor(): string {
+  return 'bg-muted';
 }
 
 export function DebtProgressCard({ debt, payoffInfo, isSimpleMode }: DebtProgressCardProps) {
@@ -30,34 +30,24 @@ export function DebtProgressCard({ debt, payoffInfo, isSimpleMode }: DebtProgres
   const isDark = theme === 'dark';
 
   const progressColor = getProgressColor(payoffInfo.percentPaid, isDark);
-  const trackColor = getProgressTrackColor(isDark);
+  const trackColor = getProgressTrackColor();
 
   const displayPercent = Math.round(payoffInfo.percentPaid * 10) / 10;
 
   return (
     <div
-      className={`rounded-xl border p-4 ${
-        isDark
-          ? 'border-neutral-700 bg-neutral-800/50'
-          : 'border-neutral-200 bg-white'
-      }`}
+      className="rounded-xl border p-4 border-border bg-card"
     >
       {/* Header */}
       <div className="mb-3 flex items-center justify-between">
         <h3
-          className={`text-base font-semibold ${
-            isDark ? 'text-neutral-100' : 'text-neutral-900'
-          }`}
+          className="text-base font-semibold text-foreground"
         >
           {debt.name}
         </h3>
         {!isSimpleMode && (
           <span
-            className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-              isDark
-                ? 'bg-neutral-700 text-neutral-300'
-                : 'bg-neutral-100 text-neutral-600'
-            }`}
+            className="rounded-full px-2 py-0.5 text-xs font-medium bg-muted text-muted-foreground"
           >
             {debt.debtType === 'amortized' ? 'Amortized' : 'Fixed installment'}
             {debt.interestModelType === 'variable' && ' · Variable rate'}
@@ -76,9 +66,7 @@ export function DebtProgressCard({ debt, payoffInfo, isSimpleMode }: DebtProgres
 
       {/* Progress text */}
       <p
-        className={`mt-2 text-sm ${
-          isDark ? 'text-neutral-300' : 'text-neutral-600'
-        }`}
+        className="mt-2 text-sm text-muted-foreground"
       >
         <span className="font-medium">{displayPercent}% paid off</span>
         {' · '}
@@ -88,9 +76,7 @@ export function DebtProgressCard({ debt, payoffInfo, isSimpleMode }: DebtProgres
 
       {/* Details row */}
       <div
-        className={`mt-3 flex flex-wrap gap-x-6 gap-y-1 text-sm ${
-          isDark ? 'text-neutral-400' : 'text-neutral-500'
-        }`}
+        className="mt-3 flex flex-wrap gap-x-6 gap-y-1 text-sm text-muted-foreground"
       >
         {payoffInfo.monthlyPayment > 0 && (
           <span>

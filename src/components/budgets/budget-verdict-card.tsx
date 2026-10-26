@@ -108,8 +108,8 @@ export function BudgetVerdictCard({
           ? "border-yellow-800 bg-yellow-900/20"
           : "border-yellow-200 bg-yellow-50"
         : isDark
-          ? "border-neutral-700 bg-neutral-800/50"
-          : "border-neutral-200 bg-white";
+          ? "border-border bg-card"
+          : "border-border bg-card";
 
   const isConfirmed = budget.status === "confirmed";
 

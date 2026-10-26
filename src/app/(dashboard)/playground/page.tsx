@@ -25,7 +25,7 @@ import { MdPlayArrow, MdAdd, MdTrendingUp, MdRefresh, MdClose, MdPlaylistAdd, Md
 
 // The comparison chart is a heavy ECharts bundle — code-split it (ssr:false;
 // it's client-only) so it never bloats the playground's initial JS.
-const ChartLoading = () => <div className="h-72 lg:h-96 rounded-lg bg-gray-100 dark:bg-gray-800/50 animate-pulse" />;
+const ChartLoading = () => <div className="h-72 lg:h-96 rounded-lg bg-muted animate-pulse" />;
 const ScenarioComparisonChart = dynamic(
     () => import('@/components/charts/scenario-comparison-chart').then((m) => m.ScenarioComparisonChart),
     { ssr: false, loading: ChartLoading },
@@ -297,10 +297,10 @@ export default function PlaygroundPage() {
     return (
         <div className="space-y-4 lg:space-y-6 max-w-360 mx-auto py-4 lg:py-8">
             <div>
-                <h1 className={`text-4xl font-bold ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
+                <h1 className="text-4xl font-bold text-foreground">
                     What If?
                 </h1>
-                <p className={`text-sm mt-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                <p className="text-sm mt-1 text-muted-foreground">
                     Test changes against your real plan — the same account, income, and bills as your Cashflow — without saving anything.
                 </p>
             </div>
@@ -324,13 +324,13 @@ export default function PlaygroundPage() {
                         onClick={() => { setSelectedTemplate(template.value); setResult(null); }}
                         className={`p-4 rounded-lg border-2 text-left transition-colors ${selectedTemplate === template.value
                             ? 'border-accent-500 bg-accent-50 dark:bg-accent-400/15'
-                            : isDark ? 'border-gray-700 hover:border-gray-600' : 'border-gray-200 hover:border-gray-300'
+                            : 'border-border hover:border-input'
                             }`}
                     >
-                        <p className={`font-semibold ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
+                        <p className="font-semibold text-foreground">
                             {template.label}
                         </p>
-                        <p className={`text-sm mt-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                        <p className="text-sm mt-1 text-muted-foreground">
                             {template.description}
                         </p>
                     </button>
@@ -340,14 +340,14 @@ export default function PlaygroundPage() {
             {/* Input form */}
             <Card>
                 <div className="space-y-4">
-                    <h2 className={`text-lg font-semibold ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
+                    <h2 className="text-lg font-semibold text-foreground">
                         {TEMPLATES.find(t => t.value === selectedTemplate)?.label}
                     </h2>
 
                     {isItemPicker ? (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
-                                <label htmlFor={`${fieldId}-item`} className={`block text-sm font-medium mb-1 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                                <label htmlFor={`${fieldId}-item`} className={`block text-sm font-medium mb-1 ${isDark ? 'text-muted-foreground' : 'text-foreground'}`}>
                                     Which item?
                                 </label>
                                 <Dropdown
@@ -367,7 +367,7 @@ export default function PlaygroundPage() {
                             </div>
                             {selectedTemplate === 'change-amount' && (
                                 <div>
-                                    <label htmlFor={`${fieldId}-new-amount`} className={`block text-sm font-medium mb-1 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                                    <label htmlFor={`${fieldId}-new-amount`} className={`block text-sm font-medium mb-1 ${isDark ? 'text-muted-foreground' : 'text-foreground'}`}>
                                         New amount
                                     </label>
                                     <InputNumber
@@ -386,7 +386,7 @@ export default function PlaygroundPage() {
                     ) : (
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                             <div>
-                                <label htmlFor={`${fieldId}-name`} className={`block text-sm font-medium mb-1 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                                <label htmlFor={`${fieldId}-name`} className={`block text-sm font-medium mb-1 ${isDark ? 'text-muted-foreground' : 'text-foreground'}`}>
                                     Name (optional)
                                 </label>
                                 <InputText
@@ -398,7 +398,7 @@ export default function PlaygroundPage() {
                                 />
                             </div>
                             <div>
-                                <label htmlFor={`${fieldId}-amount`} className={`block text-sm font-medium mb-1 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                                <label htmlFor={`${fieldId}-amount`} className={`block text-sm font-medium mb-1 ${isDark ? 'text-muted-foreground' : 'text-foreground'}`}>
                                     Amount
                                 </label>
                                 <InputNumber
@@ -413,7 +413,7 @@ export default function PlaygroundPage() {
                                 />
                             </div>
                             <div>
-                                <span id={`${fieldId}-frequency`} className={`block text-sm font-medium mb-1 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                                <span id={`${fieldId}-frequency`} className={`block text-sm font-medium mb-1 ${isDark ? 'text-muted-foreground' : 'text-foreground'}`}>
                                     Frequency
                                 </span>
                                 <SelectButton
@@ -447,7 +447,7 @@ export default function PlaygroundPage() {
                     {/* Staged changes — stack a few before running */}
                     {mods.length > 0 && (
                         <div className="flex flex-wrap items-center gap-2">
-                            <span className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Scenario so far:</span>
+                            <span className="text-sm text-muted-foreground">Scenario so far:</span>
                             {mods.map((m, i) => (
                                 <span
                                     key={i}
@@ -509,8 +509,8 @@ export default function PlaygroundPage() {
                     {/* Apply staged changes to the real plan */}
                     {mods.some((m) => m.type === 'add-income' || m.type === 'add-expense') && (
                         <Card>
-                            <h3 className={`font-semibold mb-1 ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>Like what you see?</h3>
-                            <p className={`text-sm mb-3 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                            <h3 className="font-semibold mb-1 text-foreground">Like what you see?</h3>
+                            <p className="text-sm mb-3 text-muted-foreground">
                                 Turn a what-if into a real item on your Cashflow.
                             </p>
                             <div className="flex flex-wrap gap-2">
@@ -534,19 +534,19 @@ export default function PlaygroundPage() {
                     {/* Key metrics */}
                     <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                         <Card>
-                            <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Current End Balance</p>
-                            <p className={`text-2xl font-bold mt-1 ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
+                            <p className="text-sm text-muted-foreground">Current End Balance</p>
+                            <p className="text-2xl font-bold mt-1 text-foreground">
                                 {formatCurrency(result.summary.currentEndBalance, currency)}
                             </p>
                         </Card>
                         <Card>
-                            <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Modified End Balance</p>
-                            <p className={`text-2xl font-bold mt-1 ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
+                            <p className="text-sm text-muted-foreground">Modified End Balance</p>
+                            <p className="text-2xl font-bold mt-1 text-foreground">
                                 {formatCurrency(result.summary.modifiedEndBalance, currency)}
                             </p>
                         </Card>
                         <Card>
-                            <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Difference</p>
+                            <p className="text-sm text-muted-foreground">Difference</p>
                             <p className={`text-2xl font-bold mt-1 ${result.summary.difference >= 0 ? 'text-green-500' : 'text-red-500'}`}>
                                 {result.summary.difference >= 0 ? '+' : ''}{formatCurrency(result.summary.difference, currency)}
                             </p>
@@ -557,12 +557,12 @@ export default function PlaygroundPage() {
                             />
                         </Card>
                         <Card>
-                            <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Lowest point</p>
-                            <p className={`text-2xl font-bold mt-1 ${lowestPoint && lowestPoint.endingBalance < 0 ? 'text-red-500' : isDark ? 'text-gray-100' : 'text-gray-900'}`}>
+                            <p className="text-sm text-muted-foreground">Lowest point</p>
+                            <p className={`text-2xl font-bold mt-1 ${lowestPoint && lowestPoint.endingBalance < 0 ? 'text-red-500' : 'text-foreground'}`}>
                                 {lowestPoint ? formatCurrency(lowestPoint.endingBalance, currency) : '—'}
                             </p>
                             {lowestPoint && (
-                                <p className={`text-xs mt-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                                <p className="text-xs mt-1 text-muted-foreground">
                                     {formatYearMonth(lowestPoint.yearMonth)}
                                 </p>
                             )}
@@ -571,7 +571,7 @@ export default function PlaygroundPage() {
 
                     {/* Comparison chart — current vs modified over the full horizon */}
                     <Card>
-                        <h3 className={`font-semibold mb-3 ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
+                        <h3 className="font-semibold mb-3 text-foreground">
                             <MdTrendingUp className="inline mr-2" />
                             Balance over time
                         </h3>
@@ -580,13 +580,13 @@ export default function PlaygroundPage() {
 
                     {/* Monthly comparison */}
                     <Card>
-                        <h3 className={`font-semibold mb-4 ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
+                        <h3 className="font-semibold mb-4 text-foreground">
                             Monthly Comparison (first 12 months)
                         </h3>
                         <div className="overflow-x-auto">
-                            <table className={`w-full text-sm ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
+                            <table className="w-full text-sm text-muted-foreground">
                                 <thead>
-                                    <tr className={`border-b ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
+                                    <tr className="border-b border-border">
                                         <th className="text-left py-2">Month</th>
                                         <th className="text-right py-2">Current</th>
                                         <th className="text-right py-2">Modified</th>
@@ -598,7 +598,7 @@ export default function PlaygroundPage() {
                                         const mod = result.modified[i];
                                         const diff = (mod?.endingBalance ?? 0) - month.endingBalance;
                                         return (
-                                            <tr key={month.yearMonth} className={`border-b ${isDark ? 'border-gray-800' : 'border-gray-100'}`}>
+                                            <tr key={month.yearMonth} className="border-b border-border">
                                                 <td className="py-2">{month.yearMonth}</td>
                                                 <td className="text-right">{formatCurrency(month.endingBalance, currency)}</td>
                                                 <td className="text-right">{formatCurrency(mod?.endingBalance ?? 0, currency)}</td>
@@ -616,11 +616,11 @@ export default function PlaygroundPage() {
                     {/* Recent runs — quick comparison of the last few scenarios */}
                     {history.length > 1 && (
                         <Card>
-                            <h3 className={`font-semibold mb-3 ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>Recent runs</h3>
+                            <h3 className="font-semibold mb-3 text-foreground">Recent runs</h3>
                             <div className="flex flex-col divide-y divide-gray-100 dark:divide-gray-800">
                                 {history.map((h, i) => (
                                     <div key={i} className="flex items-center justify-between gap-3 py-2 text-sm">
-                                        <span className={`truncate ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                                        <span className={`truncate ${isDark ? 'text-muted-foreground' : 'text-foreground'}`}>
                                             {i === 0 && <Tag value="latest" severity="info" className="mr-2 text-xs !py-0 !px-1" />}
                                             {h.label}
                                         </span>

@@ -55,7 +55,7 @@ export function CategoryIcon({ category, size = 40 }: { category: string; size?:
   const icon = ICONS[category] ?? <MdReceiptLong />;
   return (
     <span
-      className="flex items-center justify-center rounded-lg bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300 shrink-0"
+      className="flex items-center justify-center rounded-lg bg-muted text-muted-foreground shrink-0"
       style={{ width: size, height: size, fontSize: size * 0.5 }}
       aria-hidden
     >

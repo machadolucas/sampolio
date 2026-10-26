@@ -29,7 +29,7 @@ export function MobileNavDrawer({ visible, onHide }: MobileNavDrawerProps) {
     const header = (
         <Link href="/" onClick={onHide} className="flex items-center gap-2 no-underline">
             <BrandLogo size={30} className="shrink-0" />
-            <span className={`text-2xl font-extrabold ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>Sampolio</span>
+            <span className="text-2xl font-extrabold text-foreground">Sampolio</span>
         </Link>
     );
 
@@ -55,7 +55,7 @@ export function MobileNavDrawer({ visible, onHide }: MobileNavDrawerProps) {
                                     aria-current={active ? 'page' : undefined}
                                     className={`flex items-center gap-3 px-3 py-3 rounded-lg transition-colors duration-150 no-underline ${active
                                         ? isDark ? 'bg-accent-400/20 text-accent-300 active:bg-accent-400/30' : 'bg-accent-100 text-accent-800 active:bg-accent-200'
-                                        : isDark ? 'text-gray-400 hover:bg-gray-800 hover:text-gray-200 active:bg-gray-800' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900 active:bg-gray-100'
+                                        : isDark ? 'text-muted-foreground hover:bg-card hover:text-foreground active:bg-card' : 'text-muted-foreground hover:bg-muted hover:text-foreground active:bg-muted'
                                         }`}
                                 >
                                     {item.icon}
@@ -68,7 +68,7 @@ export function MobileNavDrawer({ visible, onHide }: MobileNavDrawerProps) {
             </nav>
 
             {/* Account / preferences */}
-            <div className={`mt-4 pt-2 border-t ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
+            <div className="mt-4 pt-2 border-t border-border">
                 <Menu model={userMenuItems} className="w-full border-none" />
             </div>
         </Sidebar>

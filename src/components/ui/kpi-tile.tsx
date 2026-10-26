@@ -79,7 +79,7 @@ export function KpiTile({
                 it on narrow cards — never place them in the same row. */}
       <div className="flex items-start justify-between gap-2">
         <p
-          className={`text-sm font-medium min-w-0 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}
+          className="text-sm font-medium min-w-0 text-muted-foreground"
         >
           {onClick ? (
             <button
@@ -99,27 +99,27 @@ export function KpiTile({
           {help && <HelpHint text={help} />}
         </p>
         <div
-          className={`p-2.5 rounded-full shrink-0 ${isDark ? 'bg-gray-800' : 'bg-gray-100'} text-lg ${severityColors[severity]}`}
+          className={`p-2.5 rounded-full shrink-0 ${isDark ? 'bg-card' : 'bg-muted'} text-lg ${severityColors[severity]}`}
         >
           {icon}
         </div>
       </div>
       <div className="-mt-1">
         <p
-          className={`text-2xl font-bold tabular-nums ${isDark ? 'text-gray-100' : 'text-gray-900'}`}
+          className="text-2xl font-bold tabular-nums text-foreground"
         >
           {formatCurrency(value, currency)}
         </p>
         {subline && (
           <p
-            className={`text-xs mt-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}
+            className="text-xs mt-1 text-muted-foreground"
           >
             {subline}
           </p>
         )}
         {typeof progress === 'number' && (
           <div
-            className={`mt-2 h-1.5 w-full max-w-40 overflow-hidden rounded-full ${isDark ? 'bg-gray-700' : 'bg-gray-200'}`}
+            className="mt-2 h-1.5 w-full max-w-40 overflow-hidden rounded-full bg-muted"
           >
             <div
               className={`h-full rounded-full ${barColors[progressSeverity ?? severity]}`}
@@ -137,7 +137,7 @@ export function KpiTile({
             />
             {changeLabel && (
               <span
-                className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}
+                className="text-xs text-muted-foreground"
               >
                 {changeLabel}
               </span>
@@ -146,7 +146,7 @@ export function KpiTile({
         )}
         {showUnchanged && changeLabel && (
           <p
-            className={`text-xs mt-2 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}
+            className="text-xs mt-2 text-muted-foreground"
           >
             unchanged {changeLabel}
           </p>

@@ -33,7 +33,7 @@ export function MobileTopBar({
   const { theme } = useTheme();
   const isDark = theme === 'dark';
 
-  const iconBtn = `flex items-center justify-center w-11 h-11 shrink-0 rounded-lg transition-colors duration-150 active:opacity-60 ${isDark ? 'text-gray-300 hover:bg-gray-800' : 'text-gray-600 hover:bg-gray-100'}`;
+  const iconBtn = `flex items-center justify-center w-11 h-11 shrink-0 rounded-lg transition-colors duration-150 active:opacity-60 ${isDark ? 'text-muted-foreground hover:bg-card' : 'text-muted-foreground hover:bg-muted'}`;
 
   return (
     <header className="lg:hidden fixed top-[calc(0.5rem+env(safe-area-inset-top))] left-2 right-2 z-40 flex items-center justify-between px-2 border rounded-2xl h-14 glass-chrome">
@@ -52,7 +52,7 @@ export function MobileTopBar({
         >
           <BrandLogo size={28} className="shrink-0" />
           <span
-            className={`truncate text-xl font-extrabold ${isDark ? 'text-gray-100' : 'text-gray-900'}`}
+            className="truncate text-xl font-extrabold text-foreground"
           >
             Sampolio
           </span>

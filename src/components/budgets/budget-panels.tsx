@@ -45,7 +45,7 @@ function PanelRow({
 }) {
   return (
     <div
-      className="flex justify-between items-center gap-2 px-1.5 py-1 sm:px-2 sm:py-1.5 rounded cursor-pointer transition-colors text-sm hover:bg-black/5 dark:hover:bg-white/10 group"
+      className="flex justify-between items-center gap-2 px-1.5 py-1 sm:px-2 sm:py-1.5 rounded cursor-pointer transition-colors text-sm hover:bg-accent group"
       onClick={onClick}
     >
       {children}

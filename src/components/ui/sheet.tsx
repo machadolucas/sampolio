@@ -65,7 +65,9 @@ export function Sidebar({
               />
             )}
           </header>
-          <div className="min-h-0 flex-1 overflow-y-auto p-4">{children}</div>
+          <div className="ui-sheet-content min-h-0 flex-1 overflow-y-auto p-4">
+            {children}
+          </div>
         </Primitive.Popup>
       </Primitive.Portal>
     </Primitive.Root>

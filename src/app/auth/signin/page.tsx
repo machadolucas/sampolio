@@ -335,9 +335,9 @@ function SignInForm() {
         </form>
 
         <div className="flex items-center gap-3 my-4" aria-hidden="true">
-          <span className="h-px flex-1 bg-gray-200 dark:bg-gray-700" />
+          <span className="h-px flex-1 bg-muted" />
           <span className="text-xs text-muted-foreground">or</span>
-          <span className="h-px flex-1 bg-gray-200 dark:bg-gray-700" />
+          <span className="h-px flex-1 bg-muted" />
         </div>
 
         <Button

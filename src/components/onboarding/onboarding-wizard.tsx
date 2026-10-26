@@ -268,14 +268,14 @@ export function OnboardingWizard({ visible, onComplete }: OnboardingWizardProps)
                 return (
                     <div className="text-center py-8 space-y-6">
                         <div className="text-6xl mb-4">👋</div>
-                        <h2 className={`text-2xl font-bold ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
+                        <h2 className="text-2xl font-bold text-foreground">
                             Welcome to Sampolio
                         </h2>
-                        <p className={`text-lg max-w-md mx-auto ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
+                        <p className="text-lg max-w-md mx-auto text-muted-foreground">
                             Let&apos;s set up your financial overview in a few quick steps.
                             You&apos;ll create a cash account and add your main income and expenses.
                         </p>
-                        <div className={`flex flex-col gap-3 max-w-sm mx-auto text-left text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                        <div className="flex flex-col gap-3 max-w-sm mx-auto text-left text-sm text-muted-foreground">
                             <div className="flex items-center gap-2">
                                 <MdAccountBalanceWallet className="text-green-500" />
                                 <span>Set up your main cash account</span>
@@ -296,17 +296,17 @@ export function OnboardingWizard({ visible, onComplete }: OnboardingWizardProps)
                 return (
                     <div className="space-y-6 py-4">
                         <div className="text-center mb-6">
-                            <h3 className={`text-xl font-semibold ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
+                            <h3 className="text-xl font-semibold text-foreground">
                                 Create your first cash account
                             </h3>
-                            <p className={`text-sm mt-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                            <p className="text-sm mt-1 text-muted-foreground">
                                 This represents your main bank account or wallet
                             </p>
                         </div>
 
                         <div className="max-w-md mx-auto space-y-4">
                             <div>
-                                <label htmlFor={`${uid}-account-name`} className={`block text-sm font-medium mb-1 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                                <label htmlFor={`${uid}-account-name`} className={`block text-sm font-medium mb-1 ${isDark ? 'text-muted-foreground' : 'text-foreground'}`}>
                                     Account Name
                                 </label>
                                 <InputText id={`${uid}-account-name`}
@@ -318,7 +318,7 @@ export function OnboardingWizard({ visible, onComplete }: OnboardingWizardProps)
                             </div>
 
                             <div>
-                                <label htmlFor={`${uid}-currency`} className={`block text-sm font-medium mb-1 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                                <label htmlFor={`${uid}-currency`} className={`block text-sm font-medium mb-1 ${isDark ? 'text-muted-foreground' : 'text-foreground'}`}>
                                     Currency
                                 </label>
                                 <Dropdown inputId={`${uid}-currency`}
@@ -330,7 +330,7 @@ export function OnboardingWizard({ visible, onComplete }: OnboardingWizardProps)
                             </div>
 
                             <div>
-                                <label htmlFor={`${uid}-current-balance`} className={`block text-sm font-medium mb-1 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                                <label htmlFor={`${uid}-current-balance`} className={`block text-sm font-medium mb-1 ${isDark ? 'text-muted-foreground' : 'text-foreground'}`}>
                                     Current Balance
                                 </label>
                                 <InputNumber inputId={`${uid}-current-balance`}
@@ -350,10 +350,10 @@ export function OnboardingWizard({ visible, onComplete }: OnboardingWizardProps)
                 return (
                     <div className="space-y-6 py-4">
                         <div className="text-center mb-6">
-                            <h3 className={`text-xl font-semibold ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
+                            <h3 className="text-xl font-semibold text-foreground">
                                 Add your main income
                             </h3>
-                            <p className={`text-sm mt-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                            <p className="text-sm mt-1 text-muted-foreground">
                                 Your primary monthly income source. You can add more later.
                             </p>
                         </div>
@@ -368,13 +368,13 @@ export function OnboardingWizard({ visible, onComplete }: OnboardingWizardProps)
                                     optionValue="value"
                                 />
                             </div>
-                            <p className={`text-xs text-center ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                            <p className="text-xs text-center text-muted-foreground">
                                 Not sure about tax rates? Choose <b>Simple Amount</b> and enter what
                                 lands in your account each month — you can switch later.
                             </p>
 
                             <div>
-                                <label htmlFor={`${uid}-income-name`} className={`block text-sm font-medium mb-1 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                                <label htmlFor={`${uid}-income-name`} className={`block text-sm font-medium mb-1 ${isDark ? 'text-muted-foreground' : 'text-foreground'}`}>
                                     Income Name
                                 </label>
                                 <InputText id={`${uid}-income-name`}
@@ -387,7 +387,7 @@ export function OnboardingWizard({ visible, onComplete }: OnboardingWizardProps)
 
                             {incomeType === 'simple' ? (
                                 <div>
-                                    <label htmlFor={`${uid}-monthly-amount-after`} className={`block text-sm font-medium mb-1 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                                    <label htmlFor={`${uid}-monthly-amount-after`} className={`block text-sm font-medium mb-1 ${isDark ? 'text-muted-foreground' : 'text-foreground'}`}>
                                         Monthly Amount (after tax)
                                     </label>
                                     <InputNumber inputId={`${uid}-monthly-amount-after`}
@@ -403,7 +403,7 @@ export function OnboardingWizard({ visible, onComplete }: OnboardingWizardProps)
                             ) : (
                                 <>
                                     <div>
-                                        <label htmlFor={`${uid}-gross-salary-monthly`} className={`block text-sm font-medium mb-1 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                                        <label htmlFor={`${uid}-gross-salary-monthly`} className={`block text-sm font-medium mb-1 ${isDark ? 'text-muted-foreground' : 'text-foreground'}`}>
                                             Gross Salary (Monthly, before tax)
                                         </label>
                                         <InputNumber inputId={`${uid}-gross-salary-monthly`}
@@ -419,7 +419,7 @@ export function OnboardingWizard({ visible, onComplete }: OnboardingWizardProps)
 
                                     <div className="grid grid-cols-2 gap-3">
                                         <div>
-                                            <label htmlFor={`${uid}-tax-rate-from`} className={`block text-sm font-medium mb-1 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                                            <label htmlFor={`${uid}-tax-rate-from`} className={`block text-sm font-medium mb-1 ${isDark ? 'text-muted-foreground' : 'text-foreground'}`}>
                                                 Tax Rate (%) — from your payslip
                                             </label>
                                             <InputNumber inputId={`${uid}-tax-rate-from`}
@@ -435,7 +435,7 @@ export function OnboardingWizard({ visible, onComplete }: OnboardingWizardProps)
                                             />
                                         </div>
                                         <div>
-                                            <label htmlFor={`${uid}-contributions`} className={`block text-sm font-medium mb-1 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                                            <label htmlFor={`${uid}-contributions`} className={`block text-sm font-medium mb-1 ${isDark ? 'text-muted-foreground' : 'text-foreground'}`}>
                                                 Contributions (%)
                                             </label>
                                             <InputNumber inputId={`${uid}-contributions`}
@@ -453,7 +453,7 @@ export function OnboardingWizard({ visible, onComplete }: OnboardingWizardProps)
                                     </div>
 
                                     <div>
-                                        <label htmlFor={`${uid}-other-deductions-fixed`} className={`block text-sm font-medium mb-1 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                                        <label htmlFor={`${uid}-other-deductions-fixed`} className={`block text-sm font-medium mb-1 ${isDark ? 'text-muted-foreground' : 'text-foreground'}`}>
                                             Other Deductions (fixed amount)
                                         </label>
                                         <InputNumber inputId={`${uid}-other-deductions-fixed`}
@@ -470,7 +470,7 @@ export function OnboardingWizard({ visible, onComplete }: OnboardingWizardProps)
                                     {/* Benefits */}
                                     <div>
                                         <div className="flex items-center justify-between mb-2">
-                                            <label className={`text-sm font-medium ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                                            <label className={`text-sm font-medium ${isDark ? 'text-muted-foreground' : 'text-foreground'}`}>
                                                 Benefits
                                             </label>
                                             <Button
@@ -487,7 +487,7 @@ export function OnboardingWizard({ visible, onComplete }: OnboardingWizardProps)
                                             />
                                         </div>
                                         {salaryBenefits.map((benefit, idx) => (
-                                            <div key={benefit.id} className={`flex items-center gap-2 p-2 rounded mb-2 ${isDark ? 'bg-gray-800' : 'bg-gray-50'}`}>
+                                            <div key={benefit.id} className={`flex items-center gap-2 p-2 rounded mb-2 ${isDark ? 'bg-card' : 'bg-muted'}`}>
                                                 <InputText
                                                     placeholder="Name"
                                                     value={benefit.name}
@@ -522,7 +522,7 @@ export function OnboardingWizard({ visible, onComplete }: OnboardingWizardProps)
                                                             setSalaryBenefits(updated);
                                                         }}
                                                     />
-                                                    <span className={`text-xs whitespace-nowrap ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                                                    <span className="text-xs whitespace-nowrap text-muted-foreground">
                                                         {benefit.isTaxable ? 'Taxable' : 'Non-tax'}
                                                     </span>
                                                 </div>
@@ -541,36 +541,36 @@ export function OnboardingWizard({ visible, onComplete }: OnboardingWizardProps)
 
                                     {/* Net salary preview */}
                                     {grossSalary > 0 && (
-                                        <div className={`p-4 rounded-lg space-y-1 ${isDark ? 'bg-gray-800' : 'bg-gray-50'}`}>
+                                        <div className={`p-4 rounded-lg space-y-1 ${isDark ? 'bg-card' : 'bg-muted'}`}>
                                             <div className="flex justify-between text-sm">
-                                                <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>Gross</span>
+                                                <span className={'text-muted-foreground'}>Gross</span>
                                                 <span>{formatCurrency(grossSalary, currency)}</span>
                                             </div>
                                             {salaryBenefits.filter(b => b.amount > 0).length > 0 && (
                                                 <div className="flex justify-between text-sm">
-                                                    <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>+ Benefits</span>
+                                                    <span className={'text-muted-foreground'}>+ Benefits</span>
                                                     <span className="text-blue-500">+{formatCurrency(salaryBenefits.reduce((s, b) => s + b.amount, 0), currency)}</span>
                                                 </div>
                                             )}
                                             {taxRate > 0 && (
                                                 <div className="flex justify-between text-sm">
-                                                    <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>- Tax ({taxRate}%)</span>
+                                                    <span className={'text-muted-foreground'}>- Tax ({taxRate}%)</span>
                                                     <span className="text-red-500">-{formatCurrency(((grossSalary + salaryBenefits.filter(b => b.isTaxable).reduce((s, b) => s + b.amount, 0)) * taxRate / 100), currency)}</span>
                                                 </div>
                                             )}
                                             {contributionsRate > 0 && (
                                                 <div className="flex justify-between text-sm">
-                                                    <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>- Contributions ({contributionsRate}%)</span>
+                                                    <span className={'text-muted-foreground'}>- Contributions ({contributionsRate}%)</span>
                                                     <span className="text-red-500">-{formatCurrency(((grossSalary + salaryBenefits.filter(b => b.isTaxable).reduce((s, b) => s + b.amount, 0)) * contributionsRate / 100), currency)}</span>
                                                 </div>
                                             )}
                                             {otherDeductions > 0 && (
                                                 <div className="flex justify-between text-sm">
-                                                    <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>- Other Deductions</span>
+                                                    <span className={'text-muted-foreground'}>- Other Deductions</span>
                                                     <span className="text-red-500">-{formatCurrency(otherDeductions, currency)}</span>
                                                 </div>
                                             )}
-                                            <div className={`flex justify-between items-center pt-2 border-t ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
+                                            <div className="flex justify-between items-center pt-2 border-t border-border">
                                                 <span className="font-medium">Net Salary</span>
                                                 <span className="text-xl font-bold text-green-600">{formatCurrency(previewNetSalary, currency)}/mo</span>
                                             </div>
@@ -586,10 +586,10 @@ export function OnboardingWizard({ visible, onComplete }: OnboardingWizardProps)
                 return (
                     <div className="space-y-6 py-4">
                         <div className="text-center mb-6">
-                            <h3 className={`text-xl font-semibold ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
+                            <h3 className="text-xl font-semibold text-foreground">
                                 Add your regular expenses
                             </h3>
-                            <p className={`text-sm mt-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                            <p className="text-sm mt-1 text-muted-foreground">
                                 Add your main monthly expenses. Leave amount at 0 to skip any.
                             </p>
                         </div>
@@ -599,7 +599,7 @@ export function OnboardingWizard({ visible, onComplete }: OnboardingWizardProps)
                                 <div key={idx} className="flex items-end gap-2">
                                     <div className="flex-1">
                                         {idx === 0 && (
-                                            <label htmlFor={`${uid}-name-${idx}`} className={`block text-sm font-medium mb-1 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                                            <label htmlFor={`${uid}-name-${idx}`} className={`block text-sm font-medium mb-1 ${isDark ? 'text-muted-foreground' : 'text-foreground'}`}>
                                                 Name
                                             </label>
                                         )}
@@ -612,7 +612,7 @@ export function OnboardingWizard({ visible, onComplete }: OnboardingWizardProps)
                                     </div>
                                     <div className="flex-1">
                                         {idx === 0 && (
-                                            <label htmlFor={`${uid}-amount-${idx}`} className={`block text-sm font-medium mb-1 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                                            <label htmlFor={`${uid}-amount-${idx}`} className={`block text-sm font-medium mb-1 ${isDark ? 'text-muted-foreground' : 'text-foreground'}`}>
                                                 Amount
                                             </label>
                                         )}
@@ -655,17 +655,17 @@ export function OnboardingWizard({ visible, onComplete }: OnboardingWizardProps)
                 return (
                     <div className="text-center py-8 space-y-6">
                         <div className="text-6xl mb-4">🎉</div>
-                        <h2 className={`text-2xl font-bold ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
+                        <h2 className="text-2xl font-bold text-foreground">
                             You&apos;re all set!
                         </h2>
-                        <p className={`text-lg max-w-md mx-auto ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
+                        <p className="text-lg max-w-md mx-auto text-muted-foreground">
                             You&apos;re ready to go. You can always add more accounts, income,
                             expenses, investments, and debts later.
                         </p>
 
                         {/* Detail-level choice — persisted as the display mode on finish. */}
                         <div className="max-w-sm mx-auto space-y-2">
-                            <p className={`text-sm font-medium ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                            <p className={`text-sm font-medium ${isDark ? 'text-muted-foreground' : 'text-foreground'}`}>
                                 How much detail do you want to see?
                             </p>
                             <SelectButton
@@ -678,7 +678,7 @@ export function OnboardingWizard({ visible, onComplete }: OnboardingWizardProps)
                                 optionLabel="label"
                                 optionValue="value"
                             />
-                            <p className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                            <p className="text-xs text-muted-foreground">
                                 Simple shows the essentials in everyday words; you can switch anytime
                                 from your account menu.
                             </p>
@@ -687,21 +687,21 @@ export function OnboardingWizard({ visible, onComplete }: OnboardingWizardProps)
                         <Card className="max-w-sm mx-auto text-left">
                             <div className="space-y-3">
                                 <div className="flex items-center justify-between">
-                                    <span className={isDark ? 'text-gray-300' : 'text-gray-600'}>Account</span>
-                                    <span className={`font-semibold ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
+                                    <span className={'text-muted-foreground'}>Account</span>
+                                    <span className="font-semibold text-foreground">
                                         {accountName}
                                     </span>
                                 </div>
                                 {incomeType === 'salary' && grossSalary > 0 && (
                                     <>
                                         <div className="flex items-center justify-between">
-                                            <span className={isDark ? 'text-gray-300' : 'text-gray-600'}>Gross Salary</span>
+                                            <span className={'text-muted-foreground'}>Gross Salary</span>
                                             <span className="font-semibold">
                                                 {formatCurrency(grossSalary, currency)}/mo
                                             </span>
                                         </div>
                                         <div className="flex items-center justify-between">
-                                            <span className={isDark ? 'text-gray-300' : 'text-gray-600'}>Net Salary</span>
+                                            <span className={'text-muted-foreground'}>Net Salary</span>
                                             <span className="font-semibold text-green-500">
                                                 +{formatCurrency(previewNetSalary, currency)}/mo
                                             </span>
@@ -710,7 +710,7 @@ export function OnboardingWizard({ visible, onComplete }: OnboardingWizardProps)
                                 )}
                                 {incomeType === 'simple' && incomeAmount > 0 && (
                                     <div className="flex items-center justify-between">
-                                        <span className={isDark ? 'text-gray-300' : 'text-gray-600'}>Income</span>
+                                        <span className={'text-muted-foreground'}>Income</span>
                                         <span className="font-semibold text-green-500">
                                             +{formatCurrency(incomeAmount, currency)}/mo
                                         </span>
@@ -718,7 +718,7 @@ export function OnboardingWizard({ visible, onComplete }: OnboardingWizardProps)
                                 )}
                                 {expenses.filter(e => e.amount > 0).map((e, i) => (
                                     <div key={i} className="flex items-center justify-between">
-                                        <span className={isDark ? 'text-gray-300' : 'text-gray-600'}>{e.name}</span>
+                                        <span className={'text-muted-foreground'}>{e.name}</span>
                                         <span className="font-semibold text-red-500">
                                             -{formatCurrency(e.amount, currency)}/mo
                                         </span>

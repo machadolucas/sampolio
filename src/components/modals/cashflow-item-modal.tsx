@@ -1275,7 +1275,7 @@ export function CashflowItemModal({
             type="button"
             aria-pressed={sort.value === key}
             onClick={() => sort.onChange(key)}
-            className={`min-h-11 px-2 rounded ${sort.value === key ? 'font-semibold bg-gray-200 dark:bg-gray-700' : 'opacity-70'}`}
+            className={`min-h-11 px-2 rounded ${sort.value === key ? 'font-semibold bg-muted' : 'opacity-70'}`}
           >
             {MOBILE_SORT_LABELS[key]}
           </button>
@@ -1375,7 +1375,7 @@ export function CashflowItemModal({
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                       <Card className="p-3!">
                         <div className="text-center">
-                          <p className="text-sm text-gray-500">
+                          <p className="text-sm text-muted-foreground">
                             ≈ Monthly income
                           </p>
                           <p className="text-xl font-bold text-green-600">
@@ -1385,7 +1385,7 @@ export function CashflowItemModal({
                       </Card>
                       <Card className="p-3!">
                         <div className="text-center">
-                          <p className="text-sm text-gray-500">
+                          <p className="text-sm text-muted-foreground">
                             ≈ Monthly expenses
                           </p>
                           <p className="text-xl font-bold text-red-600">
@@ -1395,7 +1395,7 @@ export function CashflowItemModal({
                       </Card>
                       <Card className="p-3!">
                         <div className="text-center">
-                          <p className="text-sm text-gray-500">
+                          <p className="text-sm text-muted-foreground">
                             ≈ Net per month
                           </p>
                           <p
@@ -1907,7 +1907,7 @@ export function CashflowItemModal({
           {recurrence === 'salary' && (
             <>
               {!editingItem && taxDefaults && (
-                <p className="text-xs text-gray-500 dark:text-gray-400">
+                <p className="text-xs text-muted-foreground">
                   Rates below are prefilled from your defaults (Settings →
                   Finance). Editing them here only affects this salary.
                 </p>
@@ -2072,7 +2072,7 @@ export function CashflowItemModal({
                           {list.map((benefit, index) => (
                             <div
                               key={benefit.id}
-                              className="flex items-center gap-2 p-2 bg-gray-100 dark:bg-gray-800 rounded-lg"
+                              className="flex items-center gap-2 p-2 bg-muted rounded-lg"
                             >
                               <InputText
                                 aria-label="Benefit name"
@@ -2145,7 +2145,7 @@ export function CashflowItemModal({
               />
 
               {/* Net salary preview */}
-              <div className="p-4 bg-gray-100 dark:bg-gray-800 rounded-lg space-y-1">
+              <div className="p-4 bg-muted rounded-lg space-y-1">
                 {benefits.length > 0 && (
                   <div className="flex justify-between text-xs text-muted-foreground">
                     <span>Taxable Gross</span>
@@ -2372,7 +2372,7 @@ export function CashflowItemModal({
 
               {/* Net preview */}
               {tiNet && (
-                <div className="p-4 bg-gray-100 dark:bg-gray-800 rounded-lg space-y-1">
+                <div className="p-4 bg-muted rounded-lg space-y-1">
                   <div className="flex justify-between text-xs text-muted-foreground">
                     <span>Tax</span>
                     <span>−{formatCurrency(tiNet.taxAmount, currency)}</span>

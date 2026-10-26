@@ -5,7 +5,7 @@ Monthly cash flow management page — the core feature for tracking income and e
 ## Key Files
 
 - `page.tsx` — orchestration: data fetching, `flowData` assembly, edit routing, dialogs, layout.
-- `src/components/cashflow/cashflow-header.tsx` — the sticky header (title, account selector, action buttons, month strip). **On mobile it collapses on scroll** (hysteresis: collapse past ~140px, expand under ~24px) to a slim bar with a compact month strip + an account chip; desktop (`lg+`) never collapses.
+- `src/components/cashflow/cashflow-header.tsx` — the floating glass toolbar (title, account selector, action buttons, month strip), sticky below mobile chrome (`4.5rem` plus safe area) or inset on desktop (`0.5rem` plus safe area). **On mobile it collapses on scroll** (hysteresis: collapse past ~140px, expand under ~24px) to a slim bar with a compact month strip + an account chip; desktop (`lg+`) never collapses.
 - `src/components/cashflow/month-strip.tsx` — the month strip (`compact` prop = collapsed variant without the year row).
 - `src/components/cashflow/month-details-panel.tsx` — selected-month breakdown + `SortToggle`.
 - `src/components/cashflow/projection-table.tsx` — desktop TanStack-backed DataTable + labeled mobile card list (in/out/net captions); in Simple mode trims the forecast tail to ~12 months behind a "Show all months" toggle. The DataTable remounts on `key={demoMasked ? 'masked' : 'plain'}` so demo-mode money masking re-runs its cell formatters (see `docs/features.md` §10).
@@ -21,7 +21,7 @@ Monthly cash flow management page — the core feature for tracking income and e
 Base UI combobox-backed Dropdown in the page header to switch between cash accounts. Only shows active (non-archived) accounts. Renders a wallet icon + the account's **current balance** ("Everyday · €1 234") via `valueTemplate`/`itemTemplate` so it reads as an account picker. The account list comes from AppLayout's context (`appContext.accounts`, filtered to non-archived; the page makes no `getAccounts` call of its own) and the page shows its loading state until `appContext.accountsLoaded`. The user's pick is page state; the effective selection falls back to the first active account and re-picks when the chosen one is archived or deleted.
 
 ### Month Strip Navigation
-Horizontal scrollable strip of months from the account's start date through its planning horizon. Clicking a month selects it and scrolls to show details. The current month is highlighted (blue); **retrospective "actual" months** (real bank data, before the anchor) render with a distinct purple/dashed style + a history icon (see "Retrospective" below).
+Horizontal scrollable strip of months from the account's start date through its planning horizon. Clicking a month selects it and scrolls to show details. The selected month uses the primary green fill and the current month uses the accent; **retrospective "actual" months** (real bank data, before the anchor) render with a dashed neutral border + a history icon (see "Retrospective" below).
 
 ### Retrospective (bank-actual past months)
 When the selected cash account is linked to a synced bank account, `getProjection` also returns `retrospective: MonthlyProjection[]` — up to 24 months **before** the forecast anchor, reconstructed **purely from real booked bank transactions** (no Sampolio forecast items). The page merges them as `displayMonths = [...retrospective, ...projection]` and feeds that to the strip, table, mobile cards, waterfall chart, and selected-month lookup.

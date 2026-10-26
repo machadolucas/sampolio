@@ -1,7 +1,6 @@
 "use client";
 
 import { formatCurrency } from "@/lib/constants";
-import { useTheme } from "@/components/providers/theme-provider";
 import type { Currency } from "@/types";
 import type { FundingAllocation } from "@/lib/budget-utils";
 
@@ -27,9 +26,7 @@ export function BudgetCoverageBars({
   allocation: FundingAllocation;
   currency: Currency;
 }) {
-  const { theme } = useTheme();
-  const isDark = theme === "dark";
-  const trackColor = isDark ? "bg-neutral-700" : "bg-neutral-200";
+  const trackColor = "bg-muted";
 
   const colorBySource = new Map(
     allocation.perSource.map((s, i) => [

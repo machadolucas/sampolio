@@ -628,6 +628,15 @@ glass belongs to floating navigation, toolbars and contextual controls; avoid ne
 blur and clear glass over financial content. System fonts, tabular financial numerals,
 rounded controls and the green accent retain Sampolio's identity. Semantic category
 colors remain; `src/lib/color-contrast.ts` chooses legible text on solid fills.
+Neutral surfaces use `bg-card`/`bg-muted`, `border-border` and foreground tokens
+instead of fixed gray or blue palettes.
+
+Dialog/sheet roots remain transparent and do not establish a backdrop filter: the
+strongly filled header alone blurs the page, while content and action rows stay opaque.
+In CSS, place `-webkit-backdrop-filter` before `backdrop-filter` so minification
+preserves the standard declaration. Material acceptance checks compare rendered
+header pixels with blur enabled/disabled, as well as computed styles and solid
+reduced-transparency fallbacks.
 
 `ThemeProvider` retains `sampolio-theme` and adds device-local
 `sampolio-reduce-transparency`; OS increased contrast/reduced transparency also force

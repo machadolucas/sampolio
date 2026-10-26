@@ -136,16 +136,16 @@ export function RecurrenceRuleDialog({
           onChange={setDraft}
         />
 
-        <div className="flex items-center gap-2 border-t pt-3 border-gray-100 dark:border-gray-800">
-          <span className="text-sm text-gray-500 w-20 shrink-0">Repeats</span>
+        <div className="flex items-center gap-2 border-t pt-3 border-border">
+          <span className="text-sm text-muted-foreground w-20 shrink-0">Repeats</span>
           <Dropdown value={interval} onChange={(e) => { if (e.value !== null) setInterval(e.value); }} options={SPLIT_INTERVALS} className="flex-1 min-w-0" />
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-sm text-gray-500 w-20 shrink-0">Starting</span>
+          <span className="text-sm text-muted-foreground w-20 shrink-0">Starting</span>
           <Calendar value={anchorDate} onChange={(e) => e.value && setAnchorDate(e.value as Date)} dateFormat="dd.mm.yy" className="flex-1 min-w-0" />
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-sm text-gray-500 w-20 shrink-0">Ends</span>
+          <span className="text-sm text-muted-foreground w-20 shrink-0">Ends</span>
           {/* No `e.value &&` guard — the Clear button sends null to stop the recurrence's end. */}
           <Calendar
             value={endDate}
@@ -157,9 +157,9 @@ export function RecurrenceRuleDialog({
             className="flex-1 min-w-0"
           />
         </div>
-        <p className="text-xs text-gray-400 -mt-1 pl-[calc(5rem+0.5rem)]">Shortening the end date removes generated expenses after it.</p>
+        <p className="text-xs text-muted-foreground -mt-1 pl-[calc(5rem+0.5rem)]">Shortening the end date removes generated expenses after it.</p>
         <div className="flex items-center gap-2">
-          <span className="text-sm text-gray-500 w-20 shrink-0">Category</span>
+          <span className="text-sm text-muted-foreground w-20 shrink-0">Category</span>
           <Dropdown value={category} onChange={(e) => { if (e.value !== null) setCategory(e.value); }} options={SPLIT_CATEGORIES.filter((c) => c !== 'Payment')} filter className="flex-1 min-w-0" />
         </div>
         {error && <Message severity="error" text={error} />}

@@ -337,11 +337,9 @@
     overflow: hidden;
     border: 1px solid var(--glass-border);
     border-radius: 1.5rem;
-    background: var(--glass-bg-strong);
+    background: transparent;
     color: var(--foreground);
     box-shadow: var(--glass-shadow);
-    backdrop-filter: blur(var(--glass-blur)) saturate(150%);
-    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(150%);
     outline: none;
   }
   .ui-dialog-maximized {
@@ -353,7 +351,13 @@
       96dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom)
     );
   }
+  /* Keep the popup root out of the backdrop-root chain: its header alone
+     samples the page, while editable content and action rows stay opaque. */
   .ui-dialog-header {
+    background: var(--glass-bg-strong);
+    /* WebKit must precede standard: minification keeps the last declaration. */
+    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(150%);
+    backdrop-filter: blur(var(--glass-blur)) saturate(150%);
     display: flex;
     flex-shrink: 0;
     align-items: center;
@@ -373,6 +377,7 @@
     gap: 1rem;
   }
   .ui-dialog-footer {
+    background: var(--card);
     display: flex;
     flex-wrap: wrap;
     flex-shrink: 0;
@@ -395,12 +400,15 @@
     width: min(28rem, 95vw);
     max-width: 95vw;
     color: var(--foreground);
-    background: var(--card);
+    background: transparent;
     border: 1px solid var(--border);
     box-shadow: var(--glass-shadow);
     outline: none;
     padding-top: env(safe-area-inset-top);
     padding-bottom: env(safe-area-inset-bottom);
+  }
+  .ui-sheet-content {
+    background: var(--card);
   }
   .ui-sheet-left {
     inset: 0 auto 0 0;
@@ -439,8 +447,8 @@
     background: var(--glass-bg-strong);
     color: var(--foreground);
     box-shadow: var(--glass-shadow);
-    backdrop-filter: blur(var(--glass-blur)) saturate(150%);
     -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(150%);
+    backdrop-filter: blur(var(--glass-blur)) saturate(150%);
     outline: none;
   }
   .ui-select-item,
@@ -504,8 +512,8 @@
     background: var(--glass-bg-strong);
     color: var(--foreground);
     box-shadow: var(--glass-shadow);
-    backdrop-filter: blur(var(--glass-blur));
     -webkit-backdrop-filter: blur(var(--glass-blur));
+    backdrop-filter: blur(var(--glass-blur));
   }
   .ui-toast[data-limited] {
     display: none;
@@ -625,8 +633,8 @@
     background: var(--glass-bg-strong);
     border-color: var(--glass-border);
     box-shadow: var(--glass-shadow);
-    backdrop-filter: blur(var(--glass-blur)) saturate(150%);
     -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(150%);
+    backdrop-filter: blur(var(--glass-blur)) saturate(150%);
   }
   .ui-data-table,
   .sampolio-data-table {
@@ -685,18 +693,18 @@
   }
 }
 [data-reduce-transparency] .glass-chrome,
-[data-reduce-transparency] .ui-dialog,
+[data-reduce-transparency] .ui-dialog-header,
 [data-reduce-transparency] .ui-select-popup,
 [data-reduce-transparency] .ui-toast {
   background: var(--card);
-  backdrop-filter: none;
   -webkit-backdrop-filter: none;
+  backdrop-filter: none;
 }
 @supports not (
   (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))
 ) {
   .glass-chrome,
-  .ui-dialog,
+  .ui-dialog-header,
   .ui-select-popup,
   .ui-toast {
     background: var(--card);
@@ -704,23 +712,23 @@
 }
 @media (prefers-contrast: more) {
   .glass-chrome,
-  .ui-dialog,
+  .ui-dialog-header,
   .ui-select-popup,
   .ui-toast {
     background: var(--card);
-    backdrop-filter: none;
     -webkit-backdrop-filter: none;
+    backdrop-filter: none;
     border-color: var(--foreground);
   }
 }
 @media (prefers-reduced-transparency: reduce) {
   .glass-chrome,
-  .ui-dialog,
+  .ui-dialog-header,
   .ui-select-popup,
   .ui-toast {
     background: var(--card);
-    backdrop-filter: none;
     -webkit-backdrop-filter: none;
+    backdrop-filter: none;
   }
 }
 
@@ -992,8 +1000,8 @@
 body:has(.ui-dialog) .ui-select-popup,
 body:has(.ui-sheet) .ui-select-popup {
   background: var(--card);
-  backdrop-filter: none;
   -webkit-backdrop-filter: none;
+  backdrop-filter: none;
 }
 
 /* Financial status text retains AA contrast on opaque light/dark data surfaces. */
@@ -1073,4 +1081,40 @@ body:has(.ui-sheet) .ui-select-popup {
   --rdp-weekday-opacity: 1;
   --rdp-day-height: 44px;
   --rdp-day-width: 44px;
+  --rdp-day_button-width: 44px;
+  --rdp-day_button-height: 44px;
+  --rdp-nav_button-width: 44px;
+  --rdp-nav_button-height: 44px;
+  --rdp-nav-height: 44px;
+}
+
+/* Preserve DayPicker's rdp-* geometry; scoped rules only define the app material. */
+.ui-calendar .ui-calendar-nav-button {
+  flex-shrink: 0;
+  border-radius: 0.625rem;
+  color: var(--foreground);
+  background: transparent;
+}
+@media (hover: hover) and (pointer: fine) {
+  .ui-calendar .ui-calendar-nav-button:not(:disabled):hover {
+    background: var(--accent);
+  }
+}
+.ui-calendar .ui-calendar-nav-button:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.ui-calendar .ui-calendar-day {
+  width: 44px;
+  height: 44px;
+  border-radius: 0.625rem;
+}
+.ui-calendar .ui-calendar-selected .ui-calendar-day {
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+.ui-calendar .ui-calendar-today:not(.ui-calendar-selected) {
+  color: var(--primary);
+  font-weight: 700;
 }

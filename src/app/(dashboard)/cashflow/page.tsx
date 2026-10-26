@@ -7,7 +7,6 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tag } from '@/components/ui/tag';
 import { Dialog } from '@/components/ui/dialog';
-import { useTheme } from '@/components/providers/theme-provider';
 import { useAppContext } from '@/components/layout/app-layout';
 import { formatCurrency, formatYearMonth } from '@/lib/constants';
 import { helpText } from '@/lib/plain-language';
@@ -15,7 +14,7 @@ import type { CardFlowBreakdown } from '@/components/charts/monthly-flow-chart';
 // The ECharts-based charts are large; code-split them into their own chunk so
 // they don't bloat the cashflow page's initial JS (ssr:false — charts are
 // client-only anyway). A short-delayed placeholder holds their layout height.
-const ChartLoading = () => <div className="h-72 lg:h-96 rounded-lg bg-gray-100 dark:bg-gray-800/50 animate-pulse" />;
+const ChartLoading = () => <div className="h-72 lg:h-96 rounded-lg bg-muted animate-pulse" />;
 const MonthlyFlowChart = dynamic(
     () => import('@/components/charts/monthly-flow-chart').then((m) => m.MonthlyFlowChart),
     { ssr: false, loading: ChartLoading },
@@ -46,8 +45,6 @@ import { resolveSeriesEditTarget } from '@/lib/cashflow-edit-target';
 export default function CashflowPage() {
     const appContext = useAppContext();
     const router = useRouter();
-    const { theme } = useTheme();
-    const isDark = theme === 'dark';
 
     // Accounts come from AppLayout's context (it already fetches them) — no
     // second getAccounts round trip from this page.
@@ -502,9 +499,9 @@ export default function CashflowPage() {
     if (accounts.length === 0) {
         return (
             <Card>
-                <div className={`text-center py-12 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                <div className="text-center py-12 text-muted-foreground">
                     <MdAccountBalanceWallet size={48} className="mb-4" />
-                    <h2 className={`text-xl font-semibold mb-2 ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
+                    <h2 className="text-xl font-semibold mb-2 text-foreground">
                         No Cash Accounts
                     </h2>
                     <p className="mb-4">Create a cash account to start tracking your cashflow.</p>
@@ -595,9 +592,9 @@ export default function CashflowPage() {
                     <Card className="bg-linear-to-r! from-accent-600/10 to-accent-400/10 border border-accent-500/20">
                         <div className="flex items-center justify-between">
                             <div>
-                                <p className={`text-xs uppercase tracking-wider mb-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Selected Month</p>
+                                <p className="text-xs uppercase tracking-wider mb-1 text-muted-foreground">Selected Month</p>
                                 <div className="flex items-center gap-2 flex-wrap">
-                                    <h2 className={`text-2xl font-bold ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
+                                    <h2 className="text-2xl font-bold text-foreground">
                                         {formatYearMonth(selectedMonth)}
                                     </h2>
                                     {selectedProjection.isActual && (
@@ -631,33 +628,33 @@ export default function CashflowPage() {
                             </div>
                             <div className="flex items-center gap-6 text-sm">
                                 <div className="text-center">
-                                    <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                                    <div className="text-xs text-muted-foreground">
                                         {isSimple ? 'Money in' : selectedProjection.isActualized ? 'Income left' : 'Income'}
                                     </div>
                                     <div className="text-green-500 font-semibold">+{formatCurrency(selectedProjection.totalIncome, currency as Currency)}</div>
                                     {!isSimple && selectedProjection.isActualized
                                         && selectedProjection.plannedTotalIncome !== undefined
                                         && selectedProjection.plannedTotalIncome !== selectedProjection.totalIncome && (
-                                            <div className={`text-[10px] ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                                            <div className="text-[10px] text-muted-foreground">
                                                 of {formatCurrency(selectedProjection.plannedTotalIncome, currency as Currency)} planned
                                             </div>
                                         )}
                                 </div>
                                 <div className="text-center">
-                                    <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                                    <div className="text-xs text-muted-foreground">
                                         {isSimple ? 'Money out' : selectedProjection.isActualized ? 'Expenses left' : 'Expenses'}
                                     </div>
                                     <div className="text-red-500 font-semibold">-{formatCurrency(selectedProjection.totalExpenses, currency as Currency)}</div>
                                     {!isSimple && selectedProjection.isActualized
                                         && selectedProjection.plannedTotalExpenses !== undefined
                                         && selectedProjection.plannedTotalExpenses !== selectedProjection.totalExpenses && (
-                                            <div className={`text-[10px] ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                                            <div className="text-[10px] text-muted-foreground">
                                                 of {formatCurrency(selectedProjection.plannedTotalExpenses, currency as Currency)} planned
                                             </div>
                                         )}
                                 </div>
                                 <div className="text-center">
-                                    <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                                    <div className="text-xs text-muted-foreground">
                                         {isSimple ? 'Left over' : selectedProjection.isActualized ? 'Net left' : 'Net'}
                                     </div>
                                     <div className={`font-semibold ${selectedProjection.netChange >= 0 ? 'text-green-500' : 'text-red-500'}`}>
@@ -674,7 +671,7 @@ export default function CashflowPage() {
                     {/* Left column: 2/3 width — hidden in simple mode unless "Show more" */}
                     {(!isSimple || showMoreCharts) && <div className="lg:col-span-2 space-y-6">
                         <Card>
-                            <h3 className={`flex items-center font-semibold ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
+                            <h3 className="flex items-center font-semibold text-foreground">
                                 <MdAccountTree className="mr-2" />Monthly Flow
                                 <Tooltip content="Sankey diagram showing how your income flows into expenses. Left side shows individual income sources, center aggregates into your budget, right side breaks down expenses by category and individual items."><button type="button" aria-label="More information" className="inline-flex min-h-11 min-w-11 items-center justify-center"><MdInfoOutline
                                     className="info-monthly-flow ml-auto opacity-40 cursor-help"
@@ -686,14 +683,14 @@ export default function CashflowPage() {
                                 deliberately higher than the (net) Selected Month card
                                 above — say so instead of confusing. */}
                             {flowShowsGross && (
-                                <p className={`text-xs mb-3 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                                <p className="text-xs mb-3 text-muted-foreground">
                                     Shows gross salary and taxed income — taxes &amp; deductions appear as
                                     outflows, so income here is higher than the net figure above. Click a
                                     deduction to open its source.
                                 </p>
                             )}
                             {selectedProjection?.isActualized && (
-                                <p className={`text-xs mb-3 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                                <p className="text-xs mb-3 text-muted-foreground">
                                     Some items are already paid — balance figures account for that.
                                 </p>
                             )}
@@ -714,14 +711,14 @@ export default function CashflowPage() {
                                     }}
                                 />
                             ) : (
-                                <div className={`text-center py-12 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                                <div className="text-center py-12 text-muted-foreground">
                                     No data for selected month
                                 </div>
                             )}
                         </Card>
 
                         <Card>
-                            <h3 className={`flex items-center font-semibold mb-3 ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
+                            <h3 className="flex items-center font-semibold mb-3 text-foreground">
                                 <MdBarChart className="mr-2" />Cashflow Projection
                                 <Tooltip content="Waterfall chart showing your projected balance over time. Green bars represent income, red bars represent expenses, and the line tracks your running balance across months."><button type="button" aria-label="More information" className="inline-flex min-h-11 min-w-11 items-center justify-center"><MdInfoOutline
                                     className="info-waterfall ml-auto opacity-40 cursor-help"
@@ -740,7 +737,7 @@ export default function CashflowPage() {
                     {/* Right column: 1/3 width */}
                     <div className="space-y-6">
                         <Card>
-                            <h3 className={`flex items-center font-semibold mb-2 ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
+                            <h3 className="flex items-center font-semibold mb-2 text-foreground">
                                 Month Details
                                 <Tooltip content="Detailed breakdown of all income and expense items for the selected month. Shows starting and ending balance with the net change. Click any item to edit it."><button type="button" aria-label="More information" className="inline-flex min-h-11 min-w-11 items-center justify-center"><MdInfoOutline
                                     className="info-month-details ml-auto opacity-40 cursor-help"
@@ -761,7 +758,7 @@ export default function CashflowPage() {
 
                         {selectedProjection && selectedProjection.expenseBreakdown.length > 0 && (!isSimple || showMoreCharts) && (
                             <Card className="overflow-visible">
-                                <h3 className={`flex items-center font-semibold mb-3 ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
+                                <h3 className="flex items-center font-semibold mb-3 text-foreground">
                                     <MdBarChart className="mr-2" />Expenses Breakdown
                                     <Tooltip content="Treemap showing the proportional size of each expense category and item for the selected month. Larger blocks represent bigger expenses, making it easy to spot where most money goes."><button type="button" aria-label="More information" className="inline-flex min-h-11 min-w-11 items-center justify-center"><MdInfoOutline
                                         className="info-treemap ml-auto opacity-40 cursor-help"
@@ -794,11 +791,11 @@ export default function CashflowPage() {
 
                 {/* Data Table */}
                 <div className={isSimple && !showMoreCharts ? 'hidden' : ''}>
-                    <div className={`mt-4 pt-6 border-t-2 ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
-                        <p className={`text-xs uppercase tracking-wider mb-3 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>All Months Overview</p>
+                    <div className="mt-4 pt-6 border-t-2 border-border">
+                        <p className="text-xs uppercase tracking-wider mb-3 text-muted-foreground">All Months Overview</p>
                     </div>
                     <Card>
-                        <h3 className={`flex items-center font-semibold mb-3 ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
+                        <h3 className="flex items-center font-semibold mb-3 text-foreground">
                             <MdTableChart className="mr-2" />Projection Data
                             <Tooltip content="Table showing the full projection across all months — not just the selected one. Displays income, expenses, net change, and running balance. Click any row to jump to that month."><button type="button" aria-label="More information" className="inline-flex min-h-11 min-w-11 items-center justify-center"><MdInfoOutline
                                 className="info-projection ml-auto opacity-40 cursor-help"

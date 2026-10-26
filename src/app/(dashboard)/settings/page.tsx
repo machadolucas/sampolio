@@ -334,7 +334,7 @@ function SettingsPageInner() {
         });
     };
 
-    const heading = `text-lg font-semibold mb-4 ${isDark ? 'text-gray-100' : 'text-gray-900'}`;
+    const heading = `text-lg font-semibold mb-4 text-foreground`;
 
     // ---- Section cards (composed into tabs below) ----
 
@@ -347,11 +347,11 @@ function SettingsPageInner() {
                     className={`p-4 rounded-lg border-2 text-left transition-colors ${
                         appContext?.displayMode === 'simple'
                             ? 'border-accent-500 bg-accent-50 dark:bg-accent-400/15'
-                            : isDark ? 'border-gray-700 hover:border-gray-600' : 'border-gray-200 hover:border-gray-300'
+                            : 'border-border hover:border-input'
                     }`}
                 >
-                    <p className={`font-semibold ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>Simple</p>
-                    <p className={`text-sm mt-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                    <p className="font-semibold text-foreground">Simple</p>
+                    <p className="text-sm mt-1 text-muted-foreground">
                         Clean overview with key numbers and trends
                     </p>
                 </button>
@@ -360,11 +360,11 @@ function SettingsPageInner() {
                     className={`p-4 rounded-lg border-2 text-left transition-colors ${
                         appContext?.displayMode === 'advanced'
                             ? 'border-accent-500 bg-accent-50 dark:bg-accent-400/15'
-                            : isDark ? 'border-gray-700 hover:border-gray-600' : 'border-gray-200 hover:border-gray-300'
+                            : 'border-border hover:border-input'
                     }`}
                 >
-                    <p className={`font-semibold ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>Advanced</p>
-                    <p className={`text-sm mt-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                    <p className="font-semibold text-foreground">Advanced</p>
+                    <p className="text-sm mt-1 text-muted-foreground">
                         Full details, charts, and projections
                     </p>
                 </button>
@@ -377,8 +377,8 @@ function SettingsPageInner() {
             <h2 className={heading}>Appearance</h2>
             <div className="flex items-center justify-between">
                 <div>
-                    <label htmlFor={`${uid}-settings-dark-mode`} className={`block ${isDark ? 'text-gray-200' : 'text-gray-700'}`}>Dark Mode</label>
-                    <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                    <label htmlFor={`${uid}-settings-dark-mode`} className="block text-foreground">Dark Mode</label>
+                    <p className="text-sm text-muted-foreground">
                         Use dark theme for the interface
                     </p>
                 </div>
@@ -396,8 +396,8 @@ function SettingsPageInner() {
             <h2 className={heading}>Reminders</h2>
             <div className="flex items-center justify-between gap-4">
                 <div className="min-w-0 flex-1">
-                    <label htmlFor={`${uid}-settings-checkin-reminders`} className={`block ${isDark ? 'text-gray-200' : 'text-gray-700'}`}>Monthly check-in reminders</label>
-                    <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                    <label htmlFor={`${uid}-settings-checkin-reminders`} className="block text-foreground">Monthly check-in reminders</label>
+                    <p className="text-sm text-muted-foreground">
                         Show the &quot;time to check in&quot; banner on Overview each month. With bank sync
                         keeping balances current, you may only need occasional manual check-ins (e.g. investments).
                     </p>
@@ -421,10 +421,10 @@ function SettingsPageInner() {
                 />
             </div>
             {/* Sub-toggle: local device notification. Only meaningful while reminders are on. */}
-            <div className={`flex items-center justify-between gap-4 mt-4 pl-4 border-l-2 ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
+            <div className="flex items-center justify-between gap-4 mt-4 pl-4 border-l-2 border-border">
                 <div className="min-w-0 flex-1">
-                    <label htmlFor={`${uid}-settings-checkin-notifications`} className={`block ${isDark ? 'text-gray-200' : 'text-gray-700'}`}>Also notify on this device</label>
-                    <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                    <label htmlFor={`${uid}-settings-checkin-notifications`} className="block text-foreground">Also notify on this device</label>
+                    <p className="text-sm text-muted-foreground">
                         When a monthly check-in is due, show a notification on this device the next time
                         you open the app. Uses the browser&apos;s notification permission — nothing is sent
                         to any server.
@@ -492,7 +492,7 @@ function SettingsPageInner() {
     const pushNotificationsCard = (
         <Card>
             <h2 className={heading}>Push notifications</h2>
-            <p className={`text-sm mb-4 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+            <p className="text-sm mb-4 text-muted-foreground">
                 Split activity delivered to your phone via Home Assistant. Applies to all your
                 split groups — and you are never notified about your own changes.
             </p>
@@ -505,7 +505,7 @@ function SettingsPageInner() {
             <div className="divide-y divide-gray-200/40 dark:divide-gray-700/40">
                 {SPLIT_NOTIFY_TOGGLES.map(({ key, label }) => (
                     <div key={key} className="flex items-center justify-between gap-4 min-h-11 py-2">
-                        <span className={`min-w-0 flex-1 ${isDark ? 'text-gray-200' : 'text-gray-700'}`}>{label}</span>
+                        <span className="min-w-0 flex-1 text-foreground">{label}</span>
                         <InputSwitch
                             className="shrink-0"
                             aria-label={label}
@@ -529,8 +529,8 @@ function SettingsPageInner() {
                     { label: 'Start monthly check-in', key: '⌘M' },
                 ].map(s => (
                     <div key={s.key} className="flex items-center justify-between">
-                        <span className={isDark ? 'text-gray-200' : 'text-gray-700'}>{s.label}</span>
-                        <kbd className={`px-2 py-1 rounded text-sm ${isDark ? 'bg-gray-800 text-gray-300' : 'bg-gray-100 text-gray-600'}`}>
+                        <span className={'text-foreground'}>{s.label}</span>
+                        <kbd className={`px-2 py-1 rounded text-sm ${isDark ? 'bg-card text-muted-foreground' : 'bg-muted text-muted-foreground'}`}>
                             {s.key}
                         </kbd>
                     </div>
@@ -542,7 +542,7 @@ function SettingsPageInner() {
     const categoriesCard = (
         <Card>
             <h2 className={heading}>Categories</h2>
-            <p className={`mb-4 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+            <p className="mb-4 text-muted-foreground">
                 Manage categories for income and expenses. Click ✕ to remove a category.
             </p>
             <div className="flex flex-wrap gap-2 mb-4">
@@ -564,7 +564,7 @@ function SettingsPageInner() {
             </div>
             {removedDefaults.length > 0 && (
                 <div className="mb-4">
-                    <p className={`text-xs mb-2 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>Removed defaults (click to restore):</p>
+                    <p className="text-xs mb-2 text-muted-foreground">Removed defaults (click to restore):</p>
                     <div className="flex flex-wrap gap-1">
                         {removedDefaults.map(cat => (
                             <button
@@ -637,13 +637,13 @@ function SettingsPageInner() {
     const taxCard = (
         <Card>
             <h2 className={heading}>My tax &amp; contribution defaults</h2>
-            <p className={`mb-4 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+            <p className="mb-4 text-muted-foreground">
                 These apply only to your account. They pre-fill the form when you create a new salary
                 configuration — changing them never affects existing salaries or other users.
             </p>
             <div className="space-y-4 max-w-md">
                 <div>
-                    <label htmlFor={`${uid}-default-tax-rate`} className={`block text-sm font-medium mb-1 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                    <label htmlFor={`${uid}-default-tax-rate`} className={`block text-sm font-medium mb-1 ${isDark ? 'text-muted-foreground' : 'text-foreground'}`}>
                         Default Tax Rate (%)
                     </label>
                     <InputNumber inputId={`${uid}-default-tax-rate`}
@@ -659,7 +659,7 @@ function SettingsPageInner() {
                     />
                 </div>
                 <div>
-                    <label htmlFor={`${uid}-default-contributions-rate`} className={`block text-sm font-medium mb-1 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                    <label htmlFor={`${uid}-default-contributions-rate`} className={`block text-sm font-medium mb-1 ${isDark ? 'text-muted-foreground' : 'text-foreground'}`}>
                         Default Contributions Rate (%)
                     </label>
                     <InputNumber inputId={`${uid}-default-contributions-rate`}
@@ -675,7 +675,7 @@ function SettingsPageInner() {
                     />
                 </div>
                 <div>
-                    <label htmlFor={`${uid}-default-other-deductions`} className={`block text-sm font-medium mb-1 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                    <label htmlFor={`${uid}-default-other-deductions`} className={`block text-sm font-medium mb-1 ${isDark ? 'text-muted-foreground' : 'text-foreground'}`}>
                         Default Other Deductions (fixed amount)
                     </label>
                     <InputNumber inputId={`${uid}-default-other-deductions`}
@@ -717,7 +717,7 @@ function SettingsPageInner() {
     const accountsCard = (
         <Card>
             <h2 className={heading}>Accounts</h2>
-            <p className={`mb-4 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+            <p className="mb-4 text-muted-foreground">
                 Manage, archive, or remove your cash accounts
             </p>
             <Button
@@ -735,8 +735,8 @@ function SettingsPageInner() {
             <div className="space-y-4">
                 <div className="flex items-center justify-between gap-4">
                     <div className="min-w-0 flex-1">
-                        <p className={isDark ? 'text-gray-200' : 'text-gray-700'}>Export Data</p>
-                        <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                        <p className={'text-foreground'}>Export Data</p>
+                        <p className="text-sm text-muted-foreground">
                             Download all your financial data as JSON (bank connections and shared
                             mortgages/split groups are not included)
                         </p>
@@ -746,8 +746,8 @@ function SettingsPageInner() {
                 <Divider />
                 <div className="flex items-center justify-between gap-4">
                     <div className="min-w-0 flex-1">
-                        <p className={isDark ? 'text-gray-200' : 'text-gray-700'}>Import Data</p>
-                        <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                        <p className={'text-foreground'}>Import Data</p>
+                        <p className="text-sm text-muted-foreground">
                             Import financial data from a Sampolio JSON backup
                         </p>
                     </div>
@@ -770,10 +770,10 @@ function SettingsPageInner() {
 
     const dataStorageCard = (
         <Card>
-            <h2 className={`text-lg font-semibold mb-2 ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
+            <h2 className="text-lg font-semibold mb-2 text-foreground">
                 Data &amp; storage
             </h2>
-            <p className={`text-sm mb-4 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+            <p className="text-sm mb-4 text-muted-foreground">
                 Old reconciliation history — balance snapshots and check-in logs from before your latest check-in —
                 isn&apos;t used by your forecasts. Clearing it keeps your data tidy. Your latest balances (the anchors
                 your forecasts build on) and every projection stay exactly the same.
@@ -820,8 +820,8 @@ function SettingsPageInner() {
             <div className="space-y-4">
                 <div className="flex items-center justify-between gap-4">
                     <div className="min-w-0 flex-1">
-                        <label htmlFor={`${uid}-settings-self-signup`} className={`block ${isDark ? 'text-gray-200' : 'text-gray-700'}`}>Allow Self-Signup</label>
-                        <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                        <label htmlFor={`${uid}-settings-self-signup`} className="block text-foreground">Allow Self-Signup</label>
+                        <p className="text-sm text-muted-foreground">
                             Enable new users to register without admin approval
                         </p>
                     </div>
@@ -830,8 +830,8 @@ function SettingsPageInner() {
                 <Divider />
                 <div className="flex items-center justify-between gap-4">
                     <div className="min-w-0 flex-1">
-                        <p className={isDark ? 'text-gray-200' : 'text-gray-700'}>Manage Users</p>
-                        <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                        <p className={'text-foreground'}>Manage Users</p>
+                        <p className="text-sm text-muted-foreground">
                             View and manage user accounts
                         </p>
                     </div>
@@ -847,8 +847,8 @@ function SettingsPageInner() {
                 <Divider />
                 <div className="flex items-center justify-between gap-4">
                     <div className="min-w-0 flex-1">
-                        <p className={isDark ? 'text-gray-200' : 'text-gray-700'}>Force Revalidate Caches</p>
-                        <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                        <p className={'text-foreground'}>Force Revalidate Caches</p>
+                        <p className="text-sm text-muted-foreground">
                             Clear all in-memory data caches and force fresh reads from disk
                         </p>
                     </div>
@@ -879,11 +879,11 @@ function SettingsPageInner() {
         <Card>
             <h2 className={heading}>About</h2>
             <div className="space-y-2">
-                <p className={isDark ? 'text-gray-300' : 'text-gray-600'}>
+                <p className={'text-muted-foreground'}>
                     <strong>Sampolio</strong> - Personal Finance Planning Tool
                 </p>
                 {appVersion && (
-                    <p className={`text-sm ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                    <p className="text-sm text-muted-foreground">
                         Version {appVersion}
                     </p>
                 )}
@@ -925,7 +925,7 @@ function SettingsPageInner() {
         >
             {importCandidate && (
                 <div className="space-y-4">
-                    <p className={`text-sm ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
+                    <p className="text-sm text-muted-foreground">
                         <strong>{importCandidate.fileName}</strong> contains {importCandidate.accountCount} account(s).
                         By default it is <strong>merged</strong> into your current data: entries with the same ids are
                         overwritten, everything else is kept. Bank connections are never touched.
@@ -942,7 +942,7 @@ function SettingsPageInner() {
                             checked={importReplaceMode}
                             onChange={(e) => setImportReplaceMode(e.checked ?? false)}
                         />
-                        <label htmlFor="import-replace" className={`text-sm ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
+                        <label htmlFor="import-replace" className="text-sm text-muted-foreground">
                             Replace all my current data instead of merging <span className="text-red-500">(deletes everything first)</span>
                         </label>
                     </div>
@@ -956,10 +956,10 @@ function SettingsPageInner() {
             {importDialog}
             {/* Header */}
             <div>
-                <h1 className={`text-2xl font-bold ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
+                <h1 className="text-2xl font-bold text-foreground">
                     Settings
                 </h1>
-                <p className={`text-sm mt-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                <p className="text-sm mt-1 text-muted-foreground">
                     Configure your preferences and application settings
                 </p>
             </div>

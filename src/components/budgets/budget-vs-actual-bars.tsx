@@ -1,7 +1,6 @@
 'use client';
 
 import { formatCurrency } from '@/lib/constants';
-import { useTheme } from '@/components/providers/theme-provider';
 import type { Currency } from '@/types';
 import type { BudgetActualsRollup } from '@/lib/budget-utils';
 
@@ -21,9 +20,7 @@ export function BudgetVsActualBars({
   rollup: BudgetActualsRollup;
   currency: Currency;
 }) {
-  const { theme } = useTheme();
-  const isDark = theme === 'dark';
-  const trackColor = isDark ? 'bg-neutral-700' : 'bg-neutral-200';
+  const trackColor = 'bg-muted';
 
   const categories = rollup.perCategory.filter(c => c.actual > 0 || c.planned > 0);
   if (categories.length === 0 || rollup.totalActual === 0) return null;

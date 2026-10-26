@@ -1,38 +1,47 @@
-'use client';
+"use client";
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { MdAccountBalance, MdCreditCard, MdSavings } from 'react-icons/md';
-import { getConsentExpiryInfo, maskIban } from '@/lib/bank-utils';
-import { formatCurrency } from '@/lib/constants';
-import { useJiggleReorder } from '@/components/ui/jiggle-reorder';
-import type { BankConnection, BankAccountLink, Currency } from '@/types';
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { MdAccountBalance, MdCreditCard, MdSavings } from "react-icons/md";
+import { getConsentExpiryInfo, maskIban } from "@/lib/bank-utils";
+import { formatCurrency } from "@/lib/constants";
+import { useJiggleReorder } from "@/components/ui/jiggle-reorder";
+import type { BankConnection, BankAccountLink, Currency } from "@/types";
 
 /** Role → icon. Shared between the account chips here and the bank page's
  * selected-account summary header. */
-export function roleIcon(role: BankAccountLink['accountRole']) {
-  if (role === 'credit-card') return <MdCreditCard className="" />;
-  if (role === 'savings') return <MdSavings className="" />;
+export function roleIcon(role: BankAccountLink["accountRole"]) {
+  if (role === "credit-card") return <MdCreditCard className="" />;
+  if (role === "savings") return <MdSavings className="" />;
   return <MdAccountBalance className="" />;
 }
 
 /** Status dot color + hover/long-press hint for a bank tab, reusing the same
  * consent-expiry detection the connection Tags use. */
-function connectionDot(conn: BankConnection): { dotClass: string; title: string } {
+function connectionDot(conn: BankConnection): {
+  dotClass: string;
+  title: string;
+} {
   const info = getConsentExpiryInfo(conn);
-  if (info.expired || conn.status === 'revoked') {
-    return { dotClass: 'bg-red-500', title: 'Consent expired — reconnect in Settings' };
+  if (info.expired || conn.status === "revoked") {
+    return {
+      dotClass: "bg-red-500",
+      title: "Consent expired — reconnect in Settings",
+    };
   }
-  if (conn.status === 'error') {
-    return { dotClass: 'bg-red-500', title: 'Sync error — check Settings' };
+  if (conn.status === "error") {
+    return { dotClass: "bg-red-500", title: "Sync error — check Settings" };
   }
   if (info.expiringSoon) {
-    return { dotClass: 'bg-amber-500', title: `Consent expires in ${info.daysUntilExpiry}d — reconnect soon` };
+    return {
+      dotClass: "bg-amber-500",
+      title: `Consent expires in ${info.daysUntilExpiry}d — reconnect soon`,
+    };
   }
-  if (conn.status === 'pending') {
-    return { dotClass: 'bg-gray-400', title: 'Pending — awaiting first sync' };
+  if (conn.status === "pending") {
+    return { dotClass: "bg-muted", title: "Pending — awaiting first sync" };
   }
-  return { dotClass: 'bg-green-500', title: 'Connected' };
+  return { dotClass: "bg-green-500", title: "Connected" };
 }
 
 function accountLabel(link: BankAccountLink): string {
@@ -40,17 +49,19 @@ function accountLabel(link: BankAccountLink): string {
     link.customName ||
     link.name ||
     maskIban(link.iban) ||
-    (link.accountRole === 'credit-card' ? 'Credit card' : 'Account')
+    (link.accountRole === "credit-card" ? "Credit card" : "Account")
   );
 }
 
 function balanceLabel(link: BankAccountLink): string {
-  if (link.accountRole === 'credit-card') {
-    return typeof link.outstanding === 'number'
+  if (link.accountRole === "credit-card") {
+    return typeof link.outstanding === "number"
       ? `owed ${formatCurrency(link.outstanding, link.currency as Currency)}`
-      : '';
+      : "";
   }
-  return typeof link.lastBalance === 'number' ? formatCurrency(link.lastBalance, link.currency as Currency) : '';
+  return typeof link.lastBalance === "number"
+    ? formatCurrency(link.lastBalance, link.currency as Currency)
+    : "";
 }
 
 interface AccountPickerProps {
@@ -85,17 +96,25 @@ export function AccountPicker({
   // Only needed as a fallback for a bank with zero accounts (there's no account
   // selection to derive "active bank" from in that case); whenever the selected
   // account belongs to a connection, that connection wins.
-  const [manualActiveConnId, setManualActiveConnId] = useState<string | null>(null);
+  const [manualActiveConnId, setManualActiveConnId] = useState<string | null>(
+    null,
+  );
 
-  const ownerConn = connections.find((c) => c.linkedAccounts.some((a) => a.id === selectedId));
-  const activeConn = ownerConn ?? connections.find((c) => c.id === manualActiveConnId) ?? connections[0] ?? null;
+  const ownerConn = connections.find((c) =>
+    c.linkedAccounts.some((a) => a.id === selectedId),
+  );
+  const activeConn =
+    ownerConn ??
+    connections.find((c) => c.id === manualActiveConnId) ??
+    connections[0] ??
+    null;
 
   // Two jiggle instances sharing one controlled mode: the bank tabs (x axis)
   // and the active bank's account chips (x axis). Hooks must run every render,
   // so they precede the early `return null`.
   const banksReorder = useJiggleReorder({
     ids: connections.map((c) => c.id),
-    axis: 'x',
+    axis: "x",
     jiggling,
     onJiggleChange,
     onReorder: (nextIds) => onReorderBanks(nextIds),
@@ -103,7 +122,7 @@ export function AccountPicker({
   });
   const accountsReorder = useJiggleReorder({
     ids: activeConn?.linkedAccounts.map((a) => a.id) ?? [],
-    axis: 'x',
+    axis: "x",
     jiggling,
     onJiggleChange,
     onReorder: (nextIds) => {
@@ -116,7 +135,8 @@ export function AccountPicker({
 
   const { ref: banksRef, ...banksRest } = banksReorder.containerProps;
   const { ref: accountsRef, ...accountsRest } = accountsReorder.containerProps;
-  const canReorder = connections.length > 1 || activeConn.linkedAccounts.length > 1;
+  const canReorder =
+    connections.length > 1 || activeConn.linkedAccounts.length > 1;
 
   const selectBank = (conn: BankConnection) => {
     setManualActiveConnId(conn.id);
@@ -124,7 +144,7 @@ export function AccountPicker({
   };
 
   return (
-    <div className="sticky top-[calc(3.5rem+env(safe-area-inset-top))] lg:top-0 z-30 bg-gray-50 dark:bg-gray-900 -mx-2 px-2 sm:-mx-4 sm:px-4 lg:-mx-6 lg:px-6 pt-2 pb-1">
+    <div className="sticky top-[calc(3.5rem+env(safe-area-inset-top))] lg:top-0 z-30 bg-muted bg-card -mx-2 px-2 sm:-mx-4 sm:px-4 lg:-mx-6 lg:px-6 pt-2 pb-1">
       {canReorder && (
         <button
           type="button"
@@ -136,11 +156,17 @@ export function AccountPicker({
       )}
 
       {connections.length > 1 && (
-        <div ref={banksRef as React.Ref<HTMLDivElement>} {...banksRest} className="flex gap-2 overflow-x-auto pb-1.5">
+        <div
+          ref={banksRef as React.Ref<HTMLDivElement>}
+          {...banksRest}
+          className="flex gap-2 overflow-x-auto pb-1.5"
+        >
           {connections.map((conn) => {
             const dot = connectionDot(conn);
             const active = conn.id === activeConn.id;
-            const { ref: itemRef, ...itemRest } = banksReorder.getItemProps(conn.id);
+            const { ref: itemRef, ...itemRest } = banksReorder.getItemProps(
+              conn.id,
+            );
             return (
               <button
                 key={conn.id}
@@ -150,13 +176,19 @@ export function AccountPicker({
                 {...itemRest}
                 className={`shrink-0 inline-flex items-center whitespace-nowrap rounded-full px-3 min-h-[36px] text-sm font-medium transition-colors ${
                   active
-                    ? 'bg-[var(--primary-color)] text-[var(--primary-color-text)]'
-                    : 'border surface-border  hover:opacity-100'
+                    ? "bg-[var(--primary-color)] text-[var(--primary-color-text)]"
+                    : "border surface-border  hover:opacity-100"
                 }`}
               >
-                <span data-jiggle-inner="" className="flex items-center gap-1.5">
+                <span
+                  data-jiggle-inner=""
+                  className="flex items-center gap-1.5"
+                >
                   {conn.aspspName}
-                  <span className={`w-2 h-2 rounded-full shrink-0 ${dot.dotClass}`} title={dot.title} />
+                  <span
+                    className={`w-2 h-2 rounded-full shrink-0 ${dot.dotClass}`}
+                    title={dot.title}
+                  />
                 </span>
               </button>
             );
@@ -164,11 +196,15 @@ export function AccountPicker({
         </div>
       )}
 
-      <div ref={accountsRef as React.Ref<HTMLDivElement>} {...accountsRest} className="flex gap-2 overflow-x-auto py-1">
+      <div
+        ref={accountsRef as React.Ref<HTMLDivElement>}
+        {...accountsRest}
+        className="flex gap-2 overflow-x-auto py-1"
+      >
         {activeConn.linkedAccounts.length === 0 ? (
           <button
             type="button"
-            onClick={() => router.push('/settings?tab=banking')}
+            onClick={() => router.push("/settings?tab=banking")}
             className="shrink-0 whitespace-nowrap flex items-center gap-2 rounded-lg border surface-border px-3 min-h-[44px] text-sm  hover:opacity-100"
           >
             No accounts — connect in Settings
@@ -177,7 +213,9 @@ export function AccountPicker({
           activeConn.linkedAccounts.map((link) => {
             const selected = link.id === selectedId;
             const balance = balanceLabel(link);
-            const { ref: itemRef, ...itemRest } = accountsReorder.getItemProps(link.id);
+            const { ref: itemRef, ...itemRest } = accountsReorder.getItemProps(
+              link.id,
+            );
             return (
               <button
                 key={link.id}
@@ -186,14 +224,22 @@ export function AccountPicker({
                 onClick={() => onSelect(link.id)}
                 {...itemRest}
                 className={`shrink-0 inline-flex items-center rounded-lg px-3 min-h-[44px] text-left transition-colors ${
-                  selected ? 'bg-[var(--primary-color)] text-[var(--primary-color-text)]' : 'border surface-border'
+                  selected
+                    ? "bg-[var(--primary-color)] text-[var(--primary-color-text)]"
+                    : "border surface-border"
                 }`}
               >
                 <span data-jiggle-inner="" className="flex items-center gap-2">
                   {roleIcon(link.accountRole)}
                   <div className="min-w-0">
-                    <div className="text-sm font-medium truncate max-w-[10rem]">{accountLabel(link)}</div>
-                    {balance && <div className="text-xs  truncate max-w-[10rem]">{balance}</div>}
+                    <div className="text-sm font-medium truncate max-w-[10rem]">
+                      {accountLabel(link)}
+                    </div>
+                    {balance && (
+                      <div className="text-xs  truncate max-w-[10rem]">
+                        {balance}
+                      </div>
+                    )}
                   </div>
                 </span>
               </button>

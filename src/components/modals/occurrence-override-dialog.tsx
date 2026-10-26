@@ -224,19 +224,19 @@ export function OccurrenceOverrideDialog({
                     </div>
                 ) : recurringItem ? (
                     <div className="space-y-4">
-                        <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                        <p className="text-sm text-muted-foreground">
                             Modify values for this specific month only. The recurring series remains unchanged.
                         </p>
 
                         {/* Skip occurrence toggle */}
-                        <div className={`flex items-center justify-between p-3 rounded-lg ${isDark ? 'bg-gray-800' : 'bg-gray-100'}`}>
+                        <div className={`flex items-center justify-between p-3 rounded-lg ${isDark ? 'bg-card' : 'bg-muted'}`}>
                             <div className="flex items-center gap-2">
-                                <MdSkipNext size={20} className={isDark ? 'text-gray-400' : 'text-gray-500'} />
+                                <MdSkipNext size={20} className={'text-muted-foreground'} />
                                 <div>
-                                    <div className={`text-sm font-medium ${isDark ? 'text-gray-200' : 'text-gray-700'}`}>
+                                    <div className="text-sm font-medium text-foreground">
                                         Skip this occurrence
                                     </div>
-                                    <div className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                                    <div className="text-xs text-muted-foreground">
                                         Exclude from projection for this month
                                     </div>
                                 </div>
@@ -256,7 +256,7 @@ export function OccurrenceOverrideDialog({
                         {/* Fields (dimmed when skipping) */}
                         <div className={`space-y-3 transition-opacity ${skipOccurrence ? 'opacity-40 pointer-events-none' : ''}`}>
                             <div>
-                                <label htmlFor="override-name" className={`block text-sm font-medium mb-1 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                                <label htmlFor="override-name" className={`block text-sm font-medium mb-1 ${isDark ? 'text-muted-foreground' : 'text-foreground'}`}>
                                     Name
                                 </label>
                                 <Controller
@@ -275,7 +275,7 @@ export function OccurrenceOverrideDialog({
                             </div>
 
                             <div>
-                                <label htmlFor="override-amount" className={`block text-sm font-medium mb-1 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                                <label htmlFor="override-amount" className={`block text-sm font-medium mb-1 ${isDark ? 'text-muted-foreground' : 'text-foreground'}`}>
                                     Amount
                                 </label>
                                 <Controller
@@ -297,14 +297,14 @@ export function OccurrenceOverrideDialog({
                                     )}
                                 />
                                 {overrideAmount === 0 && !skipOccurrence && (
-                                    <p id="override-amount-hint" className={`text-xs mt-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                                    <p id="override-amount-hint" className="text-xs mt-1 text-muted-foreground">
                                         An amount of 0 is saved as a skipped occurrence.
                                     </p>
                                 )}
                             </div>
 
                             <div>
-                                <label htmlFor="override-category" className={`block text-sm font-medium mb-1 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                                <label htmlFor="override-category" className={`block text-sm font-medium mb-1 ${isDark ? 'text-muted-foreground' : 'text-foreground'}`}>
                                     Category
                                 </label>
                                 <Controller

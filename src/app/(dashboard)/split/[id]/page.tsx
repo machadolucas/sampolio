@@ -5,6 +5,7 @@ import { TriangleAlert } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useSession } from "@/lib/auth-client";
+import { useAppContext } from "@/components/layout/app-layout";
 import { format, parseISO } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Menu } from "@/components/ui/menu";
@@ -65,6 +66,9 @@ import {
 } from "@/lib/hooks/use-data-refresh";
 
 export default function SplitGroupDetailPage() {
+  // Route children retain their identity when AppLayout changes; subscribe so
+  // displayed money updates immediately without remounting drafts or details.
+  useAppContext();
   const params = useParams();
   const router = useRouter();
   const groupId = String(params.id);
@@ -565,7 +569,7 @@ export default function SplitGroupDetailPage() {
   }
   if (notFound || !group) {
     return (
-      <div className="text-center py-16 text-gray-500">
+      <div className="text-center py-16 text-muted-foreground">
         <p>Group not found.</p>
         <Button
           label="Back to Split"
@@ -630,7 +634,7 @@ export default function SplitGroupDetailPage() {
       </div>
 
       {/* Balance banner */}
-      <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4 mb-4">
+      <div className="rounded-xl border border-border bg-card p-4 mb-4">
         <div className="flex items-center gap-3">
           {otherMembers.length === 1 && (
             <UserAvatar
@@ -664,7 +668,7 @@ export default function SplitGroupDetailPage() {
                 You owe {otherName} {formatCents(-myNet, group.currency)}
               </span>
             ) : (
-              <span className="text-gray-500">You are all settled up</span>
+              <span className="text-muted-foreground">You are all settled up</span>
             )}
           </div>
         </div>
@@ -712,15 +716,15 @@ export default function SplitGroupDetailPage() {
 
       {/* Recurring rules */}
       {group.recurrenceRules.length > 0 && (
-        <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4 mb-4">
-          <div className="text-sm font-medium text-gray-500 mb-2">
+        <div className="rounded-xl border border-border bg-card p-4 mb-4">
+          <div className="text-sm font-medium text-muted-foreground mb-2">
             Recurring
           </div>
           <div className="flex flex-col gap-2">
             {group.recurrenceRules.map((r) => (
               <div key={r.id} className="flex items-center gap-2 text-sm">
                 <span
-                  className={`flex-1 truncate ${r.isActive ? "" : "line-through text-gray-400"}`}
+                  className={`flex-1 truncate ${r.isActive ? "" : "line-through text-muted-foreground"}`}
                 >
                   {r.title} · {formatCents(r.amountCents, group.currency)} ·{" "}
                   {r.interval}
@@ -841,11 +845,11 @@ export default function SplitGroupDetailPage() {
         monthsDesc.length > visibleCount ? (
           // The loaded window is empty but older months hold history.
           <div className="text-center py-10">
-            <p className="text-gray-400 mb-2">Nothing this month.</p>
+            <p className="text-muted-foreground mb-2">Nothing this month.</p>
             <Button label="Load older months" text onClick={loadMore} />
           </div>
         ) : (
-          <p className="text-center text-gray-400 py-10">
+          <p className="text-center text-muted-foreground py-10">
             No expenses yet. Add one above.
           </p>
         )
@@ -853,7 +857,7 @@ export default function SplitGroupDetailPage() {
         <div className="flex flex-col gap-4">
           {byMonth.map(([ym, rows]) => (
             <div key={ym}>
-              <div className="sticky top-[calc(3.5rem+env(safe-area-inset-top))] lg:top-[env(safe-area-inset-top)] z-10 bg-gray-50 dark:bg-gray-900 py-1 text-sm font-semibold text-gray-500">
+              <div className="sticky top-[calc(3.5rem+env(safe-area-inset-top))] lg:top-[env(safe-area-inset-top)] z-10 bg-muted py-1 text-sm font-semibold text-muted-foreground">
                 {formatYearMonth(ym)}
               </div>
               <ul className="flex flex-col divide-y divide-gray-100 dark:divide-gray-800">
@@ -898,7 +902,7 @@ export default function SplitGroupDetailPage() {
                     <li
                       key={e.id}
                       data-expense-id={e.id}
-                      className="flex items-center gap-2 py-2 -mx-2 px-2 rounded-lg cursor-pointer transition-colors hover:bg-gray-50 dark:hover:bg-gray-800/60 active:bg-gray-100 dark:active:bg-gray-700/70"
+                      className="flex items-center gap-2 py-2 -mx-2 px-2 rounded-lg cursor-pointer transition-colors hover:bg-muted active:bg-muted"
                     >
                       <button
                         type="button"
@@ -909,7 +913,7 @@ export default function SplitGroupDetailPage() {
                           <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
                             {format(parseISO(e.date), "MMM")}
                           </div>
-                          <div className="text-base font-medium text-gray-500 dark:text-muted-foreground leading-tight">
+                          <div className="text-base font-medium text-muted-foreground leading-tight">
                             {format(parseISO(e.date), "d")}
                           </div>
                         </div>
@@ -922,7 +926,7 @@ export default function SplitGroupDetailPage() {
                           size={36}
                         />
                         <div className="min-w-0 flex-1">
-                          <div className="truncate text-sm font-medium leading-snug text-gray-900 dark:text-gray-100">
+                          <div className="truncate text-sm font-medium leading-snug text-foreground">
                             {newIds.has(e.id) && (
                               <span
                                 className="inline-block w-2 h-2 mr-1.5 rounded-full align-middle shrink-0 bg-[var(--primary-color)]"

@@ -36,7 +36,7 @@ import { notifyDataChanged, useDataRefresh } from '@/lib/hooks/use-data-refresh'
 // The mortgage page renders seven Chart.js charts. Code-split them into a single
 // shared lazy chunk (same module specifier → one shared chunk) so they don't
 // inflate the page's initial JS; a short placeholder holds each chart's height.
-const MortgageChartLoading = () => <div className="h-[320px] rounded-lg bg-gray-100 dark:bg-gray-800/50 animate-pulse" />;
+const MortgageChartLoading = () => <div className="h-[320px] rounded-lg bg-muted animate-pulse" />;
 const chartModule = () => import('@/components/mortgage/mortgage-charts');
 const MortgageBalanceChart = dynamic(() => chartModule().then((m) => m.MortgageBalanceChart), { ssr: false, loading: MortgageChartLoading });
 const OwnershipProgressChart = dynamic(() => chartModule().then((m) => m.OwnershipProgressChart), { ssr: false, loading: MortgageChartLoading });
@@ -216,7 +216,7 @@ export default function MortgagePage() {
   if (!inputs) {
     return (
       <div className="max-w-2xl mx-auto py-16 text-center">
-        <div className={`inline-flex p-4 rounded-full mb-4 ${isDark ? 'bg-gray-800' : 'bg-gray-100'} text-blue-500 text-3xl`}>
+        <div className={`inline-flex p-4 rounded-full mb-4 ${isDark ? 'bg-card' : 'bg-muted'} text-blue-500 text-3xl`}>
           <MdHouse />
         </div>
         <h1 className="text-3xl font-bold mb-2">Track your home loan together</h1>
@@ -264,7 +264,7 @@ export default function MortgagePage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className={`text-3xl sm:text-4xl font-bold ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>{mortgage.name}</h1>
+          <h1 className="text-3xl sm:text-4xl font-bold text-foreground">{mortgage.name}</h1>
           <p className="text-sm opacity-60 mt-1">
             {partner ? `Shared with ${partner.name}` : 'Not shared yet — invite your partner'}
           </p>

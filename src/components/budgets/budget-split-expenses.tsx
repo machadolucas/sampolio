@@ -83,7 +83,7 @@ export function BudgetSplitExpenses({ budget }: { budget: Budget }) {
 
       {!error && view === null && (
         <DelayedSkeleton>
-          <div className="h-24 w-full rounded-lg bg-gray-100 dark:bg-gray-800 animate-pulse" />
+          <div className="h-24 w-full rounded-lg bg-muted animate-pulse" />
         </DelayedSkeleton>
       )}
 
@@ -108,7 +108,7 @@ export function BudgetSplitExpenses({ budget }: { budget: Budget }) {
               </li>
             ))}
           </ul>
-          <div className="flex justify-between text-sm font-semibold border-t border-gray-200 dark:border-gray-700 pt-2 mt-1">
+          <div className="flex justify-between text-sm font-semibold border-t border-border pt-2 mt-1">
             <span>Your share in this period</span>
             <span>{formatCurrency(view.total, budget.currency)}</span>
           </div>

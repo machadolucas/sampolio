@@ -42,11 +42,13 @@ export function SidebarNav({
       aria-label="Main navigation"
       className={`hidden lg:flex fixed left-2 top-[calc(0.5rem+env(safe-area-inset-top))] bottom-[calc(0.5rem+env(safe-area-inset-bottom))] z-40 flex-col rounded-3xl border glass-chrome transition-[width] duration-(--motion-slow) ${expanded ? 'w-64' : 'w-18'}`}
     >
-      <div className="flex h-18 shrink-0 items-center px-4">
+      <div
+        className={`flex h-18 shrink-0 items-center ${expanded ? 'px-4' : 'justify-center px-0'}`}
+      >
         <Link
           href="/"
           aria-label="Sampolio home"
-          className="flex min-h-11 items-center gap-3 no-underline"
+          className={`flex min-h-11 items-center no-underline ${expanded ? 'gap-3' : 'min-w-11 justify-center'}`}
         >
           <BrandLogo size={30} />
           {expanded && (
@@ -61,7 +63,7 @@ export function SidebarNav({
             onClick={onOpenCommandPalette}
             aria-label={expanded ? 'Search ⌘K' : 'Search'}
             aria-keyshortcuts="Meta+K Control+K"
-            className="flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-muted-foreground hover:bg-accent"
+            className={`flex min-h-11 w-full items-center rounded-xl text-muted-foreground hover:bg-accent ${expanded ? 'gap-3 px-3' : 'justify-center px-0'}`}
           >
             <Search size={20} />
             {expanded && (
@@ -86,7 +88,7 @@ export function SidebarNav({
                     href={item.href}
                     aria-label={expanded ? undefined : item.label}
                     aria-current={active ? 'page' : undefined}
-                    className={`flex min-h-11 items-center gap-3 rounded-xl px-3 py-2.5 no-underline transition-colors duration-(--motion-fast) ${active ? 'bg-accent font-semibold text-accent-foreground shadow-sm' : 'text-muted-foreground hover:bg-accent hover:text-foreground'}`}
+                    className={`flex min-h-11 items-center rounded-xl py-2.5 no-underline ${expanded ? 'gap-3 px-3' : 'justify-center px-0'} transition-colors duration-(--motion-fast) ${active ? 'bg-accent font-semibold text-accent-foreground shadow-sm' : 'text-muted-foreground hover:bg-accent hover:text-foreground'}`}
                   >
                     {item.icon}
                     {expanded && <span className="text-sm">{item.label}</span>}
@@ -101,7 +103,7 @@ export function SidebarNav({
         {onToggleCollapse && (
           <Button
             variant="ghost"
-            className={`w-full ${expanded ? 'justify-start' : 'px-0'}`}
+            className={`w-full ${expanded ? 'justify-start' : 'justify-center px-0'}`}
             icon={collapsed ? <ChevronRight /> : <ChevronLeft />}
             label={expanded ? 'Collapse' : undefined}
             aria-label={expanded ? 'Collapse sidebar' : 'Expand sidebar'}
@@ -111,7 +113,7 @@ export function SidebarNav({
         <Menu ref={menu} model={userItems} popup />
         <Button
           variant="ghost"
-          className={`w-full ${expanded ? 'justify-start' : 'px-0'}`}
+          className={`w-full ${expanded ? 'justify-start' : 'justify-center px-0'}`}
           aria-label={`${getInitials(name)} ${name} account menu`}
           aria-haspopup="menu"
           onClick={(event) => menu.current?.toggle(event)}

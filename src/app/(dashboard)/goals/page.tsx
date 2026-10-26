@@ -3,6 +3,7 @@ import { Trash2 as UiTrashIcon } from 'lucide-react';
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useSession } from '@/lib/auth-client';
+import { useAppContext } from '@/components/layout/app-layout';
 import { Button } from '@/components/ui/button';
 import { confirmDialog } from '@/components/ui/confirm-dialog';
 import { ListPageSkeleton } from '@/components/ui/skeletons';
@@ -19,6 +20,9 @@ import type { FinancialAccount, Goal, MonthlyProjection, WealthProjectionMonth }
 import { notifyDataChanged, useDataRefresh } from '@/lib/hooks/use-data-refresh';
 
 export default function GoalsPage() {
+  // Route children retain their identity when AppLayout changes; subscribe so
+  // displayed money updates immediately without remounting drafts or details.
+  useAppContext();
   const toast = useToast();
   const { data: session } = useSession();
 

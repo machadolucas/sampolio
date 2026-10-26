@@ -195,7 +195,7 @@ export function AvatarEditorDialog({
             className={`w-full min-h-[9rem] rounded-xl border-2 border-dashed flex flex-col items-center justify-center gap-2 p-6 text-center transition-colors ${
               dragActive
                 ? 'border-accent-500 bg-accent-50 dark:bg-accent-900/20'
-                : 'border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500'
+                : 'border-border hover:border-input hover:border-input'
             }`}
           >
             <MdCloudUpload className="text-3xl opacity-50" />

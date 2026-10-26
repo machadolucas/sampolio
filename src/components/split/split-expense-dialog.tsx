@@ -162,8 +162,8 @@ export function SplitExpenseDialog({
           onChange={setDraft}
         />
 
-        <div className="flex items-center gap-2 border-t pt-3 border-gray-100 dark:border-gray-800">
-          <span className="text-sm text-gray-500 w-20 shrink-0">Category</span>
+        <div className="flex items-center gap-2 border-t pt-3 border-border">
+          <span className="text-sm text-muted-foreground w-20 shrink-0">Category</span>
           <Dropdown
             value={category}
             aria-label="Category"
@@ -176,7 +176,7 @@ export function SplitExpenseDialog({
           />
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-sm text-gray-500 w-20 shrink-0">Date</span>
+          <span className="text-sm text-muted-foreground w-20 shrink-0">Date</span>
           <Calendar
             aria-label="Date"
             value={date}

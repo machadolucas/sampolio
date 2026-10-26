@@ -1,7 +1,6 @@
 'use client';
 
 import { Dialog } from '@/components/ui/dialog';
-import { useTheme } from '@/components/providers/theme-provider';
 import { formatCurrency } from '@/lib/constants';
 import type { Currency } from '@/types';
 
@@ -31,8 +30,6 @@ interface NetWorthExplainDialogProps {
  * headline number.
  */
 export function NetWorthExplainDialog({ visible, onHide, values, currency }: NetWorthExplainDialogProps) {
-    const { theme } = useTheme();
-    const isDark = theme === 'dark';
 
     const rows: { label: string; amount: number; show: boolean }[] = [
         { label: 'Money in your accounts', amount: values.cashTotal, show: true },
@@ -44,8 +41,8 @@ export function NetWorthExplainDialog({ visible, onHide, values, currency }: Net
         { label: 'What you owe on credit cards', amount: -values.cardLiabilitiesTotal, show: values.cardLiabilitiesTotal !== 0 },
     ];
 
-    const mutedText = isDark ? 'text-gray-400' : 'text-gray-500';
-    const strongText = isDark ? 'text-gray-100' : 'text-gray-900';
+    const mutedText = 'text-muted-foreground';
+    const strongText = 'text-foreground';
 
     return (
         <Dialog
@@ -68,7 +65,7 @@ export function NetWorthExplainDialog({ visible, onHide, values, currency }: Net
                     </li>
                 ))}
             </ul>
-            <div className={`flex items-center justify-between gap-4 mt-4 pt-3 border-t ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
+            <div className="flex items-center justify-between gap-4 mt-4 pt-3 border-t border-border">
                 <span className={`font-semibold ${strongText}`}>What you own overall</span>
                 <span className={`font-bold text-lg whitespace-nowrap ${strongText}`}>
                     {formatCurrency(values.netWorth, currency)}

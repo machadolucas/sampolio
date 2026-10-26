@@ -144,8 +144,8 @@ export function GroupPeriodCard({
 
   if (insights.expenseCount === 0 && insights.settledCents === 0) {
     return (
-      <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-3 mb-4">
-        <p className="text-sm text-gray-500 dark:text-gray-400">
+      <div className="rounded-xl border border-border bg-card px-4 py-3 mb-4">
+        <p className="text-sm text-muted-foreground">
           No expenses in the last 30 days.
         </p>
       </div>
@@ -163,10 +163,10 @@ export function GroupPeriodCard({
     : "Nobody has fronted money in this period";
 
   return (
-    <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4 mb-4">
+    <div className="rounded-xl border border-border bg-card p-4 mb-4">
       {/* Headline */}
       <div className="flex items-baseline justify-between gap-3 flex-wrap">
-        <span className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+        <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
           Last 30 days
         </span>
         <span className="text-lg font-semibold">
@@ -175,7 +175,7 @@ export function GroupPeriodCard({
       </div>
 
       {payers.length === 0 && (
-        <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+        <p className="mt-2 text-xs text-muted-foreground">
           {insights.expenseCount === 0
             ? `Only settle-up payments in this period (${formatCents(insights.settledCents, group.currency)}).`
             : "Who fronted the money is not recorded for these expenses."}
@@ -187,7 +187,7 @@ export function GroupPeriodCard({
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
-        className="mt-2 -mx-1 flex min-h-11 w-full items-center gap-1 rounded-md px-1 text-sm font-medium text-gray-600 dark:text-gray-300 transition-colors hover:bg-black/[0.03] dark:hover:bg-white/[0.05] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500"
+        className="mt-2 -mx-1 flex min-h-11 w-full items-center gap-1 rounded-md px-1 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500"
       >
         <span>{open ? "Hide details" : "Show details"}</span>
         <MdExpandMore
@@ -207,7 +207,7 @@ export function GroupPeriodCard({
               <div className="grid gap-4 sm:grid-cols-2">
                 {categoryTiles.length > 0 && (
                   <div className="min-w-0">
-                    <div className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                    <div className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                       By category
                     </div>
                     <div
@@ -219,7 +219,7 @@ export function GroupPeriodCard({
                         <div
                           key={t.key}
                           title={`${t.label} — ${formatCents(t.cents, group.currency)}`}
-                          className="absolute rounded-[3px] border-2 border-white dark:border-gray-800 flex items-center justify-center overflow-hidden"
+                          className="absolute rounded-[3px] border-2 border-border flex items-center justify-center overflow-hidden"
                           style={{
                             left: `${t.rect.x}%`,
                             top: `${t.rect.y}%`,
@@ -240,7 +240,7 @@ export function GroupPeriodCard({
                         </div>
                       ))}
                     </div>
-                    <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-600 dark:text-gray-300">
+                    <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
                       {categoryTiles.slice(0, 3).map((t) => (
                         <span
                           key={t.key}
@@ -252,7 +252,7 @@ export function GroupPeriodCard({
                             style={{ background: t.color }}
                           />
                           <span className="truncate">{t.label}</span>
-                          <span className="tabular-nums text-gray-500 dark:text-gray-400">
+                          <span className="tabular-nums text-muted-foreground">
                             {formatCents(t.cents, group.currency)}
                           </span>
                         </span>
@@ -263,7 +263,7 @@ export function GroupPeriodCard({
 
                 {payers.length > 0 && (
                   <div className="min-w-0">
-                    <div className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                    <div className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                       Who paid
                     </div>
                     <div
@@ -275,7 +275,7 @@ export function GroupPeriodCard({
                         <div
                           key={p.userId}
                           title={`${shortName(p.name, p.userId === myUserId)} — ${formatCents(p.cents, group.currency)}`}
-                          className="absolute rounded-[3px] border-2 border-white dark:border-gray-800 flex items-center justify-center overflow-hidden"
+                          className="absolute rounded-[3px] border-2 border-border flex items-center justify-center overflow-hidden"
                           style={{
                             left: `${p.rect.x}%`,
                             top: `${p.rect.y}%`,
@@ -301,7 +301,7 @@ export function GroupPeriodCard({
                         </div>
                       ))}
                     </div>
-                    <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-gray-600 dark:text-gray-300">
+                    <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-muted-foreground">
                       {payers.map((p) => (
                         <span
                           key={p.userId}
@@ -316,7 +316,7 @@ export function GroupPeriodCard({
                           <span className="truncate">
                             {shortName(p.name, p.userId === myUserId)}
                           </span>
-                          <span className="tabular-nums text-gray-500 dark:text-gray-400">
+                          <span className="tabular-nums text-muted-foreground">
                             {Math.round(p.pct * 100)}% ·{" "}
                             {formatCents(p.cents, group.currency)}
                           </span>
@@ -333,7 +333,7 @@ export function GroupPeriodCard({
                 {insights.topExpenses.map((e) => (
                   <li key={e.id} className="flex items-baseline gap-2">
                     <span className="min-w-0 flex-1 truncate">{e.title}</span>
-                    <span className="shrink-0 text-xs text-gray-500 dark:text-gray-400">
+                    <span className="shrink-0 text-xs text-muted-foreground">
                       {formatDayMonth(e.date, { short: true })}
                     </span>
                     <span className="shrink-0 tabular-nums font-medium">
@@ -344,14 +344,14 @@ export function GroupPeriodCard({
               </ul>
             )}
 
-            <ul className="list-disc space-y-1 pl-5 text-sm leading-relaxed text-gray-500 dark:text-gray-400">
+            <ul className="list-disc space-y-1 pl-5 text-sm leading-relaxed text-muted-foreground">
               {sentences.map((s, i) => (
                 <li key={i}>{s}</li>
               ))}
             </ul>
 
             {insights.hasImportedRows && (
-              <p className="text-xs text-gray-400 dark:text-gray-500">
+              <p className="text-xs text-muted-foreground">
                 (paid amounts are a lower bound for imported rows)
               </p>
             )}

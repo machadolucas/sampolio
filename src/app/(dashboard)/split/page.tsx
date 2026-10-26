@@ -31,7 +31,7 @@ import { notifyDataChanged, useDataRefresh } from '@/lib/hooks/use-data-refresh'
 // The ECharts insights charts are code-split into their own chunk (ssr:false —
 // client-only), matching the cashflow page. A short-delayed placeholder holds
 // their layout height so nothing jumps in when they arrive.
-const ChartLoading = () => <div className="h-72 lg:h-96 rounded-lg bg-gray-100 dark:bg-gray-800/50 animate-pulse" />;
+const ChartLoading = () => <div className="h-72 lg:h-96 rounded-lg bg-muted animate-pulse" />;
 const SplitSpendChart = dynamic(
   () => import('@/components/charts/split-spend-chart').then((m) => m.SplitSpendChart),
   { ssr: false, loading: ChartLoading },
@@ -101,9 +101,9 @@ function SplitInsightsCharts({
     <div className="flex flex-col gap-6">
       <div>
         <div className="flex items-center justify-between gap-3 mb-2 flex-wrap">
-          <h3 className="text-sm font-medium text-gray-600 dark:text-gray-300">Monthly spending</h3>
+          <h3 className="text-sm font-medium text-muted-foreground">Monthly spending</h3>
           <div className="flex items-center gap-2">
-            {mixed && <span className="text-xs text-gray-400">(mixed currencies)</span>}
+            {mixed && <span className="text-xs text-muted-foreground">(mixed currencies)</span>}
             <SelectButton
               value={spendMode}
               onChange={(e) => e.value && setSpendMode(e.value)}
@@ -124,7 +124,7 @@ function SplitInsightsCharts({
         </ChartExplain>
       </div>
       <div>
-        <h3 className="text-sm font-medium text-gray-600 dark:text-gray-300 mb-2">Your running balance</h3>
+        <h3 className="text-sm font-medium text-muted-foreground mb-2">Your running balance</h3>
         <ChartExplain
           chartLabel="Your running balance"
           howToRead={netHowToRead}
@@ -272,7 +272,7 @@ export default function SplitPage() {
       return <span className="text-green-600 dark:text-green-400">{c.otherName} owes you {formatCents(c.myNetCents, c.group.currency)}</span>;
     if (c.myNetCents < 0)
       return <span className="text-orange-600 dark:text-orange-400">You owe {c.otherName} {formatCents(-c.myNetCents, c.group.currency)}</span>;
-    return <span className="text-gray-400">Settled up</span>;
+    return <span className="text-muted-foreground">Settled up</span>;
   };
 
   const personLine = (p: PersonNet) => (
@@ -291,13 +291,13 @@ export default function SplitPage() {
 
   const summaryTotalLine = () => {
     if (summaryMixed) {
-      return <span className="text-gray-500 dark:text-gray-400">Balances across multiple currencies</span>;
+      return <span className="text-muted-foreground">Balances across multiple currencies</span>;
     }
     const cur = (currencyKeys[0] as Currency) ?? 'EUR';
     const total = pairwise.totalByCurrency[cur] ?? 0;
     if (total > 0) return <span className="text-green-600 dark:text-green-400 font-semibold">Overall, you&apos;re owed {formatCents(total, cur)}</span>;
     if (total < 0) return <span className="text-orange-600 dark:text-orange-400 font-semibold">Overall, you owe {formatCents(-total, cur)}</span>;
-    return <span className="text-gray-400 font-semibold">All settled up</span>;
+    return <span className="text-muted-foreground font-semibold">All settled up</span>;
   };
 
   return (
@@ -319,7 +319,7 @@ export default function SplitPage() {
       {!loaded ? (
         <ListPageSkeleton rows={3} showTitle={false} />
       ) : cards.length === 0 ? (
-        <div className="text-center py-16 text-gray-500 animate-fade-in">
+        <div className="text-center py-16 text-muted-foreground animate-fade-in">
           <MdGroups size={48} className="mx-auto mb-3 opacity-40" />
           <p className="mb-4">No split groups yet. Create one to start tracking shared expenses.</p>
           <Button label="Create your first group" icon={<MdAdd />} severity="success" onClick={() => setShowCreate(true)} />
@@ -328,10 +328,10 @@ export default function SplitPage() {
         <div className="flex flex-col gap-6 animate-fade-in">
           {/* Across-all-groups summary (only worth showing with ≥2 groups) */}
           {cards.length >= 2 && (
-            <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 p-4">
+            <div className="rounded-xl border border-border bg-muted p-4">
               <div className="flex items-center justify-between gap-3 mb-2">
-                <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Across all groups</h2>
-                {summaryMixed && <span className="text-xs text-gray-400">(mixed currencies)</span>}
+                <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Across all groups</h2>
+                {summaryMixed && <span className="text-xs text-muted-foreground">(mixed currencies)</span>}
               </div>
               <div className="mb-1">{summaryTotalLine()}</div>
               {pairwise.people.length > 0 && (
@@ -387,12 +387,12 @@ export default function SplitPage() {
                   >
                     <div
                       data-jiggle-inner=""
-                      className="flex items-center gap-3 p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 pressable h-full hover:bg-neutral-50 dark:hover:bg-neutral-800 hover:border-accent-300 dark:hover:border-accent-600"
+                      className="flex items-center gap-3 p-4 rounded-xl border border-border bg-card pressable h-full hover:bg-muted hover:border-accent-300 dark:hover:border-accent-600"
                     >
                       <span className="text-3xl shrink-0">{c.group.emoji ?? '🧾'}</span>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2 min-w-0">
-                          <span className="font-semibold text-gray-900 dark:text-gray-100 truncate">{c.group.name}</span>
+                          <span className="font-semibold text-foreground truncate">{c.group.name}</span>
                           {c.hasNew && (
                             <span className="w-2 h-2 rounded-full shrink-0 bg-[var(--primary-color)]" aria-label="New activity" />
                           )}
@@ -411,7 +411,7 @@ export default function SplitPage() {
                         </div>
                         <div className="text-sm">{balanceLine(c)}</div>
                       </div>
-                      <MdChevronRight className="text-gray-400 shrink-0" size={22} />
+                      <MdChevronRight className="text-muted-foreground shrink-0" size={22} />
                     </div>
                   </Link>
                 );
@@ -424,7 +424,7 @@ export default function SplitPage() {
             <h2 className="text-lg font-semibold mb-3">Insights</h2>
             {!insights ? (
               <DelayedSkeleton>
-                <div className="h-72 lg:h-96 rounded-lg bg-gray-100 dark:bg-gray-800/50 animate-pulse" />
+                <div className="h-72 lg:h-96 rounded-lg bg-muted animate-pulse" />
               </DelayedSkeleton>
             ) : activeMonthCount < 2 ? (
               <EmptyState

@@ -38,11 +38,9 @@ function rowActivationProps(onActivate?: () => void) {
 export function SortToggle({
   value,
   onChange,
-  isDark,
 }: {
   value: 'name' | 'amount';
   onChange: (v: 'name' | 'amount') => void;
-  isDark: boolean;
 }) {
   return (
     <div className="flex gap-1">
@@ -52,12 +50,8 @@ export function SortToggle({
         aria-label="Sort by amount"
         className={`relative px-1.5 py-0.5 rounded text-xs before:absolute before:-inset-y-1 pointer-coarse:before:-inset-y-3 before:inset-x-0 before:content-[''] ${
           value === 'amount'
-            ? isDark
-              ? 'bg-gray-700 text-gray-200'
-              : 'bg-gray-200 text-gray-800'
-            : isDark
-              ? 'text-gray-500 hover:text-gray-300'
-              : 'text-gray-400 hover:text-gray-600'
+            ? 'bg-muted text-foreground'
+            : 'text-muted-foreground hover:text-muted-foreground'
         }`}
         onClick={() => onChange('amount')}
       >
@@ -69,12 +63,8 @@ export function SortToggle({
         aria-label="Sort by name"
         className={`relative px-1.5 py-0.5 rounded text-xs before:absolute before:-inset-y-1 pointer-coarse:before:-inset-y-3 before:inset-x-0 before:content-[''] ${
           value === 'name'
-            ? isDark
-              ? 'bg-gray-700 text-gray-200'
-              : 'bg-gray-200 text-gray-800'
-            : isDark
-              ? 'text-gray-500 hover:text-gray-300'
-              : 'text-gray-400 hover:text-gray-600'
+            ? 'bg-muted text-foreground'
+            : 'text-muted-foreground hover:text-muted-foreground'
         }`}
         onClick={() => onChange('name')}
       >
@@ -108,7 +98,7 @@ export function MonthDetailsPanel({
   if (!projection) {
     return (
       <div
-        className={`text-center py-8 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}
+        className="text-center py-8 text-muted-foreground"
       >
         <MdCalendarToday size={36} className="mb-4" />
         <p>Select a month to view details</p>
@@ -149,7 +139,7 @@ export function MonthDetailsPanel({
       <div className="@container flex flex-col items-center gap-y-1 py-2 @sm:flex-row @sm:flex-wrap @sm:items-center @sm:justify-between @sm:gap-x-2">
         <div className="text-center min-w-0">
           <div
-            className={`flex items-center justify-center gap-0.5 text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}
+            className="flex items-center justify-center gap-0.5 text-xs text-muted-foreground"
           >
             <span>
               {projection.isActualized
@@ -161,7 +151,7 @@ export function MonthDetailsPanel({
             )}
           </div>
           <div
-            className={`text-base @sm:text-lg font-semibold truncate ${isDark ? 'text-gray-100' : 'text-gray-900'}`}
+            className="text-base @sm:text-lg font-semibold truncate text-foreground"
           >
             {formatCurrency(projection.startingBalance, currency)}
           </div>
@@ -169,7 +159,7 @@ export function MonthDetailsPanel({
         <div className="flex flex-col items-center gap-0.5 flex-shrink-0">
           {projection.isActualized && (
             <div
-              className={`flex items-center gap-0.5 text-[10px] uppercase tracking-wide ${isDark ? 'text-gray-500' : 'text-gray-400'}`}
+              className="flex items-center gap-0.5 text-[10px] uppercase tracking-wide text-muted-foreground"
             >
               <span>{plainTerm('stillAhead', isSimple)}</span>
               <HelpHint text={helpText('stillAhead')} />
@@ -177,7 +167,7 @@ export function MonthDetailsPanel({
           )}
           <div className="flex items-center gap-1">
             <div
-              className={`h-px w-4 ${isDark ? 'bg-gray-600' : 'bg-gray-300'}`}
+              className="h-px w-4 bg-border"
             />
             <div
               className={`text-center px-2 py-1 rounded-full ${
@@ -192,22 +182,22 @@ export function MonthDetailsPanel({
               </div>
             </div>
             <div
-              className={`h-px w-4 ${isDark ? 'bg-gray-600' : 'bg-gray-300'}`}
+              className="h-px w-4 bg-border"
             />
             <MdArrowForward
               size={12}
-              className={`rotate-90 @sm:rotate-0 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}
+              className="rotate-90 @sm:rotate-0 text-muted-foreground"
             />
           </div>
         </div>
         <div className="text-center min-w-0">
           <div
-            className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}
+            className="text-xs text-muted-foreground"
           >
             {projection.isActualized ? 'Projected end of month' : 'Ending'}
           </div>
           <div
-            className={`text-base @sm:text-lg font-bold truncate ${isDark ? 'text-gray-100' : 'text-gray-900'}`}
+            className="text-base @sm:text-lg font-bold truncate text-foreground"
           >
             {formatCurrency(projection.endingBalance, currency)}
           </div>
@@ -219,14 +209,13 @@ export function MonthDetailsPanel({
         <div>
           <div className="flex items-center justify-between mb-1 pointer-coarse:mb-3">
             <h4
-              className={`text-xs font-semibold ${isDark ? 'text-gray-300' : 'text-gray-700'}`}
+              className={`text-xs font-semibold ${isDark ? 'text-muted-foreground' : 'text-foreground'}`}
             >
               Income
             </h4>
             <SortToggle
               value={incomeSortBy}
               onChange={setIncomeSortBy}
-              isDark={isDark}
             />
           </div>
           <div className="space-y-0">
@@ -234,7 +223,7 @@ export function MonthDetailsPanel({
               <div
                 key={item.itemId}
                 className={`flex justify-between items-center px-2 py-1 rounded cursor-pointer transition-colors text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 ${
-                  isDark ? 'hover:bg-gray-800' : 'hover:bg-gray-100'
+                  isDark ? 'hover:bg-card' : 'hover:bg-muted'
                 }`}
                 onClick={() => onEditItem?.(item.itemId, item.source, 'income')}
                 {...rowActivationProps(
@@ -245,7 +234,7 @@ export function MonthDetailsPanel({
               >
                 <div className="flex items-center gap-1 min-w-0 flex-wrap">
                   <span
-                    className={`truncate ${isDark ? 'text-gray-200' : 'text-gray-700'}`}
+                    className="truncate text-foreground"
                   >
                     {item.name}
                   </span>
@@ -315,14 +304,13 @@ export function MonthDetailsPanel({
         <div>
           <div className="flex items-center justify-between mb-1 pointer-coarse:mb-3">
             <h4
-              className={`text-xs font-semibold ${isDark ? 'text-gray-300' : 'text-gray-700'}`}
+              className={`text-xs font-semibold ${isDark ? 'text-muted-foreground' : 'text-foreground'}`}
             >
               Expenses
             </h4>
             <SortToggle
               value={expenseSortBy}
               onChange={setExpenseSortBy}
-              isDark={isDark}
             />
           </div>
           <div className="space-y-0">
@@ -331,7 +319,7 @@ export function MonthDetailsPanel({
                 <div
                   key={item.itemId}
                   className={`flex justify-between items-center px-2 py-1 rounded cursor-pointer transition-colors text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 ${
-                    isDark ? 'hover:bg-gray-800' : 'hover:bg-gray-100'
+                    isDark ? 'hover:bg-card' : 'hover:bg-muted'
                   }`}
                   onClick={() =>
                     onEditItem?.(item.itemId, item.source, 'expense')
@@ -344,7 +332,7 @@ export function MonthDetailsPanel({
                 >
                   <div className="flex items-center gap-1 min-w-0 flex-wrap">
                     <span
-                      className={`truncate ${isDark ? 'text-gray-200' : 'text-gray-700'}`}
+                      className="truncate text-foreground"
                     >
                       {item.name}
                     </span>

@@ -143,31 +143,31 @@ export function ProjectionTable({ displayMonths, nowMonth, selectedMonth, select
                             className={`${row.yearMonth === nowMonth ? 'cf-now-card ' : ''}w-full text-left rounded-lg border p-3 transition-colors ${active
                                 ? isDark ? 'border-accent-500 bg-accent-900/30' : 'border-accent-500 bg-accent-50'
                                 : row.isActual
-                                    ? isDark ? 'border-dashed border-gray-700 bg-white/[0.03]' : 'border-dashed border-gray-300 bg-gray-50/60'
-                                    : isDark ? 'border-gray-700 bg-gray-800/40' : 'border-gray-200 bg-white'}`}
+                                    ? isDark ? 'border-dashed border-border bg-card' : 'border-dashed border-border bg-muted'
+                                    : 'border-border bg-card'}`}
                         >
                             <div className="flex items-center justify-between mb-2">
-                                <span className={`font-semibold flex items-center gap-1.5 flex-wrap ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
+                                <span className="font-semibold flex items-center gap-1.5 flex-wrap text-foreground">
                                     {formatYearMonth(row.yearMonth)}
-                                    {row.isActual && <MdHistory className="text-gray-400" size={14} />}
+                                    {row.isActual && <MdHistory className="text-muted-foreground" size={14} />}
                                     {row.isActualized && (
                                         <Tag value="in progress" severity="info" className="text-xs !py-0 !px-1" />
                                     )}
                                 </span>
-                                <span className={`text-sm font-medium ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>{formatCurrency(row.endingBalance, currency)}</span>
+                                <span className={`text-sm font-medium ${isDark ? 'text-muted-foreground' : 'text-foreground'}`}>{formatCurrency(row.endingBalance, currency)}</span>
                             </div>
                             {/* Labeled amounts — the colors alone don't say which is which. */}
                             <div className="flex items-center justify-between text-sm">
                                 <span className="text-green-500">
-                                    <span className={`text-[10px] uppercase tracking-wide mr-1 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>in</span>
+                                    <span className="text-[10px] uppercase tracking-wide mr-1 text-muted-foreground">in</span>
                                     +{formatCurrency(row.totalIncome, currency)}
                                 </span>
                                 <span className="text-red-500">
-                                    <span className={`text-[10px] uppercase tracking-wide mr-1 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>out</span>
+                                    <span className="text-[10px] uppercase tracking-wide mr-1 text-muted-foreground">out</span>
                                     -{formatCurrency(row.totalExpenses, currency)}
                                 </span>
                                 <span className={row.netChange >= 0 ? 'text-green-500' : 'text-red-500'}>
-                                    <span className={`text-[10px] uppercase tracking-wide mr-1 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>net</span>
+                                    <span className="text-[10px] uppercase tracking-wide mr-1 text-muted-foreground">net</span>
                                     {row.netChange >= 0 ? '+' : ''}{formatCurrency(row.netChange, currency)}
                                 </span>
                             </div>

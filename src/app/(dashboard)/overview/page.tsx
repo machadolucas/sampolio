@@ -9,7 +9,6 @@ import { Button } from '@/components/ui/button';
 import { SelectButton } from '@/components/ui/select-button';
 import { KpiGridSkeleton } from '@/components/ui/skeletons';
 import { Tag } from '@/components/ui/tag';
-import { useTheme } from '@/components/providers/theme-provider';
 import { useAppContext } from '@/components/layout/app-layout';
 import { formatCurrency, formatYearMonth } from '@/lib/constants';
 import { getOverviewData, type OverviewData } from '@/lib/actions/dashboard-data';
@@ -37,7 +36,7 @@ import { useDataRefresh } from '@/lib/hooks/use-data-refresh';
 // Chart.js (@/components/ui/chart) is heavy and client-only — code-split both charts
 // so they leave the Overview route's first-load JS. Imported from their own
 // modules (never a barrel that would drag in the ECharts charts' side effects).
-const ChartLoading = () => <div className="h-72 lg:h-96 rounded-lg bg-gray-100 dark:bg-gray-800/50 animate-pulse" />;
+const ChartLoading = () => <div className="h-72 lg:h-96 rounded-lg bg-muted animate-pulse" />;
 const NetWorthChart = dynamic(
     () => import('@/components/charts/net-worth-chart').then((m) => m.NetWorthChart),
     { ssr: false, loading: ChartLoading },
@@ -82,8 +81,6 @@ export default function OverviewPage() {
     const router = useRouter();
     const { data: session } = useSession();
     const appContext = useAppContext();
-    const { theme } = useTheme();
-    const isDark = theme === 'dark';
 
     const [isLoading, setIsLoading] = useState(true);
     const [horizon, setHorizon] = useState<TimeHorizon>('1y');
@@ -300,7 +297,7 @@ export default function OverviewPage() {
     if (!snapshot) {
         return (
             <div className="space-y-4 lg:space-y-6 max-w-360 mx-auto py-4 lg:py-8">
-                <h1 className={`text-3xl sm:text-4xl font-bold ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
+                <h1 className="text-3xl sm:text-4xl font-bold text-foreground">
                     Overview
                 </h1>
                 {errorBanner || (
@@ -317,11 +314,11 @@ export default function OverviewPage() {
             {/* Header */}
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                 <div>
-                    <h1 className={`text-3xl sm:text-4xl font-bold ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
+                    <h1 className="text-3xl sm:text-4xl font-bold text-foreground">
                         Overview
                     </h1>
                     {lastReconciled && (
-                        <p className={`text-sm mt-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                        <p className="text-sm mt-1 text-muted-foreground">
                             Last check-in: {formatYearMonth(lastReconciled)}
                         </p>
                     )}
@@ -528,7 +525,7 @@ export default function OverviewPage() {
                     <Card>
                         <div className="flex flex-col gap-3 mb-4">
                             <div className="flex items-center justify-between gap-2">
-                                <h2 className={`text-lg font-semibold ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
+                                <h2 className="text-lg font-semibold text-foreground">
                                     Net Worth Projection
                                 </h2>
                                 <Button
@@ -589,17 +586,17 @@ export default function OverviewPage() {
             <Card className={isSimple ? 'hidden' : ''}>
                 <div className="flex items-center justify-between">
                     <div>
-                        <h2 className={`text-lg font-semibold ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
+                        <h2 className="text-lg font-semibold text-foreground">
                             Projected Net Worth
                         </h2>
-                        <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                        <p className="text-sm text-muted-foreground">
                             At end of selected horizon ({horizon.toUpperCase()})
                         </p>
                     </div>
                     <div className="text-right">
-                        <p className={`text-3xl font-bold ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
+                        <p className="text-3xl font-bold text-foreground">
                             {formatCurrency(kpiValues.projectedNetWorth, displayCurrency)}
-                            {isMixedCurrency && <span className={`text-sm font-normal ml-2 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>(mixed currencies)</span>}
+                            {isMixedCurrency && <span className="text-sm font-normal ml-2 text-muted-foreground">(mixed currencies)</span>}
                         </p>
                         <Tag
                             value={`${kpiValues.projectedNetWorth >= kpiValues.netWorth ? '+' : ''}${formatCurrency(kpiValues.projectedNetWorth - kpiValues.netWorth, displayCurrency)}`}

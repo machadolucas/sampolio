@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 /**
  * "Where your wealth sits" — the current distribution of the user's assets,
@@ -15,13 +15,13 @@
  * currency (the page's `kpiValues`); nothing is fetched or converted here.
  */
 
-import { useMemo } from 'react';
-import { Card } from '@/components/ui/card';
-import { HelpHint } from '@/components/ui/help-hint';
-import { rgb } from '@/lib/wealth-chart-style';
-import { formatCurrency } from '@/lib/constants';
-import { plainTerm, helpText } from '@/lib/plain-language';
-import type { Currency } from '@/types';
+import { useMemo } from "react";
+import { Card } from "@/components/ui/card";
+import { HelpHint } from "@/components/ui/help-hint";
+import { rgb } from "@/lib/wealth-chart-style";
+import { formatCurrency } from "@/lib/constants";
+import { plainTerm, helpText } from "@/lib/plain-language";
+import type { Currency } from "@/types";
 
 /** A value below this (half a cent) is treated as zero — no segment, no footer. */
 const EPSILON = 0.005;
@@ -57,8 +57,8 @@ interface WealthDistributionProps {
 
 /** "a", "a and b", "a, b and c" — plain-words list for the footer sentence. */
 function joinWords(words: string[]): string {
-  if (words.length <= 1) return words[0] ?? '';
-  return `${words.slice(0, -1).join(', ')} and ${words[words.length - 1]}`;
+  if (words.length <= 1) return words[0] ?? "";
+  return `${words.slice(0, -1).join(", ")} and ${words[words.length - 1]}`;
 }
 
 export function WealthDistribution({
@@ -84,26 +84,26 @@ export function WealthDistribution({
       label: string;
       value: number;
     }> = [
-      { key: 'cash', label: 'Cash', value: cashTotal },
+      { key: "cash", label: "Cash", value: cashTotal },
       {
-        key: 'investments',
-        label: plainTerm('investments', isSimple),
+        key: "investments",
+        label: plainTerm("investments", isSimple),
         value: investmentsTotal,
       },
       {
-        key: 'receivables',
-        label: plainTerm('receivables', isSimple),
+        key: "receivables",
+        label: plainTerm("receivables", isSimple),
         value: receivablesTotal,
       },
       {
-        key: 'homeValue',
-        label: plainTerm('homeEquity', isSimple),
+        key: "homeValue",
+        label: plainTerm("homeEquity", isSimple),
         value: mortgageEquity,
       },
       // Only a positive split net is an asset; owing shows up in the footer.
       {
-        key: 'split',
-        label: plainTerm('splitBalance', isSimple),
+        key: "split",
+        label: plainTerm("splitBalance", isSimple),
         value: splitNetTotal,
       },
     ];
@@ -130,30 +130,30 @@ export function WealthDistribution({
   // hiding it would make the card appear only once a second asset exists.
   if (segments.length === 0) return null;
 
-  const title = plainTerm('wealthMix', isSimple);
+  const title = plainTerm("wealthMix", isSimple);
   const barLabel = `${title}: ${segments
     .map((s) => `${s.label} ${Math.round(s.share * 100)}%`)
-    .join(', ')}.`;
+    .join(", ")}.`;
 
   // What has to come off the assets to reach net worth. Mortgage liability is
   // deliberately absent — `mortgageEquity` is already net of the loan share.
   const owedParts: string[] = [];
-  if (debtsTotal > EPSILON) owedParts.push('debts');
-  if (cardLiabilitiesTotal > EPSILON) owedParts.push('credit cards');
-  if (splitNetTotal < -EPSILON) owedParts.push('shared expenses');
+  if (debtsTotal > EPSILON) owedParts.push("debts");
+  if (cardLiabilitiesTotal > EPSILON) owedParts.push("credit cards");
+  if (splitNetTotal < -EPSILON) owedParts.push("shared expenses");
   const owedTotal =
     debtsTotal + cardLiabilitiesTotal + Math.max(0, -splitNetTotal);
 
   return (
     <Card>
       <div className="flex items-baseline justify-between gap-x-3 gap-y-1 flex-wrap mb-3">
-        <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+        <h2 className="text-lg font-semibold text-foreground">
           {title}
-          <HelpHint text={helpText('wealthMix')} />
+          <HelpHint text={helpText("wealthMix")} />
         </h2>
-        <span className="text-sm text-gray-500 dark:text-gray-400">
-          Assets{' '}
-          <span className="tabular-nums font-medium text-gray-700 dark:text-gray-200">
+        <span className="text-sm text-muted-foreground">
+          Assets{" "}
+          <span className="tabular-nums font-medium text-foreground">
             {formatCurrency(assetTotal, currency)}
           </span>
           {isMixedCurrency && (
@@ -168,7 +168,7 @@ export function WealthDistribution({
       <div
         role="img"
         aria-label={barLabel}
-        className="h-3 rounded-full overflow-hidden flex bg-gray-100 dark:bg-gray-700"
+        className="h-3 rounded-full overflow-hidden flex bg-muted"
       >
         {segments.map((s) => (
           <span
@@ -176,7 +176,7 @@ export function WealthDistribution({
             className="h-full"
             style={{
               width: `${s.share * 100}%`,
-              minWidth: '0.375rem',
+              minWidth: "0.375rem",
               background: rgb(s.key),
             }}
           />
@@ -195,13 +195,13 @@ export function WealthDistribution({
               className="w-2.5 h-2.5 rounded-sm shrink-0"
               style={{ background: rgb(s.key) }}
             />
-            <span className="text-sm text-gray-700 dark:text-gray-200 truncate">
+            <span className="text-sm text-foreground truncate">
               {s.label}
             </span>
-            <span className="text-sm tabular-nums font-medium text-gray-900 dark:text-gray-100">
+            <span className="text-sm tabular-nums font-medium text-foreground">
               {formatCurrency(s.value, currency)}
             </span>
-            <span className="text-xs tabular-nums text-gray-500 dark:text-gray-400">
+            <span className="text-xs tabular-nums text-muted-foreground">
               {Math.round(s.share * 100)}%
             </span>
           </span>
@@ -209,7 +209,7 @@ export function WealthDistribution({
       </div>
 
       {owedTotal > EPSILON && (
-        <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">
+        <p className="mt-3 text-xs text-muted-foreground">
           After {formatCurrency(owedTotal, currency)} of {joinWords(owedParts)},
           your net worth is {formatCurrency(netWorth, currency)}.
         </p>

@@ -128,7 +128,7 @@ export function SplitEditor({
               className={`text-left px-3 py-2 rounded-lg border text-sm transition-colors ${
                 active
                   ? 'border-green-500 bg-green-50 text-green-800 dark:bg-green-900/30 dark:text-green-200'
-                  : 'border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'
+                  : 'border-border text-foreground hover:bg-muted'
               }`}
             >
               {p.label}
@@ -139,9 +139,9 @@ export function SplitEditor({
 
       {/* Custom panel */}
       {value.preset === 'custom' && (
-        <div className="flex flex-col gap-3 rounded-lg border border-gray-200 dark:border-gray-700 p-3">
+        <div className="flex flex-col gap-3 rounded-lg border border-border p-3">
           <div className="flex items-center gap-2">
-            <span className="text-sm text-gray-500 w-16 shrink-0">Paid by</span>
+            <span className="text-sm text-muted-foreground w-16 shrink-0">Paid by</span>
             <Dropdown
               value={value.payerId}
               onChange={(e) => { if (e.value !== null) set({ payerId: e.value }); }}
@@ -150,7 +150,7 @@ export function SplitEditor({
             />
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-sm text-gray-500 w-16 shrink-0">Split by</span>
+            <span className="text-sm text-muted-foreground w-16 shrink-0">Split by</span>
             <SelectButton
               value={value.customMode}
               onChange={(e) => e.value && set({ customMode: e.value })}
@@ -160,11 +160,11 @@ export function SplitEditor({
           </div>
 
           {value.customMode === 'equal' && (
-            <p className="text-xs text-gray-400">Split equally between all {members.length} members.</p>
+            <p className="text-xs text-muted-foreground">Split equally between all {members.length} members.</p>
           )}
 
           {value.customMode !== 'equal' && (
-            <p className="text-xs text-gray-400 -mt-1">Leave a field blank to split the rest automatically.</p>
+            <p className="text-xs text-muted-foreground -mt-1">Leave a field blank to split the rest automatically.</p>
           )}
 
           {value.customMode === 'exact' && (

@@ -302,7 +302,7 @@ export function QuickAddSplitModal({ visible, onHide, onSaved, initial, onConfir
             {currencyMismatch && <Message severity="error" text={`Currency mismatch: bank transaction is ${bankCurrency}, existing expense is ${review.currency}. Linking is disabled.`} />}
             <div className="space-y-2">
               {reviewMatches.map((candidate, index) => (
-                <div key={candidate.expenseId} className="rounded-xl border border-gray-200 p-4 dark:border-gray-700">
+                <div key={candidate.expenseId} className="rounded-xl border border-border p-4">
                   <div className="text-xs uppercase tracking-wide text-muted-foreground">{candidate.kind === 'linked' ? 'Linked expense' : index === 0 ? 'Possible existing split' : 'Also matched'}</div>
                   <div className="mt-1 text-lg font-semibold break-words">{candidate.title}</div>
                   <div className="mt-1 text-sm text-muted-foreground">{candidate.groupName} · {dateLabel(candidate.date)} · {formatCurrency(candidate.amountCents / 100, candidate.currency as Currency)}</div>
@@ -336,15 +336,15 @@ export function QuickAddSplitModal({ visible, onHide, onSaved, initial, onConfir
         ) : groupsLoading ? (
           <DelayedSkeleton><div className="h-48 w-full animate-pulse rounded-lg bg-surface-100 dark:bg-surface-800" /></DelayedSkeleton>
         ) : noGroups ? (
-          <div className="py-6 text-center text-gray-600 dark:text-gray-300">
+          <div className="py-6 text-center text-muted-foreground">
             {error ? <Message severity="error" text={error} /> : <p className="mb-3">You don&apos;t have a split group yet.</p>}
             <Button label="Create a group" icon={<MdAdd />} onClick={onHide} link />
-            <p className="text-sm text-gray-400 mt-1">Head to the Split tab to create one.</p>
+            <p className="text-sm text-muted-foreground mt-1">Head to the Split tab to create one.</p>
           </div>
         ) : (
           <div className="flex flex-col gap-4">
             {/* Group selector */}
-            <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <span className="shrink-0">With you and:</span>
               <Dropdown
                 value={groupId}
@@ -366,7 +366,7 @@ export function QuickAddSplitModal({ visible, onHide, onSaved, initial, onConfir
                     <Button label="Open existing expense" text className="min-h-[44px]" onClick={() => router.push(`/split/${candidate.groupId}?expense=${candidate.expenseId}&month=${candidate.date.slice(0, 7)}`)} />
                   </div>
                 ))}
-                <p className="text-xs text-gray-500 dark:text-gray-400">Saving will ask you to confirm before adding another expense.</p>
+                <p className="text-xs text-muted-foreground">Saving will ask you to confirm before adding another expense.</p>
               </div>
             )}
 
@@ -414,13 +414,13 @@ export function QuickAddSplitModal({ visible, onHide, onSaved, initial, onConfir
 
             {/* More options */}
             {showMore ? (
-              <div className="animate-fade-in flex flex-col gap-3 border-t pt-3 border-gray-100 dark:border-gray-800">
+              <div className="animate-fade-in flex flex-col gap-3 border-t pt-3 border-border">
                 <div className="flex items-center gap-2">
-                  <span className="text-sm text-gray-500 w-20 shrink-0">Date</span>
+                  <span className="text-sm text-muted-foreground w-20 shrink-0">Date</span>
                   <Calendar value={date} onChange={(e) => e.value && setDate(e.value as Date)} dateFormat="dd.mm.yy" className="flex-1 min-w-0" />
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-sm text-gray-500 w-20 shrink-0">Category</span>
+                  <span className="text-sm text-muted-foreground w-20 shrink-0">Category</span>
                   <Dropdown
                     value={effectiveCategory}
                     onChange={(e) => { if (e.value !== null) setCategory(e.value); }}
@@ -431,7 +431,7 @@ export function QuickAddSplitModal({ visible, onHide, onSaved, initial, onConfir
                 </div>
               </div>
             ) : (
-              <button type="button" onClick={() => setShowMore(true)} className="text-sm text-gray-500 hover:underline self-start">
+              <button type="button" onClick={() => setShowMore(true)} className="text-sm text-muted-foreground hover:underline self-start">
                 More options (date, category)
               </button>
             )}

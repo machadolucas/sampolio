@@ -4,7 +4,6 @@ import { useCallback, useMemo, useState } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { MdCheck, MdMoreHoriz } from 'react-icons/md';
-import { useTheme } from '@/components/providers/theme-provider';
 import { useAppContext } from '@/components/layout/app-layout';
 import { useToast } from '@/components/providers/toast-provider';
 import { navItems } from '@/components/layout/nav-config';
@@ -30,14 +29,12 @@ import type { NavigationPage } from '@/types';
  * ApiResponse for rollback + a toast.
  */
 export function MobileNavCard() {
-    const { theme } = useTheme();
-    const isDark = theme === 'dark';
     const appContext = useAppContext();
     const toast = useToast();
 
-    const heading = `text-lg font-semibold mb-1 ${isDark ? 'text-gray-100' : 'text-gray-900'}`;
-    const subtext = `text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`;
-    const idleCls = isDark ? 'text-gray-400' : 'text-gray-500';
+    const heading = `text-lg font-semibold mb-1 text-foreground`;
+    const subtext = `text-sm text-muted-foreground`;
+    const idleCls = 'text-muted-foreground';
 
     const storedIds = appContext?.bottomNavIds ?? null;
     const displayMode = appContext?.displayMode;
@@ -149,9 +146,7 @@ export function MobileNavCard() {
                             className={`inline-flex items-center gap-2 rounded-lg border-2 px-3 min-h-[44px] text-sm font-medium transition-colors ${
                                 selected
                                     ? 'border-accent-500 bg-accent-50 dark:bg-accent-400/15'
-                                    : isDark
-                                        ? 'border-gray-700 hover:border-gray-600'
-                                        : 'border-gray-200 hover:border-gray-300'
+                                    : 'border-border hover:border-input'
                             } ${disabled ? 'opacity-40 cursor-not-allowed' : ''}`}
                         >
                             {item.icon}

@@ -58,7 +58,7 @@ function statusDotClass(s: BankTransactionStatus): string {
     ? "bg-green-500"
     : s === "pending"
       ? "bg-amber-500"
-      : "bg-gray-400";
+      : "bg-border";
 }
 
 /** Format a date string that may or may not carry a time component. */
@@ -136,7 +136,7 @@ function SplitFlag({
       className={`inline-flex min-h-[44px] min-w-[44px] justify-center items-center gap-0.5 shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium leading-none ${
         isLinked
           ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
-          : "border border-dashed border-gray-400 dark:border-gray-500 text-gray-500 dark:text-gray-400"
+          : "border border-dashed border-border text-muted-foreground"
       }`}
     >
       <MdCallSplit className="text-[11px]" />
@@ -490,7 +490,7 @@ export function BankLedgerTable({
     ) : null;
 
   const rowExpansion = (t: BankTransaction) => (
-    <div className="px-4 py-3 text-xs space-y-1 bg-black/5 dark:bg-white/5">
+    <div className="px-4 py-3 text-xs space-y-1 bg-black/5 dark:bg-card">
       {/* Repeat the status with its full meaning here: hover tooltips don't
           exist on touch devices, but the row expands on tap. */}
       <div className="flex gap-2">
@@ -659,7 +659,7 @@ export function BankLedgerTable({
       <div className="lg:hidden space-y-3">
         {visibleByMonth.map(([ym, rows]) => (
           <div key={ym}>
-            <div className="sticky top-[calc(3.5rem+env(safe-area-inset-top))] z-10 bg-gray-50 dark:bg-gray-900 py-1 text-sm font-semibold text-gray-500">
+            <div className="sticky top-[calc(3.5rem+env(safe-area-inset-top))] z-10 bg-muted py-1 text-sm font-semibold text-muted-foreground">
               {formatYearMonth(ym)}
             </div>
             <ul className="divide-y divide-gray-200 dark:divide-gray-700">
@@ -677,15 +677,15 @@ export function BankLedgerTable({
                     onClick={() =>
                       setExpandedMobile((m) => ({ ...m, [t.id]: !m[t.id] }))
                     }
-                    className={`flex flex-wrap items-center min-h-[44px] px-2 py-1.5 cursor-pointer transition-colors hover:bg-gray-50 dark:hover:bg-gray-800/60 active:bg-gray-100 dark:active:bg-gray-700/70 bank-tx-row-${t.id}`}
+                    className={`flex flex-wrap items-center min-h-[44px] px-2 py-1.5 cursor-pointer transition-colors hover:bg-muted active:bg-muted bank-tx-row-${t.id}`}
                   >
                     <div className="flex w-full min-w-0 items-center gap-2">
                       {/* Stacked date column — same style as the split detail rows */}
                       <div className="w-9 shrink-0 text-center">
-                        <div className="text-[11px] uppercase tracking-wide text-gray-400 leading-tight">
+                        <div className="text-[11px] uppercase tracking-wide text-muted-foreground leading-tight">
                           {format(parseISO(txDisplayDate(t)), "MMM")}
                         </div>
-                        <div className="text-base font-medium text-gray-500 dark:text-gray-400 leading-tight">
+                        <div className="text-base font-medium text-muted-foreground leading-tight">
                           {format(parseISO(txDisplayDate(t)), "d")}
                         </div>
                       </div>

@@ -1,12 +1,19 @@
 'use client';
 
 import { Popover } from '@base-ui/react/popover';
-import { DayPicker } from '@daypicker/react';
+import { DayPicker, getDefaultClassNames } from '@daypicker/react';
 import { fi } from 'date-fns/locale';
 import { format, isValid, parse } from 'date-fns';
 import { CalendarDays, X } from 'lucide-react';
-import { useState, type CSSProperties, type InputHTMLAttributes } from 'react';
+import {
+  useRef,
+  useState,
+  type CSSProperties,
+  type InputHTMLAttributes,
+} from 'react';
 import { cn } from './cn';
+
+const calendarClasses = getDefaultClassNames();
 
 export interface CalendarProps {
   value?: Date | null;
@@ -60,6 +67,7 @@ export function Calendar({
   'aria-invalid': invalid,
   'aria-describedby': describedBy,
 }: CalendarProps) {
+  const anchorRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState('');
@@ -140,15 +148,18 @@ export function Calendar({
       ]}
       className="ui-calendar"
       classNames={{
-        day_button: 'ui-calendar-day',
-        selected: 'ui-calendar-selected',
-        today: 'ui-calendar-today',
-        nav: 'flex justify-between',
-        button_previous: 'ui-button',
-        button_next: 'ui-button',
-        month_caption: 'py-3 font-semibold',
-        weekdays: 'text-muted-foreground text-xs',
-        month_grid: 'border-collapse',
+        ...calendarClasses,
+        day_button: cn(calendarClasses.day_button, 'ui-calendar-day'),
+        selected: cn(calendarClasses.selected, 'ui-calendar-selected'),
+        today: cn(calendarClasses.today, 'ui-calendar-today'),
+        button_previous: cn(
+          calendarClasses.button_previous,
+          'ui-calendar-nav-button',
+        ),
+        button_next: cn(calendarClasses.button_next, 'ui-calendar-nav-button'),
+        month_caption: cn(calendarClasses.month_caption, 'font-semibold'),
+        weekdays: cn(calendarClasses.weekdays, 'text-muted-foreground text-xs'),
+        month_grid: cn(calendarClasses.month_grid, 'border-collapse'),
       }}
     />
   );
@@ -166,6 +177,7 @@ export function Calendar({
   return (
     <Popover.Root open={open} onOpenChange={setOpen}>
       <div
+        ref={anchorRef}
         className={cn('relative inline-flex min-w-0 items-center', className)}
         style={style}
       >
@@ -225,7 +237,21 @@ export function Calendar({
         </span>
       </div>
       <Popover.Portal>
-        <Popover.Positioner sideOffset={6} className="ui-popover-positioner">
+        <Popover.Positioner
+          anchor={anchorRef}
+          positionMethod="fixed"
+          side="bottom"
+          align="start"
+          sideOffset={6}
+          collisionPadding={8}
+          collisionAvoidance={{
+            side: 'flip',
+            align: 'shift',
+            fallbackAxisSide: 'none',
+          }}
+          sticky
+          className="ui-popover-positioner"
+        >
           <Popover.Popup
             aria-label="Choose date"
             className="ui-select-popup p-3"

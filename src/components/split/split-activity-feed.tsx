@@ -10,7 +10,7 @@ import type { Currency, SplitActivityEvent } from '@/types';
 function netLabel(cents: number, currency: Currency): { text: string; cls: string } {
   if (cents > 0) return { text: `you lent ${formatCents(cents, currency)}`, cls: 'text-green-600 dark:text-green-400' };
   if (cents < 0) return { text: `you borrowed ${formatCents(-cents, currency)}`, cls: 'text-orange-600 dark:text-orange-400' };
-  return { text: 'not involved', cls: 'text-gray-400' };
+  return { text: 'not involved', cls: 'text-muted-foreground' };
 }
 
 function firstName(full: string): string {
@@ -49,7 +49,7 @@ export function SplitActivityFeed({
   const profiles = useUserProfiles(actorIds);
 
   if (events.length === 0) {
-    return <p className="text-sm text-gray-400 py-6 text-center">{emptyText}</p>;
+    return <p className="text-sm text-muted-foreground py-6 text-center">{emptyText}</p>;
   }
   return (
     <ul className="flex flex-col divide-y divide-gray-100 dark:divide-gray-800">
@@ -73,14 +73,14 @@ export function SplitActivityFeed({
             }
             className={`flex items-center gap-3 py-2.5 ${
               clickable
-                ? '-mx-2 px-2 rounded-lg cursor-pointer transition-colors hover:bg-gray-50 dark:hover:bg-gray-800/60 active:bg-gray-100 dark:active:bg-gray-700/70'
+                ? '-mx-2 px-2 rounded-lg cursor-pointer transition-colors hover:bg-muted active:bg-muted'
                 : ''
             }`}
           >
             <CategoryIcon category={e.category ?? 'General'} size={36} />
             <div className="min-w-0 flex-1">
-              <div className="truncate text-gray-900 dark:text-gray-100">{e.title}</div>
-              <div className="truncate text-xs text-gray-400">
+              <div className="truncate text-foreground">{e.title}</div>
+              <div className="truncate text-xs text-muted-foreground">
                 {e.kind === 'expense' && (
                   <UserAvatar
                     userId={e.actorUserId}
@@ -99,7 +99,7 @@ export function SplitActivityFeed({
               </div>
             </div>
             <div className="text-right shrink-0">
-              <div className="text-sm text-gray-500 dark:text-gray-400">{formatCents(e.amountCents, currency)}</div>
+              <div className="text-sm text-muted-foreground">{formatCents(e.amountCents, currency)}</div>
               <div className={`text-xs ${lbl.cls}`}>{lbl.text}</div>
             </div>
           </div>

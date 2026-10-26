@@ -1072,6 +1072,12 @@ only their axis/label/tooltip text masks. Mechanism (`src/lib/demo-mode.ts`):
   survive a toggle until a reload. `AppLayout` is the sole writer and syncs it **during render**
   (before returning JSX) from `demoMode`, so the first paint after a toggle already formats
   correctly. `demo-mode.ts` has **zero imports** so `constants.ts` can import it without a cycle.
+- **Subscribe at stable route boundaries.** Writing the global formatter flag does not
+  trigger React renders. Money-bearing route children retained by AppLayout must
+  subscribe to `useAppContext()` even when they need no other layout state; this
+  includes HomeDashboard, GoalsPage, SplitGroupDetailPage and BankConnectionsPanel.
+  Preserve component identity across toggles so drafts, searches and expanded rows
+  survive. Do not key the entire page/app by Demo mode.
 - **Persistence is per-device** localStorage (`DEMO_MODE_STORAGE_KEY = 'demo-mode'`), NOT a
   `UserPreferences` field — it's about the screen you're showing, not the account. AppLayout also
   listens for `storage` events, so toggling in one tab/window (e.g. the installed PWA) updates

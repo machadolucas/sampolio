@@ -468,14 +468,14 @@ export function ReconcileWizard({
                 }
                 return (
                     <div className="space-y-6">
-                        <p className={isDark ? 'text-gray-300' : 'text-gray-600'}>
+                        <p className={'text-muted-foreground'}>
                             Time for a quick check-in! Pick the month you want to review.
                             We&apos;ll compare what we expected with what actually happened, so your projections stay accurate.
                         </p>
 
                         <div className="flex gap-4">
                             <div className="flex-1 min-w-0">
-                                <label htmlFor={`${uid}-year`} className={`block text-sm font-medium mb-2 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                                <label htmlFor={`${uid}-year`} className={`block text-sm font-medium mb-2 ${isDark ? 'text-muted-foreground' : 'text-foreground'}`}>
                                     Year
                                 </label>
                                 <Dropdown inputId={`${uid}-year`}
@@ -486,7 +486,7 @@ export function ReconcileWizard({
                                 />
                             </div>
                             <div className="flex-1 min-w-0">
-                                <label htmlFor={`${uid}-month`} className={`block text-sm font-medium mb-2 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                                <label htmlFor={`${uid}-month`} className={`block text-sm font-medium mb-2 ${isDark ? 'text-muted-foreground' : 'text-foreground'}`}>
                                     Month
                                 </label>
                                 <Dropdown inputId={`${uid}-month`}
@@ -499,7 +499,7 @@ export function ReconcileWizard({
                         </div>
 
                         <Card className="mt-6">
-                            <div className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                            <div className="text-sm text-muted-foreground">
                                 <p className="font-medium mb-2">What we&apos;ll check:</p>
                                 <ul className="list-disc list-inside space-y-1">
                                     <li>{entities.filter(e => e.entityType === 'cash-account').length} Cash Accounts</li>
@@ -515,7 +515,7 @@ export function ReconcileWizard({
             case 1: // Enter Balances
                 return (
                     <div className="space-y-4">
-                        <p className={isDark ? 'text-gray-300' : 'text-gray-600'}>
+                        <p className={'text-muted-foreground'}>
                             {isSimple
                                 ? <>Enter what your bank shows for {formatYearMonth(selectedYearMonth)} — that&apos;s the whole check-in. We&apos;ve pre-filled what we expect, so only change what&apos;s different. Nothing is deleted or changed elsewhere; this just keeps your forecast accurate.</>
                                 : <>Check your actual balances for {formatYearMonth(selectedYearMonth)}. We&apos;ve pre-filled what we expect — just update anything that&apos;s different.</>}
@@ -527,7 +527,7 @@ export function ReconcileWizard({
 
                             return (
                                 <div key={type} className="mb-6">
-                                    <h3 className={`text-sm font-semibold uppercase tracking-wide mb-3 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                                    <h3 className="text-sm font-semibold uppercase tracking-wide mb-3 text-muted-foreground">
                                         {type === 'cash-account' ? 'Cash Accounts' :
                                             type === 'investment' ? 'Investments' :
                                                 type === 'receivable' ? 'Receivables' : 'Debts'}
@@ -536,20 +536,20 @@ export function ReconcileWizard({
                                         {typeEntities.map((entity) => (
                                             <div
                                                 key={entity.entityId}
-                                                className={`p-4 rounded-lg border ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}
+                                                className="p-4 rounded-lg border bg-card border-border"
                                             >
                                                 <div className="flex items-center justify-between mb-2">
-                                                    <span className={`font-medium ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
+                                                    <span className="font-medium text-foreground">
                                                         {entity.name}
                                                     </span>
                                                     {renderEntityTypeLabel(entity.entityType)}
                                                 </div>
-                                                <div className={`flex items-center flex-wrap gap-x-3 gap-y-1 mb-2 text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                                                    <span>Expected: <strong className={isDark ? 'text-gray-200' : 'text-gray-700'}>{formatCurrency(entity.expectedBalance, entity.currency)}</strong></span>
+                                                <div className="flex items-center flex-wrap gap-x-3 gap-y-1 mb-2 text-sm text-muted-foreground">
+                                                    <span>Expected: <strong className={'text-foreground'}>{formatCurrency(entity.expectedBalance, entity.currency)}</strong></span>
                                                     {entity.actualBalance !== null && entity.variance !== 0 && (
                                                         <>
-                                                            <span className={isDark ? 'text-gray-600' : 'text-gray-300'}>&rarr;</span>
-                                                            <span>Actual: <strong className={isDark ? 'text-gray-200' : 'text-gray-700'}>{formatCurrency(entity.actualBalance, entity.currency)}</strong></span>
+                                                            <span className={'text-muted-foreground'}>&rarr;</span>
+                                                            <span>Actual: <strong className={'text-foreground'}>{formatCurrency(entity.actualBalance, entity.currency)}</strong></span>
                                                             <Tag
                                                                 value={`${entity.variance >= 0 ? '+' : ''}${formatCurrency(entity.variance, entity.currency)}`}
                                                                 severity={entity.variance >= 0 ? 'success' : 'danger'}
@@ -574,7 +574,7 @@ export function ReconcileWizard({
                                                 {entity.entityType === 'debt' && !isSimple && (
                                                     <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 mt-3">
                                                         <div className="flex-1 min-w-0">
-                                                            <label htmlFor={`${uid}-remaining-installments-${entity.entityId}`} className={`text-xs mb-1 block ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                                                            <label htmlFor={`${uid}-remaining-installments-${entity.entityId}`} className="text-xs mb-1 block text-muted-foreground">
                                                                 Remaining Installments
                                                             </label>
                                                             <InputNumber inputId={`${uid}-remaining-installments-${entity.entityId}`}
@@ -587,7 +587,7 @@ export function ReconcileWizard({
                                                             />
                                                         </div>
                                                         <div className="flex-1 min-w-0">
-                                                            <label htmlFor={`${uid}-installment-amount-${entity.entityId}`} className={`text-xs mb-1 block ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                                                            <label htmlFor={`${uid}-installment-amount-${entity.entityId}`} className="text-xs mb-1 block text-muted-foreground">
                                                                 Installment Amount
                                                             </label>
                                                             <InputNumber inputId={`${uid}-installment-amount-${entity.entityId}`}
@@ -615,22 +615,22 @@ export function ReconcileWizard({
             case 2: // Review & Confirm
                 return (
                     <div className="space-y-6">
-                        <div className={`p-6 rounded-lg ${isDark ? 'bg-gray-800' : 'bg-gray-50'}`}>
-                            <h3 className={`text-lg font-semibold mb-4 ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
+                        <div className={`p-6 rounded-lg ${isDark ? 'bg-card' : 'bg-muted'}`}>
+                            <h3 className="text-lg font-semibold mb-4 text-foreground">
                                 Reconciliation Summary for {formatYearMonth(selectedYearMonth)}
                             </h3>
 
                             <div className="grid grid-cols-2 gap-4 mb-6">
                                 <div>
-                                    <span className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                                    <span className="text-sm text-muted-foreground">
                                         Entities Changed
                                     </span>
-                                    <p className={`text-2xl font-bold ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
+                                    <p className="text-2xl font-bold text-foreground">
                                         {entitiesChanged.length}
                                     </p>
                                 </div>
                                 <div>
-                                    <span className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                                    <span className="text-sm text-muted-foreground">
                                         Total Variance
                                     </span>
                                     <p className={`text-2xl font-bold ${totalVariance >= 0 ? 'text-green-500' : 'text-red-500'}`}>
@@ -641,19 +641,19 @@ export function ReconcileWizard({
 
                             {entitiesChanged.length > 0 && (
                                 <div className="space-y-2">
-                                    <h4 className={`text-sm font-medium ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                                    <h4 className={`text-sm font-medium ${isDark ? 'text-muted-foreground' : 'text-foreground'}`}>
                                         Changes
                                     </h4>
                                     {entitiesChanged.map((entity) => (
-                                        <div key={entity.entityId} className="flex items-center justify-between py-2 border-b border-gray-700 last:border-0">
+                                        <div key={entity.entityId} className="flex items-center justify-between py-2 border-b border-border last:border-0">
                                             <div className="flex items-center gap-2">
                                                 {renderEntityTypeLabel(entity.entityType)}
-                                                <span className={isDark ? 'text-gray-300' : 'text-gray-600'}>
+                                                <span className={'text-muted-foreground'}>
                                                     {entity.name}
                                                 </span>
                                             </div>
                                             <div className="text-right">
-                                                <span className={isDark ? 'text-gray-100' : 'text-gray-900'}>
+                                                <span className={'text-foreground'}>
                                                     {formatCurrency(entity.actualBalance || 0, entity.currency)}
                                                 </span>
                                                 <span className={`ml-2 text-sm ${entity.variance >= 0 ? 'text-green-500' : 'text-red-500'}`}>

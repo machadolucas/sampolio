@@ -1,9 +1,9 @@
-'use client';
+"use client";
 
-import { useCallback, useEffect, useMemo, useRef } from 'react';
-import { useTheme } from '@/components/providers/theme-provider';
-import { MONTHS, MONTHS_SHORT } from '@/lib/constants';
-import { MdCheckCircle, MdHistory } from 'react-icons/md';
+import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useReducedMotion } from '@/lib/hooks/use-reduced-motion';
+import { MONTHS, MONTHS_SHORT } from "@/lib/constants";
+import { MdCheckCircle, MdHistory } from "react-icons/md";
 
 interface MonthStripProps {
   months: string[];
@@ -23,8 +23,7 @@ export function MonthStrip({
   actualMonths = new Set(),
   compact = false,
 }: MonthStripProps) {
-  const { theme } = useTheme();
-  const isDark = theme === 'dark';
+  const reducedMotion = useReducedMotion();
   const scrollRef = useRef<HTMLDivElement>(null);
   const hasCenteredRef = useRef(false);
 
@@ -57,11 +56,11 @@ export function MonthStrip({
     );
     container.scrollTo({
       left: target,
-      behavior: hasCenteredRef.current ? 'smooth' : 'auto',
+      behavior: hasCenteredRef.current && !reducedMotion ? "smooth" : "auto",
     });
     hasCenteredRef.current = true;
     return true;
-  }, [selectedMonth]);
+  }, [selectedMonth, reducedMotion]);
 
   // Depends on months.length so it fires once the month list loads (the initial
   // centering would otherwise be missed).
@@ -91,18 +90,17 @@ export function MonthStrip({
 
   const currentMonth = useMemo(() => {
     const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
   }, []);
 
   return (
     <div
       ref={scrollRef}
-      className={`flex gap-2 overflow-x-auto ${compact ? 'py-1.5' : 'py-3'} px-2 scrollbar-thin ${
-        isDark ? 'scrollbar-thumb-gray-700' : 'scrollbar-thumb-gray-300'
-      }`}
+      data-slot="cashflow-month-strip"
+      className={`flex gap-2 overflow-x-auto ${compact ? "py-1.5" : "py-2"} px-1 scrollbar-thin`}
     >
       {months.map((month) => {
-        const [year, m] = month.split('-');
+        const [year, m] = month.split("-");
         const isSelected = month === selectedMonth;
         const isCurrent = month === currentMonth;
         const isReconciled = reconciledMonths.has(month);
@@ -113,27 +111,21 @@ export function MonthStrip({
             key={month}
             data-month={month}
             onClick={() => onSelectMonth(month)}
-            aria-current={isSelected ? 'true' : undefined}
+            aria-current={isSelected ? "true" : undefined}
 
-            title={`${MONTHS[parseInt(m) - 1]} ${year}${isActual ? ' — actual from real bank transactions' : isReconciled ? ' — reconciled' : ''}`}
-            className={`shrink-0 ${compact ? 'px-2.5 py-1' : 'px-4 py-2'} min-h-11 rounded-lg transition active:scale-95 ${
+            title={`${MONTHS[parseInt(m) - 1]} ${year}${isActual ? " — actual from real bank transactions" : isReconciled ? " — reconciled" : ""}`}
+            className={`shrink-0 ${compact ? "px-2.5 py-1" : "px-4 py-2"} min-h-11 rounded-lg transition active:scale-95 ${
               isSelected
-                ? 'bg-primary text-primary-foreground'
+                ? "bg-primary text-primary-foreground"
                 : isActual
-                  ? isDark
-                    ? 'bg-white/[0.04] text-gray-400 border border-dashed border-gray-700 hover:bg-white/[0.08]'
-                    : 'bg-gray-50 text-gray-500 border border-dashed border-gray-300 hover:bg-gray-100'
+                  ? "bg-card text-muted-foreground border border-dashed border-border hover:bg-accent"
                   : isCurrent
-                    ? isDark
-                      ? 'bg-gray-700 text-accent-400 border border-accent-500'
-                      : 'bg-accent-50 text-accent-600 border border-accent-300'
-                    : isDark
-                      ? 'bg-gray-800 text-gray-300 hover:bg-gray-700'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    ? "bg-accent text-accent-foreground border border-primary/30"
+                    : "bg-muted text-foreground hover:bg-accent"
             }`}
           >
             {!compact && <div className="text-xs">{year}</div>}
-            <div className={`font-medium ${compact ? 'text-sm' : ''}`}>
+            <div className={`font-medium ${compact ? "text-sm" : ""}`}>
               {MONTHS_SHORT[parseInt(m) - 1]}
               {compact && <span className="ml-1 text-xs">{year.slice(2)}</span>}
             </div>
@@ -141,7 +133,9 @@ export function MonthStrip({
               <div className="flex justify-center mt-1">
                 {isActual ? (
                   <MdHistory
-                    className={isSelected ? 'text-current' : 'text-gray-400'}
+                    className={
+                      isSelected ? "text-current" : "text-muted-foreground"
+                    }
                     size={12}
                   />
                 ) : (

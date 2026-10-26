@@ -616,7 +616,7 @@ export function JiggleModeBar({
   if (!jiggling) return null;
   return (
     <div className="fixed left-1/2 -translate-x-1/2 z-50 bottom-[calc(4.5rem+env(safe-area-inset-bottom))] lg:bottom-6">
-      <div className="animate-fade-in flex items-center gap-3 rounded-full border surface-border bg-white/90 dark:bg-gray-800/90 backdrop-blur px-4 py-2 shadow-lg">
+      <div className="animate-fade-in flex items-center gap-3 rounded-full border surface-border glass-chrome px-4 py-2 shadow-lg">
         <span className="sr-only" role="status" aria-live="polite">
           Reorder mode on — drag or use arrow keys; press Done to finish
         </span>
