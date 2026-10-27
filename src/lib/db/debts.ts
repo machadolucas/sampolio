@@ -1,4 +1,3 @@
-import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import type {
   Debt,
@@ -7,39 +6,26 @@ import type {
   CreateDebtRequest,
   UpdateDebtRequest,
 } from '@/types';
-import {
-  getUserDir,
-  ensureDir,
-  readEncryptedFile,
-  writeEncryptedFile,
-  listFiles,
-  deleteFile,
-  entityPath,
-  entityDir,
-} from './encryption';
+import { assertSafeId } from './encryption';
+import { deleteRows, getDoc, inTx, listDocs, putDoc } from './sqlite/docs';
+import { debt as debtTable, debtExtraPayment, debtReferenceRate } from './sqlite/schema';
 
-function getDebtsDir(userId: string): string {
-  return path.join(getUserDir(userId), 'debts');
-}
+const debtKey = (userId: string, debtId: string) => ({
+  userId: assertSafeId(userId, 'userId'),
+  id: assertSafeId(debtId),
+});
+const childScope = (userId: string, debtId: string) => ({
+  userId: assertSafeId(userId, 'userId'),
+  debtId: assertSafeId(debtId, 'debtId'),
+});
+const childKey = (userId: string, debtId: string, id: string) => ({
+  ...childScope(userId, debtId),
+  id: assertSafeId(id),
+});
 
-function getDebtFile(userId: string, debtId: string): string {
-  return entityPath(getDebtsDir(userId), debtId);
-}
-
-function getReferenceRatesDir(userId: string, debtId: string): string {
-  return path.join(entityDir(getDebtsDir(userId), debtId), 'reference-rates');
-}
-
-function getReferenceRateFile(userId: string, debtId: string, rateId: string): string {
-  return entityPath(getReferenceRatesDir(userId, debtId), rateId);
-}
-
-function getExtraPaymentsDir(userId: string, debtId: string): string {
-  return path.join(entityDir(getDebtsDir(userId), debtId), 'extra-payments');
-}
-
-function getExtraPaymentFile(userId: string, debtId: string, paymentId: string): string {
-  return entityPath(getExtraPaymentsDir(userId, debtId), paymentId);
+function readReferenceRates(userId: string, debtId: string): DebtReferenceRate[] {
+  const rates = listDocs<DebtReferenceRate>(debtReferenceRate, childScope(userId, debtId));
+  return rates.sort((a, b) => a.yearMonth.localeCompare(b.yearMonth));
 }
 
 // ============================================================
@@ -47,22 +33,13 @@ function getExtraPaymentFile(userId: string, debtId: string, paymentId: string):
 // ============================================================
 
 export async function getDebts(userId: string): Promise<Debt[]> {
-  const debtsDir = getDebtsDir(userId);
-  await ensureDir(debtsDir);
-
-  const files = await listFiles(debtsDir);
-  const encFiles = files.filter(file => file.endsWith('.enc'));
-  const results = await Promise.all(
-    encFiles.map(file => readEncryptedFile<Debt>(path.join(debtsDir, file)))
-  );
-  const debts = results.filter((d): d is Debt => d !== null);
+  const debts = listDocs<Debt>(debtTable, { userId: assertSafeId(userId, 'userId') });
 
   return debts.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 }
 
 export async function getDebtById(userId: string, debtId: string): Promise<Debt | null> {
-  const debtFile = getDebtFile(userId, debtId);
-  return readEncryptedFile<Debt>(debtFile);
+  return getDoc<Debt>(debtTable, debtKey(userId, debtId));
 }
 
 export async function createDebt(userId: string, data: CreateDebtRequest): Promise<Debt> {
@@ -95,11 +72,7 @@ export async function createDebt(userId: string, data: CreateDebtRequest): Promi
     updatedAt: now,
   };
 
-  const debtsDir = getDebtsDir(userId);
-  await ensureDir(debtsDir);
-
-  const debtFile = getDebtFile(userId, id);
-  await writeEncryptedFile(debtFile, debt);
+  putDoc(debtTable, debtKey(userId, id), debt);
 
   return debt;
 }
@@ -109,48 +82,29 @@ export async function updateDebt(
   debtId: string,
   updates: UpdateDebtRequest
 ): Promise<Debt | null> {
-  const debt = await getDebtById(userId, debtId);
-  if (!debt) {
-    return null;
-  }
+  return inTx(() => {
+    const debt = getDoc<Debt>(debtTable, debtKey(userId, debtId));
+    if (!debt) {
+      return null;
+    }
 
-  const updatedDebt: Debt = {
-    ...debt,
-    ...updates,
-    updatedAt: new Date().toISOString(),
-  };
+    const updatedDebt: Debt = {
+      ...debt,
+      ...updates,
+      updatedAt: new Date().toISOString(),
+    };
 
-  const debtFile = getDebtFile(userId, debtId);
-  await writeEncryptedFile(debtFile, updatedDebt);
-
-  return updatedDebt;
+    putDoc(debtTable, debtKey(userId, debtId), updatedDebt);
+    return updatedDebt;
+  });
 }
 
 export async function deleteDebt(userId: string, debtId: string): Promise<boolean> {
-  // Delete reference rates
-  const ratesDir = getReferenceRatesDir(userId, debtId);
-  try {
-    const rateFiles = await listFiles(ratesDir);
-    for (const file of rateFiles) {
-      await deleteFile(path.join(ratesDir, file));
-    }
-  } catch {
-    // Directory might not exist
-  }
-
-  // Delete extra payments
-  const paymentsDir = getExtraPaymentsDir(userId, debtId);
-  try {
-    const paymentFiles = await listFiles(paymentsDir);
-    for (const file of paymentFiles) {
-      await deleteFile(path.join(paymentsDir, file));
-    }
-  } catch {
-    // Directory might not exist
-  }
-
-  const debtFile = getDebtFile(userId, debtId);
-  await deleteFile(debtFile);
+  inTx(() => {
+    deleteRows(debtReferenceRate, childScope(userId, debtId));
+    deleteRows(debtExtraPayment, childScope(userId, debtId));
+    deleteRows(debtTable, debtKey(userId, debtId));
+  });
   return true;
 }
 
@@ -159,21 +113,7 @@ export async function deleteDebt(userId: string, debtId: string): Promise<boolea
 // ============================================================
 
 export async function getReferenceRates(userId: string, debtId: string): Promise<DebtReferenceRate[]> {
-  const ratesDir = getReferenceRatesDir(userId, debtId);
-  try {
-    await ensureDir(ratesDir);
-  } catch {
-    return [];
-  }
-
-  const files = await listFiles(ratesDir);
-  const encFiles = files.filter(file => file.endsWith('.enc'));
-  const results = await Promise.all(
-    encFiles.map(file => readEncryptedFile<DebtReferenceRate>(path.join(ratesDir, file)))
-  );
-  const rates = results.filter((r): r is DebtReferenceRate => r !== null);
-
-  return rates.sort((a, b) => a.yearMonth.localeCompare(b.yearMonth));
+  return readReferenceRates(userId, debtId);
 }
 
 export async function setReferenceRate(
@@ -182,37 +122,32 @@ export async function setReferenceRate(
   yearMonth: string,
   rate: number
 ): Promise<DebtReferenceRate> {
-  const ratesDir = getReferenceRatesDir(userId, debtId);
-  await ensureDir(ratesDir);
+  return inTx(() => {
+    // Check if rate already exists for this month
+    const existing = readReferenceRates(userId, debtId).find((r) => r.yearMonth === yearMonth);
 
-  // Check if rate already exists for this month
-  const existingRates = await getReferenceRates(userId, debtId);
-  const existing = existingRates.find((r) => r.yearMonth === yearMonth);
+    if (existing) {
+      // Update existing
+      const updatedRate: DebtReferenceRate = { ...existing, rate };
+      putDoc(debtReferenceRate, childKey(userId, debtId, existing.id), updatedRate);
+      return updatedRate;
+    }
 
-  if (existing) {
-    // Update existing
-    const updatedRate: DebtReferenceRate = { ...existing, rate };
-    const rateFile = getReferenceRateFile(userId, debtId, existing.id);
-    await writeEncryptedFile(rateFile, updatedRate);
-    return updatedRate;
-  }
+    // Create new
+    const id = uuidv4();
+    const now = new Date().toISOString();
 
-  // Create new
-  const id = uuidv4();
-  const now = new Date().toISOString();
+    const referenceRate: DebtReferenceRate = {
+      id,
+      debtId,
+      yearMonth,
+      rate,
+      createdAt: now,
+    };
 
-  const referenceRate: DebtReferenceRate = {
-    id,
-    debtId,
-    yearMonth,
-    rate,
-    createdAt: now,
-  };
-
-  const rateFile = getReferenceRateFile(userId, debtId, id);
-  await writeEncryptedFile(rateFile, referenceRate);
-
-  return referenceRate;
+    putDoc(debtReferenceRate, childKey(userId, debtId, id), referenceRate);
+    return referenceRate;
+  });
 }
 
 export async function deleteReferenceRate(
@@ -220,8 +155,7 @@ export async function deleteReferenceRate(
   debtId: string,
   rateId: string
 ): Promise<boolean> {
-  const rateFile = getReferenceRateFile(userId, debtId, rateId);
-  await deleteFile(rateFile);
+  deleteRows(debtReferenceRate, childKey(userId, debtId, rateId));
   return true;
 }
 
@@ -230,19 +164,7 @@ export async function deleteReferenceRate(
 // ============================================================
 
 export async function getExtraPayments(userId: string, debtId: string): Promise<DebtExtraPayment[]> {
-  const paymentsDir = getExtraPaymentsDir(userId, debtId);
-  try {
-    await ensureDir(paymentsDir);
-  } catch {
-    return [];
-  }
-
-  const files = await listFiles(paymentsDir);
-  const encFiles = files.filter(file => file.endsWith('.enc'));
-  const results = await Promise.all(
-    encFiles.map(file => readEncryptedFile<DebtExtraPayment>(path.join(paymentsDir, file)))
-  );
-  const payments = results.filter((p): p is DebtExtraPayment => p !== null);
+  const payments = listDocs<DebtExtraPayment>(debtExtraPayment, childScope(userId, debtId));
 
   return payments.sort((a, b) => a.date.localeCompare(b.date));
 }
@@ -266,11 +188,7 @@ export async function createExtraPayment(
     createdAt: now,
   };
 
-  const paymentsDir = getExtraPaymentsDir(userId, debtId);
-  await ensureDir(paymentsDir);
-
-  const paymentFile = getExtraPaymentFile(userId, debtId, id);
-  await writeEncryptedFile(paymentFile, payment);
+  putDoc(debtExtraPayment, childKey(userId, debtId, id), payment);
 
   return payment;
 }
@@ -280,7 +198,6 @@ export async function deleteExtraPayment(
   debtId: string,
   paymentId: string
 ): Promise<boolean> {
-  const paymentFile = getExtraPaymentFile(userId, debtId, paymentId);
-  await deleteFile(paymentFile);
+  deleteRows(debtExtraPayment, childKey(userId, debtId, paymentId));
   return true;
 }

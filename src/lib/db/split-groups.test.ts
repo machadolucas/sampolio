@@ -13,10 +13,12 @@ import {
   rebuildSummary,
   upsertExpenseByOccurrence,
 } from './split-groups';
+import { getDoc, putDoc } from './sqlite/docs';
+import { splitGroupSummary } from './sqlite/schema';
 import type { SplitExpense, SplitExpenseItem, SplitGroupSummary } from '@/types';
 
 /**
- * Real disk round-trips of the chunked split storage: the delta-maintained
+ * Real DB round-trips of the month-grouped split storage: the delta-maintained
  * summary must always equal a full rebuild (PERF-03), and occurrence upserts
  * must not double-book a month for a drifted month-end rule (BUG-10).
  */
@@ -101,17 +103,17 @@ describe('split-groups db layer', () => {
     await expectSummaryMatchesRebuild();
 
     // Edit in place (same month), with a wrong month hint.
-    await updateExpense(groupId, b.id, { ...b, amountCents: 2400, netByUserId: { [ALEX]: 1200, [SAM]: -1200 } }, '2026-03');
+    await updateExpense(groupId, b.id, { ...b, amountCents: 2400, netByUserId: { [ALEX]: 1200, [SAM]: -1200 } });
     await expectSummaryMatchesRebuild();
 
     // Move across months; the old chunk empties and is deleted.
-    await updateExpense(groupId, a.id, { ...a, date: '2026-04-15' }, '2026-01');
+    await updateExpense(groupId, a.id, { ...a, date: '2026-04-15' });
     await expectSummaryMatchesRebuild();
     expect((await getSplitGroupSummary(groupId)).monthsWithData).not.toContain('2026-01');
 
     // Delete an older row, then the most recently created one (the
     // lastActivityAt holder, which forces the rebuild fallback).
-    expect(await deleteExpense(groupId, c.id, '2026-03')).toBe(true);
+    expect(await deleteExpense(groupId, c.id)).toBe(true);
     await expectSummaryMatchesRebuild();
     expect(await deleteExpense(groupId, payment.id)).toBe(true);
     await expectSummaryMatchesRebuild();
@@ -122,9 +124,8 @@ describe('split-groups db layer', () => {
     const old = await addExpense(groupId, row('2025-06-01', 100));
     const recent = await addExpense(groupId, row('2026-06-01', 100));
     expect((await locateExpense(groupId, recent.id))?.ym).toBe('2026-06');
-    expect((await locateExpense(groupId, old.id, '2025-06'))?.ym).toBe('2025-06');
-    expect((await locateExpense(groupId, old.id, '2026-06'))?.ym).toBe('2025-06'); // wrong hint still finds it
-    expect(await locateExpense(groupId, 'missing', '2026-06')).toBeNull();
+    expect((await locateExpense(groupId, old.id))?.ym).toBe('2025-06');
+    expect(await locateExpense(groupId, 'missing')).toBeNull();
   });
 
   it('overwrites an occurrence in place and skips a second row for the same rule in a month', async () => {
@@ -169,15 +170,13 @@ describe('split-groups db layer', () => {
 
   it('an occurrence re-run repairs a summary left stale by an interrupted write', async () => {
     const occ = row('2027-03-10', 800, { source: 'recurring', generatedFromRuleId: 'rule-3', occurrenceKey: 'rule-3:2027-03-10' });
-    // Simulate a crash after the chunk write but before the summary write:
-    // create the occurrence, then restore the summary file from before it.
-    const summaryFile = (await fs.readdir(dataDir, { recursive: true }))
-      .map((f) => path.join(dataDir, String(f)))
-      .find((f) => f.endsWith(path.join(groupId, 'summary.enc')));
-    expect(summaryFile).toBeTruthy();
-    const staleSummary = await fs.readFile(summaryFile!);
+    // Simulate a summary that drifted from the rows (writes are transactional
+    // now, but a restored backup or manual edit can still leave one stale):
+    // create the occurrence, then restore the summary row from before it.
+    const staleSummary = getDoc<SplitGroupSummary>(splitGroupSummary, { groupId });
+    expect(staleSummary).toBeTruthy();
     await upsertExpenseByOccurrence(groupId, { ...occ }, { onePerMonth: true });
-    await fs.writeFile(summaryFile!, staleSummary);
+    putDoc(splitGroupSummary, { groupId }, staleSummary);
     const res = await upsertExpenseByOccurrence(groupId, { ...occ }, { onePerMonth: true });
     expect(res.created).toBe(false);
     await expectSummaryMatchesRebuild();

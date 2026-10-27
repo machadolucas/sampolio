@@ -3,29 +3,29 @@
 The mortgage is one of Sampolio's two shared, multi-user entities (the other is the split
 group). This document covers its data model, the amortization engine, actuals/reconcile,
 ownership math, and its integration points. Conventions (server-action pattern, cache
-tags, encrypted-file storage) live in the root `AGENTS.md` and [`src/lib/db/AGENTS.md`](../src/lib/db/AGENTS.md); anchoring and transfer
+tags, SQLCipher document storage) live in the root `AGENTS.md` and [`src/lib/db/AGENTS.md`](../src/lib/db/AGENTS.md); anchoring and transfer
 injection into cashflow are detailed in
 [projections-and-reconciliation.md](projections-and-reconciliation.md); the overall
 storage/crypto picture is in [architecture.md](architecture.md).
 
 ## 1. Data model & storage
 
-Unlike user-scoped entities (under `data/users/{id}/`), a mortgage lives in a **global
-shared directory** and is decryptable with the app's global key. Layout (path helpers in
-`src/lib/db/shared-mortgages.ts`):
+Unlike user-scoped entities (rows keyed by `userId`), a mortgage lives in **global,
+non-user-scoped tables**; members reach it through the reverse index and the action-layer
+member check. Tables (`src/lib/db/shared-mortgages.ts`):
 
 ```
-data/shared/mortgages/{id}.enc                    # SharedMortgage (loans + members embedded)
-data/shared/mortgages/{id}/rates/{id}.enc         # MortgageRateEntry (Euribor reset history)
-data/shared/mortgages/{id}/costs/{id}.enc         # MortgageCostEntry (insurance / invoicing / service fees)
-data/shared/mortgages/{id}/extra-payments/{id}.enc # MortgageExtraPayment
-data/shared/mortgages/{id}/snapshots/{id}.enc     # MortgageBalanceSnapshot (drift re-anchors)
-data/shared/mortgages/{id}/actuals/{id}.enc       # MortgageActualEntry (recorded bank months)
-data/shared/mortgage-members/{userId}.enc         # { mortgageIds: string[] } reverse index
+mortgage                   # SharedMortgage (loans + members embedded)
+mortgage_rate              # MortgageRateEntry (Euribor reset history)
+mortgage_cost              # MortgageCostEntry (insurance / invoicing / service fees)
+mortgage_extra_payment     # MortgageExtraPayment
+mortgage_balance_snapshot  # MortgageBalanceSnapshot (drift re-anchors)
+mortgage_actual            # MortgageActualEntry (recorded bank months)
+mortgage_member_index      # userId → mortgageIds reverse index
 ```
 
 - The reverse index (`getMortgageIdsForUser`) lets `getMortgagesForUser` read only the
-  user's mortgages instead of scanning/decrypting the whole shared dir. It is maintained
+  user's mortgages instead of scanning every shared mortgage. It is maintained
   by `createMortgage` / `addMortgageMember` / `removeMortgageMember` / `deleteMortgage`.
 - Sub-entity writes are **upserts**: `setRate` upserts by `effectiveDate`; `setCost` by
   `type + loanId + effectiveDate`; `createBalanceSnapshot` by `loanId + yearMonth`;

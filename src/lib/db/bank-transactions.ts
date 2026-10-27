@@ -1,61 +1,42 @@
 /**
- * Enable Banking — transaction store (file I/O).
+ * Enable Banking — transaction store.
  *
- * One encrypted file per linked bank account, holding the full deduped
- * transaction list. The sync engine reads the existing list, merges incoming
- * rows with the pure dedup helper, and writes the merged result back. This
- * module only does read/replace — the merge/dedup logic is pure (bank/dedup.ts).
- *
- * Layout: data/users/{userId}/bank/accounts/{linkedAccountId}/transactions.enc
+ * One ordered list per linked bank account (`bank_transaction`, one row per
+ * transaction, `seq` = list position), holding the full deduped transaction
+ * list. The sync engine reads the existing list, merges incoming rows with the
+ * pure dedup helper, and writes the merged result back. This module only does
+ * read/replace — the merge/dedup logic is pure (bank/dedup.ts).
  */
 
-import * as path from 'path';
 import type { BankTransaction } from '@/types';
-import {
-  getUserDir,
-  ensureDir,
-  readEncryptedFile,
-  writeEncryptedFile,
-  deleteFile,
-  entityDir,
-} from './encryption';
+import { assertSafeId } from './encryption';
+import { deleteRows, listDocs, replaceSeqDocs } from './sqlite/docs';
+import { bankTransaction } from './sqlite/schema';
 
-function getAccountsDir(userId: string): string {
-  return path.join(getUserDir(userId), 'bank', 'accounts');
-}
-
-function getTransactionsFile(userId: string, linkedAccountId: string): string {
-  return path.join(entityDir(getAccountsDir(userId), linkedAccountId), 'transactions.enc');
-}
-
-interface TransactionsData {
-  transactions: BankTransaction[];
-}
+const scope = (userId: string, linkedAccountId: string) => ({
+  userId: assertSafeId(userId, 'userId'),
+  linkedAccountId: assertSafeId(linkedAccountId, 'linkedAccountId'),
+});
 
 export async function getBankTransactions(
   userId: string,
   linkedAccountId: string
 ): Promise<BankTransaction[]> {
-  const data = await readEncryptedFile<TransactionsData>(
-    getTransactionsFile(userId, linkedAccountId)
-  );
-  return data?.transactions ?? [];
+  return listDocs<BankTransaction>(bankTransaction, scope(userId, linkedAccountId), 'seq');
 }
 
-/** Replace the full transaction list for a linked account (post-merge). */
+/** Replace the full transaction list for a linked account (post-merge), atomically. */
 export async function writeBankTransactions(
   userId: string,
   linkedAccountId: string,
   transactions: BankTransaction[]
 ): Promise<void> {
-  const file = getTransactionsFile(userId, linkedAccountId);
-  await ensureDir(path.dirname(file));
-  await writeEncryptedFile<TransactionsData>(file, { transactions });
+  replaceSeqDocs(bankTransaction, scope(userId, linkedAccountId), transactions);
 }
 
 export async function deleteBankTransactionsForAccount(
   userId: string,
   linkedAccountId: string
 ): Promise<void> {
-  await deleteFile(getTransactionsFile(userId, linkedAccountId));
+  deleteRows(bankTransaction, scope(userId, linkedAccountId));
 }

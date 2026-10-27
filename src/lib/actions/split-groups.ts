@@ -97,10 +97,6 @@ const MEMBER_LOOKUP_ERROR = "Couldn't add that email. Check it belongs to an act
 
 const ymOf = (date: string): string => date.slice(0, 7);
 
-/** A client-supplied month hint is only an optimisation: drop anything that isn't YYYY-MM. */
-const safeMonthHint = (hint: unknown): string | undefined =>
-  chunkMonthSchema.safeParse(hint).success ? (hint as string) : undefined;
-
 // ============================================================
 // ACCESS CONTROL + INVALIDATION
 // ============================================================
@@ -834,15 +830,13 @@ export async function confirmSplitBankLink(
 }
 
 /**
- * Edit an expense. `monthHint` (the row's CURRENT `YYYY-MM`, which the client
- * already has) lets the locate hit the right chunk first; the located chunk is
- * reused for the write and the summary is delta-updated.
+ * Edit an expense. The located month's rows are reused for the write and the
+ * summary is delta-updated.
  */
 export async function updateSplitExpense(
   groupId: string,
   expenseId: string,
   data: z.infer<typeof updateSplitExpenseSchema>,
-  monthHint?: string,
 ): Promise<ApiResponse<SplitExpense>> {
   const loaded = await loadGroupForMember(groupId);
   if (!loaded.ok) return { success: false, error: loaded.error };
@@ -851,7 +845,7 @@ export async function updateSplitExpense(
     const saved = await withGroupLock(groupId, async () => {
       // Read and rebuild inside the same lock as the write. Otherwise a
       // concurrent bank-link confirmation can be silently overwritten.
-      const loc = await dbLocateExpense(groupId, expenseId, safeMonthHint(monthHint));
+      const loc = await dbLocateExpense(groupId, expenseId);
       const existing = loc?.rows[loc.index];
       if (!loc || !existing || existing.kind !== 'expense') return null;
       const next = buildExpenseRow(loaded.group, validated, existing.createdByUserId, existing.source, {
@@ -882,14 +876,14 @@ export async function updateSplitExpense(
   }
 }
 
-export async function deleteSplitExpense(groupId: string, expenseId: string, monthHint?: string): Promise<ApiResponse<void>> {
+export async function deleteSplitExpense(groupId: string, expenseId: string): Promise<ApiResponse<void>> {
   const loaded = await loadGroupForMember(groupId);
   if (!loaded.ok) return { success: false, error: loaded.error };
   // One locate under the lock; the removed row doubles as the notification
   // snapshot (title/amount). Payment rows are deleted through this same
   // action and deliberately notify nothing.
   const removed = await withGroupLock(groupId, async () => {
-    const loc = await dbLocateExpense(groupId, expenseId, safeMonthHint(monthHint));
+    const loc = await dbLocateExpense(groupId, expenseId);
     return loc ? dbDeleteLocatedExpense(groupId, loc) : null;
   });
   if (!removed) return { success: false, error: 'Expense not found' };

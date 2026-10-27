@@ -250,29 +250,22 @@ describe('recurrence catch-up (BUG-14)', () => {
 });
 
 describe('expense edit/delete (PERF-03/04)', () => {
-  it('passes the month hint through and invalidates both the old and new month', async () => {
+  it('locates the row by id and invalidates both the old and new month', async () => {
     state.rows = [expenseRow()];
     const res = await updateSplitExpense(
       'g1',
       'e1',
       { title: 'Groceries', category: 'Groceries', amountCents: 1200, date: '2026-04-02', split: { paidByUserId: ALEX, splitMode: 'equal' } },
-      '2026-03',
     );
     expect(res.success).toBe(true);
-    expect(vi.mocked(locateExpense)).toHaveBeenCalledWith('g1', 'e1', '2026-03');
+    expect(vi.mocked(locateExpense)).toHaveBeenCalledWith('g1', 'e1');
     expect(tags()).toEqual(expect.arrayContaining(['split-group:g1:expenses:2026-03', 'split-group:g1:expenses:2026-04']));
     expect(tags()).not.toContain('split-group:g1:expense-chunks');
   });
 
-  it('ignores a malformed month hint', async () => {
-    state.rows = [expenseRow()];
-    await deleteSplitExpense('g1', 'e1', '../../x');
-    expect(vi.mocked(locateExpense)).toHaveBeenCalledWith('g1', 'e1', undefined);
-  });
-
   it('deletes with one locate and notifies from the removed row', async () => {
     state.rows = [expenseRow()];
-    const res = await deleteSplitExpense('g1', 'e1', '2026-03');
+    const res = await deleteSplitExpense('g1', 'e1');
     expect(res.success).toBe(true);
     expect(state.rows).toHaveLength(0);
     expect(vi.mocked(locateExpense)).toHaveBeenCalledTimes(1);

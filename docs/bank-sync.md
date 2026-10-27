@@ -7,7 +7,7 @@ Developer reference for Sampolio's read-only bank synchronization via [Enable Ba
 Bank sync pulls **balances and transactions** from the user's real bank accounts into Sampolio's local encrypted store. It is strictly additive and strictly read-only:
 
 - **AIS only.** The integration uses account-information endpoints (`/aspsps`, `/auth`, `/sessions`, `/accounts/{uid}/balances`, `/accounts/{uid}/transactions`, `DELETE /sessions/{id}` — see `src/lib/bank/client.ts`). There is no payment-initiation surface anywhere in the codebase; nothing in this feature can move money.
-- **Cache-first.** The UI reads only the local encrypted files. The Enable Banking API is touched in a few well-defined places: the sync engine (`src/lib/bank/sync.ts`), the consent flow (`src/lib/bank/connect.ts` + the callback route), and two narrow calls from `src/lib/actions/bank.ts` — `listBankAspsps` (`getAspsps`, the bank picker) and `disconnectBankConnection` (`deleteSession`, best-effort consent revoke).
+- **Cache-first.** The UI reads only the local encrypted database. The Enable Banking API is touched in a few well-defined places: the sync engine (`src/lib/bank/sync.ts`), the consent flow (`src/lib/bank/connect.ts` + the callback route), and two narrow calls from `src/lib/actions/bank.ts` — `listBankAspsps` (`getAspsps`, the bank picker) and `disconnectBankConnection` (`deleteSession`, best-effort consent revoke).
 - **Hard-disable when unconfigured.** `getBankConfig()` (`src/lib/bank/constants.ts`) returns `null` if any required env var is missing; every caller treats `null` as "feature off" and never substitutes a default. `isBankFeatureConfigured()` wraps this, the `getBankFeatureStatus` server action (`src/lib/actions/bank.ts`) reports `{ configured: boolean }` to the UI (Settings shows a "not configured" notice), and `startBankScheduler()` logs `scheduler idle` and returns without starting a timer. No network calls are made in the unconfigured state.
 
 ## 2. Configuration & secrets
@@ -170,20 +170,20 @@ Every run is appended to the **audit log** (`appendBankSyncRun`, `src/lib/db/ban
 
 `startBankScheduler()` (`src/lib/bank/scheduler.ts`) is started once from `src/instrumentation.ts` `register()` — **Node runtime only** (`NEXT_RUNTIME === 'nodejs'`), after installing the timestamped console. It is a no-op when already started or when the feature is unconfigured.
 
-- **Cadence**: one `setInterval` tick every `SCHEDULER_TICK_MS = 30 min` (plus a first tick 15s after boot). A tick collects all users' `active` connections whose disk-persisted `nextSyncDueAt` has passed (a process restart delays a sync by at most one tick), then runs them **least-recently-synced first** (`orderRunnableConnections`, pure/exported) so iteration order never systematically starves one household member.
+- **Cadence**: one `setInterval` tick every `SCHEDULER_TICK_MS = 30 min` (plus a first tick 15s after boot). A tick collects all users' `active` connections whose persisted `nextSyncDueAt` has passed (a process restart delays a sync by at most one tick), then runs them **least-recently-synced first** (`orderRunnableConnections`, pure/exported) so iteration order never systematically starves one household member.
 - **Rate limits**: the documented ASPSP allowance is ~`PER_ACCOUNT_DAILY_LIMIT = 4` *unattended* fetches/day per account — attended calls (manual "Refresh now", which sends the requester's IP as PSU headers) are exempt. The scheduler budgets `MAX_SCHEDULED_FETCHES_PER_DAY = 3` per **underlying account** — the in-memory counter (reset each UTC day) is keyed by `linkIdentityKey`, not the per-user link id, so two users' links onto the same joint account draw from one shared counter. `RESERVED_RETRY_FETCHES = 1` stays as headroom for unattended retry re-runs (the 1h transient backoff). Only accounts a run **actually fetched** draw budget (`skippedFresh` costs nothing), and a connection is budget-skipped only when an account that still *needs* a fetch has no budget left. Manual "Refresh now" (`refreshBankConnection` action) additionally enforces `MIN_MANUAL_REFRESH_INTERVAL_MS = 5 min` since the last sync.
-- **Cache staleness caveat**: the scheduler runs outside any request scope, where both `updateTag` and `revalidateTag` throw — `safeUpdateTags` (`sync.ts`, via `invalidateTags`) swallows it, so a background sync **cannot invalidate the `'use cache'` store**. Bank/snapshot cached reads therefore use the bounded `cacheLife('synced')` profile (`next.config.ts`: stale 60s / revalidate 300s / expire 3600s) so the UI catches up to disk within ~5 minutes. Request-scoped mutations (e.g. "Refresh now") still invalidate instantly via tags. Never give a background-mutated read the `indefinite` profile.
+- **Cache staleness caveat**: the scheduler runs outside any request scope, where both `updateTag` and `revalidateTag` throw — `safeUpdateTags` (`sync.ts`, via `invalidateTags`) swallows it, so a background sync **cannot invalidate the `'use cache'` store**. Bank/snapshot cached reads therefore use the bounded `cacheLife('synced')` profile (`next.config.ts`: stale 60s / revalidate 300s / expire 3600s) so the UI catches up with the stored data within ~5 minutes. Request-scoped mutations (e.g. "Refresh now") still invalidate instantly via tags. Never give a background-mutated read the `indefinite` profile.
 
 ## 8. Data model & storage
 
-All files are per-user AES-256-GCM encrypted JSON under `data/users/{userId}/bank/`:
+All rows are per-user (`userId` key) JSON documents in the SQLCipher DB (table map in [`src/lib/db/AGENTS.md`](../src/lib/db/AGENTS.md)):
 
-| Path | Contents | DB module |
+| Table | Contents | DB module |
 |---|---|---|
-| `bank/connections/{connectionId}.enc` | `BankConnection` with `linkedAccounts[]` embedded | `src/lib/db/bank-connections.ts` |
-| `bank/connections/{connectionId}.session.enc` | `BankSessionSecret` (`state`, `authorizationId`, live `sessionId`) — **uncached, never logged**, read only by the action/sync layers | `src/lib/db/bank-connections.ts` |
-| `bank/accounts/{linkedAccountId}/transactions.enc` | Full deduped `BankTransaction[]` for one linked account | `src/lib/db/bank-transactions.ts` |
-| `bank/sync-runs/{connectionId}.enc` | Capped list of `BankSyncRun` (newest first) | `src/lib/db/bank-sync-runs.ts` |
+| `bank_connection` | `BankConnection` with `linkedAccounts[]` embedded | `src/lib/db/bank-connections.ts` |
+| `bank_session_secret` | `BankSessionSecret` (`state`, `authorizationId`, live `sessionId`) — **uncached, never logged**, read only by the action/sync layers | `src/lib/db/bank-connections.ts` |
+| `bank_transaction` | Full deduped `BankTransaction[]` for one linked account, one row each in list order; `writeBankTransactions` replaces the list atomically | `src/lib/db/bank-transactions.ts` |
+| `bank_sync_run` | Capped list of `BankSyncRun` (newest first, 50) | `src/lib/db/bank-sync-runs.ts` |
 
 Types live in `src/types/index.ts` (`BankConnection`, `BankAccountLink`, `BankSessionSecret`, `BankTransaction`, `BankSyncRun`, and the status/role/trigger unions). `BankConnectionStatus` is `pending | active | expired | error | revoked`.
 
@@ -195,7 +195,7 @@ Types live in `src/types/index.ts` (`BankConnection`, `BankAccountLink`, `BankSe
 - `user:{userId}:bank-account:{linkedAccountId}:transactions`
 - plus `user:{userId}:reconciliation` when an anchor snapshot is written and `user:{userId}:accounts` around connect/link changes.
 
-Like all storage in this app there is no file locking; the per-connection in-process lock in `sync.ts` is the only write serialization (single-node assumption).
+Each DB write is one transaction, but a sync reads, calls the bank and then writes; the per-connection in-process lock in `sync.ts` is what serializes that sequence (single-node assumption).
 
 ## 9. Account links (`BankAccountLink`)
 

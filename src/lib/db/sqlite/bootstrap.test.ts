@@ -51,7 +51,7 @@ afterEach(() => {
 function writeUserDataDir(id = ALEX_ID) {
   const dir = path.join(tmp.dir, 'users', id);
   fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(path.join(dir, 'preferences.enc'), 'ciphertext');
+  fs.writeFileSync(path.join(dir, 'avatar.webp'), 'image');
 }
 
 /** A DB from an earlier boot holding Alex (optionally soft-deleted). */
@@ -88,7 +88,7 @@ describe('bootstrap happy path', () => {
     writeDbWithAlex();
     writeUserDataDir();
     const result = await bootstrapDatabase();
-    expect(result).toEqual({ ok: true, dbUsable: true, dbDiscarded: false });
+    expect(result).toEqual({ ok: true, dbUsable: true, dbDiscarded: false, dataReady: true });
     expect(isAuthSetupComplete()).toBe(true);
     expect(isFirstUserSetup()).toBe(false);
   });
@@ -108,7 +108,7 @@ describe('fail closed', () => {
     writeUserDataDir();
 
     const result = await bootstrapDatabase();
-    expect(result).toEqual({ ok: false, dbUsable: false, dbDiscarded: true });
+    expect(result).toEqual({ ok: false, dbUsable: false, dbDiscarded: true, dataReady: false });
     expect(fs.existsSync(getDbPath())).toBe(false);
     expect(fs.existsSync(`${getDbPath()}-wal`)).toBe(false);
     expect(getSetupFailure()?.message).toMatch(/has no users/);
@@ -141,7 +141,7 @@ describe('fail closed', () => {
     process.env.ENCRYPTION_KEY = crypto.randomBytes(32).toString('hex');
 
     const result = await bootstrapDatabase();
-    expect(result).toEqual({ ok: false, dbUsable: false, dbDiscarded: false });
+    expect(result).toEqual({ ok: false, dbUsable: false, dbDiscarded: false, dataReady: false });
     expect(fs.existsSync(getDbPath())).toBe(true);
     expect(getSetupFailure()).toBeDefined();
 
@@ -157,7 +157,7 @@ describe('fail closed', () => {
     writeUserDataDir();
 
     const result = await bootstrapDatabase();
-    expect(result).toEqual({ ok: false, dbUsable: true, dbDiscarded: false });
+    expect(result).toEqual({ ok: false, dbUsable: true, dbDiscarded: false, dataReady: false });
     expect(fs.existsSync(getDbPath())).toBe(true);
     expect(getSetupFailure()?.message).toMatch(/1 data dir\(s\) but the account database has no users/);
 

@@ -2,9 +2,9 @@
 
 This is a self-hosted personal-finance app: Next.js 16 App Router, TypeScript
 strict, app-owned shadcn/Base UI controls, Tailwind v4, Better Auth 1.7.12 (password + passkeys),
-Zod/RHF, ECharts/Chart.js, and `date-fns`. Use `pnpm`. Financial data is
-encrypted JSON files; users/auth live in a SQLCipher SQLite DB
-(`src/lib/db/sqlite/`). Enable Banking is optional, read-only, and documented in
+Zod/RHF, ECharts/Chart.js, and `date-fns`. Use `pnpm`. All data (users/auth
+and every financial entity, as JSON document rows) lives in one SQLCipher
+SQLite DB (`src/lib/db/sqlite/`). Enable Banking is optional, read-only, and documented in
 [`docs/bank-sync.md`](docs/bank-sync.md).
 
 ## Working rules
@@ -13,7 +13,7 @@ encrypted JSON files; users/auth live in a SQLCipher SQLite DB
   tokens, identifying names, or production fixtures. Synthetic tests use Alex,
   Sam, and `*@example.com`; real-data parity tests belong in gitignored
   `*.local.test.ts` files.
-- Preserve the existing operational choices: file storage, LAN/prod topology,
+- Preserve the existing operational choices: the single SQLCipher DB, LAN/prod topology,
   pinned Node runtime, and the preview/prod data boundary. Do not invent
   equipment, schedules, active state, or credentials.
 - Use `date-fns`, `uuid.v4`, Finnish `fi-FI` formatting, and types centralized
@@ -24,10 +24,11 @@ encrypted JSON files; users/auth live in a SQLCipher SQLite DB
   one global `ConfirmDialog`; never mount another. Server actions are the
   backend boundary; the only API routes are Better Auth (`/api/auth/[...all]`),
   the bank callback, and the session-gated avatar route.
-- File DB writes are read-modify-write and have no cross-process locking.
-  Shared mortgages and split groups are action-layer access-controlled because
-  their files live under `data/shared/`; split writes use the single-node group
-  mutex. Keep those limits visible in [`docs/known-gaps.md`](docs/known-gaps.md).
+- DB module read-modify-writes run in one synchronous transaction (`inTx`),
+  but an action that reads, awaits and then writes is not serialized. Shared
+  mortgages and split groups are action-layer access-controlled because their
+  tables are not user-scoped; split writes use the single-node group mutex.
+  Keep those limits visible in [`docs/known-gaps.md`](docs/known-gaps.md).
 
 ## Where to look
 
@@ -62,11 +63,11 @@ wrappers where appropriate. Use tags such as
 `user:{userId}:bank-connections`, `users`, `app-settings`, and `all-data`; the
 full inventory is in `src/lib/actions/AGENTS.md` and `docs/architecture.md`.
 
-DB files use `getDataDir`, `getUserDir`, `ensureDir`, encrypted per-entity files,
-and read-modify-write CRUD; build id paths only with `entityPath`/`entityDir`
-(path-guarded ids, `UnsafePathError`). Users are the exception: `src/lib/db/users.ts` keeps
-its signatures over the SQLCipher DB; move further entities with the pattern in
-`src/lib/db/AGENTS.md`. Server code reads the session only through `auth()`
+DB modules store each entity's JSON in a finance table (`sqlite/schema/finance.ts`)
+through the `sqlite/docs.ts` helpers, check every id with `assertSafeId`
+(`UnsafePathError`), and wrap read-modify-writes in `inTx`; add entities with
+the pattern in `src/lib/db/AGENTS.md`. The file-era `.enc` tree is read only by
+the one-shot boot importer (`sqlite/file-import.ts`). Server code reads the session only through `auth()`
 (`src/lib/auth.ts`, old `{ user: { id, email, name, role } }` shape); clients use
 `useSession`/`authClient` from `src/lib/auth-client.ts`. Keep Better Auth's
 `cookieCache` off and `freshAge: 0`; passkey registration is instead gated to
@@ -132,7 +133,7 @@ the nested action/component/DB guides. Do not duplicate their mechanics here.
 
 ## Safety, testing, and operations
 
-Known limitations include file-write races, no cross-currency conversion,
+Known limitations include action-level read-then-write races, no cross-currency conversion,
 Finnish locale, bounded bank retrospective depth, bank-specific transaction
 gaps, in-memory cookie-based rate limiting and login lockout, plaintext avatar
 files excluded from JSON backups, and local-only real-data parity. Keep the root

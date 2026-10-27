@@ -1,4 +1,3 @@
-import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import type {
   Receivable,
@@ -7,31 +6,32 @@ import type {
   UpdateReceivableRequest,
   CreateRepaymentRequest,
 } from '@/types';
-import {
-  getUserDir,
-  ensureDir,
-  readEncryptedFile,
-  writeEncryptedFile,
-  listFiles,
-  deleteFile,
-  entityPath,
-  entityDir,
-} from './encryption';
+import { assertSafeId } from './encryption';
+import { deleteRows, getDoc, inTx, listDocs, putDoc } from './sqlite/docs';
+import { receivable as receivableTable, receivableRepayment } from './sqlite/schema';
 
-function getReceivablesDir(userId: string): string {
-  return path.join(getUserDir(userId), 'receivables');
+const receivableKey = (userId: string, receivableId: string) => ({
+  userId: assertSafeId(userId, 'userId'),
+  id: assertSafeId(receivableId),
+});
+const repaymentScope = (userId: string, receivableId: string) => ({
+  userId: assertSafeId(userId, 'userId'),
+  receivableId: assertSafeId(receivableId, 'receivableId'),
+});
+const repaymentKey = (userId: string, receivableId: string, repaymentId: string) => ({
+  ...repaymentScope(userId, receivableId),
+  id: assertSafeId(repaymentId),
+});
+
+function readRepayments(userId: string, receivableId: string): ReceivableRepayment[] {
+  const repayments = listDocs<ReceivableRepayment>(receivableRepayment, repaymentScope(userId, receivableId));
+  return repayments.sort((a, b) => a.date.localeCompare(b.date));
 }
 
-function getReceivableFile(userId: string, receivableId: string): string {
-  return entityPath(getReceivablesDir(userId), receivableId);
-}
-
-function getRepaymentsDir(userId: string, receivableId: string): string {
-  return path.join(entityDir(getReceivablesDir(userId), receivableId), 'repayments');
-}
-
-function getRepaymentFile(userId: string, receivableId: string, repaymentId: string): string {
-  return entityPath(getRepaymentsDir(userId, receivableId), repaymentId);
+/** The stored balance is a cache: recompute it from the repayments. */
+function withCurrentBalance(userId: string, receivable: Receivable): Receivable {
+  const totalRepaid = readRepayments(userId, receivable.id).reduce((sum, r) => sum + r.amount, 0);
+  return { ...receivable, currentBalance: receivable.initialPrincipal - totalRepaid };
 }
 
 // ============================================================
@@ -39,39 +39,20 @@ function getRepaymentFile(userId: string, receivableId: string, repaymentId: str
 // ============================================================
 
 export async function getReceivables(userId: string): Promise<Receivable[]> {
-  const receivablesDir = getReceivablesDir(userId);
-  await ensureDir(receivablesDir);
-
-  const files = await listFiles(receivablesDir);
-  const encFiles = files.filter(file => file.endsWith('.enc'));
-  const rawResults = await Promise.all(
-    encFiles.map(file => readEncryptedFile<Receivable>(path.join(receivablesDir, file)))
-  );
-  const validReceivables = rawResults.filter((r): r is Receivable => r !== null);
-
-  // Recalculate balances in parallel
-  const receivables = await Promise.all(
-    validReceivables.map(async (receivable) => {
-      const repayments = await getRepayments(userId, receivable.id);
-      const totalRepaid = repayments.reduce((sum, r) => sum + r.amount, 0);
-      return { ...receivable, currentBalance: receivable.initialPrincipal - totalRepaid };
-    })
+  const receivables = listDocs<Receivable>(receivableTable, { userId: assertSafeId(userId, 'userId') }).map((r) =>
+    withCurrentBalance(userId, r)
   );
 
   return receivables.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 }
 
+function readReceivable(userId: string, receivableId: string): Receivable | null {
+  const receivable = getDoc<Receivable>(receivableTable, receivableKey(userId, receivableId));
+  return receivable ? withCurrentBalance(userId, receivable) : null;
+}
+
 export async function getReceivableById(userId: string, receivableId: string): Promise<Receivable | null> {
-  const receivableFile = getReceivableFile(userId, receivableId);
-  const receivable = await readEncryptedFile<Receivable>(receivableFile);
-
-  if (receivable) {
-    const repayments = await getRepayments(userId, receivableId);
-    const totalRepaid = repayments.reduce((sum, r) => sum + r.amount, 0);
-    return { ...receivable, currentBalance: receivable.initialPrincipal - totalRepaid };
-  }
-
-  return receivable;
+  return readReceivable(userId, receivableId);
 }
 
 export async function createReceivable(userId: string, data: CreateReceivableRequest): Promise<Receivable> {
@@ -96,11 +77,7 @@ export async function createReceivable(userId: string, data: CreateReceivableReq
     updatedAt: now,
   };
 
-  const receivablesDir = getReceivablesDir(userId);
-  await ensureDir(receivablesDir);
-
-  const receivableFile = getReceivableFile(userId, id);
-  await writeEncryptedFile(receivableFile, receivable);
+  putDoc(receivableTable, receivableKey(userId, id), receivable);
 
   return receivable;
 }
@@ -110,45 +87,36 @@ export async function updateReceivable(
   receivableId: string,
   updates: UpdateReceivableRequest
 ): Promise<Receivable | null> {
-  const receivable = await getReceivableById(userId, receivableId);
-  if (!receivable) {
-    return null;
-  }
+  return inTx(() => {
+    const receivable = readReceivable(userId, receivableId);
+    if (!receivable) {
+      return null;
+    }
 
-  const updatedReceivable: Receivable = {
-    ...receivable,
-    ...updates,
-    updatedAt: new Date().toISOString(),
-  };
+    const updatedReceivable: Receivable = {
+      ...receivable,
+      ...updates,
+      updatedAt: new Date().toISOString(),
+    };
 
-  // Recalculate current balance if initial principal changed
-  // but only if currentBalance wasn't explicitly provided
-  if (updates.initialPrincipal !== undefined && !('currentBalance' in updates)) {
-    const repayments = await getRepayments(userId, receivableId);
-    const totalRepaid = repayments.reduce((sum, r) => sum + r.amount, 0);
-    updatedReceivable.currentBalance = updates.initialPrincipal - totalRepaid;
-  }
+    // Recalculate current balance if initial principal changed
+    // but only if currentBalance wasn't explicitly provided
+    if (updates.initialPrincipal !== undefined && !('currentBalance' in updates)) {
+      const totalRepaid = readRepayments(userId, receivableId).reduce((sum, r) => sum + r.amount, 0);
+      updatedReceivable.currentBalance = updates.initialPrincipal - totalRepaid;
+    }
 
-  const receivableFile = getReceivableFile(userId, receivableId);
-  await writeEncryptedFile(receivableFile, updatedReceivable);
-
-  return updatedReceivable;
+    putDoc(receivableTable, receivableKey(userId, receivableId), updatedReceivable);
+    return updatedReceivable;
+  });
 }
 
 export async function deleteReceivable(userId: string, receivableId: string): Promise<boolean> {
-  // Delete all repayments first
-  const repaymentsDir = getRepaymentsDir(userId, receivableId);
-  try {
-    const repaymentFiles = await listFiles(repaymentsDir);
-    for (const file of repaymentFiles) {
-      await deleteFile(path.join(repaymentsDir, file));
-    }
-  } catch {
-    // Directory might not exist
-  }
-
-  const receivableFile = getReceivableFile(userId, receivableId);
-  await deleteFile(receivableFile);
+  inTx(() => {
+    // Delete all repayments first
+    deleteRows(receivableRepayment, repaymentScope(userId, receivableId));
+    deleteRows(receivableTable, receivableKey(userId, receivableId));
+  });
   return true;
 }
 
@@ -157,21 +125,7 @@ export async function deleteReceivable(userId: string, receivableId: string): Pr
 // ============================================================
 
 export async function getRepayments(userId: string, receivableId: string): Promise<ReceivableRepayment[]> {
-  const repaymentsDir = getRepaymentsDir(userId, receivableId);
-  try {
-    await ensureDir(repaymentsDir);
-  } catch {
-    return [];
-  }
-
-  const files = await listFiles(repaymentsDir);
-  const encFiles = files.filter(file => file.endsWith('.enc'));
-  const results = await Promise.all(
-    encFiles.map(file => readEncryptedFile<ReceivableRepayment>(path.join(repaymentsDir, file)))
-  );
-  const repayments = results.filter((r): r is ReceivableRepayment => r !== null);
-
-  return repayments.sort((a, b) => a.date.localeCompare(b.date));
+  return readRepayments(userId, receivableId);
 }
 
 export async function createRepayment(
@@ -192,11 +146,7 @@ export async function createRepayment(
     createdAt: now,
   };
 
-  const repaymentsDir = getRepaymentsDir(userId, receivableId);
-  await ensureDir(repaymentsDir);
-
-  const repaymentFile = getRepaymentFile(userId, receivableId, id);
-  await writeEncryptedFile(repaymentFile, repayment);
+  putDoc(receivableRepayment, repaymentKey(userId, receivableId, id), repayment);
 
   return repayment;
 }
@@ -206,7 +156,6 @@ export async function deleteRepayment(
   receivableId: string,
   repaymentId: string
 ): Promise<boolean> {
-  const repaymentFile = getRepaymentFile(userId, receivableId, repaymentId);
-  await deleteFile(repaymentFile);
+  deleteRows(receivableRepayment, repaymentKey(userId, receivableId, repaymentId));
   return true;
 }

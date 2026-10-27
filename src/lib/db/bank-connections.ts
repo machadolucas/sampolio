@@ -1,16 +1,13 @@
 /**
- * Enable Banking — connection storage (file I/O).
+ * Enable Banking — connection storage.
  *
  * A BankConnection (one bank consent + its linked accounts) is stored
- * per-user, one file per connection. The live consent secrets live in a
- * SEPARATE companion file (`{id}.session.enc`) that is NEVER cached and never
- * logged — only the action/sync layers read it, by an uncached accessor.
- *
- * Layout: data/users/{userId}/bank/connections/{id}.enc
- *         data/users/{userId}/bank/connections/{id}.session.enc
+ * per-user, one row per connection (`bank_connection`). The live consent
+ * secrets live in a SEPARATE table (`bank_session_secret`) that is NEVER
+ * cached and never logged — only the action/sync layers read it, by an
+ * uncached accessor.
  */
 
-import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import type {
   BankConnection,
@@ -18,55 +15,38 @@ import type {
   BankConnectionStatus,
   BankSessionSecret,
 } from '@/types';
-import {
-  getUserDir,
-  ensureDir,
-  readEncryptedFile,
-  writeEncryptedFile,
-  listFiles,
-  deleteFile,
-  entityPath,
-} from './encryption';
+import { assertSafeId } from './encryption';
+import { deleteRows, getDoc, inTx, listDocs, putDoc } from './sqlite/docs';
+import { bankConnection, bankSessionSecret } from './sqlite/schema';
 
-function getBankDir(userId: string): string {
-  return path.join(getUserDir(userId), 'bank');
-}
-
-function getConnectionsDir(userId: string): string {
-  return path.join(getBankDir(userId), 'connections');
-}
-
-function getConnectionFile(userId: string, connectionId: string): string {
-  return entityPath(getConnectionsDir(userId), connectionId);
-}
-
-function getSessionSecretFile(userId: string, connectionId: string): string {
-  return entityPath(getConnectionsDir(userId), connectionId, '.session.enc');
-}
+const connectionKey = (userId: string, connectionId: string) => ({
+  userId: assertSafeId(userId, 'userId'),
+  id: assertSafeId(connectionId),
+});
+const secretKey = (userId: string, connectionId: string) => ({
+  userId: assertSafeId(userId, 'userId'),
+  connectionId: assertSafeId(connectionId, 'connectionId'),
+});
 
 // ============================================================
 // Connections
 // ============================================================
 
+function readConnections(userId: string): BankConnection[] {
+  return listDocs<BankConnection>(bankConnection, { userId: assertSafeId(userId, 'userId') }).sort(
+    (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+  );
+}
+
 export async function getBankConnections(userId: string): Promise<BankConnection[]> {
-  const dir = getConnectionsDir(userId);
-  await ensureDir(dir);
-  const files = (await listFiles(dir)).filter(
-    (f) => f.endsWith('.enc') && !f.endsWith('.session.enc')
-  );
-  const results = await Promise.all(
-    files.map((f) => readEncryptedFile<BankConnection>(path.join(dir, f)))
-  );
-  return results
-    .filter((c): c is BankConnection => c !== null)
-    .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+  return readConnections(userId);
 }
 
 export async function getBankConnectionById(
   userId: string,
   connectionId: string
 ): Promise<BankConnection | null> {
-  return readEncryptedFile<BankConnection>(getConnectionFile(userId, connectionId));
+  return getDoc<BankConnection>(bankConnection, connectionKey(userId, connectionId));
 }
 
 export async function createBankConnection(
@@ -91,7 +71,7 @@ export async function createBankConnection(
     createdAt: now,
     updatedAt: now,
   };
-  await writeEncryptedFile(getConnectionFile(userId, connection.id), connection);
+  putDoc(bankConnection, connectionKey(userId, connection.id), connection);
   return connection;
 }
 
@@ -100,18 +80,20 @@ export async function updateBankConnection(
   connectionId: string,
   updates: Partial<Omit<BankConnection, 'id' | 'userId' | 'createdAt'>>
 ): Promise<BankConnection | null> {
-  const existing = await getBankConnectionById(userId, connectionId);
-  if (!existing) return null;
-  const updated: BankConnection = {
-    ...existing,
-    ...updates,
-    id: existing.id,
-    userId: existing.userId,
-    createdAt: existing.createdAt,
-    updatedAt: new Date().toISOString(),
-  };
-  await writeEncryptedFile(getConnectionFile(userId, connectionId), updated);
-  return updated;
+  return inTx(() => {
+    const existing = getDoc<BankConnection>(bankConnection, connectionKey(userId, connectionId));
+    if (!existing) return null;
+    const updated: BankConnection = {
+      ...existing,
+      ...updates,
+      id: existing.id,
+      userId: existing.userId,
+      createdAt: existing.createdAt,
+      updatedAt: new Date().toISOString(),
+    };
+    putDoc(bankConnection, connectionKey(userId, connectionId), updated);
+    return updated;
+  });
 }
 
 /** Replace the full linked-account list (used after mapping accounts at consent). */
@@ -127,8 +109,10 @@ export async function deleteBankConnection(
   userId: string,
   connectionId: string
 ): Promise<boolean> {
-  await deleteFile(getConnectionFile(userId, connectionId));
-  await deleteFile(getSessionSecretFile(userId, connectionId));
+  inTx(() => {
+    deleteRows(bankConnection, connectionKey(userId, connectionId));
+    deleteRows(bankSessionSecret, secretKey(userId, connectionId));
+  });
   return true;
 }
 
@@ -136,26 +120,30 @@ export async function deleteBankConnection(
 // Session secret — UNCACHED, never logged
 // ============================================================
 
+function readSessionSecret(userId: string, connectionId: string): BankSessionSecret | null {
+  return getDoc<BankSessionSecret>(bankSessionSecret, secretKey(userId, connectionId));
+}
+
 /** Read the live consent secrets for a connection. Intentionally not cached. */
 export async function getBankSessionSecret(
   userId: string,
   connectionId: string
 ): Promise<BankSessionSecret | null> {
-  return readEncryptedFile<BankSessionSecret>(getSessionSecretFile(userId, connectionId));
+  return readSessionSecret(userId, connectionId);
 }
 
 export async function writeBankSessionSecret(
   userId: string,
   secret: BankSessionSecret
 ): Promise<void> {
-  await writeEncryptedFile(getSessionSecretFile(userId, secret.connectionId), secret);
+  putDoc(bankSessionSecret, secretKey(userId, secret.connectionId), secret);
 }
 
 export async function deleteBankSessionSecret(
   userId: string,
   connectionId: string
 ): Promise<void> {
-  await deleteFile(getSessionSecretFile(userId, connectionId));
+  deleteRows(bankSessionSecret, secretKey(userId, connectionId));
 }
 
 /**
@@ -167,9 +155,8 @@ export async function findConnectionByState(
   userId: string,
   state: string
 ): Promise<{ connection: BankConnection; secret: BankSessionSecret } | null> {
-  const connections = await getBankConnections(userId);
-  for (const connection of connections) {
-    const secret = await getBankSessionSecret(userId, connection.id);
+  for (const connection of readConnections(userId)) {
+    const secret = readSessionSecret(userId, connection.id);
     if (secret && secret.state === state) {
       return { connection, secret };
     }

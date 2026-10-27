@@ -6,6 +6,8 @@ import { hashPassword } from 'better-auth/crypto';
 import type { User, UserRole, PublicUser } from '@/types';
 import { ensureDir, getUserDir } from './encryption';
 import { getDb } from './sqlite/client';
+import { inTx } from './sqlite/docs';
+import { deleteAllUserData } from './user-data';
 import { account, session, user as userTable } from './sqlite/schema';
 import { isFirstUserSetup, tombstoneEmail } from './sqlite/user-store';
 
@@ -222,13 +224,18 @@ export async function deleteUser(userId: string): Promise<boolean> {
   return true;
 }
 
-/** Permanent, irreversible deletion: removes the user row (FK cascade drops
- * sessions, accounts and passkeys) AND recursively deletes their entire data
- * directory. Unlike `deleteUser` (a soft delete that preserves files for admin
- * purposes), this is for account self-deletion — the caller must have already
- * torn down any shared entities (split groups / mortgages) the user belongs to. */
+/** Permanent, irreversible deletion: in one transaction removes every
+ * user-scoped finance row and the user row (FK cascade drops sessions, accounts
+ * and passkeys), then recursively deletes their data directory (avatar, legacy
+ * `.enc` files). Unlike `deleteUser` (a soft delete that preserves data for
+ * admin purposes), this is for account self-deletion — the caller must have
+ * already torn down any shared entities (split groups / mortgages) the user
+ * belongs to. */
 export async function hardDeleteUser(userId: string): Promise<boolean> {
-  getDb().delete(userTable).where(eq(userTable.id, userId)).run();
+  inTx(() => {
+    deleteAllUserData(userId);
+    getDb().delete(userTable).where(eq(userTable.id, userId)).run();
+  });
 
   const userDir = getUserDir(userId);
   await fs.rm(userDir, { recursive: true, force: true });

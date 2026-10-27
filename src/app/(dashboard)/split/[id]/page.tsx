@@ -520,11 +520,7 @@ export default function SplitGroupDetailPage() {
             netCents: b.netCents - (row.netByUserId[b.userId] ?? 0),
           })),
         );
-        const res = await deleteSplitExpense(
-          groupId,
-          row.id,
-          row.date.slice(0, 7),
-        );
+        const res = await deleteSplitExpense(groupId, row.id);
         if (!res.success) {
           setExpenses(prevExpenses);
           setBalances(prevBalances);

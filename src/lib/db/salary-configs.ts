@@ -1,45 +1,34 @@
-import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import type {
   SalaryConfig,
   CreateSalaryConfigRequest,
   UpdateSalaryConfigRequest
 } from '@/types';
-import {
-  getUserDir,
-  ensureDir,
-  readEncryptedFile,
-  writeEncryptedFile,
-  listFiles,
-  deleteFile,
-  entityPath,
-  entityDir,
-} from './encryption';
-import { createRecurringItem, updateRecurringItem, deleteRecurringItem } from './recurring-items';
+import { assertSafeId } from './encryption';
+import { deleteRows, getDoc, inTx, listDocs, putDoc } from './sqlite/docs';
+import { salaryConfig } from './sqlite/schema';
+import { insertRecurringItem, patchRecurringItem, removeRecurringItem } from './recurring-items';
 import { calculateNetSalary } from '../salary-utils';
 
 export { calculateNetSalary };
 
-function getSalaryConfigsDir(userId: string, accountId: string): string {
-  return path.join(entityDir(path.join(getUserDir(userId), 'accounts'), accountId), 'salary');
-}
+const scope = (userId: string, accountId: string) => ({
+  userId: assertSafeId(userId, 'userId'),
+  accountId: assertSafeId(accountId, 'accountId'),
+});
+const key = (userId: string, accountId: string, configId: string) => ({
+  ...scope(userId, accountId),
+  id: assertSafeId(configId),
+});
 
-function getSalaryConfigFile(userId: string, accountId: string, configId: string): string {
-  return entityPath(getSalaryConfigsDir(userId, accountId), configId);
+/** Name-sorted configs (sync; taxed-income reads its defaults through it). */
+export function readSalaryConfigs(userId: string, accountId: string): SalaryConfig[] {
+  const configs = listDocs<SalaryConfig>(salaryConfig, scope(userId, accountId));
+  return configs.sort((a, b) => a.name.localeCompare(b.name));
 }
 
 export async function getSalaryConfigs(userId: string, accountId: string): Promise<SalaryConfig[]> {
-  const configsDir = getSalaryConfigsDir(userId, accountId);
-  await ensureDir(configsDir);
-
-  const files = await listFiles(configsDir);
-  const encFiles = files.filter(file => file.endsWith('.enc'));
-  const results = await Promise.all(
-    encFiles.map(file => readEncryptedFile<SalaryConfig>(path.join(configsDir, file)))
-  );
-  const configs = results.filter((c): c is SalaryConfig => c !== null);
-
-  return configs.sort((a, b) => a.name.localeCompare(b.name));
+  return readSalaryConfigs(userId, accountId);
 }
 
 export async function getActiveSalaryConfigs(userId: string, accountId: string): Promise<SalaryConfig[]> {
@@ -52,8 +41,7 @@ export async function getSalaryConfigById(
   accountId: string,
   configId: string
 ): Promise<SalaryConfig | null> {
-  const configFile = getSalaryConfigFile(userId, accountId, configId);
-  return readEncryptedFile<SalaryConfig>(configFile);
+  return getDoc<SalaryConfig>(salaryConfig, key(userId, accountId, configId));
 }
 
 export async function createSalaryConfig(
@@ -71,50 +59,48 @@ export async function createSalaryConfig(
     data.benefits || []
   );
 
-  let linkedRecurringItemId: string | undefined;
+  return inTx(() => {
+    let linkedRecurringItemId: string | undefined;
 
-  // Create linked recurring income item if requested
-  if (data.isLinkedToRecurring) {
-    const recurringItem = await createRecurringItem(userId, {
+    // Create linked recurring income item if requested
+    if (data.isLinkedToRecurring) {
+      const recurringItem = insertRecurringItem(userId, {
+        accountId: data.accountId,
+        type: 'income',
+        name: `Salary: ${data.name}`,
+        amount: netSalary,
+        category: 'Salary',
+        frequency: 'monthly',
+        startDate: data.startDate,
+        endDate: data.endDate,
+        isActive: data.isActive ?? true,
+      });
+      linkedRecurringItemId = recurringItem.id;
+    }
+
+    const config: SalaryConfig = {
+      id,
       accountId: data.accountId,
-      type: 'income',
-      name: `Salary: ${data.name}`,
-      amount: netSalary,
-      category: 'Salary',
-      frequency: 'monthly',
+      name: data.name,
+      grossSalary: data.grossSalary,
+      benefits: data.benefits || [],
+      taxRate: data.taxRate,
+      contributionsRate: data.contributionsRate,
+      otherDeductions: data.otherDeductions || 0,
+      netSalary,
+      isLinkedToRecurring: data.isLinkedToRecurring ?? false,
+      linkedRecurringItemId,
       startDate: data.startDate,
       endDate: data.endDate,
       isActive: data.isActive ?? true,
-    });
-    linkedRecurringItemId = recurringItem.id;
-  }
+      createdAt: now,
+      updatedAt: now,
+    };
 
-  const config: SalaryConfig = {
-    id,
-    accountId: data.accountId,
-    name: data.name,
-    grossSalary: data.grossSalary,
-    benefits: data.benefits || [],
-    taxRate: data.taxRate,
-    contributionsRate: data.contributionsRate,
-    otherDeductions: data.otherDeductions || 0,
-    netSalary,
-    isLinkedToRecurring: data.isLinkedToRecurring ?? false,
-    linkedRecurringItemId,
-    startDate: data.startDate,
-    endDate: data.endDate,
-    isActive: data.isActive ?? true,
-    createdAt: now,
-    updatedAt: now,
-  };
+    putDoc(salaryConfig, key(userId, data.accountId, id), config);
 
-  const configsDir = getSalaryConfigsDir(userId, data.accountId);
-  await ensureDir(configsDir);
-
-  const configFile = getSalaryConfigFile(userId, data.accountId, id);
-  await writeEncryptedFile(configFile, config);
-
-  return config;
+    return config;
+  });
 }
 
 export async function updateSalaryConfig(
@@ -123,42 +109,43 @@ export async function updateSalaryConfig(
   configId: string,
   updates: UpdateSalaryConfigRequest
 ): Promise<SalaryConfig | null> {
-  const config = await getSalaryConfigById(userId, accountId, configId);
-  if (!config) {
-    return null;
-  }
+  return inTx(() => {
+    const config = getDoc<SalaryConfig>(salaryConfig, key(userId, accountId, configId));
+    if (!config) {
+      return null;
+    }
 
-  // Recalculate net salary if any salary parameters changed
-  const grossSalary = updates.grossSalary ?? config.grossSalary;
-  const taxRate = updates.taxRate ?? config.taxRate;
-  const contributionsRate = updates.contributionsRate ?? config.contributionsRate;
-  const otherDeductions = updates.otherDeductions ?? config.otherDeductions;
-  const benefits = updates.benefits ?? config.benefits ?? [];
+    // Recalculate net salary if any salary parameters changed
+    const grossSalary = updates.grossSalary ?? config.grossSalary;
+    const taxRate = updates.taxRate ?? config.taxRate;
+    const contributionsRate = updates.contributionsRate ?? config.contributionsRate;
+    const otherDeductions = updates.otherDeductions ?? config.otherDeductions;
+    const benefits = updates.benefits ?? config.benefits ?? [];
 
-  const netSalary = calculateNetSalary(grossSalary, taxRate, contributionsRate, otherDeductions, benefits);
+    const netSalary = calculateNetSalary(grossSalary, taxRate, contributionsRate, otherDeductions, benefits);
 
-  const updatedConfig: SalaryConfig = {
-    ...config,
-    ...updates,
-    netSalary,
-    updatedAt: new Date().toISOString(),
-  };
+    const updatedConfig: SalaryConfig = {
+      ...config,
+      ...updates,
+      netSalary,
+      updatedAt: new Date().toISOString(),
+    };
 
-  // Update linked recurring item if it exists
-  if (config.linkedRecurringItemId && config.isLinkedToRecurring) {
-    await updateRecurringItem(userId, accountId, config.linkedRecurringItemId, {
-      name: `Salary: ${updatedConfig.name}`,
-      amount: netSalary,
-      startDate: updatedConfig.startDate,
-      endDate: updatedConfig.endDate,
-      isActive: updatedConfig.isActive,
-    });
-  }
+    // Update linked recurring item if it exists
+    if (config.linkedRecurringItemId && config.isLinkedToRecurring) {
+      patchRecurringItem(userId, accountId, config.linkedRecurringItemId, {
+        name: `Salary: ${updatedConfig.name}`,
+        amount: netSalary,
+        startDate: updatedConfig.startDate,
+        endDate: updatedConfig.endDate,
+        isActive: updatedConfig.isActive,
+      });
+    }
 
-  const configFile = getSalaryConfigFile(userId, accountId, configId);
-  await writeEncryptedFile(configFile, updatedConfig);
+    putDoc(salaryConfig, key(userId, accountId, configId), updatedConfig);
 
-  return updatedConfig;
+    return updatedConfig;
+  });
 }
 
 export async function toggleSalaryConfigActive(
@@ -179,14 +166,15 @@ export async function deleteSalaryConfig(
   accountId: string,
   configId: string
 ): Promise<boolean> {
-  const config = await getSalaryConfigById(userId, accountId, configId);
+  return inTx(() => {
+    const config = getDoc<SalaryConfig>(salaryConfig, key(userId, accountId, configId));
 
-  // Delete linked recurring item if it exists
-  if (config?.linkedRecurringItemId) {
-    await deleteRecurringItem(userId, accountId, config.linkedRecurringItemId);
-  }
+    // Delete linked recurring item if it exists
+    if (config?.linkedRecurringItemId) {
+      removeRecurringItem(userId, accountId, config.linkedRecurringItemId);
+    }
 
-  const configFile = getSalaryConfigFile(userId, accountId, configId);
-  await deleteFile(configFile);
-  return true;
+    deleteRows(salaryConfig, key(userId, accountId, configId));
+    return true;
+  });
 }

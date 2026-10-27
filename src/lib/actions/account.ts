@@ -1,7 +1,5 @@
 'use server';
 
-import * as fs from 'fs/promises';
-import * as path from 'path';
 import { updateTag } from 'next/cache';
 import { headers } from 'next/headers';
 import { isAPIError } from 'better-auth/api';
@@ -18,7 +16,7 @@ import {
   recordSuccessfulLogin,
 } from '@/lib/db/users';
 import { getUserPasskeys } from '@/lib/db/passkeys';
-import { getUserDir } from '@/lib/db/encryption';
+import { deleteUserDataGroups, type UserDataGroup } from '@/lib/db/user-data';
 import { changePasswordSchema, type ChangePasswordFormData } from '@/lib/schemas/auth.schema';
 import { avatarDataUriSchema, avatarDataUriToBuffer } from '@/lib/schemas/user.schema';
 import {
@@ -337,10 +335,10 @@ export async function deleteMyAccount(input: { confirmationText: string }): Prom
   return { success: true };
 }
 
-// Dirs wiped by "Start fresh" — every OWNED financial data dir. Deliberately
-// excludes preferences.enc and the avatar, and never touches shared split-groups /
-// shared-mortgages (those live outside the user dir entirely).
-const RESET_DIRS = ['accounts', 'investments', 'receivables', 'debts', 'goals', 'budgets', 'trips', 'reconciliation', 'bank'];
+// Groups wiped by "Start fresh" — every OWNED financial data group. Deliberately
+// excludes preferences and the avatar, and never touches shared split groups /
+// shared mortgages (not user-scoped at all).
+const RESET_GROUPS: UserDataGroup[] = ['accounts', 'investments', 'receivables', 'debts', 'goals', 'budgets', 'trips', 'reconciliation', 'bank'];
 
 /** "Start fresh": wipes all of the current user's own financial data (incl.
  * disconnecting + revoking bank consents) but keeps the account itself,
@@ -362,8 +360,7 @@ export async function resetMyData(): Promise<ApiResponse<null>> {
     }
   }
 
-  const userDir = getUserDir(userId);
-  await Promise.all(RESET_DIRS.map((d) => fs.rm(path.join(userDir, d), { recursive: true, force: true })));
+  deleteUserDataGroups(userId, RESET_GROUPS);
 
   updateTag(`user:${userId}`);
   return { success: true };

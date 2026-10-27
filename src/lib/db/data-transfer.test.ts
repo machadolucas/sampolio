@@ -8,13 +8,15 @@ import { getRecurringItems } from './recurring-items';
 import { getGoals } from './goals';
 import { getTrips } from './trips';
 import { getBalanceSnapshots } from './reconciliation';
-import { getUserDir, writeEncryptedFile } from './encryption';
+import { createBankConnection, getBankConnections } from './bank-connections';
+import { putDoc } from './sqlite/docs';
+import { goal as goalTable, trip as tripTable } from './sqlite/schema';
 import { dataExportSchema, MAX_IMPORT_ROWS_PER_ARRAY } from '@/lib/schemas/data-transfer.schema';
 import type { DataExport } from '@/lib/schemas/data-transfer.schema';
 import { createMockAccount, createMockRecurringItem, createMockPlannedItem } from '@/test/mocks';
 import type { BalanceSnapshot, Goal, Trip } from '@/types';
 
-/** Real disk round-trips of the JSON backup writer (encrypted write → decrypt read). */
+/** Real DB round-trips of the JSON backup writer. */
 describe('data-transfer db layer', () => {
   let dataDir: string;
   const userId = 'import-user';
@@ -88,7 +90,7 @@ describe('data-transfer db layer', () => {
   it('merge mode upserts by id and keeps unrelated entities', async () => {
     // Pre-existing goal not present in the payload must survive a merge.
     const extraGoal: Goal = { ...goal, id: 'goal-keep', name: 'Keep me' };
-    await writeEncryptedFile(path.join(getUserDir(userId), 'goals', 'goal-keep.enc'), extraGoal);
+    putDoc(goalTable, { userId, id: 'goal-keep' }, extraGoal);
 
     const modified: DataExport = {
       ...payload,
@@ -103,16 +105,13 @@ describe('data-transfer db layer', () => {
   });
 
   it('replace mode wipes exported entity types but never bank data', async () => {
-    const bankDir = path.join(getUserDir(userId), 'bank-connections');
-    await fs.mkdir(bankDir, { recursive: true });
-    const bankFile = path.join(bankDir, 'conn-1.enc');
-    await fs.writeFile(bankFile, 'sentinel');
+    const connection = await createBankConnection(userId, { aspspName: 'Test Bank', aspspCountry: 'FI' });
 
     await writeUserDataFromExport(userId, payload, 'replace');
 
     const goals = await getGoals(userId);
     expect(goals.map((g) => g.id)).toEqual(['goal-1']); // goal-keep wiped by replace
-    await expect(fs.readFile(bankFile, 'utf8')).resolves.toBe('sentinel');
+    expect((await getBankConnections(userId)).map((c) => c.id)).toEqual([connection.id]);
   });
 
   describe('trips (export v2)', () => {
@@ -163,9 +162,9 @@ describe('data-transfer db layer', () => {
       expect(await getTrips(tripUser)).toEqual([]);
     });
 
-    it('export reads fresh from disk (no cache) and round-trips through the schema', async () => {
+    it('export reads fresh from the DB (no cache) and round-trips through the schema', async () => {
       await writeUserDataFromExport(tripUser, v2([trip]), 'merge');
-      await writeEncryptedFile(path.join(getUserDir(tripUser), 'trips', 'trip-2.enc'), { ...trip, id: 'trip-2' });
+      putDoc(tripTable, { userId: tripUser, id: 'trip-2' }, { ...trip, id: 'trip-2' });
       const entities = await readUserDataForExport(tripUser);
       expect(entities.trips?.map((t) => t.id).sort()).toEqual(['trip-1', 'trip-2']);
       expect(entities.accounts[0].recurringItems.map((i) => i.id)).toEqual(['rec-1']);

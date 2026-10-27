@@ -1,4 +1,3 @@
-import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import type {
   InvestmentAccount,
@@ -8,47 +7,29 @@ import type {
   CreateInvestmentContributionRequest,
   UpdateInvestmentContributionRequest,
 } from '@/types';
-import {
-  getUserDir,
-  ensureDir,
-  readEncryptedFile,
-  writeEncryptedFile,
-  listFiles,
-  deleteFile,
-  entityPath,
-  entityDir,
-} from './encryption';
+import { assertSafeId } from './encryption';
+import { deleteRows, getDoc, inTx, listDocs, putDoc } from './sqlite/docs';
+import { investment as investmentTable, investmentContribution } from './sqlite/schema';
 
-function getInvestmentsDir(userId: string): string {
-  return path.join(getUserDir(userId), 'investments');
-}
-
-function getInvestmentFile(userId: string, investmentId: string): string {
-  return entityPath(getInvestmentsDir(userId), investmentId);
-}
-
-function getContributionsDir(userId: string, investmentId: string): string {
-  return path.join(entityDir(getInvestmentsDir(userId), investmentId), 'contributions');
-}
-
-function getContributionFile(userId: string, investmentId: string, contributionId: string): string {
-  return entityPath(getContributionsDir(userId, investmentId), contributionId);
-}
+const investmentKey = (userId: string, investmentId: string) => ({
+  userId: assertSafeId(userId, 'userId'),
+  id: assertSafeId(investmentId),
+});
+const contributionScope = (userId: string, investmentId: string) => ({
+  userId: assertSafeId(userId, 'userId'),
+  investmentId: assertSafeId(investmentId, 'investmentId'),
+});
+const contributionKey = (userId: string, investmentId: string, contributionId: string) => ({
+  ...contributionScope(userId, investmentId),
+  id: assertSafeId(contributionId),
+});
 
 // ============================================================
 // INVESTMENT ACCOUNTS CRUD
 // ============================================================
 
 export async function getInvestmentAccounts(userId: string): Promise<InvestmentAccount[]> {
-  const investmentsDir = getInvestmentsDir(userId);
-  await ensureDir(investmentsDir);
-
-  const files = await listFiles(investmentsDir);
-  const encFiles = files.filter(file => file.endsWith('.enc'));
-  const results = await Promise.all(
-    encFiles.map(file => readEncryptedFile<InvestmentAccount>(path.join(investmentsDir, file)))
-  );
-  const investments = results.filter((i): i is InvestmentAccount => i !== null);
+  const investments = listDocs<InvestmentAccount>(investmentTable, { userId: assertSafeId(userId, 'userId') });
 
   return investments.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 }
@@ -57,8 +38,7 @@ export async function getInvestmentAccountById(
   userId: string,
   investmentId: string
 ): Promise<InvestmentAccount | null> {
-  const investmentFile = getInvestmentFile(userId, investmentId);
-  return readEncryptedFile<InvestmentAccount>(investmentFile);
+  return getDoc<InvestmentAccount>(investmentTable, investmentKey(userId, investmentId));
 }
 
 export async function createInvestmentAccount(
@@ -82,11 +62,7 @@ export async function createInvestmentAccount(
     updatedAt: now,
   };
 
-  const investmentsDir = getInvestmentsDir(userId);
-  await ensureDir(investmentsDir);
-
-  const investmentFile = getInvestmentFile(userId, id);
-  await writeEncryptedFile(investmentFile, investment);
+  putDoc(investmentTable, investmentKey(userId, id), investment);
 
   return investment;
 }
@@ -96,37 +72,29 @@ export async function updateInvestmentAccount(
   investmentId: string,
   updates: UpdateInvestmentAccountRequest
 ): Promise<InvestmentAccount | null> {
-  const investment = await getInvestmentAccountById(userId, investmentId);
-  if (!investment) {
-    return null;
-  }
+  return inTx(() => {
+    const investment = getDoc<InvestmentAccount>(investmentTable, investmentKey(userId, investmentId));
+    if (!investment) {
+      return null;
+    }
 
-  const updatedInvestment: InvestmentAccount = {
-    ...investment,
-    ...updates,
-    updatedAt: new Date().toISOString(),
-  };
+    const updatedInvestment: InvestmentAccount = {
+      ...investment,
+      ...updates,
+      updatedAt: new Date().toISOString(),
+    };
 
-  const investmentFile = getInvestmentFile(userId, investmentId);
-  await writeEncryptedFile(investmentFile, updatedInvestment);
-
-  return updatedInvestment;
+    putDoc(investmentTable, investmentKey(userId, investmentId), updatedInvestment);
+    return updatedInvestment;
+  });
 }
 
 export async function deleteInvestmentAccount(userId: string, investmentId: string): Promise<boolean> {
-  // Delete all contributions first
-  const contributionsDir = getContributionsDir(userId, investmentId);
-  try {
-    const contributionFiles = await listFiles(contributionsDir);
-    for (const file of contributionFiles) {
-      await deleteFile(path.join(contributionsDir, file));
-    }
-  } catch {
-    // Directory might not exist
-  }
-
-  const investmentFile = getInvestmentFile(userId, investmentId);
-  await deleteFile(investmentFile);
+  inTx(() => {
+    // Delete all contributions first
+    deleteRows(investmentContribution, contributionScope(userId, investmentId));
+    deleteRows(investmentTable, investmentKey(userId, investmentId));
+  });
   return true;
 }
 
@@ -138,19 +106,10 @@ export async function getContributions(
   userId: string,
   investmentId: string
 ): Promise<InvestmentContribution[]> {
-  const contributionsDir = getContributionsDir(userId, investmentId);
-  try {
-    await ensureDir(contributionsDir);
-  } catch {
-    return [];
-  }
-
-  const files = await listFiles(contributionsDir);
-  const encFiles = files.filter(file => file.endsWith('.enc'));
-  const results = await Promise.all(
-    encFiles.map(file => readEncryptedFile<InvestmentContribution>(path.join(contributionsDir, file)))
+  const contributions = listDocs<InvestmentContribution>(
+    investmentContribution,
+    contributionScope(userId, investmentId)
   );
-  const contributions = results.filter((c): c is InvestmentContribution => c !== null);
 
   return contributions.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 }
@@ -160,8 +119,7 @@ export async function getContributionById(
   investmentId: string,
   contributionId: string
 ): Promise<InvestmentContribution | null> {
-  const contributionFile = getContributionFile(userId, investmentId, contributionId);
-  return readEncryptedFile<InvestmentContribution>(contributionFile);
+  return getDoc<InvestmentContribution>(investmentContribution, contributionKey(userId, investmentId, contributionId));
 }
 
 export async function createContribution(
@@ -188,11 +146,7 @@ export async function createContribution(
     updatedAt: now,
   };
 
-  const contributionsDir = getContributionsDir(userId, investmentId);
-  await ensureDir(contributionsDir);
-
-  const contributionFile = getContributionFile(userId, investmentId, id);
-  await writeEncryptedFile(contributionFile, contribution);
+  putDoc(investmentContribution, contributionKey(userId, investmentId, id), contribution);
 
   return contribution;
 }
@@ -203,21 +157,22 @@ export async function updateContribution(
   contributionId: string,
   updates: UpdateInvestmentContributionRequest
 ): Promise<InvestmentContribution | null> {
-  const contribution = await getContributionById(userId, investmentId, contributionId);
-  if (!contribution) {
-    return null;
-  }
+  return inTx(() => {
+    const key = contributionKey(userId, investmentId, contributionId);
+    const contribution = getDoc<InvestmentContribution>(investmentContribution, key);
+    if (!contribution) {
+      return null;
+    }
 
-  const updatedContribution: InvestmentContribution = {
-    ...contribution,
-    ...updates,
-    updatedAt: new Date().toISOString(),
-  };
+    const updatedContribution: InvestmentContribution = {
+      ...contribution,
+      ...updates,
+      updatedAt: new Date().toISOString(),
+    };
 
-  const contributionFile = getContributionFile(userId, investmentId, contributionId);
-  await writeEncryptedFile(contributionFile, updatedContribution);
-
-  return updatedContribution;
+    putDoc(investmentContribution, key, updatedContribution);
+    return updatedContribution;
+  });
 }
 
 export async function deleteContribution(
@@ -225,7 +180,6 @@ export async function deleteContribution(
   investmentId: string,
   contributionId: string
 ): Promise<boolean> {
-  const contributionFile = getContributionFile(userId, investmentId, contributionId);
-  await deleteFile(contributionFile);
+  deleteRows(investmentContribution, contributionKey(userId, investmentId, contributionId));
   return true;
 }

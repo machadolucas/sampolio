@@ -23,7 +23,7 @@ by `computeAccountProjection` (`src/lib/account-projection.ts`, server-only, not
 server action), shared by `getProjection` (`src/lib/actions/projection.ts`) and the
 dashboard aggregate reads (`src/lib/actions/dashboard-data.ts`). The wealth projection's
 inputs are gathered **server-side** by `gatherWealthInputs` (`src/lib/wealth-inputs.ts`:
-entities + child rows, one `cachedGetLatestSnapshotsByEntity` decrypt, per-account
+entities + child rows, one `cachedGetLatestSnapshotsByEntity` read, per-account
 `computeAccountProjection`, the member's mortgages, card liabilities via
 `getCardLiabilities`, and `getMySplitNetBalance`) and returned by `getOverviewData` /
 `getGoalsPageData`; the engine itself still runs **in the browser** through
@@ -555,9 +555,9 @@ projection rows) all follow the same pattern:
   `startedAt`, `completedAt?`, embedded `snapshots`/`adjustments` arrays. One session
   per month (re-starting a month reuses its id and keeps its snapshots/adjustments).
 
-All three live in single encrypted files under `data/users/{id}/reconciliation/`
-(`balance-snapshots.enc`, `reconciliation-adjustments.enc`,
-`reconciliation-sessions.enc`). Cache tag: `user:{id}:reconciliation`.
+All three are per-user ordered lists (`balance_snapshot`, `reconciliation_adjustment`,
+`reconciliation_session` rows with a `seq` column; `src/lib/db/reconciliation.ts`). Cache
+tag: `user:{id}:reconciliation`.
 
 ### `createBalanceSnapshot` — last-write-wins per entity/month
 

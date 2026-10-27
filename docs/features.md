@@ -1,7 +1,7 @@
 # Feature reference — Split, Budgets, Goals, Trips, Dashboards
 
 Deep reference for the features outside the core cashflow/wealth engines. Conventions
-(server-action pattern, `ApiResponse<T>`, cache tags, encrypted-file storage) live in the
+(server-action pattern, `ApiResponse<T>`, cache tags, SQLCipher document storage) live in the
 root `AGENTS.md`; projection anchoring and transfer injection are detailed in
 [projections-and-reconciliation.md](projections-and-reconciliation.md); bank sync in
 [bank-sync.md](bank-sync.md); the mortgage in [mortgage.md](mortgage.md); the overall
@@ -12,13 +12,13 @@ system picture in [architecture.md](architecture.md).
 ### Shared-entity model & access control
 
 A `SplitGroup` is a shared, multi-user entity (like `SharedMortgage`). Storage
-(`src/lib/db/split-groups.ts`):
+(`src/lib/db/split-groups.ts`; tables in [`src/lib/db/AGENTS.md`](../src/lib/db/AGENTS.md)):
 
 ```
-data/shared/split-groups/{id}.enc                     # group meta + members + recurrence rules
-data/shared/split-groups/{id}/expenses/{YYYY-MM}.enc  # array of that month's rows
-data/shared/split-groups/{id}/summary.enc             # SplitGroupSummary (running balances + month index)
-data/shared/split-group-members/{userId}.enc          # { groupIds: string[] } reverse index
+split_group               # group meta + members + recurrence rules
+split_expense             # one row per expense/payment: groupId, id, yearMonth (storage month), seq
+split_group_summary       # SplitGroupSummary (running balances + month index)
+split_group_member_index  # userId → groupIds reverse index
 ```
 
 Access control lives in the action layer: `loadGroupForMember` in
@@ -62,7 +62,7 @@ directly. A member's running balance = Σ net across rows.
   `{ netByUserId, paidBy, owed }`. Single-payer model. It throws on a non-positive or
   fractional amount, a payer outside the group, or a negative split value, and checks
   its result with `assertBalancedSplit` (paid and owed shares each total the amount, no
-  negative share, nets sum to 0) so nothing unsettleable reaches the chunk files.
+  negative share, nets sum to 0) so nothing unsettleable reaches the stored rows.
   `splitSpecSchema` (`src/lib/schemas/split.schema.ts`) additionally requires a non-empty
   `splitConfig` for `exact`/`percent`/`shares`, weights summing above 0, and unique
   `participantUserIds`. Modes:
@@ -90,28 +90,26 @@ directly. A member's running balance = Σ net across rows.
 
 ### Storage strategy & concurrency
 
-- **Monthly chunks**: one encrypted file holds the array of a month's rows — not one
-  file per row (thousands of per-file decrypts per cache miss otherwise). Add, edit
-  (which may move a row across chunks) and delete **delta-update** `summary.enc`
-  (`applySummaryDelta` in `src/lib/db/split-groups.ts`: subtract the removed row's
-  contribution, add the new one; O(1), no other chunks read; `monthsWithData` is
-  refreshed from chunk **filenames**, no decrypt). `rebuildSummary` (full recompute from
-  all chunks) runs for `bulkImportExpenses`, occurrence pruning
-  (`deleteGeneratedOccurrencesAfter`), an occurrence overwrite on a catch-up re-run
-  (repairs a summary left stale by an interrupted run), a missing summary file, and a
-  delete of the row that set `lastActivityAt`. Empty chunks are deleted.
-  `updateSplitExpense` / `deleteSplitExpense` take an optional `monthHint` (the row's
-  current `YYYY-MM`, validated with `chunkMonthSchema`; anything else is ignored) that
-  `locateExpense` scans first before falling back to every chunk newest-first.
+- **Rows grouped by storage month**: each expense is one `split_expense` row with its
+  `yearMonth`; a month's rows keep their order (`seq`). Add, edit (which may move a row
+  to another month) and delete **delta-update** the summary (`applySummaryDelta` in
+  `src/lib/db/split-groups.ts`: subtract the removed row's contribution, add the new one;
+  O(1), no other month read; `monthsWithData` is the distinct `yearMonth` list) in the
+  same transaction as the row write. `rebuildSummary` (full recompute from all rows) runs
+  for `bulkImportExpenses`, occurrence pruning (`deleteGeneratedOccurrencesAfter`), an
+  occurrence overwrite on a catch-up re-run (repairs a summary that drifted), a missing
+  summary, and a delete of the row that set `lastActivityAt`. `locateExpense` is an
+  indexed lookup by id.
 - `SplitGroupSummary` = `{ netByUserId, expenseCount, paymentCount, lastActivityAt?,
-  monthsWithData, updatedAt }` — the hot reads (balances, month index) never decrypt
+  monthsWithData, updatedAt }` — the hot reads (balances, month index) never read
   history.
 - **Per-group in-process mutex**: `withGroupLock(groupId, fn)` in
   `src/lib/split-group-lock.ts` chains promises per group id (the chain map lives on
   `globalThis`, so every server-action bundle shares one lock per group), serializing
-  read-modify-write of the group doc, chunks, summary and rule cursors. Shared by the
-  split actions and `deleteMyAccount`. Non-reentrant. Correct only because the app is a
-  single node (`next start`); there is no on-disk locking anywhere in the codebase.
+  an action's read-then-write of the group doc, expense rows, summary and rule cursors
+  (each DB call is already one transaction; the lock spans the awaits between them).
+  Shared by the split actions and `deleteMyAccount`. Non-reentrant. Correct only because
+  the app is a single node (`next start`).
 
 ### Recurrence — materialized, not computed
 
@@ -152,7 +150,7 @@ already-generated rows.
 carries the `endDate` key and, when the effective end moved back past
 `lastGeneratedThrough`, returns a `pruneAfter` date: `updateSplitRecurrenceRule` then
 deletes the rule's generated occurrences after it (`deleteGeneratedOccurrencesAfter`
-in `src/lib/db/split-groups.ts` — chunk rewrite + one summary rebuild, caller holds
+in `src/lib/db/split-groups.ts` — month rewrite + one summary rebuild, caller holds
 the lock) and clamps `lastGeneratedThrough` to the new end. Prune + rule update run
 inside **one** `withGroupLock`; `catchUpGroupRecurrences` (re-materializing occurrences
 when the end was extended) runs **outside** it — the mutex is non-reentrant, calling it
@@ -486,9 +484,8 @@ transport are unit-tested in `src/lib/split-notify.test.ts`.
 
 ### Storage & access
 
-A `Budget` is user-scoped and stored as **one encrypted document** at
-`data/users/{id}/budgets/{id}.enc` with `lines`, `fundingSources`, and `expenseEntries`
-embedded (`src/lib/db/budgets.ts`). One read/write per edit, one cache tag
+A `Budget` is user-scoped and stored as **one document** (a `budget` row) with
+`lines`, `fundingSources`, and `expenseEntries` embedded (`src/lib/db/budgets.ts`). One read/write per edit, one cache tag
 `user:{userId}:budgets`. Actions in `src/lib/actions/budgets.ts` load via
 `loadOwnBudget` (session user only).
 
@@ -681,8 +678,7 @@ exists shows a warning on its card (progress 0). Amounts display in the goal's c
   missing to `'reserve'` — **no migration of stored goals**), `priority?: number
   | null`, `injectIntoCashflow?: boolean`, `isArchived?`, plus
   `CreateGoalRequest` / `UpdateGoalRequest`.
-- **DB** (`src/lib/db/goals.ts`): one file per goal at
-  `data/users/{id}/goals/{id}.enc`; `getGoals` returns goals **sorted by name**
+- **DB** (`src/lib/db/goals.ts`): one `goal` row per goal; `getGoals` returns goals **sorted by name**
   (archived ones included).
 - **Cached queries**: `cachedGetGoals` / `cachedGetGoalById` in `src/lib/db/cached.ts`,
   tag `user:{userId}:goals`.
@@ -800,8 +796,7 @@ double-counted. The backend:
   TripRateSnapshot`, `linkedAccountId`, `expectedReimbursementMonth` (**`YYYY-MM`**),
   `status: 'planned' | 'completed' | 'reimbursed'`, `notes?`, plus
   `CreateTripRequest` / `UpdateTripRequest`.
-- **DB** (`src/lib/db/trips.ts`): one file per trip at
-  `data/users/{id}/trips/{id}.enc`; `getTrips` returns trips sorted by
+- **DB** (`src/lib/db/trips.ts`): one `trip` row per trip; `getTrips` returns trips sorted by
   `startDateTime` descending (newest first).
 - **Cached queries**: `cachedGetTrips` / `cachedGetTripById` in
   `src/lib/db/cached.ts`, tag `user:{userId}:trips`.

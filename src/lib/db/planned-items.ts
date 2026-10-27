@@ -1,39 +1,24 @@
-import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import type {
   PlannedItem,
   CreatePlannedItemRequest,
   UpdatePlannedItemRequest
 } from '@/types';
-import {
-  getUserDir,
-  ensureDir,
-  readEncryptedFile,
-  writeEncryptedFile,
-  listFiles,
-  deleteFile,
-  entityPath,
-  entityDir,
-} from './encryption';
+import { assertSafeId } from './encryption';
+import { deleteRows, getDoc, inTx, listDocs, putDoc } from './sqlite/docs';
+import { plannedItem } from './sqlite/schema';
 
-function getPlannedItemsDir(userId: string, accountId: string): string {
-  return path.join(entityDir(path.join(getUserDir(userId), 'accounts'), accountId), 'planned');
-}
+const scope = (userId: string, accountId: string) => ({
+  userId: assertSafeId(userId, 'userId'),
+  accountId: assertSafeId(accountId, 'accountId'),
+});
+const key = (userId: string, accountId: string, itemId: string) => ({
+  ...scope(userId, accountId),
+  id: assertSafeId(itemId),
+});
 
-function getPlannedItemFile(userId: string, accountId: string, itemId: string): string {
-  return entityPath(getPlannedItemsDir(userId, accountId), itemId);
-}
-
-export async function getPlannedItems(userId: string, accountId: string): Promise<PlannedItem[]> {
-  const itemsDir = getPlannedItemsDir(userId, accountId);
-  await ensureDir(itemsDir);
-
-  const files = await listFiles(itemsDir);
-  const encFiles = files.filter(file => file.endsWith('.enc'));
-  const results = await Promise.all(
-    encFiles.map(file => readEncryptedFile<PlannedItem>(path.join(itemsDir, file)))
-  );
-  const items = results.filter((item): item is PlannedItem => item !== null);
+function readPlannedItems(userId: string, accountId: string): PlannedItem[] {
+  const items = listDocs<PlannedItem>(plannedItem, scope(userId, accountId));
 
   // Sort by scheduled date or first occurrence
   return items.sort((a, b) => {
@@ -41,6 +26,10 @@ export async function getPlannedItems(userId: string, accountId: string): Promis
     const dateB = b.scheduledDate || b.firstOccurrence || '';
     return dateA.localeCompare(dateB);
   });
+}
+
+export async function getPlannedItems(userId: string, accountId: string): Promise<PlannedItem[]> {
+  return readPlannedItems(userId, accountId);
 }
 
 export async function getPlannedItemsByKind(
@@ -66,8 +55,7 @@ export async function getPlannedItemById(
   accountId: string,
   itemId: string
 ): Promise<PlannedItem | null> {
-  const itemFile = getPlannedItemFile(userId, accountId, itemId);
-  return readEncryptedFile<PlannedItem>(itemFile);
+  return getDoc<PlannedItem>(plannedItem, key(userId, accountId, itemId));
 }
 
 export async function createPlannedItem(
@@ -111,11 +99,7 @@ export async function createPlannedItem(
     updatedAt: now,
   };
 
-  const itemsDir = getPlannedItemsDir(userId, data.accountId);
-  await ensureDir(itemsDir);
-
-  const itemFile = getPlannedItemFile(userId, data.accountId, id);
-  await writeEncryptedFile(itemFile, item);
+  putDoc(plannedItem, key(userId, data.accountId, id), item);
 
   return item;
 }
@@ -126,33 +110,34 @@ export async function updatePlannedItem(
   itemId: string,
   updates: UpdatePlannedItemRequest
 ): Promise<PlannedItem | null> {
-  const item = await getPlannedItemById(userId, accountId, itemId);
-  if (!item) {
-    return null;
-  }
+  return inTx(() => {
+    const item = getDoc<PlannedItem>(plannedItem, key(userId, accountId, itemId));
+    if (!item) {
+      return null;
+    }
 
-  const updatedItem: PlannedItem = {
-    ...item,
-    ...updates,
-    updatedAt: new Date().toISOString(),
-  };
+    const updatedItem: PlannedItem = {
+      ...item,
+      ...updates,
+      updatedAt: new Date().toISOString(),
+    };
 
-  // Reimbursement consistency: the spread above can't clear stale fields
-  // (server-action JSON drops `undefined` keys, so "unset" never arrives as an
-  // explicit key). Normalize here, where the merged item is available.
-  if (updates.isReimbursable === false) {
-    updatedItem.isReimbursable = false;
-    updatedItem.reimbursementStatus = undefined;
-    updatedItem.expectedReimbursementMonth = undefined;
-  } else if (updates.isReimbursable === true && !updatedItem.reimbursementStatus) {
-    // Newly marked reimbursable on edit: default to pending (mirrors create).
-    updatedItem.reimbursementStatus = 'pending';
-  }
+    // Reimbursement consistency: the spread above can't clear stale fields
+    // (server-action JSON drops `undefined` keys, so "unset" never arrives as an
+    // explicit key). Normalize here, where the merged item is available.
+    if (updates.isReimbursable === false) {
+      updatedItem.isReimbursable = false;
+      updatedItem.reimbursementStatus = undefined;
+      updatedItem.expectedReimbursementMonth = undefined;
+    } else if (updates.isReimbursable === true && !updatedItem.reimbursementStatus) {
+      // Newly marked reimbursable on edit: default to pending (mirrors create).
+      updatedItem.reimbursementStatus = 'pending';
+    }
 
-  const itemFile = getPlannedItemFile(userId, accountId, itemId);
-  await writeEncryptedFile(itemFile, updatedItem);
+    putDoc(plannedItem, key(userId, accountId, itemId), updatedItem);
 
-  return updatedItem;
+    return updatedItem;
+  });
 }
 
 export async function deletePlannedItem(
@@ -160,8 +145,7 @@ export async function deletePlannedItem(
   accountId: string,
   itemId: string
 ): Promise<boolean> {
-  const itemFile = getPlannedItemFile(userId, accountId, itemId);
-  await deleteFile(itemFile);
+  deleteRows(plannedItem, key(userId, accountId, itemId));
   return true;
 }
 
@@ -169,19 +153,20 @@ export async function deletePlannedItem(
  * Delete every occurrence override of a recurring item (planned items with
  * `isRecurringOverride` + `linkedRecurringItemId`). Called when the recurring
  * item itself is deleted so its overrides don't linger as orphans. Reads the
- * files directly (uncached) and returns how many were removed.
+ * rows directly (uncached) and returns how many were removed.
  */
 export async function deletePlannedOverridesForRecurringItem(
   userId: string,
   accountId: string,
   recurringItemId: string
 ): Promise<number> {
-  const items = await getPlannedItems(userId, accountId);
-  const overrides = items.filter(
-    item => item.isRecurringOverride && item.linkedRecurringItemId === recurringItemId
-  );
-  for (const override of overrides) {
-    await deletePlannedItem(userId, accountId, override.id);
-  }
-  return overrides.length;
+  return inTx(() => {
+    const overrides = readPlannedItems(userId, accountId).filter(
+      item => item.isRecurringOverride && item.linkedRecurringItemId === recurringItemId
+    );
+    for (const override of overrides) {
+      deleteRows(plannedItem, key(userId, accountId, override.id));
+    }
+    return overrides.length;
+  });
 }

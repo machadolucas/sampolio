@@ -1,4 +1,3 @@
-import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import type {
   TaxedIncome,
@@ -6,33 +5,32 @@ import type {
   UpdateTaxedIncomeRequest,
   SalaryConfig,
 } from '@/types';
-import {
-  getUserDir,
-  ensureDir,
-  readEncryptedFile,
-  writeEncryptedFile,
-  listFiles,
-  deleteFile,
-  entityPath,
-  entityDir,
-} from './encryption';
-import { getSalaryConfigs } from './salary-configs';
+import { assertSafeId } from './encryption';
+import { deleteRows, getDoc, inTx, listDocs, putDoc } from './sqlite/docs';
+import { taxedIncome } from './sqlite/schema';
+import { readSalaryConfigs } from './salary-configs';
 import { calculateTaxedIncomeNet } from '@/lib/taxed-income-utils';
 
-function getTaxedIncomeDir(userId: string, accountId: string): string {
-  return path.join(entityDir(path.join(getUserDir(userId), 'accounts'), accountId), 'taxed-income');
-}
+const scope = (userId: string, accountId: string) => ({
+  userId: assertSafeId(userId, 'userId'),
+  accountId: assertSafeId(accountId, 'accountId'),
+});
+const key = (userId: string, accountId: string, incomeId: string) => ({
+  ...scope(userId, accountId),
+  id: assertSafeId(incomeId),
+});
 
-function getTaxedIncomeFile(userId: string, accountId: string, incomeId: string): string {
-  return entityPath(getTaxedIncomeDir(userId, accountId), incomeId);
+function readTaxedIncomes(userId: string, accountId: string): TaxedIncome[] {
+  const incomes = listDocs<TaxedIncome>(taxedIncome, scope(userId, accountId));
+  return incomes.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 }
 
 // Get default tax settings from salary configs
-async function getDefaultTaxSettings(
+function getDefaultTaxSettings(
   userId: string,
   accountId: string
-): Promise<{ taxRate: number; contributionsRate: number; otherDeductions: number } | null> {
-  const salaryConfigs = await getSalaryConfigs(userId, accountId);
+): { taxRate: number; contributionsRate: number; otherDeductions: number } | null {
+  const salaryConfigs = readSalaryConfigs(userId, accountId);
   const activeConfig = salaryConfigs.find((c: SalaryConfig) => c.isActive);
 
   if (activeConfig) {
@@ -50,21 +48,7 @@ async function getDefaultTaxSettings(
 // ============================================================
 
 export async function getTaxedIncomes(userId: string, accountId: string): Promise<TaxedIncome[]> {
-  const incomeDir = getTaxedIncomeDir(userId, accountId);
-  try {
-    await ensureDir(incomeDir);
-  } catch {
-    return [];
-  }
-
-  const files = await listFiles(incomeDir);
-  const encFiles = files.filter(file => file.endsWith('.enc'));
-  const results = await Promise.all(
-    encFiles.map(file => readEncryptedFile<TaxedIncome>(path.join(incomeDir, file)))
-  );
-  const incomes = results.filter((i): i is TaxedIncome => i !== null);
-
-  return incomes.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  return readTaxedIncomes(userId, accountId);
 }
 
 export async function getTaxedIncomeById(
@@ -72,8 +56,7 @@ export async function getTaxedIncomeById(
   accountId: string,
   incomeId: string
 ): Promise<TaxedIncome | null> {
-  const incomeFile = getTaxedIncomeFile(userId, accountId, incomeId);
-  return readEncryptedFile<TaxedIncome>(incomeFile);
+  return getDoc<TaxedIncome>(taxedIncome, key(userId, accountId, incomeId));
 }
 
 export async function createTaxedIncome(
@@ -90,7 +73,7 @@ export async function createTaxedIncome(
   let otherDeductions = data.customOtherDeductions ?? 0;
 
   if (data.useSalaryTaxSettings) {
-    const defaultSettings = await getDefaultTaxSettings(userId, accountId);
+    const defaultSettings = getDefaultTaxSettings(userId, accountId);
     if (defaultSettings) {
       taxRate = defaultSettings.taxRate;
       contributionsRate = defaultSettings.contributionsRate;
@@ -129,11 +112,7 @@ export async function createTaxedIncome(
     updatedAt: now,
   };
 
-  const incomeDir = getTaxedIncomeDir(userId, accountId);
-  await ensureDir(incomeDir);
-
-  const incomeFile = getTaxedIncomeFile(userId, accountId, id);
-  await writeEncryptedFile(incomeFile, income);
+  putDoc(taxedIncome, key(userId, accountId, id), income);
 
   return income;
 }
@@ -144,51 +123,52 @@ export async function updateTaxedIncome(
   incomeId: string,
   updates: UpdateTaxedIncomeRequest
 ): Promise<TaxedIncome | null> {
-  const income = await getTaxedIncomeById(userId, accountId, incomeId);
-  if (!income) {
-    return null;
-  }
-
-  // Recalculate net amount if gross or tax settings changed. A key present
-  // with `undefined` is a clear (the merge below drops it), so it must not fall
-  // back to the stored value; only an absent key keeps it.
-  const pick = (key: 'customTaxRate' | 'customContributionsRate' | 'customOtherDeductions'): number =>
-    (Object.prototype.hasOwnProperty.call(updates, key) ? updates[key] : income[key]) ?? 0;
-  let taxRate = pick('customTaxRate');
-  let contributionsRate = pick('customContributionsRate');
-  let otherDeductions = pick('customOtherDeductions');
-  const grossAmount = updates.grossAmount ?? income.grossAmount;
-  const useSalaryTaxSettings = updates.useSalaryTaxSettings ?? income.useSalaryTaxSettings;
-
-  if (useSalaryTaxSettings) {
-    const defaultSettings = await getDefaultTaxSettings(userId, accountId);
-    if (defaultSettings) {
-      taxRate = defaultSettings.taxRate;
-      contributionsRate = defaultSettings.contributionsRate;
-      otherDeductions = defaultSettings.otherDeductions;
+  return inTx(() => {
+    const income = getDoc<TaxedIncome>(taxedIncome, key(userId, accountId, incomeId));
+    if (!income) {
+      return null;
     }
-  }
 
-  const { netAmount, taxAmount, contributionsAmount } = calculateTaxedIncomeNet(
-    grossAmount,
-    taxRate,
-    contributionsRate,
-    otherDeductions
-  );
+    // Recalculate net amount if gross or tax settings changed. A key present
+    // with `undefined` is a clear (the merge below drops it), so it must not fall
+    // back to the stored value; only an absent key keeps it.
+    const pick = (key: 'customTaxRate' | 'customContributionsRate' | 'customOtherDeductions'): number =>
+      (Object.prototype.hasOwnProperty.call(updates, key) ? updates[key] : income[key]) ?? 0;
+    let taxRate = pick('customTaxRate');
+    let contributionsRate = pick('customContributionsRate');
+    let otherDeductions = pick('customOtherDeductions');
+    const grossAmount = updates.grossAmount ?? income.grossAmount;
+    const useSalaryTaxSettings = updates.useSalaryTaxSettings ?? income.useSalaryTaxSettings;
 
-  const updatedIncome: TaxedIncome = {
-    ...income,
-    ...updates,
-    netAmount,
-    taxAmount,
-    contributionsAmount,
-    updatedAt: new Date().toISOString(),
-  };
+    if (useSalaryTaxSettings) {
+      const defaultSettings = getDefaultTaxSettings(userId, accountId);
+      if (defaultSettings) {
+        taxRate = defaultSettings.taxRate;
+        contributionsRate = defaultSettings.contributionsRate;
+        otherDeductions = defaultSettings.otherDeductions;
+      }
+    }
 
-  const incomeFile = getTaxedIncomeFile(userId, accountId, incomeId);
-  await writeEncryptedFile(incomeFile, updatedIncome);
+    const { netAmount, taxAmount, contributionsAmount } = calculateTaxedIncomeNet(
+      grossAmount,
+      taxRate,
+      contributionsRate,
+      otherDeductions
+    );
 
-  return updatedIncome;
+    const updatedIncome: TaxedIncome = {
+      ...income,
+      ...updates,
+      netAmount,
+      taxAmount,
+      contributionsAmount,
+      updatedAt: new Date().toISOString(),
+    };
+
+    putDoc(taxedIncome, key(userId, accountId, incomeId), updatedIncome);
+
+    return updatedIncome;
+  });
 }
 
 export async function deleteTaxedIncome(
@@ -196,8 +176,7 @@ export async function deleteTaxedIncome(
   accountId: string,
   incomeId: string
 ): Promise<boolean> {
-  const incomeFile = getTaxedIncomeFile(userId, accountId, incomeId);
-  await deleteFile(incomeFile);
+  deleteRows(taxedIncome, key(userId, accountId, incomeId));
   return true;
 }
 
@@ -212,38 +191,40 @@ export async function recomputeSalaryLinkedTaxedIncomes(
   userId: string,
   accountId: string
 ): Promise<number> {
-  const defaultSettings = await getDefaultTaxSettings(userId, accountId);
-  if (!defaultSettings) return 0;
+  return inTx(() => {
+    const defaultSettings = getDefaultTaxSettings(userId, accountId);
+    if (!defaultSettings) return 0;
 
-  const incomes = await getTaxedIncomes(userId, accountId);
-  let changed = 0;
-  for (const income of incomes) {
-    if (!income.useSalaryTaxSettings) continue;
+    const incomes = readTaxedIncomes(userId, accountId);
+    let changed = 0;
+    for (const income of incomes) {
+      if (!income.useSalaryTaxSettings) continue;
 
-    const { netAmount, taxAmount, contributionsAmount } = calculateTaxedIncomeNet(
-      income.grossAmount,
-      defaultSettings.taxRate,
-      defaultSettings.contributionsRate,
-      defaultSettings.otherDeductions
-    );
+      const { netAmount, taxAmount, contributionsAmount } = calculateTaxedIncomeNet(
+        income.grossAmount,
+        defaultSettings.taxRate,
+        defaultSettings.contributionsRate,
+        defaultSettings.otherDeductions
+      );
 
-    if (
-      netAmount === income.netAmount &&
-      taxAmount === income.taxAmount &&
-      contributionsAmount === income.contributionsAmount
-    ) {
-      continue;
+      if (
+        netAmount === income.netAmount &&
+        taxAmount === income.taxAmount &&
+        contributionsAmount === income.contributionsAmount
+      ) {
+        continue;
+      }
+
+      const updated: TaxedIncome = {
+        ...income,
+        netAmount,
+        taxAmount,
+        contributionsAmount,
+        updatedAt: new Date().toISOString(),
+      };
+      putDoc(taxedIncome, key(userId, accountId, income.id), updated);
+      changed++;
     }
-
-    const updated: TaxedIncome = {
-      ...income,
-      netAmount,
-      taxAmount,
-      contributionsAmount,
-      updatedAt: new Date().toISOString(),
-    };
-    await writeEncryptedFile(getTaxedIncomeFile(userId, accountId, income.id), updated);
-    changed++;
-  }
-  return changed;
+    return changed;
+  });
 }

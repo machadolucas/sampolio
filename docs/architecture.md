@@ -26,8 +26,8 @@ mechanics live in [`features.md`](features.md), [`projections-and-reconciliation
 | Tests | `vitest` 5.0.5, `@testing-library/react` ^16.3.3, `jsdom` ^30.1.3 |
 
 Package manager: **pnpm 12.15.0** (`packageManager` field). Node: **>= 26** (`engines`; `.nvmrc` = `v26`).
-Persistence is encrypted JSON files on disk, plus one SQLCipher-encrypted SQLite file
-(`${DATA_DIR}/sampolio.db`) that currently holds only the auth tables (§6, §9). No external
+Persistence is one SQLCipher-encrypted SQLite file (`${DATA_DIR}/sampolio.db`) holding the
+auth tables and every financial entity as a JSON document row (§6, §9). No external
 database server.
 
 Compatibility bounds: ESLint 9 and TypeScript 6 remain within the lint plugins' supported peer ranges. Better Auth and passkey are exactly paired at 1.7.12; dependency installation retains pnpm's minimum-release-age safeguard. SQLCipher alias and native-module externalization remain unchanged.
@@ -88,9 +88,9 @@ runbook: [`operations.md`](operations.md).
 client page ('use client')
   → server action (src/lib/actions/*)      'use server'; auth() → Zod safeParse → op → updateTag
     → cached query (src/lib/db/cached.ts)  'use cache' + cacheTag + cacheLife
-      → db module (src/lib/db/*)           read-modify-write of encrypted JSON
-        → encryption.ts                    readEncryptedFile / writeEncryptedFile
-          → ${DATA_DIR}/…/*.enc
+      → db module (src/lib/db/*)           read-modify-write in one transaction (sqlite/docs.ts inTx)
+        → finance tables                   JSON document rows (sqlite/schema/finance.ts)
+          → ${DATA_DIR}/sampolio.db       SQLCipher
 ```
 
 Every action returns `ApiResponse<T> = { success: boolean; data?: T; error?: string }`
@@ -143,73 +143,46 @@ concrete module path (e.g. `import { getBankConnections } from '@/lib/actions/ba
 
 ## 6. DB layer & on-disk storage
 
-Each entity has a module in `src/lib/db/` doing read-modify-write of `.enc` files
-(no barrel — import the concrete module). The exception is **users**: `src/lib/db/users.ts`
-keeps its file-era signatures but queries the SQLCipher DB (`src/lib/db/sqlite/`, pattern in
-[`src/lib/db/AGENTS.md`](../src/lib/db/AGENTS.md)); `src/lib/db/passkeys.ts` reads the
-`passkey` table.
-Root is `getDataDir()` = `$DATA_DIR` or `<cwd>/data`. Exact layout (file names from code):
+Each entity has a module in `src/lib/db/` (no barrel — import the concrete module) that reads
+and writes JSON document rows in the SQLCipher DB through `src/lib/db/sqlite/docs.ts`. The
+table map (each table, its keys and the file it replaced), the module pattern and the limits
+live in [`src/lib/db/AGENTS.md`](../src/lib/db/AGENTS.md). `src/lib/db/users.ts` and
+`passkeys.ts` wrap the Better Auth tables.
+Root is `getDataDir()` = `$DATA_DIR` or `<cwd>/data`:
 
 ```
 data/
 ├── .encryption_key  .auth_secret  .auth_url    # secrets as dot-files; injected as env by launch config / prod plist
-├── sampolio.db (+ -wal, -shm)                  # SQLCipher DB: Better Auth tables + _meta (db/sqlite/); never tar'd live
+├── sampolio.db (+ -wal, -shm)                  # SQLCipher DB: auth + finance tables + _meta (db/sqlite/); never tar'd live
 ├── snapshots/sampolio.db                       # verified encrypted VACUUM INTO copy — what backups archive
-├── app-settings.enc                            # AppSettings (db/app-settings.ts)
-├── users/{userId}/
-│   ├── preferences.enc                         # UserPreferences (single file)
-│   ├── avatar.webp                             # profile picture — PLAIN binary (unencrypted, deliberate); excluded from JSON backup
-│   │                                           #   ↑ the only unencrypted file in the tree; low-sensitivity, enables zero-decrypt streaming + HTTP caching
-│   ├── accounts/{accountId}.enc                # one file per account
-│   ├── accounts/{accountId}/recurring/{itemId}.enc
-│   ├── accounts/{accountId}/planned/{itemId}.enc
-│   ├── accounts/{accountId}/salary/{configId}.enc
-│   ├── accounts/{accountId}/taxed-income/{incomeId}.enc
-│   ├── investments/{id}.enc  + investments/{id}/contributions/{id}.enc
-│   ├── debts/{id}.enc        + debts/{id}/reference-rates/{id}.enc
-│   │                         + debts/{id}/extra-payments/{id}.enc
-│   ├── receivables/{id}.enc  + receivables/{id}/repayments/{id}.enc
-│   ├── goals/{id}.enc
-│   ├── trips/{id}.enc                          # whole trip embedded (day list + rate snapshot)
-│   ├── budgets/{id}.enc                        # whole budget embedded (lines/funding/log)
-│   ├── reconciliation/balance-snapshots.enc    # one collection file, not per-snapshot
-│   ├── reconciliation/reconciliation-adjustments.enc
-│   ├── reconciliation/reconciliation-sessions.enc
-│   └── bank/
-│       ├── connections/{connectionId}.enc          # BankConnection, linkedAccounts embedded
-│       ├── connections/{connectionId}.session.enc  # EB session secret — never cached
-│       ├── accounts/{linkedAccountId}/transactions.enc  # full ledger per linked account
-│       └── sync-runs/{connectionId}.enc             # sync audit log per connection
-└── shared/                                     # multi-user entities (global key; ACL in action layer)
-    ├── mortgages/{id}.enc                      # SharedMortgage (loans + members embedded)
-    ├── mortgages/{id}/{rates|costs|extra-payments|snapshots|actuals}/{id}.enc
-    ├── mortgage-members/{userId}.enc           # reverse index userId → mortgageIds
-    ├── split-groups/{id}.enc                   # group doc (members + recurrence rules embedded)
-    ├── split-groups/{id}/expenses/{YYYY-MM}.enc  # monthly-chunked expense arrays
-    ├── split-groups/{id}/summary.enc           # maintained balance summary
-    └── split-group-members/{userId}.enc        # reverse index userId → groupIds
+├── users/{userId}/avatar.webp                  # profile picture — PLAIN binary (unencrypted, deliberate); excluded from JSON backup
+│                                               #   ↑ low-sensitivity, enables zero-decrypt streaming + HTTP caching
+└── app-settings.enc, users/{u}/**.enc, shared/**.enc
+                                                # file-era tree: imported ONCE at boot (db/sqlite/file-import.ts),
+                                                # never written again; kept as a rollback/backup source
 ```
 
-Storage granularity is deliberately mixed: **one file per entity** (accounts, items, debts,
-goals, trips…), **one file per collection** (reconciliation snapshots/adjustments/sessions, bank
-transaction ledgers, user preferences), and **monthly chunks** (split expenses). There is no
-file locking; split groups get a per-group in-process mutex (`withGroupLock` in
-`src/lib/split-group-lock.ts`, on `globalThis` so every server-action bundle shares one lock per
-group; used by the split actions and `deleteMyAccount`), everything else relies on the single-user
-assumption.
+Rows mirror the former files: one row per entity file; the former collection files
+(reconciliation snapshots/adjustments/sessions, bank ledgers, sync runs, split monthly chunks,
+member indexes) are one row per element with a `seq` column keeping the order. Every module
+read-modify-write runs in one synchronous transaction (`inTx`), so it cannot interleave with
+another request in this process. Split groups additionally get a per-group in-process mutex
+(`withGroupLock` in `src/lib/split-group-lock.ts`, on `globalThis` so every server-action bundle
+shares one lock per group; used by the split actions and `deleteMyAccount`) because their actions
+read, await and then write; everything else relies on the single-user assumption.
 
-**Path guards** (`src/lib/db/encryption.ts`, patterns in `src/lib/safe-id.ts`): every id that
-becomes a path segment passes `assertSafeId` (`[A-Za-z0-9_-]{1,64}`) through `entityPath` /
-`entityDir` / `getUserDir`, split chunk months pass `assertChunkMonth`, and every file primitive
-(`readEncryptedFile`, `writeEncryptedFile`, `deleteFile`, `listFiles`, `fileExists`,
-`ensureDir`) re-checks `assertInsideDataDir`; a violation throws `UnsafePathError`. The action
-boundary validates the same patterns with `idSchema` / `yearMonthSchema` / `chunkMonthSchema`
-(`src/lib/schemas/id.schema.ts`), and the shared-entity loaders (`loadGroupForMember`,
-`loadMortgageForMember`, `loadOwnBudget`) reject an unsafe id up front (`isSafeId`).
+**Id guards** (`src/lib/db/encryption.ts`, patterns in `src/lib/safe-id.ts`): every id that
+becomes a row key passes `assertSafeId` (`[A-Za-z0-9_-]{1,64}`) and split months pass
+`assertChunkMonth`, throwing `UnsafePathError`; `getUserDir` (avatars) and the `.enc` file
+primitives also check `assertInsideDataDir`. The action boundary validates the same patterns
+with `idSchema` / `yearMonthSchema` / `chunkMonthSchema` (`src/lib/schemas/id.schema.ts`), and
+the shared-entity loaders (`loadGroupForMember`, `loadMortgageForMember`, `loadOwnBudget`) reject
+an unsafe id up front (`isSafeId`).
 
 ## 7. Encryption
 
-`src/lib/db/encryption.ts`. Every `.enc` file is `base64(salt(64) | iv(16) | gcmTag(16) | ciphertext)`,
+`src/lib/db/encryption.ts` (the file-era `.enc` tree, read by the boot importer and the
+maintenance scripts; the live data is protected by SQLCipher, §9). Every `.enc` file is `base64(salt(64) | iv(16) | gcmTag(16) | ciphertext)`,
 AES-256-GCM. The per-file key is derived from `ENCRYPTION_KEY` + the random salt via
 **HKDF-SHA256** (`deriveKeyHkdf`, info label `sampolio-file-encryption-v1`); `decrypt()` tries
 HKDF first and falls back to legacy **PBKDF2** (100k iterations, SHA-512, LRU-cached) for
@@ -230,7 +203,10 @@ the committed `drizzle/` migrations run (`migrate.ts`). `snapshot.ts` writes
 the target with the source connection's key (the `file:…?hexkey=` URI form does not work:
 better-sqlite3 does not enable URI filenames) — and verifies every copy (not a plaintext
 header, opens with the key, fails without) before an atomic rename. Never `db.backup()`:
-its destination connection is unkeyed, so the copy would be plaintext.
+its destination connection is unkeyed, so the copy would be plaintext. At boot,
+`bootstrap.ts` runs the one-shot `.enc` import (`file-import.ts`, `_meta` marker
+`file-data-imported`) after the user-store check; any failure fails closed and keeps the bank
+scheduler off (`BootstrapResult.dataReady`).
 
 ## 8. Caching
 
@@ -261,7 +237,7 @@ Every wrapper tags `all-data` plus a specific tag; mutations call `updateTag`. T
 
 Batch wrappers (`cachedGetAccountProjectionData`, `cachedGetWealthData`, the mortgage-inputs
 batch, `cachedGetLatestSnapshotsByEntity` — latest snapshot per `"{entityType}:{entityId}"`
-from one decrypt) fetch a page's whole dataset in one cached call with the union of tags. Child
+from one read) fetch a page's whole dataset in one cached call with the union of tags. Child
 mutations (investment contributions, debt reference rates and extra payments) also invalidate
 their parent collection tag (`user:{userId}:investments` / `:debts`), because the batch wrappers
 embed child rows.
@@ -302,7 +278,7 @@ on the SQLCipher DB via the drizzle adapter; tables in `src/lib/db/sqlite/schema
   `hooks.before`: `/sign-up/email` enforces `selfSignupEnabled` (unless first user), the name
   rule and `passwordPolicySchema` (`src/lib/schemas/auth.schema.ts`; `disableSignUp` stays
   false because it would also block the server-side `auth.api.signUpEmail`). The sign-up gate
-  **fails closed**: a missing `app-settings.enc` reads as `selfSignupEnabled: isFirstUserSetup()`
+  **fails closed**: a missing `app_settings` row reads as `selfSignupEnabled: isFirstUserSetup()`
   (`defaultSettings` in `src/lib/db/app-settings.ts`), i.e. disabled once any user exists.
   `/change-password` (reached only through `auth.api.changePassword`) enforces the same policy; `/sign-in/email` returns **429 `ACCOUNT_LOCKED` + `retryAfter`**
   from the in-memory lockout (`isAccountLocked` in `src/lib/db/users.ts`, 10 failures / 15 min);
@@ -365,7 +341,8 @@ sets the cookie). Settings › Account hosts the Passkeys panel
 (`src/components/settings/passkeys-panel.tsx`); on `PASSKEY_REAUTH_REQUIRED` it offers
 "Sign in again" (sign out → `/auth/signin?callbackUrl=/settings?tab=account`).
 
-User ids are the UUIDs that key the `users/<id>/` data dirs. At boot
+User ids are the UUIDs that key the finance rows (`userId`) and the `users/<id>/` dirs (created
+for every user; avatars, the file-era `.enc` tree). At boot
 `src/lib/db/sqlite/user-store.ts` (`verifyUserStore`) refuses a DB with no user rows while
 `users/*` dirs exist (a lost or wrong `sampolio.db`), and `isAuthSetupComplete()` /
 `isFirstUserSetup()` apply the same check to sign-up and session creation (see

@@ -1,39 +1,24 @@
-import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import type {
   RecurringItem,
   CreateRecurringItemRequest,
   UpdateRecurringItemRequest
 } from '@/types';
-import {
-  getUserDir,
-  ensureDir,
-  readEncryptedFile,
-  writeEncryptedFile,
-  listFiles,
-  deleteFile,
-  entityPath,
-  entityDir,
-} from './encryption';
+import { assertSafeId } from './encryption';
+import { deleteRows, getDoc, inTx, listDocs, putDoc } from './sqlite/docs';
+import { recurringItem } from './sqlite/schema';
 
-function getRecurringItemsDir(userId: string, accountId: string): string {
-  return path.join(entityDir(path.join(getUserDir(userId), 'accounts'), accountId), 'recurring');
-}
-
-function getRecurringItemFile(userId: string, accountId: string, itemId: string): string {
-  return entityPath(getRecurringItemsDir(userId, accountId), itemId);
-}
+const scope = (userId: string, accountId: string) => ({
+  userId: assertSafeId(userId, 'userId'),
+  accountId: assertSafeId(accountId, 'accountId'),
+});
+const key = (userId: string, accountId: string, itemId: string) => ({
+  ...scope(userId, accountId),
+  id: assertSafeId(itemId),
+});
 
 export async function getRecurringItems(userId: string, accountId: string): Promise<RecurringItem[]> {
-  const itemsDir = getRecurringItemsDir(userId, accountId);
-  await ensureDir(itemsDir);
-
-  const files = await listFiles(itemsDir);
-  const encFiles = files.filter(file => file.endsWith('.enc'));
-  const results = await Promise.all(
-    encFiles.map(file => readEncryptedFile<RecurringItem>(path.join(itemsDir, file)))
-  );
-  const items = results.filter((item): item is RecurringItem => item !== null);
+  const items = listDocs<RecurringItem>(recurringItem, scope(userId, accountId));
 
   // Sort by name
   return items.sort((a, b) => a.name.localeCompare(b.name));
@@ -58,14 +43,11 @@ export async function getRecurringItemById(
   accountId: string,
   itemId: string
 ): Promise<RecurringItem | null> {
-  const itemFile = getRecurringItemFile(userId, accountId, itemId);
-  return readEncryptedFile<RecurringItem>(itemFile);
+  return getDoc<RecurringItem>(recurringItem, key(userId, accountId, itemId));
 }
 
-export async function createRecurringItem(
-  userId: string,
-  data: CreateRecurringItemRequest
-): Promise<RecurringItem> {
+// Synchronous cores (also used inside salary-configs' transactions).
+export function insertRecurringItem(userId: string, data: CreateRecurringItemRequest): RecurringItem {
   const id = uuidv4();
   const now = new Date().toISOString();
 
@@ -89,13 +71,43 @@ export async function createRecurringItem(
     updatedAt: now,
   };
 
-  const itemsDir = getRecurringItemsDir(userId, data.accountId);
-  await ensureDir(itemsDir);
-
-  const itemFile = getRecurringItemFile(userId, data.accountId, id);
-  await writeEncryptedFile(itemFile, item);
+  putDoc(recurringItem, key(userId, data.accountId, id), item);
 
   return item;
+}
+
+export function patchRecurringItem(
+  userId: string,
+  accountId: string,
+  itemId: string,
+  updates: UpdateRecurringItemRequest
+): RecurringItem | null {
+  return inTx(() => {
+    const item = getDoc<RecurringItem>(recurringItem, key(userId, accountId, itemId));
+    if (!item) {
+      return null;
+    }
+
+    const updatedItem: RecurringItem = {
+      ...item,
+      ...updates,
+      updatedAt: new Date().toISOString(),
+    };
+
+    putDoc(recurringItem, key(userId, accountId, itemId), updatedItem);
+    return updatedItem;
+  });
+}
+
+export function removeRecurringItem(userId: string, accountId: string, itemId: string): void {
+  deleteRows(recurringItem, key(userId, accountId, itemId));
+}
+
+export async function createRecurringItem(
+  userId: string,
+  data: CreateRecurringItemRequest
+): Promise<RecurringItem> {
+  return insertRecurringItem(userId, data);
 }
 
 export async function updateRecurringItem(
@@ -104,21 +116,7 @@ export async function updateRecurringItem(
   itemId: string,
   updates: UpdateRecurringItemRequest
 ): Promise<RecurringItem | null> {
-  const item = await getRecurringItemById(userId, accountId, itemId);
-  if (!item) {
-    return null;
-  }
-
-  const updatedItem: RecurringItem = {
-    ...item,
-    ...updates,
-    updatedAt: new Date().toISOString(),
-  };
-
-  const itemFile = getRecurringItemFile(userId, accountId, itemId);
-  await writeEncryptedFile(itemFile, updatedItem);
-
-  return updatedItem;
+  return patchRecurringItem(userId, accountId, itemId, updates);
 }
 
 export async function toggleRecurringItemActive(
@@ -126,12 +124,14 @@ export async function toggleRecurringItemActive(
   accountId: string,
   itemId: string
 ): Promise<RecurringItem | null> {
-  const item = await getRecurringItemById(userId, accountId, itemId);
-  if (!item) {
-    return null;
-  }
+  return inTx(() => {
+    const item = getDoc<RecurringItem>(recurringItem, key(userId, accountId, itemId));
+    if (!item) {
+      return null;
+    }
 
-  return updateRecurringItem(userId, accountId, itemId, { isActive: !item.isActive });
+    return patchRecurringItem(userId, accountId, itemId, { isActive: !item.isActive });
+  });
 }
 
 export async function deleteRecurringItem(
@@ -139,7 +139,6 @@ export async function deleteRecurringItem(
   accountId: string,
   itemId: string
 ): Promise<boolean> {
-  const itemFile = getRecurringItemFile(userId, accountId, itemId);
-  await deleteFile(itemFile);
+  removeRecurringItem(userId, accountId, itemId);
   return true;
 }

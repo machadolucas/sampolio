@@ -1,52 +1,40 @@
 /**
- * Enable Banking — sync-run audit log (file I/O).
+ * Enable Banking — sync-run audit log.
  *
- * One encrypted file per connection holding a capped, append-only list of the
- * most recent sync runs (newest first). Used for the "last sync" UI and for
- * debugging. Entries carry only codes/counts/durations — never PII.
- *
- * Layout: data/users/{userId}/bank/sync-runs/{connectionId}.enc
+ * One capped list per connection (`bank_sync_run`, `seq` 0 = newest) of the
+ * most recent sync runs. Used for the "last sync" UI and for debugging.
+ * Entries carry only codes/counts/durations — never PII.
  */
 
-import * as path from 'path';
 import type { BankSyncRun } from '@/types';
-import {
-  getUserDir,
-  ensureDir,
-  readEncryptedFile,
-  writeEncryptedFile,
-  deleteFile,
-  entityPath,
-} from './encryption';
+import { assertSafeId } from './encryption';
+import { deleteRows, inTx, listDocs, replaceSeqDocs } from './sqlite/docs';
+import { bankSyncRun } from './sqlite/schema';
 
 /** Keep only the most recent runs per connection (bounded growth). */
 const MAX_SYNC_RUNS = 50;
 
-function getSyncRunsDir(userId: string): string {
-  return path.join(getUserDir(userId), 'bank', 'sync-runs');
-}
+const scope = (userId: string, connectionId: string) => ({
+  userId: assertSafeId(userId, 'userId'),
+  connectionId: assertSafeId(connectionId, 'connectionId'),
+});
 
-function getSyncRunsFile(userId: string, connectionId: string): string {
-  return entityPath(getSyncRunsDir(userId), connectionId);
-}
-
-interface SyncRunsData {
-  runs: BankSyncRun[];
+function readRuns(userId: string, connectionId: string): BankSyncRun[] {
+  return listDocs<BankSyncRun>(bankSyncRun, scope(userId, connectionId), 'seq');
 }
 
 export async function getBankSyncRuns(
   userId: string,
   connectionId: string
 ): Promise<BankSyncRun[]> {
-  const data = await readEncryptedFile<SyncRunsData>(getSyncRunsFile(userId, connectionId));
-  return data?.runs ?? [];
+  return readRuns(userId, connectionId);
 }
 
 export async function getLatestBankSyncRun(
   userId: string,
   connectionId: string
 ): Promise<BankSyncRun | null> {
-  const runs = await getBankSyncRuns(userId, connectionId);
+  const runs = readRuns(userId, connectionId);
   return runs.length > 0 ? runs[0] : null;
 }
 
@@ -56,11 +44,10 @@ export async function appendBankSyncRun(
   connectionId: string,
   run: BankSyncRun
 ): Promise<BankSyncRun> {
-  const dir = getSyncRunsDir(userId);
-  await ensureDir(dir);
-  const existing = await getBankSyncRuns(userId, connectionId);
-  const runs = [run, ...existing].slice(0, MAX_SYNC_RUNS);
-  await writeEncryptedFile<SyncRunsData>(getSyncRunsFile(userId, connectionId), { runs });
+  inTx(() => {
+    const runs = [run, ...readRuns(userId, connectionId)].slice(0, MAX_SYNC_RUNS);
+    replaceSeqDocs(bankSyncRun, scope(userId, connectionId), runs);
+  });
   return run;
 }
 
@@ -68,5 +55,5 @@ export async function deleteBankSyncRuns(
   userId: string,
   connectionId: string
 ): Promise<void> {
-  await deleteFile(getSyncRunsFile(userId, connectionId));
+  deleteRows(bankSyncRun, scope(userId, connectionId));
 }

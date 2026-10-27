@@ -110,12 +110,7 @@ export function SplitExpenseDialog({
       split: spec,
     };
     const res = editing
-      ? await updateSplitExpense(
-          groupId,
-          expense!.id,
-          payload,
-          expense!.date.slice(0, 7),
-        )
+      ? await updateSplitExpense(groupId, expense!.id, payload)
       : await createSplitExpense(groupId, payload);
     setSaving(false);
     if (!res.success) return setError(res.error ?? "Failed to save");

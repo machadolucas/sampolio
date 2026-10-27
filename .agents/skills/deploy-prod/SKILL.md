@@ -101,7 +101,7 @@ tar -czf "$HOME/sampolio-data-backup-$(date +%Y%m%d-%H%M%S).tar.gz" -C "$HOME/.s
 ```
 Confirm the tarball exists and report its path + size. (A daily backup already runs
 at 05:10; this is extra insurance for the deploy. A code deploy does not touch data,
-except that the first 4.x boot creates `sampolio.db` and imports the `.enc` users.)
+except that the first 6.x boot imports the `.enc` financial data into `sampolio.db` once — the tarball above is the pre-import copy.)
 
 ### 3. Preflight + build into the prod dir
 

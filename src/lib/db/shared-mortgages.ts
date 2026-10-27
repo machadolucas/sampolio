@@ -2,21 +2,18 @@
  * Shared Mortgage storage layer.
  *
  * Unlike every other entity (scoped to a single user's directory), a mortgage is
- * SHARED by a set of members. It lives in a global, non-user-scoped directory and
- * is decryptable by the app's global key; access control is enforced in the action
+ * SHARED by a set of members. It lives in global, non-user-scoped tables; access control is enforced in the action
  * layer via the `members` list. A per-user reverse index maps userId → mortgageIds
- * so reads don't have to scan and decrypt every shared file.
+ * so reads don't have to scan every shared mortgage.
  *
- * Layout:
- *   data/shared/mortgages/{id}.enc                 # SharedMortgage (loans + members embedded)
- *   data/shared/mortgages/{id}/rates/{id}.enc      # Euribor reset history
- *   data/shared/mortgages/{id}/costs/{id}.enc      # insurance / invoicing / service fee history
- *   data/shared/mortgages/{id}/extra-payments/{id}.enc
- *   data/shared/mortgages/{id}/snapshots/{id}.enc  # drift re-anchors
- *   data/shared/mortgage-members/{userId}.enc      # { mortgageIds: string[] } reverse index
+ * Tables (`sqlite/schema/finance.ts`): `mortgage` (SharedMortgage, loans +
+ * members embedded); `mortgage_rate` (Euribor reset history), `mortgage_cost`
+ * (insurance / invoicing / service fee history), `mortgage_extra_payment`,
+ * `mortgage_balance_snapshot` (drift re-anchors), `mortgage_actual` (imported
+ * bank history), all keyed by mortgageId; `mortgage_member_index` (userId →
+ * mortgageIds reverse index, `seq` = list order).
  */
 
-import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import type {
   SharedMortgage,
@@ -39,74 +36,66 @@ import type {
   MortgageDayCount,
   MortgagePaymentMode,
 } from '@/types';
+import type { SQLiteTable } from 'drizzle-orm/sqlite-core';
+import { assertSafeId } from './encryption';
+import { deleteRows, getDoc, inTx, listDocs, listRows, nextSeq, putDoc } from './sqlite/docs';
 import {
-  getDataDir,
-  ensureDir,
-  readEncryptedFile,
-  writeEncryptedFile,
-  listFiles,
-  deleteFile,
-  entityPath,
-  entityDir,
-} from './encryption';
+  mortgage as mortgageTable,
+  mortgageActual,
+  mortgageBalanceSnapshot,
+  mortgageCost,
+  mortgageExtraPayment,
+  mortgageMemberIndex,
+  mortgageRate,
+} from './sqlite/schema';
 
 // ============================================================
-// PATHS
+// KEYS
 // ============================================================
 
-function getSharedDir(): string {
-  return path.join(getDataDir(), 'shared');
+const mortgageKey = (mortgageId: string) => ({ id: assertSafeId(mortgageId, 'mortgageId') });
+const childScope = (mortgageId: string) => ({ mortgageId: assertSafeId(mortgageId, 'mortgageId') });
+const childKey = (mortgageId: string, id: string) => ({ ...childScope(mortgageId), id: assertSafeId(id) });
+
+const SUB_COLLECTIONS: SQLiteTable[] = [
+  mortgageRate,
+  mortgageCost,
+  mortgageExtraPayment,
+  mortgageBalanceSnapshot,
+  mortgageActual,
+];
+
+function readMortgage(mortgageId: string): SharedMortgage | null {
+  return getDoc<SharedMortgage>(mortgageTable, mortgageKey(mortgageId));
 }
-function getMortgagesDir(): string {
-  return path.join(getSharedDir(), 'mortgages');
-}
-function getMortgageFile(mortgageId: string): string {
-  return entityPath(getMortgagesDir(), mortgageId);
-}
-function getRatesDir(mortgageId: string): string {
-  return path.join(entityDir(getMortgagesDir(), mortgageId), 'rates');
-}
-function getCostsDir(mortgageId: string): string {
-  return path.join(entityDir(getMortgagesDir(), mortgageId), 'costs');
-}
-function getExtraPaymentsDir(mortgageId: string): string {
-  return path.join(entityDir(getMortgagesDir(), mortgageId), 'extra-payments');
-}
-function getSnapshotsDir(mortgageId: string): string {
-  return path.join(entityDir(getMortgagesDir(), mortgageId), 'snapshots');
-}
-function getActualsDir(mortgageId: string): string {
-  return path.join(entityDir(getMortgagesDir(), mortgageId), 'actuals');
-}
-function getMemberIndexFile(userId: string): string {
-  return entityPath(path.join(getSharedDir(), 'mortgage-members'), userId);
+
+function writeMortgage(mortgage: SharedMortgage): void {
+  putDoc(mortgageTable, mortgageKey(mortgage.id), mortgage);
 }
 
 // ============================================================
 // REVERSE MEMBER INDEX
 // ============================================================
 
-interface MemberIndex {
-  mortgageIds: string[];
+function readMortgageIds(userId: string): string[] {
+  return listRows(mortgageMemberIndex, { userId: assertSafeId(userId, 'userId') }, 'seq').map(
+    (r) => r.keys.mortgageId as string
+  );
 }
 
 export async function getMortgageIdsForUser(userId: string): Promise<string[]> {
-  const index = await readEncryptedFile<MemberIndex>(getMemberIndexFile(userId));
-  return index?.mortgageIds ?? [];
+  return readMortgageIds(userId);
 }
 
-async function addUserToMortgageIndex(userId: string, mortgageId: string): Promise<void> {
-  const ids = await getMortgageIdsForUser(userId);
-  if (!ids.includes(mortgageId)) {
-    ids.push(mortgageId);
-    await writeEncryptedFile(getMemberIndexFile(userId), { mortgageIds: ids });
+function addUserToMortgageIndex(userId: string, mortgageId: string): void {
+  const uid = assertSafeId(userId, 'userId');
+  if (!readMortgageIds(uid).includes(mortgageId)) {
+    putDoc(mortgageMemberIndex, { userId: uid, mortgageId, seq: nextSeq(mortgageMemberIndex, { userId: uid }) });
   }
 }
 
-async function removeUserFromMortgageIndex(userId: string, mortgageId: string): Promise<void> {
-  const ids = await getMortgageIdsForUser(userId);
-  const next = ids.filter((id) => id !== mortgageId);
-  await writeEncryptedFile(getMemberIndexFile(userId), { mortgageIds: next });
+function removeUserFromMortgageIndex(userId: string, mortgageId: string): void {
+  deleteRows(mortgageMemberIndex, { userId: assertSafeId(userId, 'userId'), mortgageId });
 }
 
 // ============================================================
@@ -114,13 +103,12 @@ async function removeUserFromMortgageIndex(userId: string, mortgageId: string): 
 // ============================================================
 
 export async function getMortgageById(mortgageId: string): Promise<SharedMortgage | null> {
-  return readEncryptedFile<SharedMortgage>(getMortgageFile(mortgageId));
+  return readMortgage(mortgageId);
 }
 
 export async function getMortgagesForUser(userId: string): Promise<SharedMortgage[]> {
-  const ids = await getMortgageIdsForUser(userId);
-  const results = await Promise.all(ids.map((id) => getMortgageById(id)));
-  return results
+  return readMortgageIds(userId)
+    .map((id) => readMortgage(id))
     .filter((m): m is SharedMortgage => m !== null)
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 }
@@ -145,7 +133,7 @@ function buildLoan(input: CreateMortgageRequest['loans'][number]): MortgageLoan 
 /**
  * Create a shared mortgage. `members` must be fully resolved (email→userId done
  * in the action layer); the creator is added as an 'owner'. Genesis rate/cost
- * schedules are written as sub-collection entries.
+ * schedules are written as sub-collection entries, all in one transaction.
  */
 export async function createMortgage(
   creator: { userId: string; email: string; name: string },
@@ -183,21 +171,36 @@ export async function createMortgage(
     updatedBy: creator.userId,
   };
 
-  await ensureDir(getMortgagesDir());
-  await writeEncryptedFile(getMortgageFile(id), mortgage);
+  inTx(() => {
+    writeMortgage(mortgage);
 
-  // Genesis schedules
-  for (const r of data.rates ?? []) {
-    await setRate(id, { effectiveDate: r.effectiveDate, euriborRate: r.euriborRate, note: r.note });
-  }
-  for (const c of data.costs ?? []) {
-    await setCost(id, c);
-  }
+    // Genesis schedules
+    for (const r of data.rates ?? []) {
+      upsertRate(id, { effectiveDate: r.effectiveDate, euriborRate: r.euriborRate, note: r.note });
+    }
+    for (const c of data.costs ?? []) {
+      upsertCost(id, c);
+    }
 
-  // Reverse index for every member
-  await Promise.all(members.map((m) => addUserToMortgageIndex(m.userId, id)));
+    // Reverse index for every member
+    for (const m of members) addUserToMortgageIndex(m.userId, id);
+  });
 
   return mortgage;
+}
+
+/** Read-modify-write the mortgage doc in one transaction. */
+function mutateMortgage(
+  mortgageId: string,
+  next: (mortgage: SharedMortgage) => SharedMortgage
+): SharedMortgage | null {
+  return inTx(() => {
+    const mortgage = readMortgage(mortgageId);
+    if (!mortgage) return null;
+    const updated = next(mortgage);
+    writeMortgage(updated);
+    return updated;
+  });
 }
 
 export async function updateMortgage(
@@ -205,16 +208,12 @@ export async function updateMortgage(
   updates: UpdateMortgageRequest,
   byUserId: string
 ): Promise<SharedMortgage | null> {
-  const mortgage = await getMortgageById(mortgageId);
-  if (!mortgage) return null;
-  const updated: SharedMortgage = {
+  return mutateMortgage(mortgageId, (mortgage) => ({
     ...mortgage,
     ...updates,
     updatedAt: new Date().toISOString(),
     updatedBy: byUserId,
-  };
-  await writeEncryptedFile(getMortgageFile(mortgageId), updated);
-  return updated;
+  }));
 }
 
 export async function updateMortgageLoan(
@@ -223,40 +222,25 @@ export async function updateMortgageLoan(
   updates: UpdateMortgageLoanRequest,
   byUserId: string
 ): Promise<SharedMortgage | null> {
-  const mortgage = await getMortgageById(mortgageId);
-  if (!mortgage) return null;
-  const updated: SharedMortgage = {
+  return mutateMortgage(mortgageId, (mortgage) => ({
     ...mortgage,
     loans: mortgage.loans.map((l) => (l.id === loanId ? { ...l, ...updates, id: l.id } : l)),
     updatedAt: new Date().toISOString(),
     updatedBy: byUserId,
-  };
-  await writeEncryptedFile(getMortgageFile(mortgageId), updated);
-  return updated;
+  }));
 }
 
 export async function deleteMortgage(mortgageId: string): Promise<boolean> {
-  const mortgage = await getMortgageById(mortgageId);
-  // Cascade sub-collections
-  for (const dir of [
-    getRatesDir(mortgageId),
-    getCostsDir(mortgageId),
-    getExtraPaymentsDir(mortgageId),
-    getSnapshotsDir(mortgageId),
-    getActualsDir(mortgageId),
-  ]) {
-    try {
-      const files = await listFiles(dir);
-      for (const f of files) await deleteFile(path.join(dir, f));
-    } catch {
-      // dir may not exist
+  inTx(() => {
+    const mortgage = readMortgage(mortgageId);
+    // Cascade sub-collections
+    for (const table of SUB_COLLECTIONS) deleteRows(table, childScope(mortgageId));
+    deleteRows(mortgageTable, mortgageKey(mortgageId));
+    // Clean each member's reverse index
+    if (mortgage) {
+      for (const m of mortgage.members) removeUserFromMortgageIndex(m.userId, mortgageId);
     }
-  }
-  await deleteFile(getMortgageFile(mortgageId));
-  // Clean each member's reverse index
-  if (mortgage) {
-    await Promise.all(mortgage.members.map((m) => removeUserFromMortgageIndex(m.userId, mortgageId)));
-  }
+  });
   return true;
 }
 
@@ -268,33 +252,34 @@ export async function addMortgageMember(
   mortgageId: string,
   member: MortgageMember
 ): Promise<SharedMortgage | null> {
-  const mortgage = await getMortgageById(mortgageId);
-  if (!mortgage) return null;
-  if (mortgage.members.some((m) => m.userId === member.userId)) return mortgage; // already a member
-  const updated: SharedMortgage = {
-    ...mortgage,
-    members: [...mortgage.members, member],
-    updatedAt: new Date().toISOString(),
-  };
-  await writeEncryptedFile(getMortgageFile(mortgageId), updated);
-  await addUserToMortgageIndex(member.userId, mortgageId);
-  return updated;
+  return inTx(() => {
+    const mortgage = readMortgage(mortgageId);
+    if (!mortgage) return null;
+    if (mortgage.members.some((m) => m.userId === member.userId)) return mortgage; // already a member
+    const updated: SharedMortgage = {
+      ...mortgage,
+      members: [...mortgage.members, member],
+      updatedAt: new Date().toISOString(),
+    };
+    writeMortgage(updated);
+    addUserToMortgageIndex(member.userId, mortgageId);
+    return updated;
+  });
 }
 
 export async function removeMortgageMember(
   mortgageId: string,
   userId: string
 ): Promise<SharedMortgage | null> {
-  const mortgage = await getMortgageById(mortgageId);
-  if (!mortgage) return null;
-  const updated: SharedMortgage = {
-    ...mortgage,
-    members: mortgage.members.filter((m) => m.userId !== userId),
-    updatedAt: new Date().toISOString(),
-  };
-  await writeEncryptedFile(getMortgageFile(mortgageId), updated);
-  await removeUserFromMortgageIndex(userId, mortgageId);
-  return updated;
+  return inTx(() => {
+    const updated = mutateMortgage(mortgageId, (mortgage) => ({
+      ...mortgage,
+      members: mortgage.members.filter((m) => m.userId !== userId),
+      updatedAt: new Date().toISOString(),
+    }));
+    if (updated) removeUserFromMortgageIndex(userId, mortgageId);
+    return updated;
+  });
 }
 
 export async function updateMortgageMember(
@@ -302,57 +287,57 @@ export async function updateMortgageMember(
   userId: string,
   updates: UpdateMortgageMemberRequest
 ): Promise<SharedMortgage | null> {
-  const mortgage = await getMortgageById(mortgageId);
-  if (!mortgage) return null;
-  const updated: SharedMortgage = {
+  return mutateMortgage(mortgageId, (mortgage) => ({
     ...mortgage,
     members: mortgage.members.map((m) => (m.userId === userId ? { ...m, ...updates } : m)),
     updatedAt: new Date().toISOString(),
-  };
-  await writeEncryptedFile(getMortgageFile(mortgageId), updated);
-  return updated;
+  }));
 }
 
 // ============================================================
 // RATES (Euribor schedule)
 // ============================================================
 
+function readRates(mortgageId: string): MortgageRateEntry[] {
+  return listDocs<MortgageRateEntry>(mortgageRate, childScope(mortgageId)).sort((a, b) =>
+    a.effectiveDate.localeCompare(b.effectiveDate)
+  );
+}
+
 export async function getRates(mortgageId: string): Promise<MortgageRateEntry[]> {
-  const dir = getRatesDir(mortgageId);
-  await ensureDir(dir);
-  const files = (await listFiles(dir)).filter((f) => f.endsWith('.enc'));
-  const results = await Promise.all(files.map((f) => readEncryptedFile<MortgageRateEntry>(path.join(dir, f))));
-  return results
-    .filter((r): r is MortgageRateEntry => r !== null)
-    .sort((a, b) => a.effectiveDate.localeCompare(b.effectiveDate));
+  return readRates(mortgageId);
+}
+
+function upsertRate(mortgageId: string, data: SetMortgageRateRequest): MortgageRateEntry {
+  return inTx(() => {
+    const existing = readRates(mortgageId).find((r) => r.effectiveDate === data.effectiveDate);
+    if (existing) {
+      const updated: MortgageRateEntry = { ...existing, euriborRate: data.euriborRate, note: data.note };
+      putDoc(mortgageRate, childKey(mortgageId, existing.id), updated);
+      return updated;
+    }
+    const entry: MortgageRateEntry = {
+      id: uuidv4(),
+      mortgageId,
+      effectiveDate: data.effectiveDate,
+      euriborRate: data.euriborRate,
+      note: data.note,
+      createdAt: new Date().toISOString(),
+    };
+    putDoc(mortgageRate, childKey(mortgageId, entry.id), entry);
+    return entry;
+  });
 }
 
 export async function setRate(
   mortgageId: string,
   data: SetMortgageRateRequest
 ): Promise<MortgageRateEntry> {
-  const dir = getRatesDir(mortgageId);
-  await ensureDir(dir);
-  const existing = (await getRates(mortgageId)).find((r) => r.effectiveDate === data.effectiveDate);
-  if (existing) {
-    const updated: MortgageRateEntry = { ...existing, euriborRate: data.euriborRate, note: data.note };
-    await writeEncryptedFile(entityPath(dir, existing.id), updated);
-    return updated;
-  }
-  const entry: MortgageRateEntry = {
-    id: uuidv4(),
-    mortgageId,
-    effectiveDate: data.effectiveDate,
-    euriborRate: data.euriborRate,
-    note: data.note,
-    createdAt: new Date().toISOString(),
-  };
-  await writeEncryptedFile(entityPath(dir, entry.id), entry);
-  return entry;
+  return upsertRate(mortgageId, data);
 }
 
 export async function deleteRate(mortgageId: string, rateId: string): Promise<boolean> {
-  await deleteFile(entityPath(getRatesDir(mortgageId), rateId));
+  deleteRows(mortgageRate, childKey(mortgageId, rateId));
   return true;
 }
 
@@ -360,47 +345,51 @@ export async function deleteRate(mortgageId: string, rateId: string): Promise<bo
 // COSTS (insurance / invoicing / service fee schedule)
 // ============================================================
 
+function readCosts(mortgageId: string): MortgageCostEntry[] {
+  return listDocs<MortgageCostEntry>(mortgageCost, childScope(mortgageId)).sort((a, b) =>
+    a.effectiveDate.localeCompare(b.effectiveDate)
+  );
+}
+
 export async function getCosts(mortgageId: string): Promise<MortgageCostEntry[]> {
-  const dir = getCostsDir(mortgageId);
-  await ensureDir(dir);
-  const files = (await listFiles(dir)).filter((f) => f.endsWith('.enc'));
-  const results = await Promise.all(files.map((f) => readEncryptedFile<MortgageCostEntry>(path.join(dir, f))));
-  return results
-    .filter((c): c is MortgageCostEntry => c !== null)
-    .sort((a, b) => a.effectiveDate.localeCompare(b.effectiveDate));
+  return readCosts(mortgageId);
+}
+
+function upsertCost(mortgageId: string, data: SetMortgageCostRequest): MortgageCostEntry {
+  return inTx(() => {
+    // Upsert by type + loanId + effectiveDate
+    const existing = readCosts(mortgageId).find(
+      (c) => c.type === data.type && c.loanId === data.loanId && c.effectiveDate === data.effectiveDate
+    );
+    if (existing) {
+      const updated: MortgageCostEntry = { ...existing, amount: data.amount, note: data.note };
+      putDoc(mortgageCost, childKey(mortgageId, existing.id), updated);
+      return updated;
+    }
+    const entry: MortgageCostEntry = {
+      id: uuidv4(),
+      mortgageId,
+      type: data.type,
+      loanId: data.loanId,
+      effectiveDate: data.effectiveDate,
+      amount: data.amount,
+      note: data.note,
+      createdAt: new Date().toISOString(),
+    };
+    putDoc(mortgageCost, childKey(mortgageId, entry.id), entry);
+    return entry;
+  });
 }
 
 export async function setCost(
   mortgageId: string,
   data: SetMortgageCostRequest
 ): Promise<MortgageCostEntry> {
-  const dir = getCostsDir(mortgageId);
-  await ensureDir(dir);
-  // Upsert by type + loanId + effectiveDate
-  const existing = (await getCosts(mortgageId)).find(
-    (c) => c.type === data.type && c.loanId === data.loanId && c.effectiveDate === data.effectiveDate
-  );
-  if (existing) {
-    const updated: MortgageCostEntry = { ...existing, amount: data.amount, note: data.note };
-    await writeEncryptedFile(entityPath(dir, existing.id), updated);
-    return updated;
-  }
-  const entry: MortgageCostEntry = {
-    id: uuidv4(),
-    mortgageId,
-    type: data.type,
-    loanId: data.loanId,
-    effectiveDate: data.effectiveDate,
-    amount: data.amount,
-    note: data.note,
-    createdAt: new Date().toISOString(),
-  };
-  await writeEncryptedFile(entityPath(dir, entry.id), entry);
-  return entry;
+  return upsertCost(mortgageId, data);
 }
 
 export async function deleteCost(mortgageId: string, costId: string): Promise<boolean> {
-  await deleteFile(entityPath(getCostsDir(mortgageId), costId));
+  deleteRows(mortgageCost, childKey(mortgageId, costId));
   return true;
 }
 
@@ -409,21 +398,15 @@ export async function deleteCost(mortgageId: string, costId: string): Promise<bo
 // ============================================================
 
 export async function getExtraPayments(mortgageId: string): Promise<MortgageExtraPayment[]> {
-  const dir = getExtraPaymentsDir(mortgageId);
-  await ensureDir(dir);
-  const files = (await listFiles(dir)).filter((f) => f.endsWith('.enc'));
-  const results = await Promise.all(files.map((f) => readEncryptedFile<MortgageExtraPayment>(path.join(dir, f))));
-  return results
-    .filter((p): p is MortgageExtraPayment => p !== null)
-    .sort((a, b) => a.date.localeCompare(b.date));
+  return listDocs<MortgageExtraPayment>(mortgageExtraPayment, childScope(mortgageId)).sort((a, b) =>
+    a.date.localeCompare(b.date)
+  );
 }
 
 export async function createExtraPayment(
   mortgageId: string,
   data: CreateMortgageExtraPaymentRequest
 ): Promise<MortgageExtraPayment> {
-  const dir = getExtraPaymentsDir(mortgageId);
-  await ensureDir(dir);
   const entry: MortgageExtraPayment = {
     id: uuidv4(),
     mortgageId,
@@ -434,12 +417,12 @@ export async function createExtraPayment(
     note: data.note,
     createdAt: new Date().toISOString(),
   };
-  await writeEncryptedFile(entityPath(dir, entry.id), entry);
+  putDoc(mortgageExtraPayment, childKey(mortgageId, entry.id), entry);
   return entry;
 }
 
 export async function deleteExtraPayment(mortgageId: string, paymentId: string): Promise<boolean> {
-  await deleteFile(entityPath(getExtraPaymentsDir(mortgageId), paymentId));
+  deleteRows(mortgageExtraPayment, childKey(mortgageId, paymentId));
   return true;
 }
 
@@ -447,46 +430,46 @@ export async function deleteExtraPayment(mortgageId: string, paymentId: string):
 // DRIFT SNAPSHOTS
 // ============================================================
 
+function readBalanceSnapshots(mortgageId: string): MortgageBalanceSnapshot[] {
+  return listDocs<MortgageBalanceSnapshot>(mortgageBalanceSnapshot, childScope(mortgageId)).sort((a, b) =>
+    a.yearMonth.localeCompare(b.yearMonth)
+  );
+}
+
 export async function getBalanceSnapshots(mortgageId: string): Promise<MortgageBalanceSnapshot[]> {
-  const dir = getSnapshotsDir(mortgageId);
-  await ensureDir(dir);
-  const files = (await listFiles(dir)).filter((f) => f.endsWith('.enc'));
-  const results = await Promise.all(files.map((f) => readEncryptedFile<MortgageBalanceSnapshot>(path.join(dir, f))));
-  return results
-    .filter((s): s is MortgageBalanceSnapshot => s !== null)
-    .sort((a, b) => a.yearMonth.localeCompare(b.yearMonth));
+  return readBalanceSnapshots(mortgageId);
 }
 
 export async function createBalanceSnapshot(
   mortgageId: string,
   data: CreateMortgageBalanceSnapshotRequest
 ): Promise<MortgageBalanceSnapshot> {
-  const dir = getSnapshotsDir(mortgageId);
-  await ensureDir(dir);
-  // Upsert by loanId + yearMonth
-  const existing = (await getBalanceSnapshots(mortgageId)).find(
-    (s) => s.loanId === data.loanId && s.yearMonth === data.yearMonth
-  );
-  if (existing) {
-    const updated: MortgageBalanceSnapshot = { ...existing, actualBalance: data.actualBalance, note: data.note };
-    await writeEncryptedFile(entityPath(dir, existing.id), updated);
-    return updated;
-  }
-  const entry: MortgageBalanceSnapshot = {
-    id: uuidv4(),
-    mortgageId,
-    loanId: data.loanId,
-    yearMonth: data.yearMonth,
-    actualBalance: data.actualBalance,
-    note: data.note,
-    createdAt: new Date().toISOString(),
-  };
-  await writeEncryptedFile(entityPath(dir, entry.id), entry);
-  return entry;
+  return inTx(() => {
+    // Upsert by loanId + yearMonth
+    const existing = readBalanceSnapshots(mortgageId).find(
+      (s) => s.loanId === data.loanId && s.yearMonth === data.yearMonth
+    );
+    if (existing) {
+      const updated: MortgageBalanceSnapshot = { ...existing, actualBalance: data.actualBalance, note: data.note };
+      putDoc(mortgageBalanceSnapshot, childKey(mortgageId, existing.id), updated);
+      return updated;
+    }
+    const entry: MortgageBalanceSnapshot = {
+      id: uuidv4(),
+      mortgageId,
+      loanId: data.loanId,
+      yearMonth: data.yearMonth,
+      actualBalance: data.actualBalance,
+      note: data.note,
+      createdAt: new Date().toISOString(),
+    };
+    putDoc(mortgageBalanceSnapshot, childKey(mortgageId, entry.id), entry);
+    return entry;
+  });
 }
 
 export async function deleteBalanceSnapshot(mortgageId: string, snapshotId: string): Promise<boolean> {
-  await deleteFile(entityPath(getSnapshotsDir(mortgageId), snapshotId));
+  deleteRows(mortgageBalanceSnapshot, childKey(mortgageId, snapshotId));
   return true;
 }
 
@@ -494,80 +477,81 @@ export async function deleteBalanceSnapshot(mortgageId: string, snapshotId: stri
 // ACTUAL MONTHLY ENTRIES (imported bank history)
 // ============================================================
 
+function readActuals(mortgageId: string): MortgageActualEntry[] {
+  return listDocs<MortgageActualEntry>(mortgageActual, childScope(mortgageId)).sort(
+    (a, b) => a.yearMonth.localeCompare(b.yearMonth) || a.loanId.localeCompare(b.loanId)
+  );
+}
+
 export async function getActuals(mortgageId: string): Promise<MortgageActualEntry[]> {
-  const dir = getActualsDir(mortgageId);
-  await ensureDir(dir);
-  const files = (await listFiles(dir)).filter((f) => f.endsWith('.enc'));
-  const results = await Promise.all(files.map((f) => readEncryptedFile<MortgageActualEntry>(path.join(dir, f))));
-  return results
-    .filter((a): a is MortgageActualEntry => a !== null)
-    .sort((a, b) => a.yearMonth.localeCompare(b.yearMonth) || a.loanId.localeCompare(b.loanId));
+  return readActuals(mortgageId);
+}
+
+function upsertActual(mortgageId: string, input: MortgageActualInput): MortgageActualEntry {
+  return inTx(() => {
+    // Upsert by loanId + yearMonth
+    const existing = readActuals(mortgageId).find(
+      (a) => a.loanId === input.loanId && a.yearMonth === input.yearMonth
+    );
+    if (existing) {
+      const updated: MortgageActualEntry = {
+        ...existing,
+        remaining: input.remaining,
+        repayment: input.repayment,
+        interest: input.interest,
+        insurance: input.insurance,
+        subsidy: input.subsidy ?? 0,
+      };
+      putDoc(mortgageActual, childKey(mortgageId, existing.id), updated);
+      return updated;
+    }
+    const entry: MortgageActualEntry = {
+      id: uuidv4(),
+      mortgageId,
+      loanId: input.loanId,
+      yearMonth: input.yearMonth,
+      remaining: input.remaining,
+      repayment: input.repayment,
+      interest: input.interest,
+      insurance: input.insurance,
+      subsidy: input.subsidy ?? 0,
+      createdAt: new Date().toISOString(),
+    };
+    putDoc(mortgageActual, childKey(mortgageId, entry.id), entry);
+    return entry;
+  });
 }
 
 export async function setActual(
   mortgageId: string,
   input: MortgageActualInput
 ): Promise<MortgageActualEntry> {
-  const dir = getActualsDir(mortgageId);
-  await ensureDir(dir);
-  // Upsert by loanId + yearMonth
-  const existing = (await getActuals(mortgageId)).find(
-    (a) => a.loanId === input.loanId && a.yearMonth === input.yearMonth
-  );
-  if (existing) {
-    const updated: MortgageActualEntry = {
-      ...existing,
-      remaining: input.remaining,
-      repayment: input.repayment,
-      interest: input.interest,
-      insurance: input.insurance,
-      subsidy: input.subsidy ?? 0,
-    };
-    await writeEncryptedFile(entityPath(dir, existing.id), updated);
-    return updated;
-  }
-  const entry: MortgageActualEntry = {
-    id: uuidv4(),
-    mortgageId,
-    loanId: input.loanId,
-    yearMonth: input.yearMonth,
-    remaining: input.remaining,
-    repayment: input.repayment,
-    interest: input.interest,
-    insurance: input.insurance,
-    subsidy: input.subsidy ?? 0,
-    createdAt: new Date().toISOString(),
-  };
-  await writeEncryptedFile(entityPath(dir, entry.id), entry);
-  return entry;
+  return upsertActual(mortgageId, input);
 }
 
 export async function deleteAllActuals(mortgageId: string): Promise<void> {
-  const dir = getActualsDir(mortgageId);
-  try {
-    const files = await listFiles(dir);
-    for (const f of files) await deleteFile(path.join(dir, f));
-  } catch {
-    // dir may not exist
-  }
+  deleteRows(mortgageActual, childScope(mortgageId));
 }
 
 /** Remove every recorded actual for one month (all loans). Used to "un-reconcile"
  * a month so it reverts to a projected forecast. Returns the number deleted. */
 export async function deleteActualsForMonth(mortgageId: string, yearMonth: string): Promise<number> {
-  const dir = getActualsDir(mortgageId);
-  const toDelete = (await getActuals(mortgageId)).filter((a) => a.yearMonth === yearMonth);
-  for (const a of toDelete) await deleteFile(entityPath(dir, a.id));
-  return toDelete.length;
+  return inTx(() => {
+    const toDelete = readActuals(mortgageId).filter((a) => a.yearMonth === yearMonth);
+    for (const a of toDelete) deleteRows(mortgageActual, childKey(mortgageId, a.id));
+    return toDelete.length;
+  });
 }
 
-/** Bulk import. When replaceAll is true, clears existing actuals first. */
+/** Bulk import, in one transaction. When replaceAll is true, clears existing actuals first. */
 export async function bulkSetActuals(
   mortgageId: string,
   inputs: MortgageActualInput[],
   replaceAll = false
 ): Promise<number> {
-  if (replaceAll) await deleteAllActuals(mortgageId);
-  for (const input of inputs) await setActual(mortgageId, input);
+  inTx(() => {
+    if (replaceAll) deleteRows(mortgageActual, childScope(mortgageId));
+    for (const input of inputs) upsertActual(mortgageId, input);
+  });
   return inputs.length;
 }

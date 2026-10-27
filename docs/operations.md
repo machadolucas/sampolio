@@ -26,8 +26,8 @@ through a Cloudflare Tunnel gated by Cloudflare Access (Zero Trust).
                                                             next start -p 3999  (launchd: com.sampolio.app)
                                                                             │  serves .next-prod
                                                                             ▼
-                                                            ~/.sampolio/data  (encrypted JSON, AES-256-GCM
-                                                                               + SQLCipher sampolio.db for auth)
+                                                            ~/.sampolio/data  (SQLCipher sampolio.db: all data;
+                                                                               legacy .enc tree, read once)
 ```
 
 - **From the LAN**, split-horizon DNS resolves `<your-domain>` to the Caddy host,
@@ -61,13 +61,17 @@ through a Cloudflare Tunnel gated by Cloudflare Access (Zero Trust).
   cloudflared on the same host, so LAN devices cannot bypass the proxy.
 - **Working copy:** there is **one** git clone at `~/sampolio`. Deploying =
   rebuild `.next-prod` in place + restart the job (no separate prod checkout).
-- **Data:** `~/.sampolio/data` (per-user encrypted `.enc` files, plus the
-  SQLCipher `sampolio.db` holding users/sessions/passkeys and its verified
-  snapshot `snapshots/sampolio.db`; see the DB layer docs). The app reads its
+- **Data:** `~/.sampolio/data`: the SQLCipher `sampolio.db` holding everything
+  (users/sessions/passkeys and all financial data) and its verified snapshot
+  `snapshots/sampolio.db`; the avatars (`users/<id>/avatar.webp`); and the
+  file-era `.enc` tree, imported once at the first 6.x boot and never written
+  since (see the DB layer docs). The app reads its
   secrets from the environment, not from disk.
 - **Boot log lines** (`sampolio.log`, from `src/lib/db/sqlite/bootstrap.ts`):
   `[db] opened encrypted database … (migrations applied)`, then
-  `[db] user store ok: N user(s), M data dir(s)`; then, from `src/lib/db/sqlite/maintenance.ts`,
+  `[db] user store ok: N user(s), M data dir(s)`, then
+  `[db] file data imported: N row(s) from M .enc file(s), verified` on the first 6.x
+  boot or `[db] file data already imported (…)` afterwards; then, from `src/lib/db/sqlite/maintenance.ts`,
   `[db] pruned N expired verification row(s) (startup)` and
   `[db] pruned N stale rate-limit row(s) (startup)` (the same lines with `(hourly)`
   whenever an hourly prune deletes something); then `[db] snapshot (startup) written …
@@ -76,7 +80,11 @@ through a Cloudflare Tunnel gated by Cloudflare Access (Zero Trust).
 - **Fail-closed boot.** Boot fails when `sampolio.db` does not open with the
   key (wrong `ENCRYPTION_KEY`), or when `users/*` data dirs exist but the DB has no
   user rows at all (a lost or re-created DB; `src/lib/db/sqlite/user-store.ts`), or
-  when `users/` is unreadable. The app keeps serving pages, but sign-up and every
+  when `users/` is unreadable, or when the one-shot `.enc` import aborts
+  (`src/lib/db/sqlite/file-import.ts`: an unreadable or unrecognised `.enc` file, a
+  key collision, a verification mismatch, or finance rows already present without
+  its marker — the cause names the files; nothing is half-imported). An import
+  failure also keeps the bank scheduler from starting. The app keeps serving pages, but sign-up and every
   session creation (password, passkey, dev bypass) are refused, `auth()` returns
   null and `/api/auth/*` answers **503 `SETUP_INCOMPLETE`**. The data-dirs-without-users
   gate also applies without the in-process flag. If this boot had just **created**
@@ -219,16 +227,29 @@ copied to each backup target. Tarball the data dir before each deploy too
 carry the key that decrypts it — keep `ENCRYPTION_KEY` in a password manager)
 and the live `data/sampolio.db`, `-wal`, `-shm` (a hot copy can be torn); it
 **includes** `data/snapshots/sampolio.db`, the consistent encrypted copy the app
-writes on boot, every 6 h and daily at 04:55 (before the 05:10 backup) —
+writes on boot, every 6 h and daily at 04:55 (before the 05:10 backup). Since 6.0
+that snapshot is the **only** current copy of the financial data in a backup (the
+`.enc` tree in the tar is the frozen pre-6.0 state), so a backup is as fresh as its
+snapshot —
 refresh it on demand with `DATA_DIR=$HOME/.sampolio/data node scripts/db-snapshot.mjs`
 (safe while the app runs). Never write to `~/.sampolio/data` except those
 snapshots.
 
-**Restore the auth DB from a snapshot** — stop the app, move the live
+**Restore the DB from a snapshot** — stop the app, move the live
 `sampolio.db`, `sampolio.db-wal`, `sampolio.db-shm` aside (never delete them),
 `cp data/snapshots/sampolio.db data/sampolio.db`, `chmod 600` it, start the app.
-The snapshot opens with the same `ENCRYPTION_KEY`; sessions/passkeys added after
-the snapshot are lost (users sign in again).
+The snapshot opens with the same `ENCRYPTION_KEY`; everything written after the
+snapshot is lost — financial edits, bank syncs, sessions and passkeys (users sign
+in again). The snapshot carries the import marker, so the `.enc` tree is not
+re-imported.
+
+**No rollback to a pre-6.0 build without losing writes.** 5.x reads only the
+`.enc` tree, which stopped changing at the 6.0 cutover, so rolling back shows the
+data as of the cutover and drops every later write (including bank syncs, which
+resume within minutes of a boot). Fix forward instead; if a rollback is
+unavoidable, export the affected users' JSON backups (Settings › Data) first. A DB
+that lost its import marker refuses to re-import while finance rows exist (it never
+mixes data).
 
 **No rollback to a pre-4.0 build.** Pre-4.0 builds read users from
 `users-index.enc` / `users/*/user.enc`; since 4.1.2 nothing reads those files and
@@ -270,9 +291,12 @@ reconnect banner before expiry (Overview) and a Reconnect button in
 
 ## 8. Encryption maintenance
 
-All data files are AES-256-GCM with a per-file key derived from `ENCRYPTION_KEY`
-via **HKDF-SHA256**; the read path falls back to the legacy PBKDF2 derivation for
-old files (see `src/lib/db/encryption.ts` and `src/lib/db/AGENTS.md`).
+The live data is the SQLCipher `sampolio.db` (key derived from `ENCRYPTION_KEY`).
+The file-era `.enc` tree (imported once at the first 6.x boot, kept as a frozen
+fallback) is AES-256-GCM with a per-file key derived from `ENCRYPTION_KEY` via
+**HKDF-SHA256**; the read path falls back to the legacy PBKDF2 derivation for old
+files (see `src/lib/db/encryption.ts` and `src/lib/db/AGENTS.md`). The two scripts
+below only matter for that tree (and, for rotation, the DB rekey).
 
 **Re-encrypting to the fast format** — `node scripts/reencrypt-data.mjs [--dry-run]`
 rewrites every `.enc` file under `DATA_DIR` (default `./data`; key from
@@ -307,7 +331,7 @@ Every variable the code reads (`grep -r "process.env" src scripts next.config.ts
 
 | Variable | Required | Read in | Meaning |
 |---|---|---|---|
-| `ENCRYPTION_KEY` | yes | `db/encryption.ts`, `db/sqlite/key.ts`, `reencrypt-data.mjs`, `rotate-encryption-key.mjs`, `db-snapshot.mjs` | AES-256-GCM master key for all `.enc` files; the SQLCipher key for `sampolio.db` is derived from it (HKDF, `sampolio-sqlite-v1`). Prod value in `~/.sampolio/data/.encryption_key` (injected into the env by the gui plist or, for the system daemon, `~/.sampolio/launchd.env` — the app itself reads only the env). |
+| `ENCRYPTION_KEY` | yes | `db/encryption.ts`, `db/sqlite/key.ts`, `reencrypt-data.mjs`, `rotate-encryption-key.mjs`, `db-snapshot.mjs` | AES-256-GCM master key for the file-era `.enc` tree; the SQLCipher key for `sampolio.db` is derived from it (HKDF, `sampolio-sqlite-v1`). Prod value in `~/.sampolio/data/.encryption_key` (injected into the env by the gui plist or, for the system daemon, `~/.sampolio/launchd.env` — the app itself reads only the env). |
 | `AUTH_SECRET` | yes | `lib/auth/server.ts` | Better Auth secret (signs session cookies). Changing it signs everyone out. |
 | `AUTH_URL` | yes (throws in prod if unset) | `lib/auth/server.ts`, `api/bank/callback/route.ts` | Canonical app URL (prod domain; `http://localhost:4999` for the dev preview). Better Auth `baseURL`; its **hostname is the passkey RP ID**, so changing the domain orphans every registered passkey. The bank-callback route reads it to build the external redirect base. |
 | `DATA_DIR` | no (default `./data`) | `db/encryption.ts`, scripts | Root of the encrypted data tree. Prod: `~/.sampolio/data`. |
