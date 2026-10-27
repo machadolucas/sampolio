@@ -44,7 +44,7 @@ export { PASSKEY_REAUTH_REQUIRED, PASSKEY_REGISTRATION_MAX_SESSION_AGE_MS };
  *   than PASSKEY_REGISTRATION_MAX_SESSION_AGE_MS (10 min), so a stolen older
  *   cookie cannot enroll a passkey that outlives a password change.
  * - Passwords: new hashes are Better Auth's scrypt. Legacy bcrypt hashes
- *   imported from the `.enc` user files verify through bcrypt and are
+ *   carried over from pre-4.0 accounts verify through bcrypt and are
  *   rehashed to scrypt after the first successful sign-in.
  * - Sign-up stays enabled at the Better Auth level (`disableSignUp` would also
  *   block the server-side `auth.api.signUpEmail` call); the self-signup

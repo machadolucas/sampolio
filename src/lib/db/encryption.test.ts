@@ -1,100 +1,28 @@
-import * as crypto from 'crypto';
-import * as fs from 'fs/promises';
-import * as os from 'os';
-import * as path from 'path';
-import { describe, it, expect, beforeAll } from 'vitest';
-import { encrypt, decrypt, writeEncryptedFile, readEncryptedFile } from './encryption';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { getEncryptionKey } from './encryption';
 
-// Format + KDF constants — must mirror encryption.ts. The legacy helper below
-// reproduces the pre-migration PBKDF2 format so we can prove old files still
-// decrypt through the backward-compatible read path.
-const ALGORITHM = 'aes-256-gcm';
-const IV_LENGTH = 16;
-const SALT_LENGTH = 64;
-const TAG_LENGTH = 16;
-const KEY_LENGTH = 32;
-const ITERATIONS = 100000;
-const HKDF_INFO = Buffer.from('sampolio-file-encryption-v1');
-
-const KEY = 'test-encryption-key-0123456789abcdef0123456789abcdef';
-
-beforeAll(() => {
-  process.env.ENCRYPTION_KEY = KEY;
-});
-
-/** Encrypt exactly the way the app did before the HKDF migration (PBKDF2). */
-function legacyEncrypt(password: string, data: string): string {
-  const salt = crypto.randomBytes(SALT_LENGTH);
-  const iv = crypto.randomBytes(IV_LENGTH);
-  const key = crypto.pbkdf2Sync(password, salt, ITERATIONS, KEY_LENGTH, 'sha512');
-  const cipher = crypto.createCipheriv(ALGORITHM, key, iv);
-  const encrypted = Buffer.concat([cipher.update(data, 'utf8'), cipher.final()]);
-  const tag = cipher.getAuthTag();
-  return Buffer.concat([salt, iv, tag, encrypted]).toString('base64');
-}
-
-function parse(blob: string) {
-  const combined = Buffer.from(blob, 'base64');
-  return {
-    salt: combined.subarray(0, SALT_LENGTH),
-    iv: combined.subarray(SALT_LENGTH, SALT_LENGTH + IV_LENGTH),
-    tag: combined.subarray(SALT_LENGTH + IV_LENGTH, SALT_LENGTH + IV_LENGTH + TAG_LENGTH),
-    ct: combined.subarray(SALT_LENGTH + IV_LENGTH + TAG_LENGTH),
-  };
-}
-
-describe('encryption', () => {
-  it('round-trips through the HKDF fast path', () => {
-    const payload = JSON.stringify({ hello: 'world', n: 42, nested: [1, 2, 3] });
-    expect(decrypt(encrypt(payload))).toBe(payload);
+describe('getEncryptionKey', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
   });
 
-  it('produces distinct ciphertext for identical plaintext (per-file salt)', () => {
-    const a = encrypt('same');
-    const b = encrypt('same');
-    expect(a).not.toBe(b);
-    expect(decrypt(a)).toBe('same');
-    expect(decrypt(b)).toBe('same');
+  it('returns ENCRYPTION_KEY when set', () => {
+    vi.stubEnv('ENCRYPTION_KEY', 'a'.repeat(64));
+    expect(getEncryptionKey()).toBe('a'.repeat(64));
   });
 
-  it('still decrypts legacy PBKDF2-format files (backward compatible)', () => {
-    const payload = 'legacy secret €1234,56';
-    const legacyBlob = legacyEncrypt(KEY, payload);
-    expect(decrypt(legacyBlob)).toBe(payload);
+  it('refuses the default key in production', () => {
+    vi.stubEnv('ENCRYPTION_KEY', '');
+    vi.stubEnv('NODE_ENV', 'production');
+    expect(() => getEncryptionKey()).toThrow(/must be set in production/);
   });
 
-  it('new files genuinely use HKDF, not PBKDF2 (fast path is primary)', () => {
-    const blob = encrypt('fast-path');
-    const { salt, iv, tag, ct } = parse(blob);
-
-    // HKDF key decrypts it...
-    const hkdfKey = Buffer.from(crypto.hkdfSync('sha256', Buffer.from(KEY, 'utf8'), salt, HKDF_INFO, KEY_LENGTH));
-    const d = crypto.createDecipheriv(ALGORITHM, hkdfKey, iv);
-    d.setAuthTag(tag);
-    expect(Buffer.concat([d.update(ct), d.final()]).toString('utf8')).toBe('fast-path');
-
-    // ...but the legacy PBKDF2 key for the same salt does NOT — proving the new
-    // blob is HKDF-derived and the PBKDF2 branch is only ever a fallback.
-    const pbkdf2Key = crypto.pbkdf2Sync(KEY, salt, ITERATIONS, KEY_LENGTH, 'sha512');
-    const d2 = crypto.createDecipheriv(ALGORITHM, pbkdf2Key, iv);
-    d2.setAuthTag(tag);
-    expect(() => Buffer.concat([d2.update(ct), d2.final()])).toThrow();
-  });
-
-  it('writes compact JSON and still reads older pretty-printed files', async () => {
-    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'sampolio-enc-compact-'));
-    process.env.DATA_DIR = dir;
-    try {
-      const data = { id: 'acc-1', name: 'Alex', nested: { a: [1, 2] } };
-      const file = path.join(dir, 'compact.enc');
-      await writeEncryptedFile(file, data);
-      expect(decrypt(await fs.readFile(file, 'utf8'))).toBe(JSON.stringify(data));
-
-      const legacy = path.join(dir, 'pretty.enc');
-      await fs.writeFile(legacy, encrypt(JSON.stringify(data, null, 2)), 'utf8');
-      expect(await readEncryptedFile(legacy)).toEqual(data);
-    } finally {
-      await fs.rm(dir, { recursive: true, force: true });
-    }
+  it('falls back to the dev key outside production, with a warning', () => {
+    vi.stubEnv('ENCRYPTION_KEY', '');
+    vi.stubEnv('NODE_ENV', 'development');
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    expect(getEncryptionKey()).toBe('sampolio-default-encryption-key-change-in-prod');
+    expect(warn).toHaveBeenCalled();
   });
 });

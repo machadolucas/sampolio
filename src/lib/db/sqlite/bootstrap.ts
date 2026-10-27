@@ -1,6 +1,5 @@
 import { discardNewlyCreatedDb, getDb, getDbPath, wasDbCreatedByThisProcess } from './client';
-import { verifyUserStore } from './user-store';
-import { importFileData } from './file-import';
+import { verifyFinanceStore, verifyUserStore } from './user-store';
 import { markSetupFailed } from './setup-state';
 
 export interface BootstrapResult {
@@ -8,15 +7,12 @@ export interface BootstrapResult {
   /** The DB is open with the right key and may be snapshotted. */
   dbUsable: boolean;
   dbDiscarded: boolean;
-  /** The financial data is in the DB (file import done): background writers may start. */
-  dataReady: boolean;
 }
 
 /**
  * Boot-time DB setup, run once from src/instrumentation.ts before the server
- * takes requests: open (+ migrate) the SQLCipher DB, check that it holds the
- * users the data dirs belong to (user-store.ts), then import the file-era
- * `.enc` financial data once (file-import.ts).
+ * takes requests: open (+ migrate) the SQLCipher DB, then check that it holds
+ * the users the data dirs belong to and is a 6.x finance store (user-store.ts).
  *
  * Fails CLOSED. On any error the process-wide setup failure is recorded
  * (setup-state.ts): sign-up and session creation are refused, `auth()` returns
@@ -39,13 +35,8 @@ export async function bootstrapDatabase(): Promise<BootstrapResult> {
     console.log(`[db] opened encrypted database ${getDbPath()} (migrations applied)`);
     const store = verifyUserStore();
     console.log(`[db] user store ok: ${store.users} user(s), ${store.dataDirs} data dir(s)`);
-    const imported = await importFileData();
-    console.log(
-      imported.status === 'imported'
-        ? `[db] file data imported: ${imported.rows} row(s) from ${imported.files} .enc file(s), verified`
-        : `[db] file data already imported (${imported.rows} row(s) from ${imported.files} file(s))`,
-    );
-    return { ok: true, dbUsable: true, dbDiscarded: false, dataReady: true };
+    verifyFinanceStore();
+    return { ok: true, dbUsable: true, dbDiscarded: false };
   } catch (error) {
     const dbDiscarded = opened && wasDbCreatedByThisProcess() ? discardNewlyCreatedDb() : false;
     markSetupFailed(error, { dbDiscarded });
@@ -63,6 +54,6 @@ export async function bootstrapDatabase(): Promise<BootstrapResult> {
       ].join('\n'),
       error,
     );
-    return { ok: false, dbUsable: opened && !dbDiscarded, dbDiscarded, dataReady: false };
+    return { ok: false, dbUsable: opened && !dbDiscarded, dbDiscarded };
   }
 }

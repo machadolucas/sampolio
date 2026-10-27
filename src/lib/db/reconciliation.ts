@@ -5,10 +5,9 @@ import { deleteRows, inTx, listRows, nextSeq, putDoc } from './sqlite/docs';
 import { balanceSnapshot, reconciliationAdjustment, reconciliationSession } from './sqlite/schema';
 import type { BalanceSnapshot, ReconciliationAdjustment, ReconciliationSession, EntityType, AdjustmentCategory } from '@/types';
 
-// Each former aggregate file (`balance-snapshots.enc`,
-// `reconciliation-adjustments.enc`, `reconciliation-sessions.enc`) is one row
-// per element, `seq` keeping the array order (an upsert keeps its position,
-// a new row appends).
+// Snapshots, adjustments and sessions are ordered per-user lists: one row per
+// element, `seq` keeping the order (an upsert keeps its position, a new row
+// appends).
 
 interface Positioned<T> {
   seq: number;

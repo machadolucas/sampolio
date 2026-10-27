@@ -1,9 +1,7 @@
-// Key rotation: decrypt every *.enc file with the OLD key and re-encrypt it
-// with the NEW key (HKDF format), then `PRAGMA hexrekey` the SQLCipher DB
-// (<DATA_DIR>/sampolio.db, key derived from ENCRYPTION_KEY — see
-// src/lib/db/sqlite/key.ts) and rewrite its snapshot under the new key.
-// Complements scripts/reencrypt-data.mjs, which re-encrypts with the SAME key
-// (format migration only).
+// Key rotation: `PRAGMA hexrekey` the SQLCipher DB (<DATA_DIR>/sampolio.db,
+// key derived from ENCRYPTION_KEY — see src/lib/db/sqlite/key.ts) from the
+// OLD key to the NEW one and rewrite its snapshot under the new key. All app
+// data lives in that DB.
 //
 //   OLD_ENCRYPTION_KEY=<old> ENCRYPTION_KEY=<new> node scripts/rotate-encryption-key.mjs [--dry-run]
 //
@@ -14,84 +12,18 @@
 //   DATA_DIR env, else ./data.
 //
 // Safety:
-//   - Refuses to run when old and new keys are identical (use reencrypt-data.mjs).
-//   - Atomic per file: writes a temp file then renames over the original.
-//   - Old-key decryption is backward-compatible (tries HKDF, then legacy PBKDF2).
-//   - Never deletes data — but a crash mid-run leaves the tree MIXED between
-//     keys, so TAKE A BACKUP FIRST (`cp -a data data.bak`) and, on prod data,
-//     STOP THE APP while rotating (the DB rekey needs exclusive access).
-//     Re-running with the same env is safe: files already rotated fail
-//     old-key decryption and are counted, not corrupted; a DB that already
-//     opens with the new key is reported and left alone.
+//   - Refuses to run when old and new keys are identical.
+//   - STOP THE APP while rotating (the rekey needs exclusive access) and TAKE A
+//     BACKUP FIRST. Re-running is safe: a DB that already opens with the new key
+//     is reported and left alone (its snapshot is rewritten under the new key).
 //   - --dry-run only checks which key opens the DB; it does not rekey.
 
-import * as crypto from 'node:crypto';
 import * as fs from 'node:fs/promises';
 import * as fsSync from 'node:fs';
 import * as path from 'node:path';
 import { DB_FILE_NAME, deriveSqliteKeyHex, openEncrypted, writeSnapshot } from './sqlcipher-lib.mjs';
 
-const ALGORITHM = 'aes-256-gcm';
-const IV_LENGTH = 16;
-const SALT_LENGTH = 64;
-const TAG_LENGTH = 16;
-const KEY_LENGTH = 32;
-const ITERATIONS = 100000;
-const HKDF_INFO = Buffer.from('sampolio-file-encryption-v1'); // must match encryption.ts
-
 const DRY_RUN = process.argv.includes('--dry-run');
-
-function deriveKeyHkdf(password, salt) {
-  return Buffer.from(crypto.hkdfSync('sha256', Buffer.from(password, 'utf8'), salt, HKDF_INFO, KEY_LENGTH));
-}
-function deriveKeyPbkdf2(password, salt) {
-  return crypto.pbkdf2Sync(password, salt, ITERATIONS, KEY_LENGTH, 'sha512');
-}
-
-function decryptWithKey(key, iv, tag, encrypted) {
-  const decipher = crypto.createDecipheriv(ALGORITHM, key, iv);
-  decipher.setAuthTag(tag);
-  return Buffer.concat([decipher.update(encrypted), decipher.final()]).toString('utf8');
-}
-
-/** Decrypt with a given password (HKDF first, PBKDF2 fallback) or throw. */
-function decrypt(password, encryptedData) {
-  const combined = Buffer.from(encryptedData, 'base64');
-  const salt = combined.subarray(0, SALT_LENGTH);
-  const iv = combined.subarray(SALT_LENGTH, SALT_LENGTH + IV_LENGTH);
-  const tag = combined.subarray(SALT_LENGTH + IV_LENGTH, SALT_LENGTH + IV_LENGTH + TAG_LENGTH);
-  const encrypted = combined.subarray(SALT_LENGTH + IV_LENGTH + TAG_LENGTH);
-  try {
-    return decryptWithKey(deriveKeyHkdf(password, salt), iv, tag, encrypted);
-  } catch {
-    return decryptWithKey(deriveKeyPbkdf2(password, salt), iv, tag, encrypted);
-  }
-}
-
-function encrypt(password, data) {
-  const salt = crypto.randomBytes(SALT_LENGTH);
-  const iv = crypto.randomBytes(IV_LENGTH);
-  const key = deriveKeyHkdf(password, salt);
-  const cipher = crypto.createCipheriv(ALGORITHM, key, iv);
-  const encrypted = Buffer.concat([cipher.update(data, 'utf8'), cipher.final()]);
-  const tag = cipher.getAuthTag();
-  return Buffer.concat([salt, iv, tag, encrypted]).toString('base64');
-}
-
-async function* walk(dir) {
-  let entries;
-  try {
-    entries = await fs.readdir(dir, { withFileTypes: true });
-  } catch (e) {
-    if (e.code === 'ENOENT') return;
-    throw e;
-  }
-  for (const entry of entries) {
-    const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) yield* walk(full);
-    else if (entry.isFile() && entry.name.endsWith('.enc')) yield full;
-  }
-}
 
 async function resolveNewKey(dataDir) {
   if (process.env.ENCRYPTION_KEY) return process.env.ENCRYPTION_KEY;
@@ -117,55 +49,14 @@ async function main() {
   }
   const newKey = await resolveNewKey(dataDir);
   if (oldKey === newKey) {
-    console.error('ERROR: OLD_ENCRYPTION_KEY and ENCRYPTION_KEY are identical — nothing to rotate. Use scripts/reencrypt-data.mjs for a format migration.');
+    console.error('ERROR: OLD_ENCRYPTION_KEY and ENCRYPTION_KEY are identical — nothing to rotate.');
     process.exit(1);
   }
 
-  console.log(`${DRY_RUN ? '[dry-run] ' : ''}Rotating encryption key for *.enc under: ${dataDir}`);
-
-  let total = 0, rotated = 0, alreadyNewKey = 0, failed = 0;
-  for await (const file of walk(dataDir)) {
-    total++;
-    let plaintext;
-    try {
-      const content = await fs.readFile(file, 'utf8');
-      plaintext = decrypt(oldKey, content);
-    } catch {
-      // Old key failed — already rotated (resumed run) or corrupt.
-      try {
-        const content = await fs.readFile(file, 'utf8');
-        decrypt(newKey, content);
-        alreadyNewKey++;
-        continue;
-      } catch (e2) {
-        failed++;
-        console.error(`  FAILED to decrypt with either key: ${file} — ${e2.message}`);
-        continue;
-      }
-    }
-    rotated++;
-    if (DRY_RUN) continue;
-    try {
-      const reencrypted = encrypt(newKey, plaintext);
-      const tmp = `${file}.tmp-rotate`;
-      await fs.writeFile(tmp, reencrypted, 'utf8');
-      await fs.rename(tmp, file); // atomic on same filesystem
-    } catch (e) {
-      rotated--;
-      failed++;
-      console.error(`  FAILED to write: ${file} — ${e.message}`);
-    }
-  }
-
+  console.log(`${DRY_RUN ? '[dry-run] ' : ''}Rotating the encryption key of ${path.join(dataDir, DB_FILE_NAME)}`);
   const dbStatus = rotateSqliteDb(dataDir, oldKey, newKey);
-
-  console.log('\nDone.');
-  console.log(`  total .enc files   : ${total}`);
-  console.log(`  rotated old → new  : ${rotated}${DRY_RUN ? ' (would rotate)' : ''}`);
-  console.log(`  already on new key : ${alreadyNewKey}`);
-  console.log(`  failed             : ${failed}`);
-  console.log(`  sampolio.db        : ${dbStatus}`);
-  if (failed > 0 || dbStatus.startsWith('FAILED')) process.exitCode = 1;
+  console.log(`  sampolio.db: ${dbStatus}`);
+  if (dbStatus.startsWith('FAILED')) process.exitCode = 1;
 }
 
 /** Rekey <DATA_DIR>/sampolio.db from the old derived key to the new one and

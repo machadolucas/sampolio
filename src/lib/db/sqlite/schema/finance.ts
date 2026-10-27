@@ -1,22 +1,18 @@
 /**
- * Financial data tables (everything that used to be an `.enc` file).
+ * Financial data tables.
  *
- * Document rows: each row stores one entity's exact JSON in `data` — the same
- * compact JSON the file held — so every field round-trips, including legacy
- * or stray ones. The other columns are lookup keys only (sorting stays in the
- * DB modules, exactly as before). The SQLCipher file is already encrypted, so
- * rows carry no per-row encryption.
+ * Document rows: each row stores one entity's exact JSON in `data`, so every
+ * field round-trips, including legacy or stray ones. The other columns are
+ * lookup keys only (sorting stays in the DB modules). The SQLCipher file is
+ * already encrypted, so rows carry no per-row encryption.
  *
- * Identity mirrors the former file paths: one row per former file, and one
- * row per element (`seq` = its position) for the former aggregate/chunk files
- * (reconciliation, bank ledgers, sync runs, split expenses, member indexes).
- * There are deliberately no foreign keys between these tables or to `user`:
- * deleting a parent never cascaded on disk (an account's children outlive it),
- * and a cascade would silently change that. Cascading deletes are explicit in
- * the DB modules, inside one transaction.
+ * Ordered lists (reconciliation, bank ledgers, sync runs, split expenses
+ * within a month, member indexes) keep their order in `seq`. There are
+ * deliberately no foreign keys between these tables or to `user`: deleting an
+ * account leaves its items (they never cascaded), so cascading deletes are
+ * explicit in the DB modules, inside one transaction.
  *
- * Access goes through `src/lib/db/sqlite/docs.ts`; `file-import.ts` fills them
- * once from the `.enc` tree.
+ * Access goes through `src/lib/db/sqlite/docs.ts`.
  */
 import { index, integer, primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-core';
 
@@ -24,13 +20,13 @@ const data = () => text('data').notNull();
 
 // ── User-scoped ─────────────────────────────────────────────────────────────
 
-/** `users/{userId}/preferences.enc` */
+/** UserPreferences, one per user */
 export const userPreferences = sqliteTable('user_preferences', {
   userId: text('userId').primaryKey(),
   data: data(),
 });
 
-/** `users/{userId}/accounts/{id}.enc` */
+/** FinancialAccount (cash accounts) */
 export const finAccount = sqliteTable(
   'fin_account',
   { userId: text('userId').notNull(), id: text('id').notNull(), data: data() },
@@ -44,13 +40,13 @@ const accountChild = (name: string) =>
     (t) => [primaryKey({ columns: [t.userId, t.accountId, t.id] })],
   );
 
-/** `users/{userId}/accounts/{accountId}/recurring/{id}.enc` */
+/** RecurringItem, per account */
 export const recurringItem = accountChild('recurring_item');
-/** `users/{userId}/accounts/{accountId}/planned/{id}.enc` */
+/** PlannedItem (incl. occurrence overrides), per account */
 export const plannedItem = accountChild('planned_item');
-/** `users/{userId}/accounts/{accountId}/salary/{id}.enc` */
+/** SalaryConfig, per account */
 export const salaryConfig = accountChild('salary_config');
-/** `users/{userId}/accounts/{accountId}/taxed-income/{id}.enc` */
+/** TaxedIncome, per account */
 export const taxedIncome = accountChild('taxed_income');
 
 const userDoc = (name: string) =>
@@ -60,22 +56,22 @@ const userDoc = (name: string) =>
     (t) => [primaryKey({ columns: [t.userId, t.id] })],
   );
 
-/** `users/{userId}/investments/{id}.enc` */
+/** InvestmentAccount */
 export const investment = userDoc('investment');
-/** `users/{userId}/debts/{id}.enc` */
+/** Debt */
 export const debt = userDoc('debt');
-/** `users/{userId}/receivables/{id}.enc` */
+/** Receivable */
 export const receivable = userDoc('receivable');
-/** `users/{userId}/budgets/{id}.enc` */
+/** Budget (lines, funding sources, expense entries embedded) */
 export const budget = userDoc('budget');
-/** `users/{userId}/goals/{id}.enc` */
+/** Goal */
 export const goal = userDoc('goal');
-/** `users/{userId}/trips/{id}.enc` */
+/** Trip (days + rate snapshot embedded) */
 export const trip = userDoc('trip');
-/** `users/{userId}/bank/connections/{id}.enc` */
+/** BankConnection (linkedAccounts embedded) */
 export const bankConnection = userDoc('bank_connection');
 
-/** `users/{userId}/investments/{investmentId}/contributions/{id}.enc` */
+/** InvestmentContribution, per investment */
 export const investmentContribution = sqliteTable(
   'investment_contribution',
   { userId: text('userId').notNull(), investmentId: text('investmentId').notNull(), id: text('id').notNull(), data: data() },
@@ -89,19 +85,19 @@ const debtChild = (name: string) =>
     (t) => [primaryKey({ columns: [t.userId, t.debtId, t.id] })],
   );
 
-/** `users/{userId}/debts/{debtId}/reference-rates/{id}.enc` */
+/** DebtReferenceRate, per debt */
 export const debtReferenceRate = debtChild('debt_reference_rate');
-/** `users/{userId}/debts/{debtId}/extra-payments/{id}.enc` */
+/** DebtExtraPayment, per debt */
 export const debtExtraPayment = debtChild('debt_extra_payment');
 
-/** `users/{userId}/receivables/{receivableId}/repayments/{id}.enc` */
+/** ReceivableRepayment, per receivable */
 export const receivableRepayment = sqliteTable(
   'receivable_repayment',
   { userId: text('userId').notNull(), receivableId: text('receivableId').notNull(), id: text('id').notNull(), data: data() },
   (t) => [primaryKey({ columns: [t.userId, t.receivableId, t.id] })],
 );
 
-/** Element of `users/{userId}/reconciliation/balance-snapshots.enc` */
+/** BalanceSnapshot, ordered per user */
 export const balanceSnapshot = sqliteTable(
   'balance_snapshot',
   {
@@ -113,7 +109,7 @@ export const balanceSnapshot = sqliteTable(
   (t) => [primaryKey({ columns: [t.userId, t.id] }), index('balance_snapshot_seq').on(t.userId, t.seq)],
 );
 
-/** Element of `users/{userId}/reconciliation/reconciliation-adjustments.enc` */
+/** ReconciliationAdjustment, ordered per user */
 export const reconciliationAdjustment = sqliteTable(
   'reconciliation_adjustment',
   {
@@ -125,7 +121,7 @@ export const reconciliationAdjustment = sqliteTable(
   (t) => [primaryKey({ columns: [t.userId, t.id] }), index('reconciliation_adjustment_seq').on(t.userId, t.seq)],
 );
 
-/** Element of `users/{userId}/reconciliation/reconciliation-sessions.enc` */
+/** ReconciliationSession, ordered per user */
 export const reconciliationSession = sqliteTable(
   'reconciliation_session',
   {
@@ -137,14 +133,14 @@ export const reconciliationSession = sqliteTable(
   (t) => [primaryKey({ columns: [t.userId, t.id] }), index('reconciliation_session_seq').on(t.userId, t.seq)],
 );
 
-/** `users/{userId}/bank/connections/{connectionId}.session.enc` */
+/** BankSessionSecret, one per connection (never cached) */
 export const bankSessionSecret = sqliteTable(
   'bank_session_secret',
   { userId: text('userId').notNull(), connectionId: text('connectionId').notNull(), data: data() },
   (t) => [primaryKey({ columns: [t.userId, t.connectionId] })],
 );
 
-/** Element of `users/{userId}/bank/accounts/{linkedAccountId}/transactions.enc`
+/** BankTransaction, the ordered ledger of one linked account
  * (no uniqueness on `dedupKey`: identical `#occN` rows are legitimate). */
 export const bankTransaction = sqliteTable(
   'bank_transaction',
@@ -157,7 +153,7 @@ export const bankTransaction = sqliteTable(
   (t) => [primaryKey({ columns: [t.userId, t.linkedAccountId, t.seq] })],
 );
 
-/** Element of `users/{userId}/bank/sync-runs/{connectionId}.enc` */
+/** BankSyncRun, per connection (`seq` 0 = newest) */
 export const bankSyncRun = sqliteTable(
   'bank_sync_run',
   {
@@ -171,13 +167,13 @@ export const bankSyncRun = sqliteTable(
 
 // ── Global ──────────────────────────────────────────────────────────────────
 
-/** `app-settings.enc` (single row, id `app`) */
+/** AppSettings (single row, id `app`) */
 export const appSettings = sqliteTable('app_settings', {
   id: text('id').primaryKey(),
   data: data(),
 });
 
-/** `shared/mortgages/{id}.enc` */
+/** SharedMortgage (loans + members embedded) */
 export const mortgage = sqliteTable('mortgage', { id: text('id').primaryKey(), data: data() });
 
 const mortgageChild = (name: string) =>
@@ -187,28 +183,28 @@ const mortgageChild = (name: string) =>
     (t) => [primaryKey({ columns: [t.mortgageId, t.id] })],
   );
 
-/** `shared/mortgages/{mortgageId}/rates/{id}.enc` */
+/** MortgageRateEntry, per mortgage */
 export const mortgageRate = mortgageChild('mortgage_rate');
-/** `shared/mortgages/{mortgageId}/costs/{id}.enc` */
+/** MortgageCostEntry, per mortgage */
 export const mortgageCost = mortgageChild('mortgage_cost');
-/** `shared/mortgages/{mortgageId}/extra-payments/{id}.enc` */
+/** MortgageExtraPayment, per mortgage */
 export const mortgageExtraPayment = mortgageChild('mortgage_extra_payment');
-/** `shared/mortgages/{mortgageId}/snapshots/{id}.enc` */
+/** MortgageBalanceSnapshot, per mortgage */
 export const mortgageBalanceSnapshot = mortgageChild('mortgage_balance_snapshot');
-/** `shared/mortgages/{mortgageId}/actuals/{id}.enc` */
+/** MortgageActualEntry, per mortgage */
 export const mortgageActual = mortgageChild('mortgage_actual');
 
-/** Element of `shared/mortgage-members/{userId}.enc` `{ mortgageIds }` */
+/** Reverse index userId → mortgage ids (key-only rows) */
 export const mortgageMemberIndex = sqliteTable(
   'mortgage_member_index',
   { userId: text('userId').notNull(), mortgageId: text('mortgageId').notNull(), seq: integer('seq').notNull() },
   (t) => [primaryKey({ columns: [t.userId, t.mortgageId] })],
 );
 
-/** `shared/split-groups/{id}.enc` */
+/** SplitGroup (members + recurrence rules embedded) */
 export const splitGroup = sqliteTable('split_group', { id: text('id').primaryKey(), data: data() });
 
-/** Element of `shared/split-groups/{groupId}/expenses/{yearMonth}.enc` */
+/** SplitExpense, grouped by storage month (`seq` = position in the month) */
 export const splitExpense = sqliteTable(
   'split_expense',
   {
@@ -221,13 +217,13 @@ export const splitExpense = sqliteTable(
   (t) => [primaryKey({ columns: [t.groupId, t.id] }), index('split_expense_month').on(t.groupId, t.yearMonth, t.seq)],
 );
 
-/** `shared/split-groups/{groupId}/summary.enc` */
+/** SplitGroupSummary, one per group */
 export const splitGroupSummary = sqliteTable('split_group_summary', {
   groupId: text('groupId').primaryKey(),
   data: data(),
 });
 
-/** Element of `shared/split-group-members/{userId}.enc` `{ groupIds }` */
+/** Reverse index userId → split group ids (key-only rows) */
 export const splitGroupMemberIndex = sqliteTable(
   'split_group_member_index',
   { userId: text('userId').notNull(), groupId: text('groupId').notNull(), seq: integer('seq').notNull() },

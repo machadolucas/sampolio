@@ -3,8 +3,8 @@ import { getEncryptionKey } from '../encryption';
 
 /**
  * SQLCipher key for `sampolio.db`, derived from `ENCRYPTION_KEY` so the app
- * keeps exactly one secret. HKDF-SHA256 with a purpose label keeps the DB key
- * independent from the per-file `.enc` keys (`sampolio-file-encryption-v1`).
+ * keeps exactly one secret. HKDF-SHA256 with a purpose label binds the derived
+ * key to this use.
  *
  * Never change the info label or salt: an existing database stops opening.
  * `scripts/db-snapshot.mjs` and `scripts/rotate-encryption-key.mjs` mirror this

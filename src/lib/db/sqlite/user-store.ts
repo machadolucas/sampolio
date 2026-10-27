@@ -1,9 +1,10 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { getDataDir } from '../encryption';
 import { getDb } from './client';
-import { user } from './schema';
+import { countRows } from './docs';
+import { FINANCE_TABLES, meta, user } from './schema';
 import { getSetupFailure } from './setup-state';
 
 /**
@@ -80,4 +81,32 @@ export function isAuthSetupComplete(): boolean {
 export function isFirstUserSetup(): boolean {
   if (getSetupFailure()) return false;
   return countUserRows() === 0 && countUserDataDirs() === 0;
+}
+
+/**
+ * `_meta` marker: this DB holds the financial data (written by the 6.0 `.enc`
+ * import, or at the first boot of a fresh install). The key name is kept from
+ * that import.
+ */
+export const FINANCE_STORE_META_KEY = 'file-data-imported';
+
+/**
+ * Boot-time check (bootstrap.ts) that the DB is a 6.x store. A DB with users,
+ * no finance rows and no marker predates 6.0 (an old snapshot or backup): its
+ * financial data was in the `.enc` files, which nothing reads any more, so
+ * booting it would show every user an empty app while the bank sync started
+ * writing into it. Throws `UserStoreError`; any other state records the
+ * marker (fresh install, or rows seeded before the first boot).
+ */
+export function verifyFinanceStore(): void {
+  const db = getDb();
+  if (db.select().from(meta).where(eq(meta.key, FINANCE_STORE_META_KEY)).get()) return;
+  if (countUserRows() > 0 && FINANCE_TABLES.every((t) => countRows(t) === 0)) {
+    throw new UserStoreError(
+      'the account database has users but no financial data and predates 6.0 (no finance-store marker); restore a 6.x snapshot (snapshots/sampolio.db)',
+    );
+  }
+  db.insert(meta)
+    .values({ key: FINANCE_STORE_META_KEY, value: JSON.stringify({ since: new Date().toISOString() }), updatedAt: new Date() })
+    .run();
 }

@@ -68,14 +68,14 @@ export interface AccountDeletionPreflight {
   summary: AccountDeletionSummary;
 }
 
-// Application settings (stored in app-settings.enc)
+// Application settings (`app_settings` row)
 export interface AppSettings {
   selfSignupEnabled: boolean;
   updatedAt: string;
   updatedBy: string; // userId of admin who last updated
 }
 
-// User preferences (stored per user in preferences.enc)
+// User preferences (`user_preferences` row per user)
 export interface TaxDefaults {
   taxRate: number; // percentage, e.g. 25 for 25%
   contributionsRate: number; // percentage, e.g. 8.19
@@ -1831,7 +1831,7 @@ export interface SplitPayment extends SplitRowBase {
 
 export type SplitExpense = SplitExpenseItem | SplitPayment;
 
-/** Maintained running summary (data/shared/split-groups/{id}/summary.enc). */
+/** Maintained running summary (`split_group_summary` row). */
 export interface SplitGroupSummary {
   groupId: string;
   netByUserId: Record<string, number>; // cents; net > 0 ⇒ that member is owed

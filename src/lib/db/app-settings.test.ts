@@ -17,7 +17,7 @@ afterAll(() => {
   tmp.cleanup();
 });
 
-describe('app settings defaults (no app-settings.enc)', () => {
+describe('app settings defaults (no app_settings row)', () => {
   it('allow sign-up only while no account exists, then fail closed', async () => {
     expect(await isSelfSignupEnabled()).toBe(true);
 

@@ -14,9 +14,10 @@ vi.mock('next/headers', () => ({
 import { useTempDataDir } from '@/test/temp-data-dir';
 import { closeDb, getDb, getDbPath } from './client';
 import { bootstrapDatabase } from './bootstrap';
-import { isAuthSetupComplete, isFirstUserSetup, tombstoneEmail } from './user-store';
+import { FINANCE_STORE_META_KEY, isAuthSetupComplete, isFirstUserSetup, tombstoneEmail } from './user-store';
 import { clearSetupFailure, getSetupFailure } from './setup-state';
-import { user } from './schema';
+import { goal, meta, user } from './schema';
+import { putDoc } from './docs';
 import { getAuth, resetAuthForTests } from '@/lib/auth/server';
 import { auth } from '@/lib/auth';
 import { updateAppSettings } from '../app-settings';
@@ -54,9 +55,13 @@ function writeUserDataDir(id = ALEX_ID) {
   fs.writeFileSync(path.join(dir, 'avatar.webp'), 'image');
 }
 
-/** A DB from an earlier boot holding Alex (optionally soft-deleted). */
-function writeDbWithAlex({ deleted = false } = {}) {
+/** A DB from an earlier 6.x boot holding Alex (optionally soft-deleted; `preSix`
+ * leaves out the finance-store marker, like a database from before 6.0). */
+function writeDbWithAlex({ deleted = false, preSix = false } = {}) {
   const now = new Date();
+  if (!preSix) {
+    getDb().insert(meta).values({ key: FINANCE_STORE_META_KEY, value: '{}', updatedAt: now }).run();
+  }
   getDb()
     .insert(user)
     .values({
@@ -88,7 +93,7 @@ describe('bootstrap happy path', () => {
     writeDbWithAlex();
     writeUserDataDir();
     const result = await bootstrapDatabase();
-    expect(result).toEqual({ ok: true, dbUsable: true, dbDiscarded: false, dataReady: true });
+    expect(result).toEqual({ ok: true, dbUsable: true, dbDiscarded: false });
     expect(isAuthSetupComplete()).toBe(true);
     expect(isFirstUserSetup()).toBe(false);
   });
@@ -108,7 +113,7 @@ describe('fail closed', () => {
     writeUserDataDir();
 
     const result = await bootstrapDatabase();
-    expect(result).toEqual({ ok: false, dbUsable: false, dbDiscarded: true, dataReady: false });
+    expect(result).toEqual({ ok: false, dbUsable: false, dbDiscarded: true });
     expect(fs.existsSync(getDbPath())).toBe(false);
     expect(fs.existsSync(`${getDbPath()}-wal`)).toBe(false);
     expect(getSetupFailure()?.message).toMatch(/has no users/);
@@ -141,7 +146,7 @@ describe('fail closed', () => {
     process.env.ENCRYPTION_KEY = crypto.randomBytes(32).toString('hex');
 
     const result = await bootstrapDatabase();
-    expect(result).toEqual({ ok: false, dbUsable: false, dbDiscarded: false, dataReady: false });
+    expect(result).toEqual({ ok: false, dbUsable: false, dbDiscarded: false });
     expect(fs.existsSync(getDbPath())).toBe(true);
     expect(getSetupFailure()).toBeDefined();
 
@@ -157,7 +162,7 @@ describe('fail closed', () => {
     writeUserDataDir();
 
     const result = await bootstrapDatabase();
-    expect(result).toEqual({ ok: false, dbUsable: true, dbDiscarded: false, dataReady: false });
+    expect(result).toEqual({ ok: false, dbUsable: true, dbDiscarded: false });
     expect(fs.existsSync(getDbPath())).toBe(true);
     expect(getSetupFailure()?.message).toMatch(/1 data dir\(s\) but the account database has no users/);
 
@@ -178,6 +183,32 @@ describe('fail closed', () => {
     const result = await bootstrapDatabase();
     expect(result.ok).toBe(false);
     expect(getSetupFailure()?.message).toMatch(/ENOTDIR/);
+  });
+});
+
+describe('finance store (6.x) check', () => {
+  it('fails closed on a pre-6.0 DB: users, no financial data, no marker', async () => {
+    writeDbWithAlex({ preSix: true });
+    writeUserDataDir();
+    const result = await bootstrapDatabase();
+    expect(result).toEqual({ ok: false, dbUsable: true, dbDiscarded: false });
+    expect(getSetupFailure()?.message).toMatch(/predates 6\.0/);
+    expect(fs.existsSync(getDbPath())).toBe(true);
+  });
+
+  it('records the marker on a fresh install, and on rows seeded before the first boot', async () => {
+    expect((await bootstrapDatabase()).ok).toBe(true);
+    expect(getDb().select().from(meta).all().some((m) => m.key === FINANCE_STORE_META_KEY)).toBe(true);
+
+    reset();
+    tmp.cleanup();
+    tmp = useTempDataDir('sampolio-bootstrap-test-');
+    writeDbWithAlex({ preSix: true });
+    putDoc(goal, { userId: ALEX_ID, id: 'g-1' }, { id: 'g-1' });
+    closeDb();
+    writeUserDataDir();
+    expect((await bootstrapDatabase()).ok).toBe(true);
+    expect(getDb().select().from(meta).all().some((m) => m.key === FINANCE_STORE_META_KEY)).toBe(true);
   });
 });
 

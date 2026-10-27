@@ -156,15 +156,12 @@ data/
 ├── sampolio.db (+ -wal, -shm)                  # SQLCipher DB: auth + finance tables + _meta (db/sqlite/); never tar'd live
 ├── snapshots/sampolio.db                       # verified encrypted VACUUM INTO copy — what backups archive
 ├── users/{userId}/avatar.webp                  # profile picture — PLAIN binary (unencrypted, deliberate); excluded from JSON backup
-│                                               #   ↑ low-sensitivity, enables zero-decrypt streaming + HTTP caching
-└── app-settings.enc, users/{u}/**.enc, shared/**.enc
-                                                # file-era tree: imported ONCE at boot (db/sqlite/file-import.ts),
-                                                # never written again; kept as a rollback/backup source
+                                                #   ↑ low-sensitivity, enables zero-decrypt streaming + HTTP caching
 ```
 
-Rows mirror the former files: one row per entity file; the former collection files
-(reconciliation snapshots/adjustments/sessions, bank ledgers, sync runs, split monthly chunks,
-member indexes) are one row per element with a `seq` column keeping the order. Every module
+One row per entity; ordered lists (reconciliation snapshots/adjustments/sessions, bank
+ledgers, sync runs, split expenses within a month, member indexes) are one row per element
+with a `seq` column keeping the order. Every module
 read-modify-write runs in one synchronous transaction (`inTx`), so it cannot interleave with
 another request in this process. Split groups additionally get a per-group in-process mutex
 (`withGroupLock` in `src/lib/split-group-lock.ts`, on `globalThis` so every server-action bundle
@@ -173,24 +170,19 @@ read, await and then write; everything else relies on the single-user assumption
 
 **Id guards** (`src/lib/db/encryption.ts`, patterns in `src/lib/safe-id.ts`): every id that
 becomes a row key passes `assertSafeId` (`[A-Za-z0-9_-]{1,64}`) and split months pass
-`assertChunkMonth`, throwing `UnsafePathError`; `getUserDir` (avatars) and the `.enc` file
-primitives also check `assertInsideDataDir`. The action boundary validates the same patterns
+`assertChunkMonth`, throwing `UnsafePathError`; `getUserDir` (avatars) and `ensureDir` also
+check `assertInsideDataDir`. The action boundary validates the same patterns
 with `idSchema` / `yearMonthSchema` / `chunkMonthSchema` (`src/lib/schemas/id.schema.ts`), and
 the shared-entity loaders (`loadGroupForMember`, `loadMortgageForMember`, `loadOwnBudget`) reject
 an unsafe id up front (`isSafeId`).
 
 ## 7. Encryption
 
-`src/lib/db/encryption.ts` (the file-era `.enc` tree, read by the boot importer and the
-maintenance scripts; the live data is protected by SQLCipher, §9). Every `.enc` file is `base64(salt(64) | iv(16) | gcmTag(16) | ciphertext)`,
-AES-256-GCM. The per-file key is derived from `ENCRYPTION_KEY` + the random salt via
-**HKDF-SHA256** (`deriveKeyHkdf`, info label `sampolio-file-encryption-v1`); `decrypt()` tries
-HKDF first and falls back to legacy **PBKDF2** (100k iterations, SHA-512, LRU-cached) for
-pre-migration files — GCM tag verification disambiguates the two. If `ENCRYPTION_KEY` is unset,
-`getEncryptionKey()` **throws in production** (refusing to start); outside production it logs
-a warning and falls back to a hardcoded default key
-(`'sampolio-default-encryption-key-change-in-prod'`) as a dev convenience.
-Details and migration notes: `src/lib/db/AGENTS.md` (one-shot migrator: `scripts/reencrypt-data.mjs`).
+All data is encrypted at rest by SQLCipher (below); `ENCRYPTION_KEY` is the one secret.
+`getEncryptionKey()` (`src/lib/db/encryption.ts`) **throws in production** when it is unset
+(refusing to start); outside production it logs a warning and falls back to a hardcoded default
+key (`'sampolio-default-encryption-key-change-in-prod'`) as a dev convenience. Avatars are the
+only plaintext files (§6).
 
 **SQLCipher DB** (`src/lib/db/sqlite/`): `sampolio.db` is encrypted with a raw 256-bit
 key = HKDF-SHA256(`ENCRYPTION_KEY`, info `sampolio-sqlite-v1`) (`key.ts`; mirrored by
@@ -204,9 +196,8 @@ the target with the source connection's key (the `file:…?hexkey=` URI form doe
 better-sqlite3 does not enable URI filenames) — and verifies every copy (not a plaintext
 header, opens with the key, fails without) before an atomic rename. Never `db.backup()`:
 its destination connection is unkeyed, so the copy would be plaintext. At boot,
-`bootstrap.ts` runs the one-shot `.enc` import (`file-import.ts`, `_meta` marker
-`file-data-imported`) after the user-store check; any failure fails closed and keeps the bank
-scheduler off (`BootstrapResult.dataReady`).
+`bootstrap.ts` runs the user-store and finance-store checks (`user-store.ts`); any failure
+fails closed and keeps the bank scheduler off.
 
 ## 8. Caching
 
@@ -342,9 +333,10 @@ sets the cookie). Settings › Account hosts the Passkeys panel
 "Sign in again" (sign out → `/auth/signin?callbackUrl=/settings?tab=account`).
 
 User ids are the UUIDs that key the finance rows (`userId`) and the `users/<id>/` dirs (created
-for every user; avatars, the file-era `.enc` tree). At boot
-`src/lib/db/sqlite/user-store.ts` (`verifyUserStore`) refuses a DB with no user rows while
-`users/*` dirs exist (a lost or wrong `sampolio.db`), and `isAuthSetupComplete()` /
+for every user; avatars). At boot `src/lib/db/sqlite/user-store.ts` (`verifyUserStore`)
+refuses a DB with no user rows while `users/*` dirs exist (a lost or wrong `sampolio.db`),
+`verifyFinanceStore` refuses a pre-6.0 DB (users, no finance rows, no `file-data-imported`
+marker), and `isAuthSetupComplete()` /
 `isFirstUserSetup()` apply the same check to sign-up and session creation (see
 [`operations.md`](operations.md) §1, fail-closed boot). Soft-deleted users keep their row with
 the tombstone email `deleted+<id>@invalid`.

@@ -12,8 +12,8 @@ export const SAFE_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
 // A real calendar month `YYYY-MM` (projection/import month fields).
 export const YEAR_MONTH_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
 
-// Split-group expense storage months (`split_expense.yearMonth`, formerly the
-// `expenses/{YYYY-MM}.enc` chunk names). Deliberately only shape-checked: they
+// Split-group expense storage months (`split_expense.yearMonth`). Deliberately
+// only shape-checked: they
 // are `date.slice(0, 7)` of dates validated as `\d{4}-\d{2}-\d{2}`, so a stored
 // month must never become unreadable here.
 export const CHUNK_MONTH_PATTERN = /^\d{4}-\d{2}$/;

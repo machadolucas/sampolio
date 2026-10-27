@@ -66,14 +66,13 @@ full inventory is in `src/lib/actions/AGENTS.md` and `docs/architecture.md`.
 DB modules store each entity's JSON in a finance table (`sqlite/schema/finance.ts`)
 through the `sqlite/docs.ts` helpers, check every id with `assertSafeId`
 (`UnsafePathError`), and wrap read-modify-writes in `inTx`; add entities with
-the pattern in `src/lib/db/AGENTS.md`. The file-era `.enc` tree is read only by
-the one-shot boot importer (`sqlite/file-import.ts`). Server code reads the session only through `auth()`
+the pattern in `src/lib/db/AGENTS.md`. Server code reads the session only through `auth()`
 (`src/lib/auth.ts`, old `{ user: { id, email, name, role } }` shape); clients use
 `useSession`/`authClient` from `src/lib/auth-client.ts`. Keep Better Auth's
 `cookieCache` off and `freshAge: 0`; passkey registration is instead gated to
-sessions younger than 10 minutes (`src/lib/auth/constants.ts`). Encryption is
-AES-256-GCM with HKDF-SHA256 for new writes and a PBKDF2 compatibility read
-fallback. Use the migration and rotation scripts only as documented in [`docs/operations.md`](docs/operations.md).
+sessions younger than 10 minutes (`src/lib/auth/constants.ts`). The SQLCipher
+key is HKDF-SHA256 of `ENCRYPTION_KEY` (`sqlite/key.ts`); rotate it only as
+documented in [`docs/operations.md`](docs/operations.md).
 
 The UI uses Base UI, TanStack Table, DayPicker and Tailwind with AppContext from
 `src/components/layout/app-layout.tsx`; do not add Redux/Zustand. Client

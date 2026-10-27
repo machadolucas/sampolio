@@ -37,15 +37,6 @@ Coverage details and the isolated harness are in [architecture.md](architecture.
 - **Budget setup wizard line rows** (`src/components/budgets/budget-setup-wizard.tsx`)
   label their inputs by placeholder only ("What is it?"), with no `<label>`/`aria-label`.
 
-### 13.4 Retire the file-era `.enc` tree
-After 6.x has run stably for a few weeks, ship a cleanup release that removes
-`src/lib/db/sqlite/file-import.ts` and its `bootstrap.ts` step, the `.enc` file
-primitives in `src/lib/db/encryption.ts` that only the importer uses, and the `.enc` walk in
-`scripts/reencrypt-data.mjs` / `rotate-encryption-key.mjs`, then deletes the frozen
-`app-settings.enc`, `users/*/**/*.enc` and `shared/` tree from the data dir (after a final
-backup). Known gap 6 in [known-gaps.md](known-gaps.md) closes with it. Optionally also
-prune the account items orphaned by `deleteAccount` (it never cascaded).
-
 ### Future ideas (unvetted)
 - **Remote/push check-in notification**: the local opt-in notification only fires
   on app open; true scheduled delivery needs a push service — deliberately out of

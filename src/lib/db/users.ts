@@ -226,8 +226,8 @@ export async function deleteUser(userId: string): Promise<boolean> {
 
 /** Permanent, irreversible deletion: in one transaction removes every
  * user-scoped finance row and the user row (FK cascade drops sessions, accounts
- * and passkeys), then recursively deletes their data directory (avatar, legacy
- * `.enc` files). Unlike `deleteUser` (a soft delete that preserves data for
+ * and passkeys), then recursively deletes their data directory (avatar).
+ * Unlike `deleteUser` (a soft delete that preserves data for
  * admin purposes), this is for account self-deletion — the caller must have
  * already torn down any shared entities (split groups / mortgages) the user
  * belongs to. */
