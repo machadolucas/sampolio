@@ -215,6 +215,7 @@ async function seed() {
     status: "active",
   });
   const linkedAccountId = uuidv4();
+  const creditCardAccountId = uuidv4();
   await setConnectionLinkedAccounts(alex.id, connection.id, [
     {
       id: linkedAccountId,
@@ -237,6 +238,16 @@ async function seed() {
       lastBalance: 300 + index * 100,
       lastSyncedAt: timestamp,
     })),
+    {
+      id: creditCardAccountId,
+      connectionId: connection.id,
+      accountUid: "synthetic-only-credit-card",
+      name: "Synthetic credit card",
+      currency: "EUR",
+      accountRole: "credit-card",
+      lastBalance: -54.65,
+      lastSyncedAt: timestamp,
+    },
   ]);
   await createBankConnection(alex.id, {
     aspspName: "Synthetic Second Bank",
@@ -270,6 +281,35 @@ async function seed() {
     }),
   );
   await writeBankTransactions(alex.id, linkedAccountId, transactions);
+  const pendingCardTransactions = {
+    desktop: {
+      id: uuidv4(),
+      title: "Synthetic pending card lunch desktop",
+      amount: -23.45,
+    },
+    mobile: {
+      id: uuidv4(),
+      title: "Synthetic pending card lunch mobile",
+      amount: -31.2,
+    },
+  };
+  await writeBankTransactions(
+    alex.id,
+    creditCardAccountId,
+    Object.values(pendingCardTransactions).map((transaction) => ({
+      id: transaction.id,
+      linkedAccountId: creditCardAccountId,
+      dedupKey: `synthetic-${transaction.id}`,
+      bookingDate: today,
+      amount: transaction.amount,
+      currency: "EUR",
+      status: "pending",
+      counterpartyName: transaction.title,
+      remittanceInfo: "Synthetic pending credit-card purchase",
+      firstSeenAt: timestamp,
+      lastSeenAt: timestamp,
+    })),
+  );
   const expenseId = uuidv4();
   await addExpense(group.id, {
     id: expenseId,
@@ -318,7 +358,9 @@ async function seed() {
       mortgageId: mortgage.id,
       groupId: group.id,
       linkedAccountId,
+      creditCardAccountId,
       linkedTransactionId: transactions[1].id,
+      pendingCardTransactions,
       deepTransactionId: transactions[124].id,
       expenseId,
     }),

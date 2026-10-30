@@ -7,6 +7,11 @@ interface Fixture {
   groupId: string;
   linkedTransactionId: string;
   linkedAccountId: string;
+  creditCardAccountId: string;
+  pendingCardTransactions: Record<
+    "desktop" | "mobile",
+    { id: string; title: string; amount: number }
+  >;
   deepTransactionId: string;
 }
 function fixture(): Fixture {
@@ -313,6 +318,79 @@ test("bank deep link reveals an offscreen older transaction and keeps details ex
     page.getByText("Booking date", { exact: true }).filter({ visible: true }),
   ).toBeVisible();
   await expect(page).not.toHaveURL(/[?&]tx=/);
+});
+
+test("splitting a pending credit-card transaction closes the modal and links the row immediately", async ({
+  page,
+}) => {
+  const width = page.viewportSize()!.width;
+  test.skip(width !== 1280 && width !== 390, "Regression targets desktop and mobile");
+  const data = fixture();
+  const target =
+    data.pendingCardTransactions[width === 1280 ? "desktop" : "mobile"];
+  await page.goto(`/bank?account=${data.creditCardAccountId}`);
+
+  const search = page.getByRole("textbox", { name: "Search transactions" });
+  await expect(search).toBeVisible();
+  await search.fill(target.title);
+  const row = page.locator(`.bank-tx-row-${target.id}:visible`);
+  await expect(row).toContainText(target.title);
+  await expect(row).toContainText("pending");
+
+  if (width >= 1024) {
+    await page.getByRole("button", { name: "Choose optional columns" }).click();
+    await page.getByRole("checkbox", { name: "Status", exact: true }).uncheck();
+    await page.keyboard.press("Escape");
+    await row.getByRole("button", { name: "Expand row", exact: true }).click();
+    await expect(
+      page.getByText("Booking date", { exact: true }).filter({ visible: true }),
+    ).toBeVisible();
+    await page
+      .getByRole("button", { name: "Split this", exact: true })
+      .filter({ visible: true })
+      .last()
+      .click();
+  } else {
+    await row.getByRole("button", { name: "Split this", exact: true }).click();
+  }
+
+  const dialog = page.getByRole("dialog", { name: "Add expense", exact: true });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByPlaceholder("What was it for?")).toHaveValue(
+    target.title,
+  );
+  const localizedAmount = new Intl.NumberFormat("fi-FI", {
+    minimumFractionDigits: 2,
+  }).format(Math.abs(target.amount));
+  await expect(dialog.getByPlaceholder("0,00")).toHaveValue(
+    new RegExp(localizedAmount),
+  );
+  await dialog.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(dialog).toBeHidden();
+
+  // The search, expansion and column visibility must survive the saved chip.
+  await expect(search).toHaveValue(target.title);
+  await expect(row).toContainText(target.title);
+  const splitChip = row.getByRole("button", { name: "split", exact: true });
+  await expect(splitChip).toBeVisible();
+  if (width >= 1024) {
+    await expect(
+      page.getByText("Booking date", { exact: true }).filter({ visible: true }),
+    ).toBeVisible();
+    await expect(page.getByRole("columnheader", { name: "Status", exact: true })).toHaveCount(0);
+  }
+
+  const overflow = await page.evaluate(
+    () => document.documentElement.scrollWidth > window.innerWidth,
+  );
+  expect(overflow).toBe(false);
+  await page.screenshot({ path: test.info().outputPath("bank-split-saved.png") });
+
+  await splitChip.click();
+  await expect(page).toHaveURL(/[?&]expense=/);
+  await expect(
+    page.locator("[data-expense-id]").getByText(target.title, { exact: true }),
+  ).toBeVisible();
 });
 
 test("quick shared expense commits the first comma-decimal entry", async ({

@@ -52,6 +52,37 @@ const group = {
 
 const bankLink = { txId: 'tx1', linkedAccountId: 'a1', bookingDate: '2026-05-08', amount: -24.5, currency: 'EUR', counterpartyName: 'Corner Cafe' } as const;
 
+function savedExpense(
+  id: string,
+  linked = true,
+  title = 'Corner Cafe',
+  amountCents = 2450,
+) {
+  const half = amountCents / 2;
+  return {
+    id,
+    groupId: group.id,
+    kind: 'expense' as const,
+    date: '2026-05-08',
+    currency: 'EUR' as const,
+    netByUserId: { u1: half, u2: -half },
+    source: 'manual' as const,
+    createdByUserId: 'u1',
+    createdAt: '2026-05-08T10:00:00.000Z',
+    updatedAt: '2026-05-08T10:00:00.000Z',
+    title,
+    category: 'Food',
+    amountCents,
+    paidBy: [{ userId: 'u1', amountCents }],
+    owed: [
+      { userId: 'u1', amountCents: half },
+      { userId: 'u2', amountCents: half },
+    ],
+    splitMode: 'equal' as const,
+    ...(linked ? { bankLink: { ...bankLink, ownerUserId: 'u1' } } : {}),
+  };
+}
+
 function openModal(initial: any = { title: 'Corner Cafe', amount: 24.5, bankLink }) {
   return render(<QuickAddSplitModal visible onHide={vi.fn()} initial={initial} />);
 }
@@ -143,5 +174,93 @@ describe('QuickAddSplitModal Enter-to-save', () => {
     await waitFor(() => expect(mocks.createSplitExpense).toHaveBeenCalledTimes(1));
     expect(mocks.createSplitExpense.mock.calls[0][1].amountCents).toBe(1250);
     expect(screen.queryByText('Add an amount')).not.toBeInTheDocument();
+  });
+});
+
+describe('QuickAddSplitModal save callbacks', () => {
+  it('passes the saved bank-linked expense and group to onSaved before closing', async () => {
+    const expense = savedExpense('saved-bank-expense');
+    const onSaved = vi.fn();
+    const events: string[] = [];
+    const onHide = vi.fn(() => events.push('hide'));
+    onSaved.mockImplementation(() => events.push('saved'));
+    mocks.createSplitExpense.mockResolvedValueOnce({ success: true, data: expense });
+
+    render(<QuickAddSplitModal visible onHide={onHide} onSaved={onSaved} initial={{ title: 'Corner Cafe', amount: 24.5, bankLink }} />);
+    const save = await screen.findByRole('button', { name: 'Save' });
+    await waitFor(() => expect(save).not.toBeDisabled());
+    fireEvent.click(save);
+
+    await waitFor(() => expect(onHide).toHaveBeenCalledTimes(1));
+    expect(onSaved).toHaveBeenCalledTimes(1);
+    expect(onSaved).toHaveBeenCalledWith(expense, { id: group.id, name: group.name });
+    expect(events).toEqual(['saved', 'hide']);
+  });
+
+  it('keeps Save & add another open and omits the one-shot bank link on the next save', async () => {
+    const firstExpense = savedExpense('saved-bank-expense');
+    const secondExpense = savedExpense('saved-manual-expense', false, 'Manual lunch', 1800);
+    const onSaved = vi.fn();
+    const onHide = vi.fn();
+    mocks.createSplitExpense
+      .mockResolvedValueOnce({ success: true, data: firstExpense })
+      .mockResolvedValueOnce({ success: true, data: secondExpense });
+
+    render(<QuickAddSplitModal visible onHide={onHide} onSaved={onSaved} initial={{ title: 'Corner Cafe', amount: 24.5, bankLink }} />);
+    const addAnother = await screen.findByRole('button', { name: 'Save & add another' });
+    await waitFor(() => expect(addAnother).not.toBeDisabled());
+    fireEvent.click(addAnother);
+
+    await waitFor(() => expect(onSaved).toHaveBeenCalledWith(firstExpense, { id: group.id, name: group.name }));
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(onHide).not.toHaveBeenCalled();
+    expect(screen.getByPlaceholderText('What was it for?')).toHaveValue('');
+    expect(screen.getByPlaceholderText('0,00')).toHaveValue('');
+
+    fireEvent.change(screen.getByPlaceholderText('What was it for?'), { target: { value: 'Manual lunch' } });
+    fireEvent.change(screen.getByPlaceholderText('0,00'), { target: { value: '18,00' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(mocks.createSplitExpense).toHaveBeenCalledTimes(2));
+    expect(mocks.createSplitExpense.mock.calls[1][1]).not.toHaveProperty('bankLink');
+    await waitFor(() => expect(onSaved).toHaveBeenCalledWith(secondExpense, { id: group.id, name: group.name }));
+    expect(onSaved).toHaveBeenCalledTimes(2);
+    expect(onHide).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not call onSaved when duplicate confirmation is cancelled', async () => {
+    const onSaved = vi.fn();
+    const onHide = vi.fn();
+    mocks.createSplitExpense.mockResolvedValueOnce({
+      success: false,
+      error: 'duplicate',
+      duplicate: [{ expenseId: 'e1', groupId: 'g1', groupName: 'Household', title: 'Dinner', date: '2026-05-08', amountCents: 2450, currency: 'EUR', kind: 'heuristic' }],
+    });
+
+    render(<QuickAddSplitModal visible onHide={onHide} onSaved={onSaved} initial={{ title: 'Corner Cafe', amount: 24.5, bankLink }} />);
+    const save = await screen.findByRole('button', { name: 'Save' });
+    await waitFor(() => expect(save).not.toBeDisabled());
+    fireEvent.click(save);
+
+    await waitFor(() => expect(mocks.confirmDialog).toHaveBeenCalledTimes(1));
+    expect(onSaved).not.toHaveBeenCalled();
+    expect(onHide).not.toHaveBeenCalled();
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+  });
+
+  it('keeps the dialog open and skips onSaved when a save fails', async () => {
+    const onSaved = vi.fn();
+    const onHide = vi.fn();
+    mocks.createSplitExpense.mockResolvedValueOnce({ success: false, error: 'Network failed' });
+
+    render(<QuickAddSplitModal visible onHide={onHide} onSaved={onSaved} initial={{ title: 'Corner Cafe', amount: 24.5, bankLink }} />);
+    const save = await screen.findByRole('button', { name: 'Save' });
+    await waitFor(() => expect(save).not.toBeDisabled());
+    fireEvent.click(save);
+
+    expect(await screen.findByText('Network failed')).toBeInTheDocument();
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(onSaved).not.toHaveBeenCalled();
+    expect(onHide).not.toHaveBeenCalled();
   });
 });

@@ -217,6 +217,16 @@ inputs, preserves all requested months, pads each with adjacent months (up to
 the 36-month cap), and intersects those reads with each group's
 `summary.monthsWithData` before opening chunks.
 
+`useBankSplitCandidates` (`src/lib/hooks/use-bank-split-candidates.ts`) keeps
+server candidates separate from confirmed saves, per linked account and expense
+id. The bank page adds the server-returned expense before its modal closes, so
+the chip appears immediately in both ledger layouts. Delayed, failed or
+incomplete candidate reads cannot erase it. Only the latest request for that
+account can release a confirmed save, when it includes the same expense and
+bank-link transaction, account and owner; later server edits and deletions then
+apply normally. The ledger stays mounted, preserving search, expanded rows and
+desktop column visibility.
+
 The bank ledger warns before creating a possible duplicate and shows the
 existing split title, group, date, and amount. The user can cancel or explicitly
 acknowledge the listed expense ids to add another row. The server repeats the
