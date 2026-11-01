@@ -93,11 +93,10 @@ const nextConfig: NextConfig = {
     },
     // Background-synced data (bank balances/transactions, bank-sync anchor
     // snapshots). The bank scheduler writes to disk OUTSIDE any request scope,
-    // so its `updateTag` invalidation is swallowed (see safeUpdateTags in
-    // bank/sync.ts) and can never refresh the 'use cache' store. A short
-    // revalidate window makes these reads eventually-consistent with disk so a
-    // background sync shows up in the UI without a manual "Refresh now".
-    // Request-scoped mutations still invalidate instantly via tags.
+    // so safeUpdateTags (bank/sync.ts) queues expiration in the change journal.
+    // Live clients flush it through synchronizeDataChanges before refetching.
+    // This bounded profile remains the eventual-consistency fallback when a
+    // live client cannot synchronize. Request-scoped writes expire via tags.
     synced: {
       stale: 60,
       revalidate: 300,    // catch up to disk within ~5 min

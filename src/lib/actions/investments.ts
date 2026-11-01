@@ -16,7 +16,7 @@ import {
   cachedGetInvestmentAccountById,
   cachedGetContributions,
 } from '@/lib/db/cached';
-import { updateTag } from 'next/cache';
+import { updateTag } from '@/lib/cache-tags';
 import type { ApiResponse, InvestmentAccount, InvestmentContribution } from '@/types';
 
 const createInvestmentSchema = z.object({

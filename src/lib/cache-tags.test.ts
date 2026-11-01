@@ -4,12 +4,14 @@ const mocks = vi.hoisted(() => ({ updateTag: vi.fn(), revalidateTag: vi.fn() }))
 vi.mock('next/cache', () => ({ updateTag: mocks.updateTag, revalidateTag: mocks.revalidateTag }));
 
 import { invalidateTags, __resetInvalidateTagsWarningForTests } from './cache-tags';
+import { __resetDataChangesForTests, readDataChangeState, subscribeServerDataChanges } from './data-changes';
 
 let warn: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
   vi.resetAllMocks();
   __resetInvalidateTagsWarningForTests();
+  __resetDataChangesForTests();
   warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 });
 afterEach(() => warn.mockRestore());
@@ -56,5 +58,20 @@ describe('invalidateTags', () => {
     });
     invalidateTags('a', 'b');
     expect(mocks.updateTag).toHaveBeenCalledWith('b');
+  });
+
+  it('publishes background sync changes and retains their cache tags for an authenticated request', async () => {
+    mocks.updateTag.mockImplementation(() => { throw new Error('no request'); });
+    mocks.revalidateTag.mockImplementation(() => { throw new Error('no request'); });
+    const changed = vi.fn();
+    const unsubscribe = subscribeServerDataChanges(changed);
+    invalidateTags('user:alex:bank-connections', 'user:alex:bank-account:cash:transactions');
+    await Promise.resolve();
+    expect(changed).toHaveBeenCalledTimes(1);
+    expect([...readDataChangeState(new Set(['user:alex'])).pending.keys()]).toEqual([
+      'user:alex:bank-connections', 'user:alex:bank-account:cash:transactions',
+    ]);
+    expect(readDataChangeState(new Set(['user:sam'])).pending.size).toBe(0);
+    unsubscribe();
   });
 });

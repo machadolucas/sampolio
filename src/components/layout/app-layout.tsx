@@ -30,6 +30,7 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { ToastProvider } from '@/components/providers/toast-provider';
 import { CelebrationProvider } from '@/components/providers/celebration-provider';
 import { CheckinNotifier } from '@/components/providers/checkin-notifier';
+import { LiveData } from '@/components/providers/live-data';
 import { getAccounts } from '@/lib/actions/accounts';
 import { getUserPreferences } from '@/lib/actions/user-preferences';
 import { MdVisibilityOff } from 'react-icons/md';
@@ -217,6 +218,7 @@ export function AppLayout({ children }: AppLayoutProps) {
 
   // Custom mobile bottom-nav tabs (null ⇒ per-display-mode defaults).
   const [bottomNavIds, setBottomNavIds] = useState<string[] | null>(null);
+  const preferencesGeneration = useRef(0);
 
   // Onboarding wizard state
   const [showOnboarding, setShowOnboarding] = useState(false);
@@ -228,33 +230,42 @@ export function AppLayout({ children }: AppLayoutProps) {
   const [onboardingMounted, setOnboardingMounted] = useState(false);
   if (showOnboarding && !onboardingMounted) setOnboardingMounted(true);
 
-  useEffect(() => {
-    getUserPreferences().then((result) => {
-      if (result.success && result.data) {
-        if (!result.data.hasCompletedOnboarding) {
-          setShowOnboarding(true);
-        }
-        if (result.data.bottomNavIds) {
-          setBottomNavIds(result.data.bottomNavIds);
-        }
-        if (result.data.displayMode) {
-          setDisplayModeState(result.data.displayMode);
-        } else if (!result.data.hasCompletedOnboarding) {
-          // New users start in Simple mode (onboarding lets them pick and
-          // persists the choice); accounts that predate the mode keep Advanced.
-          setDisplayModeState('simple');
-        }
+  const fetchPreferences = useCallback(async (initial = false) => {
+    const generation = ++preferencesGeneration.current;
+    try {
+      const result = await getUserPreferences();
+      if (generation !== preferencesGeneration.current || !result.success || !result.data) return;
+      if (initial && !result.data.hasCompletedOnboarding) setShowOnboarding(true);
+      setBottomNavIds(result.data.bottomNavIds ?? null);
+      if (result.data.displayMode) {
+        setDisplayModeState(result.data.displayMode);
+      } else if (initial && !result.data.hasCompletedOnboarding) {
+        // New users start in Simple mode (onboarding lets them pick and
+        // persists the choice); accounts that predate the mode keep Advanced.
+        setDisplayModeState('simple');
       }
-    });
+    } catch (err) {
+      console.error('Failed to fetch preferences:', err);
+    }
   }, []);
+
+  useEffect(() => {
+    void fetchPreferences(true);
+  }, [fetchPreferences]);
+  // Preferences are shared with settings and other open tabs. Refresh their
+  // server-backed values on announced changes and when returning to the app.
+  useDataRefresh(() => fetchPreferences(false));
 
   // Fetch accounts. Stable identity (no selectedAccountId dep): the default
   // selection uses a functional update, so picking the first account no
   // longer re-creates this callback and re-runs the mount effect (which
   // used to call getAccounts twice on every page load).
+  const accountsGeneration = useRef(0);
   const fetchAccounts = useCallback(async () => {
+    const generation = ++accountsGeneration.current;
     try {
       const result = await getAccounts();
+      if (generation !== accountsGeneration.current) return;
       if (result.success && result.data) {
         const activeAccounts = result.data.filter(
           (a: FinancialAccount) => !a.isArchived,
@@ -278,7 +289,7 @@ export function AppLayout({ children }: AppLayoutProps) {
     } catch (err) {
       console.error('Failed to fetch accounts:', err);
     }
-    setAccountsLoaded(true);
+    if (generation === accountsGeneration.current) setAccountsLoaded(true);
   }, []);
 
   useEffect(() => {
@@ -361,6 +372,7 @@ export function AppLayout({ children }: AppLayoutProps) {
           <ConfirmDialog />
           {/* Opt-in local check-in notification (renders nothing). */}
           <CheckinNotifier />
+          <LiveData />
           <div className="min-h-screen bg-transparent">
             {/* Desktop (lg+) sidebar */}
             <SidebarNav

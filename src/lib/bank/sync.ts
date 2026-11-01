@@ -138,8 +138,8 @@ function safeUpdateTags(tags: string[]): void {
   // immediate-expiry `revalidateTag` in a route handler (the OAuth callback's
   // initial backfill). In the scheduler tick there is no request scope, and
   // BOTH forms throw there (`revalidate()` needs Next's work store), so it
-  // skips the tags: the bank/snapshot reads use the bounded 'synced' cacheLife
-  // so the UI still catches up to disk within minutes (see next.config.ts).
+  // queues the tags: live clients expire them through synchronizeDataChanges
+  // before refetching. The 'synced' cacheLife is still a fallback.
   invalidateTags(...tags);
 }
 

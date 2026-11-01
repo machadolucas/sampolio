@@ -10,7 +10,7 @@ import {
 } from '@/lib/db/recurring-items';
 import { deletePlannedOverridesForRecurringItem } from '@/lib/db/planned-items';
 import { cachedGetRecurringItems, cachedGetRecurringItemById } from '@/lib/db/cached';
-import { updateTag } from 'next/cache';
+import { updateTag } from '@/lib/cache-tags';
 import { clearNullsInPatch } from '@/lib/patch-utils';
 import type { ApiResponse, RecurringItem } from '@/types';
 

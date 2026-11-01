@@ -3,7 +3,7 @@
 import { ControlGroup } from '@/components/ui/page-header';
 /* eslint-disable react-hooks/set-state-in-effect -- the form intentionally prefills its fields when the dialog opens */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Dialog } from '@/components/ui/dialog';
 import { InputNumber } from '@/components/ui/input-number';
 import { Dropdown } from '@/components/ui/dropdown';
@@ -42,10 +42,16 @@ export function SettleUpDialog({
   const [date, setDate] = useState<Date>(new Date());
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const wasVisibleRef = useRef(false);
 
   // Prefill the obvious settlement: the debtor pays the creditor the full balance.
   useEffect(() => {
-    if (!visible) return;
+    if (!visible) {
+      wasVisibleRef.current = false;
+      return;
+    }
+    if (wasVisibleRef.current) return;
+    wasVisibleRef.current = true;
     const myNet = balances.find((b) => b.userId === myId)?.netCents ?? 0;
     const other = members.find((m) => m.userId !== myId);
     if (myNet < 0 && other) {
@@ -90,8 +96,8 @@ export function SettleUpDialog({
     });
     setSaving(false);
     if (!res.success) return setError(res.error ?? 'Failed to record');
-    notifyDataChanged();
     onSaved(res.data);
+    notifyDataChanged();
     onHide();
   };
 

@@ -8,7 +8,7 @@ import {
   updateTaxedIncome as dbUpdateTaxedIncome,
   deleteTaxedIncome as dbDeleteTaxedIncome,
 } from '@/lib/db/taxed-income';
-import { updateTag } from 'next/cache';
+import { updateTag } from '@/lib/cache-tags';
 import { clearNullsInPatch } from '@/lib/patch-utils';
 import type { ApiResponse, TaxedIncome } from '@/types';
 

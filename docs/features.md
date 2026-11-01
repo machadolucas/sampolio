@@ -399,6 +399,14 @@ item (see "Bank-transaction linking" above); `?expense=&month=`
   `category-icon.tsx` maps categories to icons. Split categories are
   `SPLIT_CATEGORIES` in `src/lib/constants.ts` (mirrors Splitwise's set).
 
+The detail page applies confirmed saves through `src/lib/split-ui-state.ts` before
+celebration: one row per id, summary/balance deltas, and a creation-ordered activity
+entry. Read generations reject responses predating a save. A saved backdated month is
+revealed and reconciled with an authoritative read, including confirmed deletions.
+Expense and settlement dialog drafts reset on opening, not on live data refreshes.
+`getSplitActivity` uses `getRecentExpenses` to query the newest creations across all
+storage months, capped at 100 per group before taking the cross-group limit.
+
 ### Home Assistant notifications
 
 Split mutations POST one JSON payload to a Home Assistant webhook, which fans it out
@@ -866,7 +874,7 @@ resolving empty (logged) on failure instead of failing the page. It shows:
   "All groups" link, per-group **tiles** in a 2-col (3-col ≥sm) grid (emoji, name,
   counterparty avatar, "you're owed / you owe €X" phrase that wraps rather than
   truncates), then a divided **Recent activity** section: `getSplitActivity(5)` (reads
-  only each group's newest ~3 month chunks) rendered by `SplitActivityFeed`
+  each group's five newest creations across all storage months) rendered by `SplitActivityFeed`
   (`emptyText="No recent activity"`), showing each actor's `<UserAvatar>` and
   `added by {actorName}` ("added by You" for own rows); clicking an event navigates to
   its group;

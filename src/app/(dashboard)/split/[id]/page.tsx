@@ -51,6 +51,16 @@ import { formatCents, formatYearMonth, formatDayMonth } from "@/lib/constants";
 import { useToast } from "@/components/providers/toast-provider";
 import { useCelebration } from "@/components/providers/celebration-provider";
 import { useDwellSeen } from "@/lib/hooks/use-dwell-seen";
+import {
+  applySavedSplitBalances,
+  applySavedSplitSummary,
+  isCurrentSplitRead,
+  mergeSavedSplitActivity,
+  mergeSavedSplitExpense,
+  reconcileSavedSplitRows,
+  splitExpenseToActivityEvent,
+  visibleSplitMonthCount,
+} from "@/lib/split-ui-state";
 import type {
   SplitGroup,
   SplitGroupSummary,
@@ -89,6 +99,12 @@ export default function SplitGroupDetailPage() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
+  const savedRevisionRef = useRef(0);
+  const groupReadSeqRef = useRef(0);
+  const expenseReadSeqRef = useRef(0);
+  const activityReadSeqRef = useRef(0);
+  const savedRowsRef = useRef(new Map<string, SplitExpense>());
+  const savedActivityRef = useRef(new Map<string, SplitActivityEvent>());
 
   // "New since last visit": a watermark fetched once on mount and then FROZEN
   // for the visit (never advanced live, or rows would stop being "new" as you
@@ -146,8 +162,18 @@ export default function SplitGroupDetailPage() {
   const [activity, setActivity] = useState<SplitActivityEvent[] | null>(null);
   useEffect(() => {
     if (view !== "activity" || activity !== null) return;
+    const revision = savedRevisionRef.current;
+    const requestSeq = ++activityReadSeqRef.current;
     getSplitActivity(30, groupId).then((res) => {
-      setActivity(res.success && res.data ? res.data : []);
+      if (
+        requestSeq !== activityReadSeqRef.current ||
+        !isCurrentSplitRead(revision, savedRevisionRef.current)
+      ) return;
+      let next = res.success && res.data ? res.data : [];
+      for (const event of next) savedActivityRef.current.delete(event.id);
+      for (const event of savedActivityRef.current.values())
+        next = mergeSavedSplitActivity(next, event);
+      setActivity(next);
     });
   }, [view, activity, groupId]);
 
@@ -158,9 +184,26 @@ export default function SplitGroupDetailPage() {
 
   const loadExpenses = useCallback(
     async (months: string[]) => {
-      if (months.length === 0) return setExpenses([]);
+      const revision = savedRevisionRef.current;
+      const requestSeq = ++expenseReadSeqRef.current;
+      if (months.length === 0) {
+        if (isCurrentSplitRead(revision, savedRevisionRef.current) && requestSeq === expenseReadSeqRef.current)
+          setExpenses([...savedRowsRef.current.values()]);
+        return;
+      }
       const res = await getSplitExpenses(groupId, months);
-      if (res.success && res.data) setExpenses(res.data);
+      if (
+        !res.success || !res.data ||
+        requestSeq !== expenseReadSeqRef.current ||
+        !isCurrentSplitRead(revision, savedRevisionRef.current)
+      ) return;
+      const reconciled = reconcileSavedSplitRows(
+        res.data,
+        [...savedRowsRef.current.values()],
+        months,
+      );
+      savedRowsRef.current = new Map(reconciled.remainingPins.map((row) => [row.id, row]));
+      setExpenses(reconciled.rows);
     },
     [groupId],
   );
@@ -170,8 +213,9 @@ export default function SplitGroupDetailPage() {
   const appendExpenses = useCallback(
     async (months: string[]) => {
       if (months.length === 0) return;
+      const revision = savedRevisionRef.current;
       const res = await getSplitExpenses(groupId, months);
-      if (!res.success || !res.data) return;
+      if (!res.success || !res.data || !isCurrentSplitRead(revision, savedRevisionRef.current)) return;
       const older = res.data;
       setExpenses((cur) => {
         const seen = new Set(cur.map((x) => x.id));
@@ -190,6 +234,8 @@ export default function SplitGroupDetailPage() {
     viewRef.current = view;
   }, [view]);
   const load = useCallback(async () => {
+    const revision = savedRevisionRef.current;
+    const requestSeq = ++groupReadSeqRef.current;
     let res: Awaited<ReturnType<typeof getSplitGroupView>> | null = null;
     try {
       res = await getSplitGroupView(groupId);
@@ -197,6 +243,7 @@ export default function SplitGroupDetailPage() {
       console.error("Failed to load split group:", err);
     }
     if (!res || !res.success || !res.data) {
+      if (requestSeq !== groupReadSeqRef.current || !isCurrentSplitRead(revision, savedRevisionRef.current)) return;
       const gone =
         res?.error === "Group not found" ||
         res?.error === "You do not have access to this group";
@@ -204,6 +251,7 @@ export default function SplitGroupDetailPage() {
       setLoading(false);
       return;
     }
+    if (requestSeq !== groupReadSeqRef.current || !isCurrentSplitRead(revision, savedRevisionRef.current)) return;
     hasGroupRef.current = true;
     setNotFound(false);
     setGroup(res.data.group);
@@ -212,14 +260,29 @@ export default function SplitGroupDetailPage() {
     if (viewRef.current === "activity") {
       // Stale after any mutation: refresh in place instead of dropping the
       // feed back to its loading state.
+      const activitySeq = ++activityReadSeqRef.current;
       const act = await getSplitActivity(30, groupId);
-      if (act.success && act.data) setActivity(act.data);
+      if (
+        act.success && act.data && activitySeq === activityReadSeqRef.current &&
+        isCurrentSplitRead(revision, savedRevisionRef.current)
+      ) {
+        let next = act.data;
+        for (const event of next) savedActivityRef.current.delete(event.id);
+        for (const event of savedActivityRef.current.values()) next = mergeSavedSplitActivity(next, event);
+        setActivity(next);
+      }
     } else {
+      activityReadSeqRef.current += 1;
       setActivity(null); // refetch on next Activity view
     }
+    if (requestSeq !== groupReadSeqRef.current || !isCurrentSplitRead(revision, savedRevisionRef.current)) return;
     const desc = [...res.data.summary.monthsWithData].reverse();
-    await loadExpenses(desc.slice(0, visibleCount));
-    setLoading(false);
+    const pinnedMonthCount = [...savedRowsRef.current.values()].reduce((count, row) => {
+      const index = desc.indexOf(row.date.slice(0, 7));
+      return Math.max(count, index + 1);
+    }, visibleCount);
+    await loadExpenses(desc.slice(0, pinnedMonthCount));
+    if (requestSeq === groupReadSeqRef.current && isCurrentSplitRead(revision, savedRevisionRef.current)) setLoading(false);
   }, [groupId, loadExpenses, visibleCount]);
 
   // Global mutations (e.g. the floating quick-add modal saving an expense into
@@ -527,6 +590,9 @@ export default function SplitGroupDetailPage() {
           toast.error("Failed to delete", res.error);
           return;
         }
+        savedRevisionRef.current += 1;
+        savedRowsRef.current.delete(row.id);
+        savedActivityRef.current.delete(row.id);
         toast.success("Deleted");
         notifyDataChanged(); // reconciles this page too (summary counts, month index)
       },
@@ -561,6 +627,26 @@ export default function SplitGroupDetailPage() {
     },
     [expenses, groupId, toast],
   );
+
+  const commitSavedRow = useCallback((saved: SplitExpense | undefined) => {
+    if (!saved || !group) return;
+    const previous = expenses.find((row) => row.id === saved.id) ??
+      (editExpense?.id === saved.id ? editExpense : undefined);
+    savedRevisionRef.current += 1;
+    savedRowsRef.current.set(saved.id, saved);
+    setExpenses((current) => mergeSavedSplitExpense(current, saved));
+    setSummary((current) => current ? applySavedSplitSummary(current, previous, saved) : current);
+    setBalances((current) => applySavedSplitBalances(current, previous, saved));
+    const event = splitExpenseToActivityEvent(saved, group, myId);
+    savedActivityRef.current.set(saved.id, event);
+    setActivity((current) => current === null ? current : mergeSavedSplitActivity(current, event));
+    const savedMonth = saved.date.slice(0, 7);
+    setVisibleCount((current) => visibleSplitMonthCount(
+      summary?.monthsWithData ?? [],
+      savedMonth,
+      current,
+    ));
+  }, [editExpense, expenses, group, myId, summary?.monthsWithData]);
 
   if (loading) {
     return <div className="space-y-4 max-w-3xl mx-auto py-4 lg:py-6"><PageHeader title="Split" /><SplitDetailSkeleton /></div>;
@@ -1018,9 +1104,9 @@ export default function SplitGroupDetailPage() {
         currency={group.currency}
         myId={myId}
         expense={editExpense}
-        onSaved={async (saved) => {
+        onSaved={(saved) => {
           const wasEdit = !!editExpense;
-          await load();
+          commitSavedRow(saved);
           toast.success(wasEdit ? "Expense updated" : "Expense added");
           // Celebrate a new expense; under reduced motion celebrate() is false,
           // so fall back to a row flash. Edits get neither (just the toast).
@@ -1035,8 +1121,8 @@ export default function SplitGroupDetailPage() {
         currency={group.currency}
         myId={myId}
         balances={balances}
-        onSaved={async (saved) => {
-          await load();
+        onSaved={(saved) => {
+          commitSavedRow(saved);
           toast.success("Settled up");
           if (!celebrate("confetti") && saved) flashRow(saved.id);
         }}

@@ -10,6 +10,10 @@ The title uses `PageHeader`; tab selection and preference groups use shared inse
 control materials while each settings form stays on a filled card (component contracts
 in `src/components/AGENTS.md`).
 
+`loadPreferences` subscribes to shared data refreshes with generation guards.
+Unsaved category and tax-default drafts remain intact; `AppLayout` independently
+refreshes persisted display mode and mobile navigation preferences.
+
 ## Tabs
 
 ### General

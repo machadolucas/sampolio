@@ -11,7 +11,7 @@ import {
 } from '@/lib/db/planned-items';
 import { resolveAnchor, compareYearMonths } from '@/lib/projection';
 import { expiredOverrideCutoff } from '@/lib/maintenance-utils';
-import { updateTag } from 'next/cache';
+import { updateTag } from '@/lib/cache-tags';
 import { clearNullsInPatch } from '@/lib/patch-utils';
 import type { ApiResponse, PlannedItem, YearMonth } from '@/types';
 

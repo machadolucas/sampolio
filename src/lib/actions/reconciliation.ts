@@ -16,7 +16,7 @@ import {
   cachedGetSessionForMonth,
   cachedGetLatestCompletedSession,
 } from '@/lib/db/cached';
-import { updateTag } from 'next/cache';
+import { updateTag } from '@/lib/cache-tags';
 import type { EntityType, AdjustmentCategory, BalanceSnapshot, ReconciliationAdjustment, ReconciliationSession } from '@/types';
 
 // ============================================================

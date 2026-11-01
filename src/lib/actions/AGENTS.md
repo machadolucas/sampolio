@@ -1,6 +1,7 @@
 # Server Actions (`src/lib/actions/`)
 
-All backend logic for the application. There are **no REST API routes** — everything uses Next.js Server Actions.
+Domain reads and writes use Next.js Server Actions. The authenticated
+notification-only event stream is documented in `docs/architecture.md` §13.
 
 ## Architecture
 
@@ -9,7 +10,7 @@ Every action file starts with `'use server'` and exports async functions. The co
 1. **Authenticate**: `const session = await auth()` — reject if no session
 2. **Validate**: Use Zod schema to parse input
 3. **Execute**: Call DB layer functions from `src/lib/db/`
-4. **Invalidate cache**: Call `updateTag(tagName)` for affected data (code that can also run in a route handler uses `invalidateTags` from `src/lib/cache-tags.ts`). The client then announces the change with `notifyDataChanged()` so on-screen views refetch (`docs/architecture.md` §13)
+4. **Invalidate cache**: Import `updateTag(tagName)` from `@/lib/cache-tags` for affected data; it expires Next's cache and publishes scoped live changes. Code that can also run outside an action uses that module's `invalidateTags`. The client announces success with `notifyDataChanged()` (`docs/architecture.md` §13)
 5. **Return**: `ApiResponse<T>` = `{ success: boolean; data?: T; error?: string }`
 
 Ids that become path segments are validated at the boundary with `idSchema` /
@@ -59,6 +60,7 @@ frozen net). Covered by `partial-updates.test.ts`.
 | `user-preferences.ts` | User preferences | Read/update preferences (categories, display mode, tax defaults, check-in reminders/notifications, `updateBankAccountOrder` — bank-link display order, and `updateSplitGroupOrder` — split-group display order, both sanitized against current ids). `updateBottomNavIds` stores the mobile bottom-nav tabs (`bottomNavIds`: 1–4 `NavigationPage` ids validated with `z.enum(NAVIGATION_PAGE_IDS)` from the plain `@/lib/bottom-nav-prefs`, deduped; `null` writes `undefined` so the key is dropped and the per-display-mode defaults apply again). `updateSplitNotificationPrefs` stores the five-key `splitNotificationPrefs` opt-out record wholesale (the UI always sends all five; absent key ⇒ notifications on); `getSplitNotifyStatus` reports whether the server has the Home Assistant webhook configured (`getSplitNotifyConfig() !== null`, mirroring `getBankFeatureStatus`) |
 | `user-profiles.ts` | User profiles (display) | `getUserProfiles(userIds)` → `{ id, name, avatarUrl? }` for any authenticated user (no email/role — safe for cross-user member/actor displays) |
 | `app-info.ts` | App metadata | Version info |
+| `data-changes.ts` | Live cache synchronization | `synchronizeDataChanges()` authenticates, rejects arguments, reads uncached viewer scopes, expires pending tags using Next directly, and acknowledges them after the response; returns an opaque `DataChangeState` revision without publishing another edit |
 
 ## Cache Tags
 

@@ -9,7 +9,7 @@ import {
   deleteAccount as dbDeleteAccount,
 } from '@/lib/db/accounts';
 import { cachedGetAccounts, cachedGetAccountById } from '@/lib/db/cached';
-import { updateTag } from 'next/cache';
+import { updateTag } from '@/lib/cache-tags';
 import { clearNullsInPatch } from '@/lib/patch-utils';
 import type { ApiResponse, FinancialAccount } from '@/types';
 

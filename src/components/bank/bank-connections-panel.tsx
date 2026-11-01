@@ -42,7 +42,7 @@ import {
   updateBankAccountLink,
 } from "@/lib/actions/bank";
 import { getAccounts } from "@/lib/actions/accounts";
-import { notifyDataChanged } from "@/lib/hooks/use-data-refresh";
+import { notifyDataChanged, useDataRefresh } from "@/lib/hooks/use-data-refresh";
 import {
   maskIban,
   getConsentExpiryInfo,
@@ -88,6 +88,7 @@ export function BankConnectionsPanel() {
   const isDark = theme === "dark";
   const appToast = useToast();
   const hasLoadedOnce = useRef(false);
+  const loadGeneration = useRef(0);
 
   const [loading, setLoading] = useState(true);
   const [configured, setConfigured] = useState(false);
@@ -114,9 +115,12 @@ export function BankConnectionsPanel() {
   );
 
   const load = useCallback(async () => {
+    const generation = ++loadGeneration.current;
     if (!hasLoadedOnce.current) setLoading(true);
     try {
       const status = await getBankFeatureStatus();
+      if (generation !== loadGeneration.current) return;
+      if (!status.success || !status.data) return;
       const isConfigured = status.success && !!status.data?.configured;
       setConfigured(isConfigured);
       if (isConfigured) {
@@ -124,19 +128,26 @@ export function BankConnectionsPanel() {
           getBankConnections(),
           getAccounts(),
         ]);
+        if (generation !== loadGeneration.current) return;
         if (connRes.success && connRes.data) setConnections(connRes.data);
         if (acctRes.success && acctRes.data)
           setAccounts(acctRes.data.filter((a) => !a.isArchived));
       }
     } finally {
-      hasLoadedOnce.current = true;
-      setLoading(false);
+      if (generation === loadGeneration.current) {
+        hasLoadedOnce.current = true;
+        setLoading(false);
+      }
     }
   }, []);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  // Keep the panel current after another view, tab, or background sync changes
+  // bank data. Successful reads replace snapshots; failed reads leave them intact.
+  useDataRefresh(() => load());
 
   // Surface the result of a returning consent (?bankConnected / ?bankError).
   useEffect(() => {
@@ -379,8 +390,8 @@ export function BankConnectionsPanel() {
 
               <p className={`${subtle} mb-3`}>
                 {conn.lastSyncAt
-                  ? `Last synced ${formatDateTime(conn.lastSyncAt)} · ${conn.lastSyncStatus ?? ""}`
-                  : "Not synced yet"}
+                  ? `Latest connection attempt ${formatDateTime(conn.lastSyncAt)} · ${conn.lastSyncStatus ?? "unknown"}`
+                  : "No sync attempts yet"}
                 {expiry.expiresAt &&
                   ` · consent valid until ${formatDate(expiry.expiresAt)}`}
                 {/* The bank's own ceiling on consent length — makes it obvious
@@ -562,7 +573,12 @@ function AccountLinkRow({
   const fieldId = useId();
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [nameDraft, setNameDraft] = useState(link.customName ?? "");
+  const nameDirty = useRef(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!nameDirty.current) setNameDraft(link.customName ?? "");
+  }, [link.customName]);
 
   // Clear the "Saved" auto-hide timer if the row unmounts mid-flight.
   useEffect(
@@ -577,6 +593,7 @@ function AccountLinkRow({
     setSaveState("saving");
     const ok = await onPatch(data);
     setSaveState(ok ? "saved" : "error");
+    if (ok && "customName" in data) nameDirty.current = false;
     if (ok) timerRef.current = setTimeout(() => setSaveState("idle"), 1800);
   };
 
@@ -629,6 +646,11 @@ function AccountLinkRow({
           <div className="min-w-0">
             <div className="font-medium text-sm truncate">{displayName}</div>
             <div className={`${subtle} truncate`}>{idParts.join(" · ")}</div>
+            <div className={`${subtle} truncate`}>
+              {link.lastSyncedAt
+                ? `Account last synced ${formatDateTime(link.lastSyncedAt)}`
+                : "Account not synced yet"}
+            </div>
           </div>
         </div>
         <div className="shrink-0 min-h-[1rem]">
@@ -647,11 +669,15 @@ function AccountLinkRow({
           <InputText
             id={`${fieldId}-name`}
             value={nameDraft}
-            onChange={(e) => setNameDraft(e.target.value)}
+            onChange={(e) => {
+              nameDirty.current = true;
+              setNameDraft(e.target.value);
+            }}
             onBlur={() => {
               const next = nameDraft.trim();
               if (next !== (link.customName ?? ""))
                 patch({ customName: next || null });
+              else nameDirty.current = false;
             }}
             placeholder={
               link.name?.trim() ||

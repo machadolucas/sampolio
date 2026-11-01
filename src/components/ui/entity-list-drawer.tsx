@@ -1,7 +1,7 @@
 'use client';
 import { TriangleAlert as UiWarningIcon } from 'lucide-react';
 
-import { useState, useEffect, useCallback, useId } from 'react';
+import { useState, useEffect, useCallback, useId, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
 import { Sidebar } from '@/components/ui/sheet';
@@ -23,6 +23,7 @@ import { DebtProgressCard } from '@/components/ui/debt-progress-card';
 import { useAppContext } from '@/components/layout/app-layout';
 import { HelpTip, MonthPicker, ItemCard, SubEntityList } from '@/components/ui/form-primitives';
 import { useToast } from '@/components/providers/toast-provider';
+import { useDataRefresh } from '@/lib/hooks/use-data-refresh';
 import { useFormSubmit } from '@/lib/hooks/use-form-submit';
 import {
     getAccounts,
@@ -777,6 +778,9 @@ export function EntityListDrawer({ visible, category, onClose, onRefresh, editEn
     const [showArchived, setShowArchived] = useState(false);
     const [formState, setFormState] = useState<FormState>({ kind: 'none' });
     const [expandedId, setExpandedId] = useState<string | null>(null);
+    const fetchGeneration = useRef(0);
+    const loadedCategories = useRef(new Set<EntityCategory>());
+    const openedEditRequest = useRef<{ category: EntityCategory; id: string } | null>(null);
 
     // Data
     const [accounts, setAccounts] = useState<FinancialAccount[]>([]);
@@ -790,58 +794,80 @@ export function EntityListDrawer({ visible, category, onClose, onRefresh, editEn
     const [debtSnapshots, setDebtSnapshots] = useState<Map<string, BalanceSnapshot[]>>(new Map());
 
     const fetchData = useCallback(async () => {
-        setIsLoading(true);
+        const generation = ++fetchGeneration.current;
+        const isCurrent = () => generation === fetchGeneration.current;
+        if (!loadedCategories.current.has(category)) setIsLoading(true);
         try {
             switch (category) {
                 case 'cash': {
                     const res = await getAccounts();
-                    if (res.success && res.data) setAccounts(res.data);
+                    if (!isCurrent()) return;
+                    if (res.success && res.data) {
+                        setAccounts(res.data);
+                        loadedCategories.current.add(category);
+                    }
                     break;
                 }
                 case 'investments': {
                     const res = await getInvestmentAccounts();
+                    if (!isCurrent()) return;
                     if (res.success && res.data) {
-                        setInvestments(res.data);
                         const cMap = new Map<string, InvestmentContribution[]>();
                         for (const inv of res.data) {
                             const cr = await getContributions(inv.id);
-                            if (cr.success && cr.data) cMap.set(inv.id, cr.data);
+                            if (!isCurrent()) return;
+                            if (!cr.success || !cr.data) return;
+                            cMap.set(inv.id, cr.data);
                         }
+                        setInvestments(res.data);
                         setContributions(cMap);
+                        loadedCategories.current.add(category);
                     }
                     break;
                 }
                 case 'receivables': {
                     const res = await getReceivables();
+                    if (!isCurrent()) return;
                     if (res.success && res.data) {
-                        setReceivables(res.data);
                         const rMap = new Map<string, ReceivableRepayment[]>();
                         for (const rec of res.data) {
                             const rr = await getRepayments(rec.id);
-                            if (rr.success && rr.data) rMap.set(rec.id, rr.data);
+                            if (!isCurrent()) return;
+                            if (!rr.success || !rr.data) return;
+                            rMap.set(rec.id, rr.data);
                         }
+                        setReceivables(res.data);
                         setRepayments(rMap);
+                        loadedCategories.current.add(category);
                     }
                     break;
                 }
                 case 'debts': {
                     const res = await getDebts();
+                    if (!isCurrent()) return;
                     if (res.success && res.data) {
-                        setDebts(res.data);
                         const rrMap = new Map<string, DebtReferenceRate[]>();
                         const epMap = new Map<string, DebtExtraPayment[]>();
                         const snMap = new Map<string, BalanceSnapshot[]>();
                         for (const d of res.data) {
                             const rr = await getReferenceRates(d.id);
-                            if (rr.success && rr.data) rrMap.set(d.id, rr.data);
+                            if (!isCurrent()) return;
+                            if (!rr.success || !rr.data) return;
+                            rrMap.set(d.id, rr.data);
                             const ep = await getExtraPayments(d.id);
-                            if (ep.success && ep.data) epMap.set(d.id, ep.data);
+                            if (!isCurrent()) return;
+                            if (!ep.success || !ep.data) return;
+                            epMap.set(d.id, ep.data);
                             const sn = await getSnapshotsForEntity('debt', d.id);
-                            if (sn.success && sn.data) snMap.set(d.id, sn.data);
+                            if (!isCurrent()) return;
+                            if (!sn.success || !sn.data) return;
+                            snMap.set(d.id, sn.data);
                         }
+                        setDebts(res.data);
                         setReferenceRates(rrMap);
                         setExtraPayments(epMap);
                         setDebtSnapshots(snMap);
+                        loadedCategories.current.add(category);
                     }
                     break;
                 }
@@ -849,24 +875,40 @@ export function EntityListDrawer({ visible, category, onClose, onRefresh, editEn
         } catch (err) {
             console.error('Failed to fetch:', err);
         } finally {
-            setIsLoading(false);
+            if (isCurrent()) setIsLoading(false);
         }
     }, [category]);
 
     useEffect(() => {
-        if (visible) fetchData();
+        if (visible) void fetchData();
+        else fetchGeneration.current++;
     }, [visible, fetchData]);
+
+    useDataRefresh(() => {
+        if (visible && formState.kind === 'none') return fetchData();
+    });
 
     // Auto-open edit form when editEntityId is provided
     useEffect(() => {
-        if (!editEntityId || isLoading) return;
-        switch (category) {
-            case 'cash': { const a = accounts.find(x => x.id === editEntityId); if (a) setFormState({ kind: 'account', account: a }); break; }
-            case 'investments': { const i = investments.find(x => x.id === editEntityId); if (i) setFormState({ kind: 'investment', investment: i }); break; }
-            case 'receivables': { const r = receivables.find(x => x.id === editEntityId); if (r) setFormState({ kind: 'receivable', receivable: r }); break; }
-            case 'debts': { const d = debts.find(x => x.id === editEntityId); if (d) setFormState({ kind: 'debt', debt: d }); break; }
+        if (!editEntityId) {
+            openedEditRequest.current = null;
+            return;
         }
-    }, [editEntityId, isLoading, category, accounts, investments, receivables, debts]);
+        if (isLoading) return;
+        const previous = openedEditRequest.current;
+        if (previous?.category === category && previous.id === editEntityId) return;
+        let nextForm: FormState | null = null;
+        switch (category) {
+            case 'cash': { const a = accounts.find(x => x.id === editEntityId); if (a) nextForm = { kind: 'account', account: a }; break; }
+            case 'investments': { const i = investments.find(x => x.id === editEntityId); if (i) nextForm = { kind: 'investment', investment: i }; break; }
+            case 'receivables': { const r = receivables.find(x => x.id === editEntityId); if (r) nextForm = { kind: 'receivable', receivable: r }; break; }
+            case 'debts': { const d = debts.find(x => x.id === editEntityId); if (d) nextForm = { kind: 'debt', debt: d }; break; }
+        }
+        if (nextForm) {
+            openedEditRequest.current = { category, id: editEntityId };
+            if (formState.kind === 'none') setFormState(nextForm);
+        }
+    }, [editEntityId, isLoading, category, accounts, investments, receivables, debts, formState.kind]);
 
     const handleFormSave = async () => {
         setFormState({ kind: 'none' });

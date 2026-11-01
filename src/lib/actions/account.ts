@@ -1,6 +1,6 @@
 'use server';
 
-import { updateTag } from 'next/cache';
+import { updateTag } from '@/lib/cache-tags';
 import { headers } from 'next/headers';
 import { isAPIError } from 'better-auth/api';
 import { auth, getSessionAgeMs } from '@/lib/auth';

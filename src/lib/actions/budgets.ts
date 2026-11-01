@@ -29,7 +29,7 @@ import {
 } from '@/lib/db/cached';
 import { calcPerDiemTotal, hydrateBudgetFundingFromTrips } from '@/lib/budget-utils';
 import { calculatePerDiem } from '@/lib/per-diem-utils';
-import { updateTag } from 'next/cache';
+import { updateTag } from '@/lib/cache-tags';
 import type { ApiResponse, Budget } from '@/types';
 
 const yearMonth = z.string().regex(/^\d{4}-\d{2}$/, 'Use the YYYY-MM format');

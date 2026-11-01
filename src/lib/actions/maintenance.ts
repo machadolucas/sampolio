@@ -1,7 +1,7 @@
 'use server';
 
 import { auth } from '@/lib/auth';
-import { updateTag } from 'next/cache';
+import { updateTag } from '@/lib/cache-tags';
 import {
   getBalanceSnapshots,
   getAllAdjustments,

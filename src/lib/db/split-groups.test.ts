@@ -9,6 +9,7 @@ import {
   deleteExpense,
   locateExpense,
   getExpensesForMonth,
+  getRecentExpenses,
   getSplitGroupSummary,
   rebuildSummary,
   upsertExpenseByOccurrence,
@@ -126,6 +127,25 @@ describe('split-groups db layer', () => {
     expect((await locateExpense(groupId, recent.id))?.ym).toBe('2026-06');
     expect((await locateExpense(groupId, old.id))?.ym).toBe('2025-06');
     expect(await locateExpense(groupId, 'missing')).toBeNull();
+  });
+
+  it('returns the newest created rows across all storage months with a DB limit', async () => {
+    const backdated = row('2024-02-01', 1200, {
+      id: 'recent-created-backdated',
+      createdAt: '2026-10-20T12:00:00.000Z',
+      updatedAt: '2026-10-20T12:00:00.000Z',
+    });
+    const current = row('2026-10-01', 900, {
+      id: 'older-created-current',
+      createdAt: '2026-09-20T12:00:00.000Z',
+      updatedAt: '2026-09-20T12:00:00.000Z',
+    });
+    await addExpense(groupId, current);
+    await addExpense(groupId, backdated);
+
+    const recent = await getRecentExpenses(groupId, 1);
+    expect(recent).toHaveLength(1);
+    expect(recent[0].id).toBe(backdated.id);
   });
 
   it('overwrites an occurrence in place and skips a second row for the same rule in a month', async () => {

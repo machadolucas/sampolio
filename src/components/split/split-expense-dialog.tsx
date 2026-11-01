@@ -3,7 +3,7 @@
 import { ControlGroup } from '@/components/ui/page-header';
 /* eslint-disable react-hooks/set-state-in-effect -- the form intentionally resets its fields when the dialog opens */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { parseISO } from "date-fns";
 import { Dialog } from "@/components/ui/dialog";
 import { InputText } from "@/components/ui/input-text";
@@ -68,9 +68,16 @@ export function SplitExpenseDialog({
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const wasVisibleRef = useRef(false);
+  const expenseIdRef = useRef<string | undefined>(undefined);
 
   useEffect(() => {
-    if (!visible) return;
+    const expenseId = expense?.id;
+    const shouldInitialize = visible &&
+      (!wasVisibleRef.current || expenseIdRef.current !== expenseId);
+    wasVisibleRef.current = visible;
+    expenseIdRef.current = expenseId;
+    if (!shouldInitialize) return;
     if (expense) {
       setTitle(expense.title);
       setAmount(expense.amountCents / 100);
@@ -114,8 +121,8 @@ export function SplitExpenseDialog({
       : await createSplitExpense(groupId, payload);
     setSaving(false);
     if (!res.success) return setError(res.error ?? "Failed to save");
-    notifyDataChanged();
     onSaved(res.data);
+    notifyDataChanged();
     onHide();
   };
 

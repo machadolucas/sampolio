@@ -2,7 +2,7 @@
 
 import { z } from 'zod';
 import { headers } from 'next/headers';
-import { updateTag } from 'next/cache';
+import { updateTag } from '@/lib/cache-tags';
 import { auth } from '@/lib/auth';
 import { format, subDays } from 'date-fns';
 import type {

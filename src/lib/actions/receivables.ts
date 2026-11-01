@@ -15,7 +15,7 @@ import {
   cachedGetReceivableById,
   cachedGetRepayments,
 } from '@/lib/db/cached';
-import { updateTag } from 'next/cache';
+import { updateTag } from '@/lib/cache-tags';
 import type { ApiResponse, Receivable, ReceivableRepayment } from '@/types';
 
 const createReceivableSchema = z.object({

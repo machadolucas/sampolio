@@ -43,6 +43,7 @@ import {
   replaceSeqDocs,
 } from './sqlite/docs';
 import { splitExpense, splitGroup, splitGroupMemberIndex, splitGroupSummary } from './sqlite/schema';
+import { getSqlite } from './sqlite/client';
 import { pruneOccurrencesAfter } from '@/lib/split-utils';
 
 // ============================================================
@@ -296,6 +297,19 @@ export const sortExpenseRows = (rows: SplitExpense[]): SplitExpense[] =>
 
 export async function getExpensesForMonths(groupId: string, months: string[]): Promise<SplitExpense[]> {
   return sortExpenseRows(months.flatMap((ym) => readMonth(groupId, ym)));
+}
+
+/** Latest rows by creation time across every storage month, bounded in SQLite. */
+export async function getRecentExpenses(groupId: string, limit: number): Promise<SplitExpense[]> {
+  const safeGroupId = assertSafeId(groupId, 'groupId');
+  const safeLimit = Math.max(1, Math.min(100, Math.trunc(limit) || 1));
+  const rows = getSqlite()
+    .prepare(
+      `SELECT "data" FROM "split_expense" WHERE "groupId" = ? ` +
+        `ORDER BY json_extract("data", '$.createdAt') DESC, "id" DESC LIMIT ?`,
+    )
+    .all(safeGroupId, safeLimit) as { data: string }[];
+  return rows.map((row) => JSON.parse(row.data) as SplitExpense);
 }
 
 export async function getAllExpenses(groupId: string): Promise<SplitExpense[]> {

@@ -430,6 +430,9 @@ export interface PasskeySummary {
 }
 
 // Utility types
+/** Opaque server revision for the authenticated viewer's accessible data. */
+export interface DataChangeState { revision: string }
+
 export interface ApiResponse<T> {
   success: boolean;
   data?: T;

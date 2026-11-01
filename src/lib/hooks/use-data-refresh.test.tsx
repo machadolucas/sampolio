@@ -78,6 +78,21 @@ describe('use-data-refresh', () => {
     expect(second).toHaveBeenCalledTimes(1);
   });
 
+  it('serializes refreshes and replays changes received during a pending read', async () => {
+    let finish!: () => void;
+    const fn = vi.fn().mockImplementationOnce(() => new Promise<void>((resolve) => { finish = resolve; }));
+    render(<Subscriber onRefresh={fn} />);
+    notifyDataChanged();
+    await flush();
+    notifyDataChanged();
+    notifyDataChanged();
+    await flush();
+    expect(fn).toHaveBeenCalledTimes(1);
+    finish();
+    await flush();
+    expect(fn).toHaveBeenCalledTimes(2);
+  });
+
   it('refetches on focus, throttled, and respects focus: false', async () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     const onFocus = vi.fn();

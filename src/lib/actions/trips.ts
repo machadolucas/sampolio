@@ -12,7 +12,7 @@ import {
   cachedGetTripById,
 } from '@/lib/db/cached';
 import { tripSchema, updateTripSchema } from '@/lib/schemas/trip.schema';
-import { updateTag } from 'next/cache';
+import { updateTag } from '@/lib/cache-tags';
 import type { ApiResponse, Trip } from '@/types';
 
 // ============================================================

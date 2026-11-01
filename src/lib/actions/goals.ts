@@ -12,7 +12,7 @@ import {
   cachedGetGoals,
   cachedGetGoalById,
 } from '@/lib/db/cached';
-import { updateTag } from 'next/cache';
+import { updateTag } from '@/lib/cache-tags';
 import type { ApiResponse, Goal } from '@/types';
 
 // Server-side defense mirroring the client's `goalSchema` (`src/lib/schemas/goal.schema.ts`):

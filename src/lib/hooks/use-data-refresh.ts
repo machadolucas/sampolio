@@ -116,6 +116,9 @@ export function notifyDataChanged(): void {
   }
 }
 
+/** Server notifications have already passed the authenticated cache barrier. */
+export function notifyRemoteDataChanged(): void { emit('remote'); }
+
 /**
  * Refetch whenever data changes anywhere in the app (this tab, another tab) and
  * when the user returns to the app. `refetch` may change identity freely — the
@@ -135,18 +138,33 @@ export function useDataRefresh(
   // fetch is fresh by definition). Refs survive an Activity hide/show cycle.
   const seenVersionRef = useRef<number | null>(null);
   useEffect(() => {
-    const run = (reason: DataRefreshReason) => {
-      seenVersionRef.current = changeVersion;
-      Promise.resolve(refetchRef.current(reason)).catch((err) =>
-        console.error('[data-refresh] refetch failed:', err),
-      );
+    let active = true;
+    let running = false;
+    let queued: DataRefreshReason | null = null;
+    const run = async (reason: DataRefreshReason) => {
+      if (running) {
+        if (queued === null || queued === 'focus') queued = reason;
+        return;
+      }
+      running = true;
+      try {
+        let next: DataRefreshReason | null = reason;
+        while (active && next) {
+          queued = null;
+          seenVersionRef.current = changeVersion;
+          try { await refetchRef.current(next); }
+          catch (err) { console.error('[data-refresh] refetch failed:', err); }
+          next = queued;
+        }
+      } finally { running = false; }
     };
     if (seenVersionRef.current === null) seenVersionRef.current = changeVersion;
     else if (seenVersionRef.current < changeVersion) run('mutation');
-    return subscribeDataChanges((reason) => {
+    const unsubscribe = subscribeDataChanges((reason) => {
       if (reason === 'focus' && !focus) return;
       run(reason);
     });
+    return () => { active = false; unsubscribe(); };
   }, [focus]);
 }
 

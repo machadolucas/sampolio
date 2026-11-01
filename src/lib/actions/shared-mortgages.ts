@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { isSafeId, isYearMonth } from '@/lib/safe-id';
 import { CURRENCY_VALUES } from '@/lib/constants';
 import { auth } from '@/lib/auth';
-import { updateTag } from 'next/cache';
+import { updateTag } from '@/lib/cache-tags';
 import { findUserByEmail } from '@/lib/db/users';
 import {
   createMortgage as dbCreateMortgage,

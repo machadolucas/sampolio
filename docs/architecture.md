@@ -62,8 +62,9 @@ runbook: [`operations.md`](operations.md).
 | `/auth/error` | `src/app/auth/error/page.tsx` | Better Auth redirect-error target (`onAPIError.errorURL`); fixed messages only. |
 | `/dev-login` | `src/app/dev-login/route.ts` | GET handler: dev-only password-less sign-in as `DEV_AUTH_BYPASS`; returns 404 in production, when the flag is unset, or for a non-loopback request (§9). |
 | `/api/auth/[...all]` | `src/app/api/auth/[...all]/route.ts` | Better Auth HTTP handler (`getAuth().handler`). |
-| `/api/bank/callback` | `src/app/api/bank/callback/route.ts` | Enable Banking consent callback (one of two non-auth API routes). |
+| `/api/bank/callback` | `src/app/api/bank/callback/route.ts` | Enable Banking consent callback. |
 | `/api/avatars/[userId]` | `src/app/api/avatars/[userId]/route.ts` | User avatar image (session-gated; serves the plain-binary `avatar.webp`; `Cache-Control: private, max-age=31536000, immutable` with a `?v={avatarVersion}` buster). Node runtime. |
+| `/api/data-events` | `src/app/api/data-events/route.ts` | Authenticated notification-only event stream; opaque viewer revisions, no domain records (§13). |
 | `/manifest.webmanifest` | `src/app/manifest.ts` | Static PWA manifest. |
 
 **Auth guarding is layered:**
@@ -212,11 +213,13 @@ All cached reads live in `src/lib/db/cached.ts` (`cachedGet*` wrappers using the
 Outside server actions, invalidate through `invalidateTags` (`src/lib/cache-tags.ts`): it
 uses `updateTag` in a server action and falls back to `revalidateTag(tag, { expire: 0 })` in a
 route handler (the bank OAuth callback). With no request scope at all (the background
-scheduler) both throw, so `safeUpdateTags` in `src/lib/bank/sync.ts` ends up a no-op there —
-the `synced` profile's short revalidate window is what makes those reads eventually
-consistent. Never give background-mutated data `indefinite`.
+scheduler) both throw, so the process-wide change journal retains the tags.
+`synchronizeDataChanges` expires them in an authenticated action before notified views
+refetch (§13). The `synced` profile remains the fallback if synchronization is unavailable.
+Never give background-mutated data `indefinite`.
 
-Every wrapper tags `all-data` plus a specific tag; mutations call `updateTag`. Tag families:
+Every wrapper tags `all-data` plus a specific tag; mutations import `updateTag` from
+`src/lib/cache-tags.ts` to expire caches and publish changes. Tag families:
 
 - `user:{userId}` (umbrella), `user:{userId}:accounts`, `user:{userId}:account:{accountId}:recurring|planned|salary|taxed-income`
 - `user:{userId}:investments`, `:investment:{id}:contributions`, `:debts`, `:debt:{id}:rates|payments`, `:receivables`, `:receivable:{id}:repayments`
@@ -453,10 +456,11 @@ calls `notifyDataChanged()` (shared mutating components do it themselves;
 `AppContext.refreshData()` / `EntityModalRouter`'s `onDataChange` forward to it), and every
 data view subscribes its refetch with `useDataRefresh(refetch)`. A notification refetches
 all mounted subscribers in one coalesced round and reaches the user's other tabs and PWA
-windows over a `BroadcastChannel`; returning to the app (tab visible / window focus,
-throttled to 15 s) refetches too, which is how background bank syncs and other members'
-split/mortgage edits appear. Routes hidden by Next's Activity unsubscribe while hidden and
-replay a missed change when shown again. Refetches must keep the last good data on
+windows over a `BroadcastChannel`. Returning to the app (tab visible / window focus,
+throttled to 15 s) refetches too. Each subscription serializes async refetches and queues
+another round when a change arrives during a read; return the promise from callbacks.
+Routes hidden by Next's Activity unsubscribe while hidden and replay a missed change
+when shown again. Refetches must keep the last good data on
 failure, never flash a full skeleton (`hasLoadedOnce` guards) and never overwrite form
 drafts — form-heavy views subscribe with `{ focus: false }` or not at all. Forms use React Hook Form +
 Zod resolvers with app-owned controlled inputs wrapped in `Controller`. Pure calculation engines live
@@ -464,6 +468,26 @@ beside the UI in `src/lib/` (`projection.ts`, `wealth-projection.ts`,
 `mortgage-projection.ts`, `retrospective.ts`, `split-utils.ts`, `budget-utils.ts`, etc.) —
 see [`projections-and-reconciliation.md`](projections-and-reconciliation.md) and
 [`features.md`](features.md).
+
+**Server notifications.** `LiveData` in `AppLayout` uses `use-live-data.ts` to open one
+same-origin `/api/data-events` stream per visible authenticated window. The route sends
+only `changed` events with `{ revision }`, plus 15-second keepalives; it closes after
+55 seconds so reconnects revalidate the session. Client retries back off from 1 to 30
+seconds, stop after an unauthorized synchronization, and close when hidden or signed out.
+Initial connections, reconnects and new revisions call the input-free authenticated
+`synchronizeDataChanges` action before emitting a `remote` event on the existing bus.
+The action flushes pending cache tags with Next's `updateTag` directly and acknowledges
+their captured sequences in `after()`; this cache maintenance never republishes changes.
+
+`src/lib/data-changes.ts` keeps the journal on `globalThis`, shared across action, route
+and instrumentation bundles in the single server process. `cache-tags.ts` records every
+published tag until request-scoped synchronization, including scheduled bank writes.
+`src/lib/db/data-changes.ts` reads active-user status and membership indexes uncached:
+private tags affect their user, shared tags current Split/mortgage members, and
+`users`/`app-settings`/`all-data` affect all active viewers. Revisions hash the boot epoch,
+viewer scopes and latest relevant sequence; ids, tags and records never reach the stream.
+The journal compacts beyond 4096 tags to one pending `all-data` expiration. It is not a
+durable or multi-process message broker; restart/reconnect refetches restore freshness.
 
 ## 14. Types & schemas
 

@@ -18,7 +18,7 @@ import {
   cachedGetReferenceRates,
   cachedGetExtraPayments,
 } from '@/lib/db/cached';
-import { updateTag } from 'next/cache';
+import { updateTag } from '@/lib/cache-tags';
 import type { ApiResponse, Debt, DebtReferenceRate, DebtExtraPayment } from '@/types';
 
 const createDebtSchema = z.object({

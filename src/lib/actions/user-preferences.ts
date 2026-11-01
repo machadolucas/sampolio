@@ -8,7 +8,7 @@ import { getBankConnections } from '@/lib/db/bank-connections';
 import { cachedGetUserPreferences, cachedGetSplitGroupsForUser } from '@/lib/db/cached';
 import { getSplitNotifyConfig } from '@/lib/split-notify';
 import { NAVIGATION_PAGE_IDS, MAX_BOTTOM_NAV_TABS } from '@/lib/bottom-nav-prefs';
-import { updateTag } from 'next/cache';
+import { updateTag } from '@/lib/cache-tags';
 import { z } from 'zod';
 import type { ApiResponse, UserPreferences, TaxDefaults, DisplayMode, SplitNotifyEvent } from '@/types';
 

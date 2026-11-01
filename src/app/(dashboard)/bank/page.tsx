@@ -35,7 +35,8 @@ import {
   sortConnectionsByAccountOrder,
   effectiveCardNumbers,
 } from '@/lib/bank-utils';
-import { formatCurrency } from '@/lib/constants';
+import { formatCurrency, formatDateTime } from '@/lib/constants';
+import { getLatestNonSuccessfulAttempt } from '@/lib/bank-sync-display';
 import { BankLedgerTable } from '@/components/bank/bank-ledger-table';
 import { AccountPicker, roleIcon } from '@/components/bank/account-picker';
 import { JiggleModeBar } from '@/components/ui/jiggle-reorder';
@@ -349,8 +350,8 @@ function BankPageInner() {
   // and when the user returns to the app. Bank rows only change out-of-band
   // (background sync), so the ledger itself is refetched on focus/remote but not
   // after an in-app mutation; existing rows stay on screen meanwhile.
-  useDataRefresh((reason) => {
-    void load();
+  useDataRefresh(async (reason) => {
+    await load();
     const linkId = selectedLinkIdRef.current;
     if (!linkId) return;
     if (reason !== 'mutation' && ledgersRef.current[linkId]) {
@@ -359,7 +360,7 @@ function BankPageInner() {
       return;
     }
     const txs = ledgersRef.current[linkId];
-    if (txs) void loadCandidatesFor(linkId, txs);
+    if (txs) await loadCandidatesFor(linkId, txs);
   });
 
   const handleConfirmSplitSuggestion = useCallback(async (tx: BankTransaction, match: BankSplitMatch) => {
@@ -519,6 +520,22 @@ function BankPageInner() {
                         {formatCurrency(selected.link.lastBalance, selected.link.currency as Currency)}
                       </div>
                     )}
+                <div className="mt-2 space-y-1 text-xs text-muted-foreground">
+                  <p>
+                    {selected.link.lastSyncedAt
+                      ? `Account last synced ${formatDateTime(selected.link.lastSyncedAt)}`
+                      : 'Account not synced yet'}
+                  </p>
+                  {(() => {
+                    const attempt = getLatestNonSuccessfulAttempt(selected.conn);
+                    if (!attempt) return null;
+                    return (
+                      <p>
+                        Latest connection attempt: {attempt.status} · {formatDateTime(attempt.at)}
+                      </p>
+                    );
+                  })()}
+                </div>
               </div>
 
               {ledgerPending[selected.link.id] && !ledgers[selected.link.id] ? (

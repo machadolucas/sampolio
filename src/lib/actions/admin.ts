@@ -17,7 +17,7 @@ import { avatarDataUriSchema, avatarDataUriToBuffer } from '@/lib/schemas/user.s
 import { passwordPolicySchema } from '@/lib/schemas/auth.schema';
 import { updateAppSettings as dbUpdateAppSettings } from '@/lib/db/app-settings';
 import { cachedGetAllUsers, cachedGetAppSettings } from '@/lib/db/cached';
-import { updateTag } from 'next/cache';
+import { updateTag } from '@/lib/cache-tags';
 import type { ApiResponse, PublicUser, AppSettings, AdminUserRow, PasskeySummary } from '@/types';
 
 const createUserSchema = z.object({

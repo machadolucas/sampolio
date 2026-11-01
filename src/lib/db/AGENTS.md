@@ -133,7 +133,13 @@ export async function cachedGetAccounts(userId: string) {
 }
 ```
 
-After mutations, server actions call `updateTag(tagName)` to invalidate.
+After mutations, server actions call `updateTag(tagName)` from `@/lib/cache-tags`
+to invalidate and publish scoped notifications. `data-changes.ts` reads active-user
+status and current membership indexes uncached for live-notification authorization
+(transport and cache barrier: `docs/architecture.md` §13).
+
+`split-groups.ts` `getRecentExpenses(groupId, limit)` selects at most 100 rows by
+`createdAt` across storage months; recent activity includes backdated entries.
 
 ## Known Limitations
 

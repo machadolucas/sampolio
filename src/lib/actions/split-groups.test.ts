@@ -40,6 +40,7 @@ vi.mock('@/lib/db/cached', () => ({
   // through it until "invalidation" — exactly what the stale-read bugs need.
   cachedGetSplitGroupById: vi.fn(async () => clone(state.group)),
   cachedGetSplitGroupSummary: vi.fn(async () => clone(state.summary)),
+  cachedGetSplitGroupsForUser: vi.fn(async () => [clone(state.group)]),
 }));
 vi.mock('@/lib/db/users', () => ({
   findUserByEmail: vi.fn(async (email: string) => state.users.get(email) ?? null),
@@ -47,6 +48,9 @@ vi.mock('@/lib/db/users', () => ({
 vi.mock('@/lib/db/split-groups', () => ({
   getSplitGroupById: vi.fn(async () => clone(state.group)),
   getSplitGroupSummary: vi.fn(async () => clone(state.summary)),
+  getRecentExpenses: vi.fn(async (groupId: string, limit: number) =>
+    state.rows.filter((row) => row.groupId === groupId)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, limit).map(clone)),
   addSplitGroupMember: vi.fn(async (_g: string, member: SplitGroup['members'][number]) => {
     state.group.members.push(member);
     return clone(state.group);
@@ -98,6 +102,7 @@ import {
   leaveSplitGroup,
   removeSplitGroupMember,
   updateSplitExpense,
+  getSplitActivity,
 } from './split-groups';
 
 const signIn = (userId: string) => vi.mocked(auth).mockResolvedValue({ user: { id: userId } } as never);
@@ -188,6 +193,19 @@ describe('member removal and leaving (CXA-08, SEC-03)', () => {
   it('rejects non-members', async () => {
     signIn('stranger');
     expect((await leaveSplitGroup('g1')).success).toBe(false);
+  });
+});
+
+describe('Split activity ordering', () => {
+  it('includes recently created expenses from a backdated month and sorts by creation time', async () => {
+    state.rows = [
+      expenseRow({ id: 'older', date: '2026-10-01', createdAt: '2026-10-20T10:00:00.000Z' }),
+      expenseRow({ id: 'backdated', date: '2023-04-18', createdAt: '2026-11-01T08:00:00.000Z', title: 'Old receipt' }),
+    ];
+    const result = await getSplitActivity(20, 'g1');
+    expect(result.success).toBe(true);
+    expect(result.data?.map((event) => event.id)).toEqual(['backdated', 'older']);
+    expect(result.data?.[0].title).toBe('Old receipt');
   });
 });
 

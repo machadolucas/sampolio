@@ -5,7 +5,7 @@ import { format } from 'date-fns';
 import { isSafeId } from '@/lib/safe-id';
 import { v4 as uuidv4 } from 'uuid';
 import { auth } from '@/lib/auth';
-import { updateTag } from 'next/cache';
+import { updateTag } from '@/lib/cache-tags';
 import { findUserByEmail } from '@/lib/db/users';
 import { chunkMonthSchema } from '@/lib/schemas/id.schema';
 import { updateUserPreferences as dbUpdateUserPreferences } from '@/lib/db/user-preferences';
@@ -25,6 +25,7 @@ import {
   getSplitGroupById as dbGetSplitGroupById,
   getSplitGroupSummary as dbGetSplitGroupSummary,
   getAllExpenses as dbGetAllExpenses,
+  getRecentExpenses as dbGetRecentExpenses,
   upsertExpenseByOccurrence as dbUpsertOccurrence,
   bulkImportExpenses as dbBulkImport,
   addRecurrenceRule as dbAddRule,
@@ -52,6 +53,7 @@ import {
 import { monthsWindow, computeSplitInsights, type SplitInsights, type SplitInsightsGroupInput } from '@/lib/split-insights';
 import { notifySplitActivity } from '@/lib/split-notify';
 import { withGroupLock } from '@/lib/split-group-lock';
+import { splitExpenseToActivityEvent } from '@/lib/split-ui-state';
 import { buildNetByUserId, paymentParties } from '@/lib/split-csv';
 import { findSplitDuplicateCandidates } from '@/lib/bank-split-match';
 import {
@@ -226,31 +228,9 @@ export async function getSplitExpenses(groupId: string, months?: string[]): Prom
   return { success: true, data: rows };
 }
 
-function toActivityEvent(group: SplitGroup, row: SplitExpense, viewerId: string): SplitActivityEvent {
-  const nameOf = (id: string) => group.members.find((m) => m.userId === id)?.name ?? 'Someone';
-  const isPayment = row.kind === 'payment';
-  return {
-    id: row.id,
-    groupId: group.id,
-    groupName: group.name,
-    groupEmoji: group.emoji,
-    kind: row.kind,
-    title: isPayment
-      ? `${nameOf((row as SplitPayment).fromUserId)} paid ${nameOf((row as SplitPayment).toUserId)}`
-      : (row as SplitExpenseItem).title,
-    category: isPayment ? 'Payment' : (row as SplitExpenseItem).category,
-    amountCents: row.kind === 'payment' ? (row as SplitPayment).amountCents : (row as SplitExpenseItem).amountCents,
-    viewerNetCents: row.netByUserId[viewerId] ?? 0,
-    actorUserId: row.createdByUserId,
-    actorName: nameOf(row.createdByUserId),
-    date: row.date,
-    createdAt: row.createdAt,
-    source: row.source,
-  };
-}
-
 /** Recent activity for the Home feed (cross-group) or, with `groupId`, for one
- * group's Activity section. Reads only the latest month chunks. */
+ * group's Activity section. Uses a bounded query ordered by creation time, so
+ * newly entered expenses in backdated or previously empty months are included. */
 export async function getSplitActivity(limit = 20, groupId?: string): Promise<ApiResponse<SplitActivityEvent[]>> {
   try {
     const session = await auth();
@@ -261,15 +241,16 @@ export async function getSplitActivity(limit = 20, groupId?: string): Promise<Ap
     const groups = (await cachedGetSplitGroupsForUser(userId)).filter(
       (g) => !g.isArchived && (!groupId || g.id === groupId)
     );
+    const safeLimit = Math.max(1, Math.min(100, Math.trunc(limit) || 20));
     const events: SplitActivityEvent[] = [];
     for (const g of groups) {
-      const summary = await cachedGetSplitGroupSummary(g.id);
-      const months = summary.monthsWithData.slice(-3); // newest few months — enough for a recent feed
-      const rows = await cachedGetSplitExpensesForMonths(g.id, months);
-      for (const r of rows) events.push(toActivityEvent(g, r, userId));
+      // The top N rows from each group are sufficient for the global top N;
+      // this avoids loading full histories while remaining exact across groups.
+      const rows = await dbGetRecentExpenses(g.id, safeLimit);
+      for (const r of rows) events.push(splitExpenseToActivityEvent(r, g, userId));
     }
     events.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-    return { success: true, data: events.slice(0, limit) };
+    return { success: true, data: events.slice(0, safeLimit) };
   } catch (error) {
     console.error('Get split activity error:', error);
     return { success: false, error: 'Failed to fetch activity' };

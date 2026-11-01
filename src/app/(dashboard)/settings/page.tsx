@@ -3,7 +3,7 @@
 import { PageHeader, ControlGroup } from '@/components/ui/page-header';
 import { TriangleAlert as UiWarningIcon } from 'lucide-react';
 
-import { useState, useEffect, useRef, Suspense, useId } from 'react';
+import { useState, useEffect, useRef, Suspense, useId, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useSession } from '@/lib/auth-client';
 import { Card } from '@/components/ui/card';
@@ -46,7 +46,7 @@ const AccountPanel = dynamic(
 import type { TaxDefaults, SplitNotifyEvent } from '@/types';
 import { MdDownload, MdUpload, MdAccountBalanceWallet, MdAdd, MdCheck, MdGroup, MdCached, MdStorage, MdDeleteSweep } from 'react-icons/md';
 import { FaGithub } from 'react-icons/fa';
-import { notifyDataChanged } from '@/lib/hooks/use-data-refresh';
+import { notifyDataChanged, useDataRefresh } from '@/lib/hooks/use-data-refresh';
 
 /** Split push-notification events, in the order the Settings block lists them. */
 const SPLIT_NOTIFY_TOGGLES: { key: SplitNotifyEvent; label: string }[] = [
@@ -83,11 +83,13 @@ function SettingsPageInner() {
     // Categories state
     const [customCategories, setCustomCategories] = useState<string[]>([]);
     const [removedDefaults, setRemovedDefaults] = useState<string[]>([]);
+    const categoriesDraftDirty = useRef(false);
     const [newCategoryName, setNewCategoryName] = useState('');
     const [isSavingCategories, setIsSavingCategories] = useState(false);
 
     // Tax defaults state
     const [taxDefaults, setTaxDefaults] = useState<TaxDefaults>({ taxRate: 0, contributionsRate: 0, otherDeductions: 0 });
+    const taxDraftDirty = useRef(false);
     const [isSavingTax, setIsSavingTax] = useState(false);
 
     // Check-in reminder preference (default on)
@@ -101,6 +103,7 @@ function SettingsPageInner() {
     // Assume configured until told otherwise, so the "not configured" note never
     // flashes on load.
     const [splitNotifyConfigured, setSplitNotifyConfigured] = useState(true);
+    const preferencesGeneration = useRef(0);
 
     // App version
     const [appVersion, setAppVersion] = useState<string>('');
@@ -131,6 +134,26 @@ function SettingsPageInner() {
         ...customCategories,
     ];
 
+    const loadPreferences = useCallback(async () => {
+        const generation = ++preferencesGeneration.current;
+        try {
+            const result = await getUserPreferences();
+            if (generation !== preferencesGeneration.current || !result.success || !result.data) return;
+            if (!categoriesDraftDirty.current) {
+                setCustomCategories(result.data.customCategories ?? []);
+                setRemovedDefaults(result.data.removedDefaultCategories ?? []);
+            }
+            if (!taxDraftDirty.current && result.data.taxDefaults) {
+                setTaxDefaults(result.data.taxDefaults);
+            }
+            setCheckInReminders(result.data.checkInRemindersEnabled !== false);
+            setCheckInNotifications(result.data.checkInNotificationsEnabled === true);
+            setSplitNotifyPrefs(result.data.splitNotificationPrefs ?? {});
+        } catch (error) {
+            console.error('Failed to load settings preferences:', error);
+        }
+    }, []);
+
     useEffect(() => {
         async function loadSettings() {
             if (isAdmin) {
@@ -138,19 +161,6 @@ function SettingsPageInner() {
                 if (result.success && result.data) {
                     setSelfSignupEnabled(result.data.selfSignupEnabled);
                 }
-            }
-        }
-        async function loadPreferences() {
-            const result = await getUserPreferences();
-            if (result.success && result.data) {
-                setCustomCategories(result.data.customCategories ?? []);
-                setRemovedDefaults(result.data.removedDefaultCategories ?? []);
-                if (result.data.taxDefaults) {
-                    setTaxDefaults(result.data.taxDefaults);
-                }
-                setCheckInReminders(result.data.checkInRemindersEnabled !== false);
-                setCheckInNotifications(result.data.checkInNotificationsEnabled === true);
-                setSplitNotifyPrefs(result.data.splitNotificationPrefs ?? {});
             }
         }
         async function loadSplitNotifyStatus() {
@@ -166,10 +176,14 @@ function SettingsPageInner() {
             }
         }
         loadSettings();
-        loadPreferences();
+        void loadPreferences();
         loadSplitNotifyStatus();
         loadAppInfo();
-    }, [isAdmin]);
+    }, [isAdmin, loadPreferences]);
+
+    // Saved settings changed in another view/tab or while this page was away.
+    // Keep unsaved category and tax edits intact while refreshing other prefs.
+    useDataRefresh(() => loadPreferences());
 
     // Open the tab named in ?tab= (so links from other pages — and the user-menu
     // "Account" item — land on the right tab). tabKeys is the slug→index map for
@@ -554,6 +568,7 @@ function SettingsPageInner() {
                         label={cat}
                         removable
                         onRemove={() => {
+                            categoriesDraftDirty.current = true;
                             if (ITEM_CATEGORIES.includes(cat)) {
                                 setRemovedDefaults(prev => [...prev, cat]);
                             } else {
@@ -574,7 +589,10 @@ function SettingsPageInner() {
                                 key={cat}
                                 aria-label={`Restore ${cat}`}
                                 className="ui-badge min-h-11 border border-dashed cursor-pointer text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500"
-                                onClick={() => setRemovedDefaults(prev => prev.filter(c => c !== cat))}
+                                onClick={() => {
+                                    categoriesDraftDirty.current = true;
+                                    setRemovedDefaults(prev => prev.filter(c => c !== cat));
+                                }}
                             >
                                 <span className="p-chip-text">{cat}</span>
                             </button>
@@ -593,6 +611,7 @@ function SettingsPageInner() {
                         if (e.key === 'Enter' && newCategoryName.trim()) {
                             const name = newCategoryName.trim();
                             if (!activeCategories.includes(name)) {
+                                categoriesDraftDirty.current = true;
                                 setCustomCategories(prev => [...prev, name]);
                             }
                             setNewCategoryName('');
@@ -607,6 +626,7 @@ function SettingsPageInner() {
                     onClick={() => {
                         const name = newCategoryName.trim();
                         if (name && !activeCategories.includes(name)) {
+                            categoriesDraftDirty.current = true;
                             setCustomCategories(prev => [...prev, name]);
                         }
                         setNewCategoryName('');
@@ -622,6 +642,7 @@ function SettingsPageInner() {
                     try {
                         const result = await updateCategories(customCategories, removedDefaults);
                         if (result.success) {
+                            categoriesDraftDirty.current = false;
                             notifyDataChanged();
                             toast.success('Categories saved');
                         } else toast.error('Error', result.error || 'Failed to save categories');
@@ -650,7 +671,10 @@ function SettingsPageInner() {
                     </label>
                     <InputNumber inputId={`${uid}-default-tax-rate`}
                         value={taxDefaults.taxRate}
-                        onValueChange={e => setTaxDefaults(prev => ({ ...prev, taxRate: e.value ?? 0 }))}
+                        onValueChange={e => {
+                            taxDraftDirty.current = true;
+                            setTaxDefaults(prev => ({ ...prev, taxRate: e.value ?? 0 }));
+                        }}
                         suffix="%"
                         locale="fi-FI"
                         min={0}
@@ -666,7 +690,10 @@ function SettingsPageInner() {
                     </label>
                     <InputNumber inputId={`${uid}-default-contributions-rate`}
                         value={taxDefaults.contributionsRate}
-                        onValueChange={e => setTaxDefaults(prev => ({ ...prev, contributionsRate: e.value ?? 0 }))}
+                        onValueChange={e => {
+                            taxDraftDirty.current = true;
+                            setTaxDefaults(prev => ({ ...prev, contributionsRate: e.value ?? 0 }));
+                        }}
                         suffix="%"
                         locale="fi-FI"
                         min={0}
@@ -682,7 +709,10 @@ function SettingsPageInner() {
                     </label>
                     <InputNumber inputId={`${uid}-default-other-deductions`}
                         value={taxDefaults.otherDeductions}
-                        onValueChange={e => setTaxDefaults(prev => ({ ...prev, otherDeductions: e.value ?? 0 }))}
+                        onValueChange={e => {
+                            taxDraftDirty.current = true;
+                            setTaxDefaults(prev => ({ ...prev, otherDeductions: e.value ?? 0 }));
+                        }}
                         mode="currency"
                         currency={appContext?.accounts?.find(a => !a.isArchived)?.currency || 'EUR'}
                         locale="fi-FI"
@@ -701,6 +731,7 @@ function SettingsPageInner() {
                         try {
                             const result = await updateTaxDefaults(taxDefaults);
                             if (result.success) {
+                                taxDraftDirty.current = false;
                                 notifyDataChanged();
                                 toast.success('Tax defaults saved');
                             } else toast.error('Error', result.error || 'Failed to save tax defaults');

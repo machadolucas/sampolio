@@ -44,7 +44,7 @@ Consent (a time-boxed PSD2 authorization requiring SCA) is orchestrated by `src/
 
    **Requested validity** comes from the bank's own ceiling rather than a fixed guess: `findAspspInfo(name, country)` (`src/lib/bank/aspsp-info.ts`) reads `maximum_consent_validity` out of the cached `GET /aspsps` list, and `computeConsentValidUntil` (`src/lib/bank/consent-validity.ts`, pure) requests `min(bank max, CONSENT_MAX_REQUESTED_VALIDITY_DAYS)` (**365 days** — our own ceiling; there is no point asking for more than a year). When the lookup fails or the bank publishes no maximum, it falls back to `CONSENT_REQUESTED_VALIDITY_DAYS` (**180 days**), i.e. graceful degradation to the old behavior. The bank may still shorten what it grants. The observed maximum is persisted on the connection as `aspspMaxConsentValiditySeconds` (display/debug only — the Settings panel appends "· bank max Nd" to the consent line). `GET /aspsps` is an Enable Banking lookup, memory-cached per country for `ASPSP_INFO_CACHE_TTL_MS` (**6h**), and spends no ASPSP allowance; any failure returns `null` and never throws. Nordea FI publishes 180 days, so its request is unchanged.
 2. **SCA at the bank** — the user authenticates; the bank redirects to `ENABLE_BANKING_REDIRECT_URL`.
-3. **Callback** — `GET src/app/api/bank/callback/route.ts` (one of the app's two non-auth API routes, alongside the avatar image endpoint):
+3. **Callback** — `GET src/app/api/bank/callback/route.ts` (the consent-completion route; the API-route inventory is in [architecture.md](architecture.md) §3):
    - Requires an authenticated Sampolio session (same hostname, so the cookie is present); otherwise bounces to sign-in.
    - `?error=` → redirect to `/settings?bankError=sca_declined`; missing `code`/`state` → `bankError=missing_params`.
    - Redirect URLs are built against `externalBase()` — `AUTH_URL` first, then `x-forwarded-*` headers — because behind Caddy/Cloudflare the raw `request.url` is the internal bind address.
@@ -172,7 +172,7 @@ Every run is appended to the **audit log** (`appendBankSyncRun`, `src/lib/db/ban
 
 - **Cadence**: one `setInterval` tick every `SCHEDULER_TICK_MS = 30 min` (plus a first tick 15s after boot). A tick collects all users' `active` connections whose persisted `nextSyncDueAt` has passed (a process restart delays a sync by at most one tick), then runs them **least-recently-synced first** (`orderRunnableConnections`, pure/exported) so iteration order never systematically starves one household member.
 - **Rate limits**: the documented ASPSP allowance is ~`PER_ACCOUNT_DAILY_LIMIT = 4` *unattended* fetches/day per account — attended calls (manual "Refresh now", which sends the requester's IP as PSU headers) are exempt. The scheduler budgets `MAX_SCHEDULED_FETCHES_PER_DAY = 3` per **underlying account** — the in-memory counter (reset each UTC day) is keyed by `linkIdentityKey`, not the per-user link id, so two users' links onto the same joint account draw from one shared counter. `RESERVED_RETRY_FETCHES = 1` stays as headroom for unattended retry re-runs (the 1h transient backoff). Only accounts a run **actually fetched** draw budget (`skippedFresh` costs nothing), and a connection is budget-skipped only when an account that still *needs* a fetch has no budget left. Manual "Refresh now" (`refreshBankConnection` action) additionally enforces `MIN_MANUAL_REFRESH_INTERVAL_MS = 5 min` since the last sync.
-- **Cache staleness caveat**: the scheduler runs outside any request scope, where both `updateTag` and `revalidateTag` throw — `safeUpdateTags` (`sync.ts`, via `invalidateTags`) swallows it, so a background sync **cannot invalidate the `'use cache'` store**. Bank/snapshot cached reads therefore use the bounded `cacheLife('synced')` profile (`next.config.ts`: stale 60s / revalidate 300s / expire 3600s) so the UI catches up with the stored data within ~5 minutes. Request-scoped mutations (e.g. "Refresh now") still invalidate instantly via tags. Never give a background-mutated read the `indefinite` profile.
+- **Cache freshness**: background `safeUpdateTags` queues tags in the process-wide change journal. Visible authenticated windows receive a scoped notification and run `synchronizeDataChanges` before refetching; this expires the queued tags in request scope. `cacheLife('synced')` (stale 60s / revalidate 300s / expire 3600s) remains the fallback when live synchronization is unavailable. Transport and authorization are defined in [architecture.md](architecture.md) §13. Never give a background-mutated read the `indefinite` profile.
 
 ## 8. Data model & storage
 
@@ -254,6 +254,15 @@ offsets and appearance fallbacks follow [architecture.md](architecture.md) §17.
 - **Overview and Home**: the same consent-renewal / sync-failing attention banner (`src/components/bank/bank-attention-banner.tsx`, shared by `BannerStack` and `HomeDashboard`), driven by `getBankConnectionsNeedingAttention`; its action button routes to `/bank`, where the "Renew consent" button lives.
 - Cashflow `credit-card` and `bank-actual` lines deep-link to `/bank`.
 
+The selected account summary shows its successful `lastSyncedAt` through `formatDateTime`,
+or "Account not synced yet". A partial/error connection attempt uses `lastSyncAt`
+separately (`getLatestNonSuccessfulAttempt`), since one account can fail while others
+succeed. Settings also separates connection attempts from account success timestamps.
+Manual and background sync notifications refresh the page and connection panel;
+unsaved account-name drafts survive those refreshes. A successful sync only describes
+the data supplied by the bank API; a transaction visible in the bank app can still be
+absent from that feed.
+
 ## 12. Logging & privacy
 
 - **IBANs are never logged** and always masked in the UI via `maskIban` (`src/lib/bank-utils.ts`): `FI••••1234`.
@@ -294,7 +303,7 @@ additional identification basis, such as an IBAN, appears.
 | Sync run says `RATE_LIMITED` | ASPSP 429 / `ASPSP_RATE_LIMIT_EXCEEDED` | Automatic 6h backoff; scheduled budget is 3/day per **underlying account** (shared across users' links via `linkIdentityKey`); manual refreshes are attended and exempt |
 | Joint account synced by two users: one user's sync-run log shows `skippedFresh` / no new fetch | Cross-user fan-out — the other user's sync already fetched this cycle and wrote both copies (section 6) | Expected; data is current. A manual Refresh now always fetches |
 | Account connected but still shows its manual/starting balance | No sync has written a current-month `bank-sync` snapshot yet, or the link has no `linkedFinancialAccountId` | Set the linked account in Settings; run Refresh now; check the sync-run log |
-| Bank data visibly stale for a few minutes after a scheduled sync | Background writes can't `updateTag`; reads are on the `synced` cacheLife (revalidate 300s) | Expected — catches up within ~5 min; "Refresh now" updates instantly |
+| Bank data stays stale after a scheduled sync | Live stream or authenticated cache synchronization failed; `synced` cacheLife is the fallback | Check `/api/data-events` and `synchronizeDataChanges`; reconnect should refetch without a browser reload |
 | Retrospective/history shallower than expected; raising `BACKFILL_DAYS` did nothing | Deep history is only served in the ~1h fresh-session window; `syncCursor.backfilledThrough` is already set | **Reconnect** the connection — `reconcileLinks` clears the cursor and the post-SCA sync re-runs the deep backfill |
 | Sync run says `AUTH_FAILED` (generic 401/403) | Application authentication or access failed; this alone does not establish expired user consent | Check application credentials, JWT configuration, and access permissions; scheduling continues and repeated failures trigger the attention banner. Reconnect only when consent is explicitly expired or revoked |
 | Connection failing repeatedly without expiring | Non-expiry error (e.g. persistent 400) — status stays `active`, `consecutiveSyncFailures` grows | Banner appears at 3 consecutive failures; set `BANK_SYNC_VERBOSE=1` to see the API's raw (unsanitized) error detail in the logs |

@@ -138,6 +138,12 @@ The occurrence-override dialog lives in `modals/occurrence-override-dialog.tsx`.
 
 Rule: a shared component that calls a mutating server action announces success itself with `notifyDataChanged()` (it may be mounted anywhere — the global quick-add, the bank ledger, a page), and any view that shows server data subscribes with `useDataRefresh`. A parent callback that only refreshes its own state is not enough.
 
+`LiveData` in `AppLayout` supplies scoped server notifications to the same bus
+after its cache barrier (`docs/architecture.md` §13). Return the refetch promise
+from subscriptions so changes during a read queue another round. Guard initial
+and manually triggered reads against stale responses; preserve loaded content
+and form drafts. `EntityListDrawer` refreshes only its visible list, not open forms.
+
 ### Form Pattern
 All forms use React Hook Form with Zod validation:
 ```tsx

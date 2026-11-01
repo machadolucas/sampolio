@@ -11,7 +11,7 @@ import {
 } from '@/lib/db/salary-configs';
 import { recomputeSalaryLinkedTaxedIncomes } from '@/lib/db/taxed-income';
 import { deletePlannedOverridesForRecurringItem } from '@/lib/db/planned-items';
-import { updateTag } from 'next/cache';
+import { updateTag } from '@/lib/cache-tags';
 import { clearNullsInPatch } from '@/lib/patch-utils';
 import type { ApiResponse, SalaryConfig } from '@/types';
 

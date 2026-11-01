@@ -1,4 +1,11 @@
-import { revalidateTag, updateTag } from 'next/cache';
+import { revalidateTag, updateTag as nextUpdateTag } from 'next/cache';
+import { publishDataChanges } from './data-changes';
+
+/** Action-only invalidation plus cross-user/window publication after a write. */
+export function updateTag(tag: string): void {
+  nextUpdateTag(tag);
+  publishDataChanges([tag]);
+}
 
 let warnedNoScope = false;
 
@@ -11,18 +18,18 @@ let warnedNoScope = false;
  *   fall back to `revalidateTag(tag, { expire: 0 })` — the documented
  *   immediate-expiry form, legal in Route Handlers (`revalidateTag.md`).
  * - Outside any request scope (the background bank scheduler): neither form can
- *   work — both need Next's per-request work store (`revalidate()` throws
- *   "static generation store missing") — so the tags are skipped. Readers of
- *   background-mutated data use the bounded `synced` cacheLife instead.
+ *   work — both need Next's per-request work store. The change journal retains
+ *   the tags; synchronizeDataChanges expires them before notified views read.
+ *   The bounded `synced` cacheLife remains a fallback when live updates fail.
  *
  * The warning is logged once per process and never includes tag names (they
  * embed user ids).
  */
 export function invalidateTags(...tags: string[]): void {
-  let skipped = 0;
+  const skipped: string[] = [];
   for (const tag of tags) {
     try {
-      updateTag(tag);
+      nextUpdateTag(tag);
       continue;
     } catch {
       // Not in a server action — try the route-handler-safe form below.
@@ -30,13 +37,14 @@ export function invalidateTags(...tags: string[]): void {
     try {
       revalidateTag(tag, { expire: 0 });
     } catch {
-      skipped++;
+      skipped.push(tag);
     }
   }
-  if (skipped > 0 && !warnedNoScope) {
+  publishDataChanges(tags);
+  if (skipped.length > 0 && !warnedNoScope) {
     warnedNoScope = true;
     console.warn(
-      '[cache-tags] no request scope; cache tags not invalidated (reads fall back to their cacheLife window)'
+      '[cache-tags] no request scope; cache invalidation queued for the next authenticated synchronization'
     );
   }
 }

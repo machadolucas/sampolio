@@ -1,6 +1,6 @@
 'use server';
 
-import { updateTag } from 'next/cache';
+import { updateTag } from '@/lib/cache-tags';
 import packageJson from '../../../package.json';
 import { auth } from '@/lib/auth';
 import { cachedGetBankConnections } from '@/lib/db/cached';
