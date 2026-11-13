@@ -22,7 +22,7 @@ export default defineConfig({
     reducedMotion: "reduce",
   },
   webServer: {
-    command: `node scripts/browser-fixture.mjs ${process.env.SAMPOLIO_BROWSER_MODE === "serve" ? "serve" : "dev"}`,
+    command: `node scripts/browser-fixture.mjs ${process.env.SAMPOLIO_BROWSER_MODE === "serve-built" ? "serve-built" : process.env.SAMPOLIO_BROWSER_MODE === "serve" ? "serve" : "dev"}`,
     url: "http://localhost:4999/auth/signin",
     reuseExistingServer: false,
     stdout: "pipe",

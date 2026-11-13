@@ -198,6 +198,25 @@ the scripted form of this sequence.
   -k gui/$(id -u)/com.sampolio.app`. system: `SIGTERM` to the pid from
   `launchctl print system/com.sampolio.app` (readable without sudo), launchd
   respawns it. Both wait for a new pid and a 307/200 on `127.0.0.1:3999`.
+- **System-daemon artifact promotion:** `scripts/prod-service.sh hold` creates the
+  private `~/.sampolio/run/deploy-hold` flag, terminates only the pid reported by
+  `launchctl print system/com.sampolio.app`, and waits for that process and the
+  `:3999` listener to exit. Keep the loaded LaunchDaemon in place: KeepAlive starts
+  the updated wrapper, which validates its existing env file and Node path, then
+  waits at the hold before checking `node_modules` or the production build. Promote
+  the matching dependency tree and `.next-prod` while held, then run
+  `scripts/prod-service.sh release`; it removes the flag and waits for the service
+  to answer HTTP 307/200. `status` reports whether the hold flag exists. These
+  commands are system-domain only; they refuse GUI or unloaded jobs. If promotion
+  fails, restore the matching previous dependency tree and `.next-prod` **before**
+  releasing the hold. A hold timeout or promotion error leaves the flag in place;
+  inspect/repair the artifacts before release. The flag is not a secrets file and
+  contains no configuration. Tests may override its path with
+  `SAMPOLIO_DEPLOY_HOLD_FILE`; the wrapper also supports `SAMPOLIO_REPO_ROOT` and
+  `SAMPOLIO_ENV_FILE` for isolated subprocess tests.
+- **Hold-control tests:** run `node --test scripts/tests/maintenance-hold.test.mjs`.
+  They use temporary env files, build sentinels, mock launchd/curl/listener commands,
+  and a disposable child process; they do not access production data or keys.
 - **After changing env vars** (e.g. adding `ENABLE_BANKING_*` or
   `HA_WEBHOOK_URL` — see §9): gui: `kickstart` reuses the loaded job and does
   **not** re-read the plist — do a **full reload** once:
@@ -360,7 +379,11 @@ launchd plist also live outside the repo.
 Use a clean isolated worktree for `pnpm test:e2e:production`: it builds and starts
 with disposable data through `scripts/browser-fixture.mjs`. A worktree alone does
 not isolate `next build`/`next start` from environment credentials; use this harness,
-not production's environment or `.next-prod`. `pnpm test:e2e` uses the same fixture
+not production's environment. `SAMPOLIO_FIXTURE_DIST_DIR=.next-prod` selects an
+isolated production artifact directory; the default is `.next`.
+`SAMPOLIO_BROWSER_MODE=serve-built` serves a previously built fixture without
+rebuilding when invoking Playwright directly under the heavy-job guard.
+`pnpm test:e2e` uses the same fixture
 boundary with the development server. Reports, screenshots, auth state and bundle
 measurements remain ignored; never publish real-data fixtures.
 

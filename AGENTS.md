@@ -1,7 +1,7 @@
 # Sampolio — AI Agent Instructions
 
 This is a self-hosted personal-finance app: Next.js 16 App Router, TypeScript
-strict, app-owned shadcn/Base UI controls, Tailwind v4, Better Auth 1.7.12 (password + passkeys),
+strict, app-owned shadcn/Base UI controls, Tailwind v4, Better Auth 1.7.22 (password + passkeys),
 Zod/RHF, ECharts/Chart.js, and `date-fns`. Use `pnpm`. All data (users/auth
 and every financial entity, as JSON document rows) lives in one SQLCipher
 SQLite DB (`src/lib/db/sqlite/`). Enable Banking is optional, read-only, and documented in

@@ -12,7 +12,9 @@ in `src/components/AGENTS.md`).
 
 `loadPreferences` subscribes to shared data refreshes with generation guards.
 Unsaved category and tax-default drafts remain intact; `AppLayout` independently
-refreshes persisted display mode and mobile navigation preferences.
+refreshes persisted display mode and mobile navigation preferences. Reminder controls stay
+disabled until the first successful preference read, so an initial default cannot
+be toggled before the saved value arrives.
 
 ## Tabs
 

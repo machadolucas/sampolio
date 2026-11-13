@@ -104,6 +104,7 @@ function SettingsPageInner() {
     // flashes on load.
     const [splitNotifyConfigured, setSplitNotifyConfigured] = useState(true);
     const preferencesGeneration = useRef(0);
+    const [preferencesLoaded, setPreferencesLoaded] = useState(false);
 
     // App version
     const [appVersion, setAppVersion] = useState<string>('');
@@ -149,6 +150,7 @@ function SettingsPageInner() {
             setCheckInReminders(result.data.checkInRemindersEnabled !== false);
             setCheckInNotifications(result.data.checkInNotificationsEnabled === true);
             setSplitNotifyPrefs(result.data.splitNotificationPrefs ?? {});
+            setPreferencesLoaded(true);
         } catch (error) {
             console.error('Failed to load settings preferences:', error);
         }
@@ -422,6 +424,7 @@ function SettingsPageInner() {
                     inputId={`${uid}-settings-checkin-reminders`}
                     className="shrink-0"
                     checked={checkInReminders}
+                    disabled={!preferencesLoaded}
                     onChange={async (e) => {
                         const enabled = e.value ?? true;
                         setCheckInReminders(enabled);
@@ -449,7 +452,7 @@ function SettingsPageInner() {
                 <InputSwitch
                     inputId={`${uid}-settings-checkin-notifications`}
                     className="shrink-0"
-                    disabled={!checkInReminders}
+                    disabled={!preferencesLoaded || !checkInReminders}
                     checked={checkInNotifications}
                     onChange={async (e) => {
                         const enabled = e.value ?? false;

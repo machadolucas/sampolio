@@ -136,14 +136,24 @@ test("budget money commits on first submit and deletion awaits global confirmati
     const canvas = document.createElement("canvas");
     const context = canvas.getContext("2d")!;
     context.font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
-    return (
-      input.clientWidth -
-        parseFloat(style.paddingLeft) -
-        parseFloat(style.paddingRight) >=
-      context.measureText(input.value).width
-    );
+    return {
+      // Use the measured border box; text-input clientWidth in this browser
+      // already excludes padding, so subtracting it again understates space.
+      available: input.getBoundingClientRect().width
+        - parseFloat(style.borderLeftWidth) - parseFloat(style.borderRightWidth)
+        - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight),
+      required: context.measureText(input.value).width,
+      clientWidth: input.clientWidth,
+      rectWidth: input.getBoundingClientRect().width,
+      cssWidth: style.width,
+      boxSizing: style.boxSizing,
+      border: [style.borderLeftWidth, style.borderRightWidth],
+      padding: [style.paddingLeft, style.paddingRight],
+      font: context.font,
+      value: input.value,
+    };
   });
-  expect(readable).toBe(true);
+  expect(readable.available, JSON.stringify(readable)).toBeGreaterThanOrEqual(readable.required);
   await page.screenshot({
     path: test.info().outputPath("budget-quick-entry.png"),
   });

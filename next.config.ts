@@ -116,6 +116,8 @@ const nextConfig: NextConfig = {
   serverExternalPackages: ['bcryptjs', 'better-sqlite3'],
 
   experimental: {
+    // Keep production-server builds within the host resource budget.
+    cpus: 2,
     serverActions: {
       // The Settings data-import action receives a whole backup JSON in one
       // request; the 1 MB default is too small for a real data set.

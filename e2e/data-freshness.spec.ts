@@ -112,6 +112,7 @@ test('shared edits reach another open member while private changes stay scoped t
     await page.goto('/settings?tab=general');
     const reminders = page.getByRole('switch', { name: 'Monthly check-in reminders', exact: true });
     await expect(reminders).toBeVisible();
+    await expect(reminders).toBeEnabled();
     const reminderState = await reminders.isChecked();
     await reminders.click();
     await expect(reminders).toBeChecked({ checked: !reminderState });
@@ -126,6 +127,7 @@ test('shared edits reach another open member while private changes stay scoped t
     await expect(alexExpense).toBeVisible();
     await alexExpense.getByRole('button').first().click();
     const edit = page.getByRole('dialog', { name: 'Edit expense', exact: true });
+    const originalTitle = await edit.getByLabel('Description', { exact: true }).inputValue();
     await edit.getByLabel('Description', { exact: true }).fill(updatedTitle);
     await edit.getByRole('button', { name: 'Save', exact: true }).click();
     await expect(edit).toBeHidden();
@@ -139,6 +141,14 @@ test('shared edits reach another open member while private changes stay scoped t
     expect(received.slice(1).every((event) => /^[a-f0-9]{64}$/.test(event.revision))).toBe(true);
     await expectNoHorizontalOverflow(samPage);
     await expectNoHorizontalOverflow(page);
+
+    // The shared fixture is also used by later smoke checks. Restore the title
+    // through the same authenticated UI and verify the second member refreshes.
+    await alexExpense.getByRole('button').first().click();
+    await edit.getByLabel('Description', { exact: true }).fill(originalTitle);
+    await edit.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect(edit).toBeHidden();
+    await expect(samPage.locator(`[data-expense-id="${data.expenseId}"]`)).toContainText(originalTitle);
   } finally {
     await samContext.close();
   }

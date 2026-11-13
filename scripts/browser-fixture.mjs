@@ -2,7 +2,7 @@
 /** Isolated browser/build fixture: synthetic data and throwaway keys only. */
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -10,10 +10,15 @@ import { measureStaticBundles } from "./bundle-metrics.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const mode = process.argv[2] ?? "dev";
-if (!["dev", "build", "serve", "seed"].includes(mode))
-  throw new Error("Use browser-fixture.mjs dev|build|serve|seed");
+if (!["dev", "build", "serve", "serve-built", "seed"].includes(mode))
+  throw new Error("Use browser-fixture.mjs dev|build|serve|serve-built|seed");
 if (Number(process.versions.node.split(".")[0]) !== 26)
   throw new Error("Use the repository Node26 runtime");
+const distDir = process.env.SAMPOLIO_FIXTURE_DIST_DIR ?? ".next";
+if (![".next", ".next-prod"].includes(distDir))
+  throw new Error("SAMPOLIO_FIXTURE_DIST_DIR must be .next or .next-prod");
+if (mode === "serve-built" && !existsSync(join(root, distDir, "BUILD_ID")))
+  throw new Error("Build the selected synthetic fixture before serve-built");
 const envFiles = readdirSync(root).filter(
   (name) => name.startsWith(".env") && name !== ".env.example",
 );
@@ -43,7 +48,7 @@ Object.assign(env, {
   ENABLE_BANKING_BASE_URL: "",
   SAMPOLIO_DEV_EXTERNAL_APIS: "",
   DEV_AUTH_BYPASS: "",
-  NEXT_DIST_DIR: ".next",
+  NEXT_DIST_DIR: distDir,
   NEXT_TELEMETRY_DISABLED: "1",
 });
 // Let Next choose its own NODE_ENV; never inherit a production environment.
@@ -80,7 +85,7 @@ try {
   if (code === 0 && ["build", "serve"].includes(mode) && !stopping)
     code = await run(["build"]);
   if (code === 0 && ["build", "serve"].includes(mode)) {
-    const metrics = measureStaticBundles(join(root, ".next/static"));
+    const metrics = measureStaticBundles(join(root, distDir, "static"));
     writeFileSync(
       join(root, "test-results/synthetic-bundle.json"),
       JSON.stringify(metrics, null, 2),
@@ -91,7 +96,7 @@ try {
   }
   if (code === 0 && !stopping && !["build", "seed"].includes(mode)) {
     code = await run([
-      mode === "serve" ? "start" : "dev",
+      ["serve", "serve-built"].includes(mode) ? "start" : "dev",
       "-H",
       "127.0.0.1",
       "-p",

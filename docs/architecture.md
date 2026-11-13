@@ -9,28 +9,28 @@ mechanics live in [`features.md`](features.md), [`projections-and-reconciliation
 
 | Layer | Package | Version (package.json) |
 |---|---|---|
-| Framework | `next` | 16.4.3 (App Router, `cacheComponents: true`) |
+| Framework | `next` | 16.4.6 (App Router, `cacheComponents: true`) |
 | UI runtime | `react` / `react-dom` | 19.3.1 |
-| Language | `typescript` | ^6.0.3 (strict) |
-| Components | App-owned shadcn/Base UI source | `@base-ui/react` 1.9.0; `@tanstack/react-table` 9.3.1; `@daypicker/react` 10.0.2; Lucide 1.61.0 |
-| Styling | `tailwindcss` | ^4.3.3 (via `@tailwindcss/postcss`) |
-| Auth | `better-auth` + `@better-auth/passkey` | 1.7.12 exact (scrypt hashes; `bcryptjs` ^3.0.3 only verifies legacy imported hashes) |
+| Language | `typescript` | 6.0.3 (strict) |
+| Components | App-owned shadcn/Base UI source | `@base-ui/react` 1.9.0; `@tanstack/react-table` 9.3.1; `@daypicker/react` 10.0.2; Lucide 1.72.0 |
+| Styling | `tailwindcss` | 4.3.5 (via `@tailwindcss/postcss`) |
+| Auth | `better-auth` + `@better-auth/passkey` | 1.7.22 exact (scrypt hashes; `bcryptjs` 3.0.3 only verifies legacy imported hashes) |
 | Auth DB | `drizzle-orm` 0.45.4 + `better-sqlite3` → `npm:better-sqlite3-multiple-ciphers@13.0.3` | SQLCipher-encrypted SQLite (`drizzle-kit` 0.31.11 generates migrations only) |
-| Validation | `zod` | ^4.6.7 |
-| Forms | `react-hook-form` ^7.91.0 + `@hookform/resolvers` ^6.0.0 |
-| Charts | `echarts` ^6.1.0 (+ `echarts-for-react` ^3.0.6), `chart.js` ^4.6.1 with `react-chartjs-2` 5.3.1 |
-| Avatar crop | `react-easy-crop` | ^6.2.4 (lazy-loaded in the avatar editor) |
-| Dates | `date-fns` | ^4.4.0 |
-| JWT (bank API) | `jose` | ^6.2.13 (RS256 for Enable Banking) |
-| IDs | `uuid` | ^14.0.3 |
-| Tests | `vitest` 5.0.5, `@testing-library/react` ^16.3.3, `jsdom` ^30.1.3 |
+| Validation | `zod` | 4.6.7 |
+| Forms | `react-hook-form` 7.92.0 + `@hookform/resolvers` 7.0.6 |
+| Charts | `echarts` 6.1.0 (+ `echarts-for-react` 3.0.6), `chart.js` 4.6.1 with `react-chartjs-2` 5.3.1 |
+| Avatar crop | `react-easy-crop` | 6.2.5 (lazy-loaded in the avatar editor) |
+| Dates | `date-fns` | 4.4.0 |
+| JWT (bank API) | `jose` | 6.2.17 (RS256 for Enable Banking) |
+| IDs | `uuid` | 14.0.3 |
+| Tests | `vitest` 5.1.0, `@testing-library/react` 16.3.3, `jsdom` 31.0.0 |
 
-Package manager: **pnpm 12.15.0** (`packageManager` field). Node: **>= 26** (`engines`; `.nvmrc` = `v26`).
+Package manager: **pnpm 12.18.0** (`packageManager` field). Node: **>= 26** (`engines`; `.nvmrc` = `v26`).
 Persistence is one SQLCipher-encrypted SQLite file (`${DATA_DIR}/sampolio.db`) holding the
 auth tables and every financial entity as a JSON document row (§6, §9). No external
 database server.
 
-Compatibility bounds: ESLint 9 and TypeScript 6 remain within the lint plugins' supported peer ranges. Better Auth and passkey are exactly paired at 1.7.12; dependency installation retains pnpm's minimum-release-age safeguard. SQLCipher alias and native-module externalization remain unchanged.
+Compatibility bounds: ESLint 9 and TypeScript 6 remain within the lint plugins' supported peer ranges. Better Auth and passkey are exactly paired at 1.7.22; dependency installation retains a strict 24-hour minimum release age. SQLCipher alias and native-module externalization remain unchanged.
 
 ## 2. Runtime topology
 

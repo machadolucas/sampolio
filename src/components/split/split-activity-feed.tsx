@@ -8,8 +8,8 @@ import { formatCents, formatDayMonth } from '@/lib/constants';
 import type { Currency, SplitActivityEvent } from '@/types';
 
 function netLabel(cents: number, currency: Currency): { text: string; cls: string } {
-  if (cents > 0) return { text: `you lent ${formatCents(cents, currency)}`, cls: 'text-green-600 dark:text-green-400' };
-  if (cents < 0) return { text: `you borrowed ${formatCents(-cents, currency)}`, cls: 'text-orange-600 dark:text-orange-400' };
+  if (cents > 0) return { text: `you lent ${formatCents(cents, currency)}`, cls: 'text-green-800 dark:text-green-400' };
+  if (cents < 0) return { text: `you borrowed ${formatCents(-cents, currency)}`, cls: 'text-orange-800 dark:text-orange-400' };
   return { text: 'not involved', cls: 'text-muted-foreground' };
 }
 

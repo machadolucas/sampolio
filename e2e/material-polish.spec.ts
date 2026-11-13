@@ -14,7 +14,7 @@ for (const theme of ['light', 'dark'] as const) {
       await page.goto('/bank');
       const rail = page.getByRole('region', { name: 'Bank and account selection' });
       const scroll = page.locator('[data-slot="bank-account-scroll"]');
-      await expect(scroll.getByRole('button')).toHaveCount(4);
+      await expect(scroll.getByRole('button')).toHaveCount(5);
       const bounds = (await scroll.boundingBox())!;
       const railBounds = (await rail.boundingBox())!;
       expect(bounds.x).toBeGreaterThan(railBounds.x);

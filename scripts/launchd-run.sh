@@ -21,8 +21,10 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(dirname "$SCRIPT_DIR")"
+REPO_ROOT_OVERRIDE="${SAMPOLIO_REPO_ROOT:-}"
+REPO_ROOT="${REPO_ROOT_OVERRIDE:-$(dirname "$SCRIPT_DIR")}"
 ENV_FILE="${SAMPOLIO_ENV_FILE:-$HOME/.sampolio/launchd.env}"
+DEPLOY_HOLD_OVERRIDE="${SAMPOLIO_DEPLOY_HOLD_FILE:-}"
 
 fatal() { echo "launchd-run: FATAL: $*" >&2; exit 78; }
 
@@ -54,6 +56,15 @@ export NODE_ENV="${NODE_ENV:-production}"
 export NEXT_DIST_DIR="${NEXT_DIST_DIR:-.next-prod}"
 export PORT="${PORT:-3999}"
 export HOSTNAME="${HOSTNAME:-127.0.0.1}"
+
+# Deployment can hold the loaded KeepAlive daemon while matching dependencies
+# and build artifacts are promoted. The default path is fixed under ~/.sampolio
+# so it does not depend on the app's data directory or change with env files.
+DEPLOY_HOLD_FILE="${DEPLOY_HOLD_OVERRIDE:-$HOME/.sampolio/run/deploy-hold}"
+[ ! -L "$DEPLOY_HOLD_FILE" ] || fatal "deploy hold path must not be a symlink"
+while [ -e "$DEPLOY_HOLD_FILE" ]; do
+    sleep 2
+done
 
 cd "$REPO_ROOT"
 [ -f "node_modules/next/dist/bin/next" ] || fatal "Next.js is not installed in $REPO_ROOT (run ./scripts/server-deploy.sh)"
