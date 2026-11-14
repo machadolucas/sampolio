@@ -66,6 +66,8 @@ import {
   isBankSyncVerbose,
 } from './constants';
 import { fetchAllAccountTransactionPages } from './transaction-pagination';
+import { hasTransactionReferenceDrift } from './reference-drift';
+import { isReferenceReviewRequired } from '@/lib/bank-sync-display';
 
 // ---------- per-connection in-process lock ----------
 const inFlight = new Map<string, Promise<BankSyncRun>>();
@@ -335,6 +337,7 @@ async function doRunSync(
   // to look for siblings — a run with no such link (nothing shared, or all
   // fetches skip-fresh) never touches this.
   let siblingScanPromise: Promise<{ userId: string; connection: BankConnection }[]> | null = null;
+  let siblingReviewPersistenceFailed = false;
   function getAllUserConnectionsOnce(): Promise<{ userId: string; connection: BankConnection }[]> {
     if (!siblingScanPromise) {
       siblingScanPromise = (async () => {
@@ -362,6 +365,7 @@ async function doRunSync(
     primaryLink: BankAccountLink;
     incoming: BankTransaction[];
     balances: MappedBalance[];
+    bookedWindow: FetchWindow;
     // Undefined when the primary fetch covered booked rows only — a sibling must
     // not prune pendings on the strength of a fetch that never asked for them.
     pruneWindow: FetchWindow | undefined;
@@ -390,6 +394,7 @@ async function doRunSync(
 
       const updatedSiblingLinks = [...siblingConn.linkedAccounts];
       const siblingTags = new Set<string>();
+      let referenceReviewRequired = false;
 
       for (const { l: siblingLink, i } of matches) {
         try {
@@ -404,6 +409,9 @@ async function doRunSync(
             ...t,
             linkedAccountId: siblingLink.id,
           }));
+          if (hasTransactionReferenceDrift(existing, siblingIncoming, params.bookedWindow)) {
+            throw new BankApiError('TRANSACTION_REFERENCE_CHANGED', 'Bank data needs review');
+          }
           const { merged } = mergeTransactions(
             existing,
             siblingIncoming,
@@ -449,6 +457,9 @@ async function doRunSync(
             if (anchored) siblingTags.add(`user:${siblingUserId}:reconciliation`);
           }
         } catch (err) {
+          if (err instanceof BankApiError && isReferenceReviewRequired(err.code)) {
+            referenceReviewRequired = true;
+          }
           console.error(
             `[bank-sync] fan-out to sibling link failed (${siblingConn.aspspName}/${siblingLink.accountRole}):`,
             redactBankError(err)
@@ -459,6 +470,7 @@ async function doRunSync(
       try {
         await updateBankConnection(siblingUserId, siblingConn.id, {
           linkedAccounts: updatedSiblingLinks,
+          ...(referenceReviewRequired ? { lastError: 'TRANSACTION_REFERENCE_CHANGED' } : {}),
         });
         // Keep the memoized scan current: a later account in this same run can
         // fan out to another link on this SAME sibling connection, and its
@@ -469,6 +481,7 @@ async function doRunSync(
         siblingTags.add(`user:${siblingUserId}:bank-connection:${siblingConn.id}`);
         safeUpdateTags([...siblingTags]);
       } catch (err) {
+        if (referenceReviewRequired) siblingReviewPersistenceFailed = true;
         console.error('[bank-sync] fan-out connection persist failed:', redactBankError(err));
       }
     }
@@ -600,6 +613,13 @@ async function doRunSync(
       ]);
       if (collapsed > 0) result.duplicatesCollapsed = collapsed;
 
+      // Compare only after every page succeeded. A suspected replacement is
+      // ambiguous, not permission to merge two booked purchases. Preserve this
+      // account's ledger, balances, anchor and cursor until it can be reviewed.
+      if (hasTransactionReferenceDrift(prior, incoming, { fromDate, toDate: today })) {
+        throw new BankApiError('TRANSACTION_REFERENCE_CHANGED', 'Bank data needs review');
+      }
+
       // Reconcile against the fetched window: absorb overlap AND prune stale
       // pendings the bank no longer reports in [fromDate, today]. Only when the
       // PDNG set was actually fetched — a booked-only fetch says nothing about
@@ -675,6 +695,7 @@ async function doRunSync(
             primaryLink: current,
             incoming,
             balances,
+            bookedWindow: { fromDate, toDate: today },
             pruneWindow: pendingFetchOk ? { fromDate, toDate: today } : undefined,
           });
         } catch (err) {
@@ -709,6 +730,11 @@ async function doRunSync(
   // ---- aggregate status + next-due scheduling ----
   const failed = run.perAccount.filter((r) => r.error).length;
   run.status = failed === 0 ? 'ok' : anySuccess ? 'partial' : 'error';
+  if (siblingReviewPersistenceFailed) {
+    // Report a lost sibling warning on the initiating connection, without PII.
+    run.error = 'TRANSACTION_REFERENCE_CHANGED';
+    run.status = anySuccess ? 'partial' : 'error';
+  }
   run.finishedAt = new Date().toISOString();
 
   let nextSyncDueAt: string | undefined;
@@ -726,7 +752,12 @@ async function doRunSync(
     linkedAccounts: updatedLinks,
     lastSyncAt: nowIso,
     lastSyncStatus: run.status,
-    lastError: run.perAccount.find((r) => r.error)?.error,
+    // An unrelated/skip-fresh sync is not a review. Maintenance clears this
+    // warning only after inspecting and reconciling the stored history.
+    lastError: (isReferenceReviewRequired(connection.lastError) ? connection.lastError : undefined)
+      ?? run.error
+      ?? run.perAccount.find((r) => isReferenceReviewRequired(r.error))?.error
+      ?? run.perAccount.find((r) => r.error)?.error,
     nextSyncDueAt,
     // Streak of non-ok runs — drives the Overview "keeps failing" banner. Reset
     // on a clean sync so a one-off transient (e.g. a single 400) never alarms.

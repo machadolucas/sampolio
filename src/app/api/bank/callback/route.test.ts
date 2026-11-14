@@ -28,7 +28,7 @@ describe('bank callback PSU context', () => {
     const response = await GET(
       callback({ 'cf-connecting-ip': '203.0.113.7', 'x-forwarded-for': '10.0.0.1, 203.0.113.7', 'user-agent': UA }),
     );
-    expect(response.headers.get('location')).toBe('https://sampolio.example.com/settings?bankConnected=Example%20Bank');
+    expect(response.headers.get('location')).toBe('https://sampolio.example.com/settings?tab=banking&bankConnected=Example%20Bank');
     expect(mocks.completeConnection).toHaveBeenCalledWith('user-alex', 'abc', 'xyz', {
       psuIp: '203.0.113.7',
       psuUserAgent: UA,
@@ -50,5 +50,31 @@ describe('bank callback PSU context', () => {
       psuIp: undefined,
       psuUserAgent: undefined,
     });
+  });
+});
+
+describe('bank callback outcomes', () => {
+  it('redirects cancellation and technical provider errors without exposing provider text', async () => {
+    for (const [error, expected] of [['access_denied', 'cancelled'], ['sensitive-provider-detail', 'provider_failed']]) {
+      const response = await GET(new NextRequest(`http://localhost/api/bank/callback?error=${error}&state=xyz`));
+      expect(response.headers.get('location')).toBe(`https://sampolio.example.com/settings?tab=banking&bankError=${expected}`);
+      expect(response.headers.get('location')).not.toContain(error);
+    }
+    expect(mocks.completeConnection).not.toHaveBeenCalled();
+  });
+
+  it('requires authentication and rejects missing or unknown state', async () => {
+    mocks.auth.mockResolvedValueOnce(null);
+    expect((await GET(callback({}))).headers.get('location')).toBe('https://sampolio.example.com/auth/signin?callbackUrl=%2Fsettings%3Ftab%3Dbanking');
+    expect((await GET(new NextRequest('http://localhost/api/bank/callback?code=abc'))).headers.get('location')).toContain('bankError=missing_params');
+    mocks.completeConnection.mockResolvedValueOnce(null);
+    expect((await GET(callback({}))).headers.get('location')).toContain('bankError=invalid_state');
+  });
+
+  it('returns a safe failure on exchange or network error', async () => {
+    mocks.completeConnection.mockRejectedValueOnce(new Error('sensitive-provider-detail'));
+    const response = await GET(callback({}));
+    expect(response.headers.get('location')).toBe('https://sampolio.example.com/settings?tab=banking&bankError=connect_failed');
+    expect(response.headers.get('location')).not.toContain('sensitive-provider-detail');
   });
 });

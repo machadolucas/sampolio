@@ -43,15 +43,15 @@ Consent (a time-boxed PSD2 authorization requiring SCA) is orchestrated by `src/
 1. **Begin** — `beginConnection(userId, aspspName, aspspCountry)` creates a `pending` `BankConnection`, mints a single-use CSRF `state` (32 random bytes hex), calls `POST /auth` with a **per-bank `access.valid_until`**, stores `{ state, authorizationId }` in the connection's session-secret file, and returns the bank's SCA URL for the browser redirect.
 
    **Requested validity** comes from the bank's own ceiling rather than a fixed guess: `findAspspInfo(name, country)` (`src/lib/bank/aspsp-info.ts`) reads `maximum_consent_validity` out of the cached `GET /aspsps` list, and `computeConsentValidUntil` (`src/lib/bank/consent-validity.ts`, pure) requests `min(bank max, CONSENT_MAX_REQUESTED_VALIDITY_DAYS)` (**365 days** — our own ceiling; there is no point asking for more than a year). When the lookup fails or the bank publishes no maximum, it falls back to `CONSENT_REQUESTED_VALIDITY_DAYS` (**180 days**), i.e. graceful degradation to the old behavior. The bank may still shorten what it grants. The observed maximum is persisted on the connection as `aspspMaxConsentValiditySeconds` (display/debug only — the Settings panel appends "· bank max Nd" to the consent line). `GET /aspsps` is an Enable Banking lookup, memory-cached per country for `ASPSP_INFO_CACHE_TTL_MS` (**6h**), and spends no ASPSP allowance; any failure returns `null` and never throws. Nordea FI publishes 180 days, so its request is unchanged.
-2. **SCA at the bank** — the user authenticates; the bank redirects to `ENABLE_BANKING_REDIRECT_URL`.
+2. **SCA at the bank** — the user authenticates; the bank redirects to `ENABLE_BANKING_REDIRECT_URL`. The connect dialog explains that older history may require another authentication. `startAuthorization` omits `access.transactions_extended_history`, preserving the provider’s default of requesting extended history where available.
 3. **Callback** — `GET src/app/api/bank/callback/route.ts` (the consent-completion route; the API-route inventory is in [architecture.md](architecture.md) §3):
    - Requires an authenticated Sampolio session (same hostname, so the cookie is present); otherwise bounces to sign-in.
-   - `?error=` → redirect to `/settings?bankError=sca_declined`; missing `code`/`state` → `bankError=missing_params`.
+   - Every result opens `/settings?tab=banking` so the lazily mounted Banking panel can display feedback. `bankCallbackError` (`src/lib/bank/connection-feedback.ts`) maps `access_denied` to `bankError=cancelled` (informational toast), other provider errors to `provider_failed`; missing `code`/`state` becomes `missing_params`. `bankConnectionFeedback` uses app-owned messages, never raw provider error text. The panel removes only callback parameters, retaining unrelated URL/history state.
    - Redirect URLs are built against `externalBase()` — `AUTH_URL` first, then `x-forwarded-*` headers — because behind Caddy/Cloudflare the raw `request.url` is the internal bind address.
    - Calls `completeConnection(userId, code, state, { psuIp, psuUserAgent })` with the `psuContextFrom` context (section 3, PSU headers).
 4. **Complete** — `completeConnection` (`connect.ts`):
    - **CSRF/replay check**: `findConnectionByState` (`src/lib/db/bank-connections.ts`) matches the `state` against this user's stored session secrets; no match → `null` → `bankError=invalid_state`.
-   - Exchanges the code via `POST /sessions`; the response is validated with `sessionResponseSchema` (`src/lib/schemas/bank.schema.ts`) — only `session_id` and `access.valid_until` are load-bearing; a parse failure marks the connection `status: 'error'` / `lastError: 'BAD_RESPONSE'`.
+   - Exchanges the code via `POST /sessions`; the response is validated with `sessionResponseSchema` (`src/lib/schemas/bank.schema.ts`) — only `session_id` and `access.valid_until` are load-bearing; a parse failure throws `BAD_RESPONSE` and produces failure feedback. An initial connection is marked `status: 'error'` / `lastError: 'BAD_RESPONSE'`; a renewal preserves the previous live session, connection and cursor. No invalid response is announced as connected.
    - Maps the session's accounts (`mapSessionAccounts`) and merges them with existing links via `reconcileLinks` (section 5).
    - **Burns the state**: rewrites the session-secret file with the live `sessionId` and a fresh random state, so the same callback URL cannot be replayed.
    - Marks the connection `active`, sets `consentGrantedAt` / `consentExpiresAt` (the returned `access.valid_until`, falling back to now + 180 days) and `nextSyncDueAt = now`.
@@ -59,7 +59,7 @@ Consent (a time-boxed PSD2 authorization requiring SCA) is orchestrated by `src/
 
 **Cache invalidation in the callback**: the local `invalidate()` helper goes through `invalidateTags` (`src/lib/cache-tags.ts`) — `updateTag` works only in server actions and throws inside a GET route handler, so there it falls back to `revalidateTag(tag, { expire: 0 })`, expiring the connection, ledger and snapshot reads immediately. `invalidateTags` never throws, so invalidation can never abort the flow before the initial backfill runs.
 
-**Expiry surfacing**: `getConsentExpiryInfo` (`src/lib/bank-utils.ts`) computes `{ expired, expiringSoon, daysUntilExpiry }` with a warning window of `CONSENT_EXPIRY_WARNING_DAYS = 14`. `getBankConnectionsNeedingAttention` (`src/lib/actions/bank.ts`) feeds the Overview reconnect banner, also flagging connections whose `consecutiveSyncFailures >= SYNC_FAILURE_ALERT_THRESHOLD` (**3**) — non-expiry failures never flip `status`, so the streak is what surfaces a stuck connection.
+**Expiry surfacing**: `getConsentExpiryInfo` (`src/lib/bank-utils.ts`) computes `{ expired, expiringSoon, daysUntilExpiry }` with a warning window of `CONSENT_EXPIRY_WARNING_DAYS = 14`. `getBankConnectionsNeedingAttention` (`src/lib/actions/bank.ts`) feeds the Overview reconnect banner, also flagging connections whose `consecutiveSyncFailures >= SYNC_FAILURE_ALERT_THRESHOLD` (**3**). An unresolved `TRANSACTION_REFERENCE_CHANGED` warning surfaces immediately through `isSyncFailing`, with a **Review bank data** action instead of a reconnect recommendation. Non-expiry failures never flip `status`.
 
 ## 5. Reconnect / consent renewal
 
@@ -121,7 +121,35 @@ Per-bank reality (live probe, 2026-07-28): **Nordea** serves PDNG rows — `entr
 - **Pending → booked promotion**: an incoming booked row with a real reference supersedes an earlier synthetic-keyed pending row with the same content, preserving `id`/`firstSeenAt` and carrying `transactionDate` (falling back to the pending's `bookingDate`, i.e. the purchase date).
 - **Fuzzy pending → booked promotion**: a booked row that matched no exact key is matched against stored pendings by amount+currency with the pending dated within `[booked − PENDING_BOOKING_MATCH_MAX_LAG_DAYS (7), booked + PENDING_BOOKING_MATCH_MAX_LEAD_DAYS (1)]` — one-to-one greedy, name-affinity preferred, nearest date as tie-break, and never a pending the same fetch still reports. This catches banks that rewrite the reference/counterparty on booking, preserving `id`/`firstSeenAt` and carrying the purchase date into `transactionDate`.
 - **Stale-pending pruning** (`mergeTransactions(..., window)`): a fetch that asked for pendings returns the bank's authoritative view of `[fromDate, today]`, so any stored **pending** row inside it that the fetch did not corroborate has booked-under-another-key or been cancelled and is **pruned**. Booked rows and rows outside the window are never touched. The `window` is passed **only when the PDNG fetch ran and succeeded** — a booked-only fetch must not prune pendings it never asked about (and a failed/partial fetch skips the write entirely). The removed count is logged and recorded per-account (`txRemoved`).
-- The merge is idempotent — re-fetching an overlapping window never duplicates rows — which is what makes the incremental overlap and the reconnect re-backfill safe.
+- The merge is idempotent for stable transaction identities; provider reference changes require the guard below.
+
+### Booked-reference safeguards
+
+`hasTransactionReferenceDrift` (`src/lib/bank/reference-drift.ts`) checks complete
+fetched pages before `mergeTransactions`, both for the primary link and each
+shared-account sibling. A stored booked reference must disappear from the incoming
+set and a new booked reference must appear in the same account/window with the
+same full booking date, integer-cent amount, currency and every mapped optional
+transaction detail. At least one counterparty, remittance or structured reference
+field must contain text. Pending promotion and two purchases whose distinct
+references both remain present are unaffected. No amount/date-only merge occurs.
+
+A suspected replacement aborts that link’s import before ledger, balance, anchor,
+last-success timestamp or cursor writes. Other accounts can proceed. Only the
+PII-free `TRANSACTION_REFERENCE_CHANGED` code enters run/connection metadata;
+Bank, Settings, Home and Overview explain that saved data was preserved and review
+is needed. A sibling-only detection preserves the sibling’s data and records its
+warning; if that warning cannot be saved, the initiating run reports a partial/error
+result with the same code. Ordinary syncs and consent renewal retain the connection
+warning: success elsewhere is not evidence of a completed review.
+
+This is detection, not historical repair. Changed payloads, sparse rows without
+identifying text, and duplicates already stored are outside the guard. A missing
+old reference can also reflect an incomplete bank-side result rather than a real
+replacement. Review affected history against authoritative bank records before
+any maintenance; preserve transaction IDs used by Split links, and clear the
+connection’s review marker only after resolving the finding. There is no automatic
+merge or user-facing dismiss/repair action.
 
 ### Balances & auto-anchoring
 
@@ -153,7 +181,7 @@ Net effect for a joint account: whichever user's sync fires first fetches; the o
 
 ### Run status, backoff, audit log
 
-Aggregate `run.status` is `ok` (no per-account errors), `partial` (some), or `error` (all failed). `nextSyncDueAt` scheduling after a run:
+Aggregate `run.status` is `ok` (no per-account errors), `partial` (some), or `error` (all failed). Failure to persist a sibling reference-review warning also produces `partial`/`error` and a run-level code. An unresolved connection review marker can coexist with a later successful run; it is not cleared by that run. `nextSyncDueAt` scheduling after a run:
 
 | Outcome | Next sync due |
 |---|---|
@@ -282,19 +310,18 @@ provider-side updates, not an application SDK dependency to upgrade. The RSA
 application credential is distinct from the provider's bank-facing PSD2
 certificates; do not change JWT signing to follow core cryptographic enum changes.
 
-Provider mapping changes can still affect stored data. In particular, if a bank
-changes a **booked** transaction's `entry_reference`, refetching that history can
-add a second row: current dedup refreshes by key and only reconciles changed keys
-for pending-to-booked promotion. The [core changelog](https://enablebanking.com/docs/core/latest#0-16-7---2026-08-29)
-records reference changes for N26 and Landsbankinn. Assess affected-bank history
-before a manual repair; do not merge booked rows by amount/date alone or force a
-reconnect as a generic cure. No automatic historical-reference migration is
-performed. Account identification hash sets already support matching when an
+Provider mapping changes can still affect stored data. The booked-reference guard
+(section 6) preserves the affected account when the reference changes but the
+payload still matches exactly. It does not migrate historical identities or
+merge duplicates already stored. Assess affected-bank history before manual
+maintenance; do not merge booked rows by amount/date alone or force a reconnect
+as a generic cure. Account identification hash sets support matching when an
 additional identification basis, such as an IBAN, appears.
 
 | Symptom | Cause | Fix / where to look |
 |---|---|---|
 | Settings shows "not configured", no Connect button works | One of the three `ENABLE_BANKING_*` env vars missing — `getBankConfig()` returns null | Set the env vars ([operations.md](operations.md)); scheduler logs `[bank-scheduler] Enable Banking not configured — scheduler idle` |
+| Bank data needs review / `TRANSACTION_REFERENCE_CHANGED` | A complete fetch contains a suspected booked-reference replacement | The affected account is preserved. Review history before maintenance; ordinary syncs/reconnect do not clear the warning. See section 6. |
 | Syncs stopped; connection shows expired or revoked; Overview/Home banner | Consent past `consentExpiresAt`, bank returned `EXPIRED_SESSION`/`CLOSED_SESSION`/`REVOKED_SESSION`, or the session status read during the identity backfill was terminal (section 6) — `nextSyncDueAt` is cleared, scheduler skips it | User must **Reconnect**/"Renew consent" (`/bank` or Settings → Accounts & Banking); renewal keeps all links/config |
 | Consent granted for a shorter or longer period than expected | We request `min(bank max, 365d)` from `GET /aspsps` `maximum_consent_validity`, falling back to 180d when that lookup fails or the bank publishes none — and the bank may still grant less than asked | Compare "consent valid until" with the "· bank max Nd" note on the same line in Settings → Accounts & Banking; the granted `access.valid_until` is always authoritative. A stale cached ASPSP list clears after `ASPSP_INFO_CACHE_TTL_MS` (6h) or a restart |
 | "Just refreshed — please wait a few minutes" on Refresh now / `/bank`'s Refresh | `MIN_MANUAL_REFRESH_INTERVAL_MS` (5 min) since `lastSyncAt` not yet elapsed | Wait; the scheduled sync also runs every ~8h |
@@ -310,3 +337,9 @@ additional identification basis, such as an IBAN, appears.
 | Duplicate-looking transactions suspected | Same-content dupes are deduped by `entry_reference` / synthetic key (idempotent merge); a pending whose booked twin was rewritten (e.g. counterparty gains an `UNKNOWN*` prefix) is fuzzy-promoted (amount+currency+date window) or pruned once a pending-inclusive fetch re-covers it | Check `dedupKey`s in the ledger data; a lingering pending clears on the next PDNG-successful sync whose window includes it (within `PENDING_RECONCILE_LOOKBACK_DAYS`); see `src/lib/bank/dedup.ts` tests |
 | No pending ("reserved") transactions for a bank; ledger dates lag the bank app by 1–3 days | The ASPSP doesn't serve them: S-Pankki returns zero rows under every `transaction_status` and no `transaction_date`/`value_date` on booked rows (probe 2026-07-28) | Nothing app-side — bank-API limitation. Nordea/OP serve the data and get pending rows + purchase-date display |
 | Pending rows appear on manual refresh but seem stale later in the day | Unattended (scheduled) runs fetch PDNG only on the first sync of the UTC day (`shouldFetchPending`) to stay within the 4/day unattended allowance | Expected; a manual Refresh now always re-fetches pendings, and a booked twin fuzzy-promotes the stale pending on any run |
+
+Focused regression coverage: `reference-drift.test.ts`, `sync-pagination.test.ts`,
+`connect.test.ts`, callback route tests, and bank feedback/banner component tests.
+`e2e/bank-feedback.spec.ts` checks callback messages and responsive review warnings
+in Chromium; `SAMPOLIO_FIXTURE_REFERENCE_REVIEW=1` seeds the warning only in the
+isolated synthetic browser fixture (`e2e/seed.ts`).

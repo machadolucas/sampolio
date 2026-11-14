@@ -27,6 +27,7 @@ import { createSplitGroup, addExpense } from "@/lib/db/split-groups";
 import {
   createBankConnection,
   setConnectionLinkedAccounts,
+  updateBankConnection,
 } from "@/lib/db/bank-connections";
 import { writeBankTransactions } from "@/lib/db/bank-transactions";
 import { updateUserPreferences } from "@/lib/db/user-preferences";
@@ -215,6 +216,13 @@ async function seed() {
     status: "active",
   });
   const linkedAccountId = uuidv4();
+  if (process.env.SAMPOLIO_FIXTURE_REFERENCE_REVIEW === '1') {
+    await updateBankConnection(alex.id, connection.id, {
+      lastError: 'TRANSACTION_REFERENCE_CHANGED',
+      lastSyncStatus: 'error',
+      lastSyncAt: timestamp,
+    });
+  }
   const creditCardAccountId = uuidv4();
   await setConnectionLinkedAccounts(alex.id, connection.id, [
     {

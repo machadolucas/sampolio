@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { getLatestNonSuccessfulAttempt } from './bank-sync-display';
+import { getLatestNonSuccessfulAttempt, isReferenceReviewRequired } from './bank-sync-display';
 
 describe('getLatestNonSuccessfulAttempt', () => {
+  it('recognizes only the app-owned reference review error', () => {
+    expect(isReferenceReviewRequired('TRANSACTION_REFERENCE_CHANGED')).toBe(true);
+    for (const error of [undefined, null, 'UNKNOWN', 'sensitive-provider-detail']) {
+      expect(isReferenceReviewRequired(error)).toBe(false);
+    }
+  });
   it('returns failed and partial connection attempts separately from link success timestamps', () => {
     expect(getLatestNonSuccessfulAttempt({
       lastSyncAt: '2026-11-01T10:30:00.000Z',

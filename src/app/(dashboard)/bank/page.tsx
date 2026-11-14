@@ -36,7 +36,7 @@ import {
   effectiveCardNumbers,
 } from '@/lib/bank-utils';
 import { formatCurrency, formatDateTime } from '@/lib/constants';
-import { getLatestNonSuccessfulAttempt } from '@/lib/bank-sync-display';
+import { getLatestNonSuccessfulAttempt, isReferenceReviewRequired, REFERENCE_REVIEW_MESSAGE } from '@/lib/bank-sync-display';
 import { BankLedgerTable } from '@/components/bank/bank-ledger-table';
 import { AccountPicker, roleIcon } from '@/components/bank/account-picker';
 import { JiggleModeBar } from '@/components/ui/jiggle-reorder';
@@ -156,9 +156,15 @@ function BankPageInner() {
     setRefreshingAll(true);
     const failures: string[] = [];
     let tooSoon = false;
+    let referenceReviewRequired = false;
     try {
       for (const conn of connections) {
         const res = await refreshBankConnection(conn.id);
+        if (isReferenceReviewRequired(res.data?.error) || res.data?.perAccount.some((account) => isReferenceReviewRequired(account.error))) {
+          referenceReviewRequired = true;
+        } else if (res.data && res.data.status !== 'ok') {
+          failures.push(conn.aspspName);
+        }
         if (!res.success) {
           if (res.error?.toLowerCase().includes('wait')) tooSoon = true;
           else failures.push(conn.aspspName);
@@ -176,7 +182,9 @@ function BankPageInner() {
     } finally {
       setRefreshingAll(false);
     }
-    if (failures.length > 0) {
+    if (referenceReviewRequired) {
+      toast.error('Bank data needs review', REFERENCE_REVIEW_MESSAGE);
+    } else if (failures.length > 0) {
       toast.error('Refresh failed', `Could not refresh: ${failures.join(', ')}`);
     } else if (tooSoon) {
       toast.info('Just synced', 'One or more banks were refreshed too recently — please wait a few minutes.');
@@ -455,6 +463,9 @@ function BankPageInner() {
 
           {selected && (
             <>
+              {isReferenceReviewRequired(selected.conn.lastError) && (
+                <AlertBanner severity="warn">{REFERENCE_REVIEW_MESSAGE}</AlertBanner>
+              )}
               {/* Selected-account summary: icon, name, masked IBAN, currency,
                   role, balance, plus the owning connection's status + consent
                   Tags (moved here from the removed per-connection Card). */}

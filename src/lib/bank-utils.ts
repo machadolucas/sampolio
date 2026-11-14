@@ -66,9 +66,10 @@ export function nextConsecutiveSyncFailures(
  * so without this they would silently fail forever (only a faint Settings hint).
  */
 export function isSyncFailing(
-  connection: Pick<BankConnection, 'consecutiveSyncFailures'>
+  connection: Pick<BankConnection, 'consecutiveSyncFailures' | 'lastError'>
 ): boolean {
-  return (connection.consecutiveSyncFailures ?? 0) >= SYNC_FAILURE_ALERT_THRESHOLD;
+  return connection.lastError === 'TRANSACTION_REFERENCE_CHANGED'
+    || (connection.consecutiveSyncFailures ?? 0) >= SYNC_FAILURE_ALERT_THRESHOLD;
 }
 
 /**

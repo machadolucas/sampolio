@@ -12,6 +12,7 @@ import { InputNumber } from "@/components/ui/input-number";
 import { InputText } from "@/components/ui/input-text";
 import { Tag } from "@/components/ui/tag";
 import { Message } from "@/components/ui/message";
+import { AlertBanner } from "@/components/ui/alert-banner";
 import { Dialog } from "@/components/ui/dialog";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { ProgressSpinner } from "@/components/ui/progress-spinner";
@@ -49,6 +50,8 @@ import {
   effectiveCardNumbers,
 } from "@/lib/bank-utils";
 import { suggestStatementDay } from "@/lib/bank/card-billing";
+import { bankConnectionFeedback } from "@/lib/bank/connection-feedback";
+import { isReferenceReviewRequired, REFERENCE_REVIEW_MESSAGE } from "@/lib/bank-sync-display";
 import { STATEMENT_GRACE_DAYS } from "@/lib/bank/constants";
 import { formatCurrency, formatDate, formatDateTime } from "@/lib/constants";
 import type {
@@ -156,28 +159,32 @@ export function BankConnectionsPanel() {
     const error = params.get("bankError");
     if (connected)
       toast(
-        `Connected ${decodeURIComponent(connected)} — syncing your accounts`,
+        `Connected ${connected} — syncing your accounts`,
       );
-    else if (error) toast(`Bank connection failed (${error})`, "error");
+    else if (error) {
+      const feedback = bankConnectionFeedback(error);
+      toast(feedback.message, feedback.severity);
+    }
     if (connected || error) {
-      window.history.replaceState({}, "", "/settings");
+      const url = new URL(window.location.href);
+      url.searchParams.delete("bankConnected");
+      url.searchParams.delete("bankError");
+      window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
     }
   }, [toast]);
 
   const openConnectDialog = async () => {
     setDialogOpen(true);
     setSelectedBank(null);
-    const res = await listBankAspsps("FI");
-    if (res.success && res.data) {
-      setAspsps(
-        res.data.map((a) => ({
-          label: a.name,
-          value: a.name,
-          country: a.country,
-        })),
-      );
-    } else {
-      toast(res.error ?? "Could not load banks", "error");
+    try {
+      const res = await listBankAspsps("FI");
+      if (res.success && res.data) {
+        setAspsps(res.data.map((a) => ({ label: a.name, value: a.name, country: a.country })));
+      } else {
+        toast("Could not load banks. Please try again.", "error");
+      }
+    } catch {
+      toast("Could not load banks. Please try again.", "error");
     }
   };
 
@@ -186,39 +193,60 @@ export function BankConnectionsPanel() {
     setConnecting(true);
     const country =
       aspsps.find((a) => a.value === selectedBank)?.country ?? "FI";
-    const res = await startBankConnection({
-      aspspName: selectedBank,
-      aspspCountry: country,
-    });
-    setConnecting(false);
-    if (res.success && res.data?.authUrl) {
-      window.location.href = res.data.authUrl; // off to the bank for SCA
-    } else {
-      toast(res.error ?? "Could not start the connection", "error");
+    try {
+      const res = await startBankConnection({
+        aspspName: selectedBank,
+        aspspCountry: country,
+      });
+      if (res.success && res.data?.authUrl) {
+        window.location.href = res.data.authUrl;
+      } else {
+        toast("Could not start the bank connection. Please try again.", "error");
+      }
+    } catch {
+      toast("Could not start the bank connection. Please try again.", "error");
+    } finally {
+      setConnecting(false);
     }
   };
 
   const handleRefresh = async (connectionId: string) => {
     setBusyId(connectionId);
-    const res = await refreshBankConnection(connectionId);
-    setBusyId(null);
-    if (res.success) {
-      toast("Refreshed");
-      notifyDataChanged();
-      load();
-    } else {
-      toast(res.error ?? "Refresh failed", "error");
+    try {
+      const res = await refreshBankConnection(connectionId);
+      if (res.success && res.data) {
+        if (isReferenceReviewRequired(res.data.error) || res.data.perAccount.some((account) => isReferenceReviewRequired(account.error))) {
+          toast(REFERENCE_REVIEW_MESSAGE, "error");
+        } else if (res.data.status !== "ok") {
+          toast("Bank refresh did not complete for every account. Please try again.", "error");
+        } else {
+          toast("Refreshed");
+        }
+        notifyDataChanged();
+        load();
+      } else {
+        toast(res.error ?? "Refresh failed", "error");
+      }
+    } catch {
+      toast("Bank refresh failed. Please try again.", "error");
+    } finally {
+      setBusyId(null);
     }
   };
 
   const handleReconnect = async (connectionId: string) => {
     setBusyId(connectionId);
-    const res = await reconnectBankConnection(connectionId);
-    setBusyId(null);
-    if (res.success && res.data?.authUrl) {
-      window.location.href = res.data.authUrl; // re-run SCA; mappings are preserved
-    } else {
-      toast(res.error ?? "Could not start reconnection", "error");
+    try {
+      const res = await reconnectBankConnection(connectionId);
+      if (res.success && res.data?.authUrl) {
+        window.location.href = res.data.authUrl;
+      } else {
+        toast("Could not start reconnection. Please try again.", "error");
+      }
+    } catch {
+      toast("Could not start reconnection. Please try again.", "error");
+    } finally {
+      setBusyId(null);
     }
   };
 
@@ -345,7 +373,7 @@ export function BankConnectionsPanel() {
                   )}
                   {conn.lastSyncStatus && conn.lastSyncStatus !== "ok" && (
                     <Tag
-                      value={`sync ${conn.lastSyncStatus}${conn.lastError ? `: ${conn.lastError}` : ""}`}
+                      value={`sync ${conn.lastSyncStatus}${conn.lastError && !isReferenceReviewRequired(conn.lastError) ? `: ${conn.lastError}` : ""}`}
                       severity={
                         conn.lastSyncStatus === "error" ? "danger" : "warning"
                       }
@@ -387,6 +415,12 @@ export function BankConnectionsPanel() {
                   />
                 </ControlGroup>
               </div>
+
+              {isReferenceReviewRequired(conn.lastError) && (
+                <AlertBanner severity="warn" className="mb-3">
+                  {REFERENCE_REVIEW_MESSAGE}
+                </AlertBanner>
+              )}
 
               <p className={`${subtle} mb-3`}>
                 {conn.lastSyncAt
@@ -432,7 +466,8 @@ export function BankConnectionsPanel() {
           <p className={subtle}>
             Pick your bank. You&apos;ll be sent to the bank to approve read-only
             access (strong authentication is required by law). Only whitelisted
-            IBANs return data.
+            IBANs return data. To access older transaction history, your bank
+            may ask you to authenticate again.
           </p>
           <Dropdown
             value={selectedBank}

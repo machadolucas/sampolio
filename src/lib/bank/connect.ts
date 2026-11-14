@@ -24,6 +24,7 @@ import {
 import { startAuthorization, createSession, BankApiError, type StartAuthorizationInput } from './client';
 import { mapSessionAccounts } from './mappers';
 import { reconcileLinks } from './reconcile-links';
+import { isReferenceReviewRequired } from '@/lib/bank-sync-display';
 import { findAspspInfo } from './aspsp-info';
 import { computeConsentValidUntil } from './consent-validity';
 import { authResponseSchema, sessionResponseSchema } from '@/lib/schemas/bank.schema';
@@ -212,12 +213,15 @@ export async function completeConnection(
   const raw = await createSession(code);
   const parsed = sessionResponseSchema.safeParse(raw);
   if (!parsed.success) {
-    await updateBankConnection(userId, connection.id, {
-      status: 'error',
-      lastError: 'BAD_RESPONSE',
-    });
+    // A failed renewal must not disable the still-valid previous session.
+    if (!secret.sessionId) {
+      await updateBankConnection(userId, connection.id, {
+        status: 'error',
+        lastError: 'BAD_RESPONSE',
+      });
+    }
     invalidate(userId, connection.id);
-    return { connection };
+    throw new BankApiError('BAD_RESPONSE', 'Invalid bank session response');
   }
 
   const sessionId = parsed.data.session_id;
@@ -245,7 +249,7 @@ export async function completeConnection(
     consentGrantedAt: now,
     consentExpiresAt,
     nextSyncDueAt: now, // sync as soon as possible (backfill runs next)
-    lastError: undefined,
+    lastError: isReferenceReviewRequired(connection.lastError) ? connection.lastError : undefined,
   });
 
   invalidate(userId, connection.id);

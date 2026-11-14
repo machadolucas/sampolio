@@ -17,6 +17,7 @@ export type BankErrorCode =
   | 'AUTH_FAILED'
   | 'TRANSIENT'
   | 'BAD_RESPONSE'
+  | 'TRANSACTION_REFERENCE_CHANGED'
   | 'UNKNOWN';
 
 export class BankApiError extends Error {

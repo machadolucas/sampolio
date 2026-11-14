@@ -33,6 +33,8 @@ tradeoff) live in `AGENTS.md` §Safety, testing, and operations; forward-looking
 | 20 | **Partial, split or over-tolerance payments keep the full obligation forecast.** Matching pairs one forecast line with one booked transaction within `max(€1, 5%)`; a bill paid in two parts, or paid at a different amount, leaves the line unmatched (an `'exact-only'` line stays at its full amount; a `'full'` line is only reduced through its category's gap blend). | `src/lib/current-month-actuals.ts` (`ACTUAL_AMOUNT_TOLERANCE_ABS`/`_PCT`) |
 | 21 | **A Playground amount change on an already-paid item loses its match.** The modified run re-matches its own lines, so changing a paid item's amount beyond the tolerance turns it unpaid and forecasts it again in the anchor month. | `src/lib/actions/scenario.ts`, `src/lib/current-month-actuals.ts` |
 
+| 22 | **Booked-reference detection is deliberately narrow.** Changed transaction details or sparse rows can evade the guard; existing duplicates are not repaired. A flagged connection requires reviewed maintenance to clear its warning. | `src/lib/bank/reference-drift.ts`; [bank-sync safeguards](bank-sync.md#booked-reference-safeguards) |
+
 ## Housekeeping
 
 - The `improvements.md` items that graduate into work should remove their

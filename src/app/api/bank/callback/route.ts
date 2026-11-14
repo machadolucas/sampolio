@@ -15,6 +15,7 @@ import { auth } from '@/lib/auth';
 import { completeConnection } from '@/lib/bank/connect';
 import { redactBankError } from '@/lib/bank/client';
 import { psuContextFrom } from '@/lib/bank/psu-context';
+import { bankCallbackError } from '@/lib/bank/connection-feedback';
 
 /**
  * The canonical external origin to build redirects against. Behind Caddy /
@@ -38,19 +39,19 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const session = await auth();
   if (!session?.user?.id) {
     // Not authenticated on this device — bounce to sign-in, then they can retry.
-    return redirect(request, '/auth/signin?callbackUrl=/settings');
+    return redirect(request, '/auth/signin?callbackUrl=%2Fsettings%3Ftab%3Dbanking');
   }
 
   const params = request.nextUrl.searchParams;
   const bankError = params.get('error');
   if (bankError) {
-    return redirect(request, '/settings?bankError=sca_declined');
+    return redirect(request, `/settings?tab=banking&bankError=${bankCallbackError(bankError)}`);
   }
 
   const code = params.get('code');
   const state = params.get('state');
   if (!code || !state) {
-    return redirect(request, '/settings?bankError=missing_params');
+    return redirect(request, '/settings?tab=banking&bankError=missing_params');
   }
 
   const { psuIp, psuUserAgent } = psuContextFrom(request.headers);
@@ -59,14 +60,14 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const result = await completeConnection(session.user.id, code, state, { psuIp, psuUserAgent });
     if (!result) {
       // No pending connection matched this state (replay / wrong user).
-      return redirect(request, '/settings?bankError=invalid_state');
+      return redirect(request, '/settings?tab=banking&bankError=invalid_state');
     }
     return redirect(
       request,
-      `/settings?bankConnected=${encodeURIComponent(result.connection.aspspName)}`
+      `/settings?tab=banking&bankConnected=${encodeURIComponent(result.connection.aspspName)}`
     );
   } catch (err) {
     console.error('[bank] callback failed:', redactBankError(err));
-    return redirect(request, '/settings?bankError=connect_failed');
+    return redirect(request, '/settings?tab=banking&bankError=connect_failed');
   }
 }

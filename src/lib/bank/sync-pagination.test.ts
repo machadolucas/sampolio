@@ -198,6 +198,119 @@ describe('runSync pagination persistence', () => {
   });
 });
 
+describe('booked reference drift safeguards', () => {
+  it('leaves the primary ledger, balances, anchor and cursor untouched and does not fan out', async () => {
+    enableSibling();
+    primary.linkedAccounts[0].linkedFinancialAccountId = 'financial-a';
+    primary.linkedAccounts[0].lastBalance = 321;
+    const originalLink = structuredClone(primary.linkedAccounts[0]);
+    vi.mocked(getBankTransactions).mockResolvedValue([storedCafe('stable', 'p-1', 'booked')]);
+    vi.mocked(getAccountTransactions).mockImplementation(async (_uid, query) => ({
+      transactions: query?.transactionStatus === 'PDNG' ? [] : [cafeTx('replacement')],
+    }));
+    const run = await runSync('alex', 'primary', 'manual', {}, now);
+    expect(run.status).toBe('error');
+    expect(run.perAccount[0].error).toBe('TRANSACTION_REFERENCE_CHANGED');
+    expect(writeBankTransactions).not.toHaveBeenCalled();
+    expect(getAccountBalances).not.toHaveBeenCalled();
+    expect(createBalanceSnapshot).not.toHaveBeenCalled();
+    expect(getAllUsers).not.toHaveBeenCalled();
+    expect(vi.mocked(updateBankConnection).mock.calls.find((c) => c[1] === 'primary')?.[2])
+      .toMatchObject({ linkedAccounts: [originalLink], lastError: 'TRANSACTION_REFERENCE_CHANGED' });
+  });
+
+  it('keeps a genuinely identical new purchase when the original reference is still present', async () => {
+    vi.mocked(getBankTransactions).mockResolvedValue([storedCafe('stable', 'p-1', 'booked')]);
+    vi.mocked(getAccountTransactions).mockImplementation(async (_uid, query) => ({
+      transactions: query?.transactionStatus === 'PDNG' ? [] : [cafeTx('p-1'), cafeTx('new')],
+    }));
+    const run = await runSync('alex', 'primary', 'manual', {}, now);
+    expect(run.status).toBe('ok');
+    expect(writtenRows('account-a')?.map((row) => row.dedupKey).sort()).toEqual(['new', 'p-1']);
+    expect(writtenRows('account-a')?.find((row) => row.dedupKey === 'p-1')?.id).toBe('stable');
+  });
+
+  it('continues a separate unaffected account and reports a partial run', async () => {
+    const other = { ...link('account-other', 'primary'), identificationHash: 'other-hash', identificationHashes: ['other-hash'] };
+    primary.linkedAccounts.push(other);
+    vi.mocked(getBankTransactions).mockImplementation(async (_user, id) =>
+      id === 'account-a' ? [storedCafe('stable', 'p-1', 'booked')] : []);
+    vi.mocked(getAccountTransactions).mockImplementation(async (uid, query) => ({
+      transactions: query?.transactionStatus === 'PDNG' ? [] :
+        uid === 'uid-account-a' ? [cafeTx('replacement')] : [rawTx('other-new')],
+    }));
+    const run = await runSync('alex', 'primary', 'manual', {}, now);
+    expect(run.status).toBe('partial');
+    expect(run.perAccount.find((row) => row.linkedAccountId === 'account-a')?.error).toBe('TRANSACTION_REFERENCE_CHANGED');
+    expect(writtenRows('account-a')).toBeUndefined();
+    expect(writtenRows('account-other')?.map((row) => row.dedupKey)).toEqual(['other-new']);
+    expect(getAccountBalances).toHaveBeenCalledTimes(1);
+    expect(getAccountBalances).toHaveBeenCalledWith('uid-account-other', undefined);
+  });
+
+  it.each(['scheduled', 'manual'] as const)('retains a review warning after a %s sync', async (trigger) => {
+    primary.lastError = 'TRANSACTION_REFERENCE_CHANGED';
+    primary.linkedAccounts[0].syncCursor = { lastBookingDate: '2026-09-07', backfilledThrough: '2026-09-08' };
+    primary.linkedAccounts[0].lastSyncedAt = nowIso;
+    vi.mocked(getBankTransactions).mockResolvedValue([]);
+    vi.mocked(getAccountTransactions).mockImplementation(async (_uid, query) => ({
+      transactions: query?.transactionStatus === 'PDNG' ? [] : [rawTx('unrelated')],
+    }));
+    const run = await runSync('alex', 'primary', trigger, {}, now);
+    expect(run.status).toBe('ok');
+    if (trigger === 'scheduled') {
+      expect(run.perAccount[0].skippedFresh).toBe(true);
+      expect(getAccountTransactions).not.toHaveBeenCalled();
+    } else {
+      expect(writtenRows('account-a')?.map((row) => row.dedupKey)).toEqual(['unrelated']);
+    }
+    expect(vi.mocked(updateBankConnection).mock.calls.find((c) => c[1] === 'primary')?.[2].lastError)
+      .toBe('TRANSACTION_REFERENCE_CHANGED');
+  });
+
+  it('reports a partial primary run if the sibling review warning cannot be saved', async () => {
+    enableSibling();
+    vi.mocked(getBankTransactions).mockImplementation(async (_user, id) =>
+      id === 'account-b' ? [{ ...storedCafe('sibling-stable', 'p-1', 'booked'), linkedAccountId: 'account-b' }] : []);
+    vi.mocked(getAccountTransactions).mockImplementation(async (_uid, query) => ({
+      transactions: query?.transactionStatus === 'PDNG' ? [] : [cafeTx('replacement')],
+    }));
+    vi.mocked(updateBankConnection).mockImplementation(async (_user, id) => {
+      if (id === 'sibling') throw new Error('Synthetic persistence failure');
+      return primary;
+    });
+    const run = await runSync('alex', 'primary', 'manual', {}, now);
+    expect(run.status).toBe('partial');
+    expect(run.error).toBe('TRANSACTION_REFERENCE_CHANGED');
+    expect(writtenRows('account-a')?.map((row) => row.dedupKey)).toEqual(['replacement']);
+    expect(writtenRows('account-b')).toBeUndefined();
+    expect(vi.mocked(updateBankConnection).mock.calls.find((c) => c[1] === 'primary')?.[2])
+      .toMatchObject({ lastSyncStatus: 'partial', lastError: 'TRANSACTION_REFERENCE_CHANGED' });
+  });
+
+  it('guards a sibling ledger independently and records its review error', async () => {
+    enableSibling();
+    sibling.linkedAccounts[0].lastBalance = 987;
+    sibling.linkedAccounts[0].linkedFinancialAccountId = 'financial-b';
+    const originalLink = structuredClone(sibling.linkedAccounts[0]);
+    vi.mocked(getBankTransactions).mockImplementation(async (_user, id) =>
+      id === 'account-b' ? [{ ...storedCafe('sibling-stable', 'p-1', 'booked'), linkedAccountId: 'account-b' }] : []);
+    vi.mocked(getAccountTransactions).mockImplementation(async (_uid, query) => ({
+      transactions: query?.transactionStatus === 'PDNG' ? [] : [cafeTx('replacement')],
+    }));
+    vi.mocked(getAccountBalances).mockResolvedValue({ balances: [{
+      balance_type: 'CLBD', balance_amount: { amount: '500', currency: 'EUR' },
+    }] });
+    const run = await runSync('alex', 'primary', 'manual', {}, now);
+    expect(run.status).toBe('ok');
+    expect(writtenRows('account-a')?.map((row) => row.dedupKey)).toEqual(['replacement']);
+    expect(writtenRows('account-b')).toBeUndefined();
+    expect(createBalanceSnapshot).not.toHaveBeenCalled();
+    expect(vi.mocked(updateBankConnection).mock.calls.find((c) => c[1] === 'sibling')?.[2])
+      .toMatchObject({ linkedAccounts: [originalLink], lastError: 'TRANSACTION_REFERENCE_CHANGED' });
+  });
+});
+
 describe('runSync repeated deliveries', () => {
   it('keeps one pending row when the plain and PDNG responses both deliver it (Nordea shape)', async () => {
     vi.mocked(getBankTransactions).mockResolvedValue([]);

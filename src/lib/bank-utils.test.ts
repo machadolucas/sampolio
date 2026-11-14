@@ -75,6 +75,10 @@ describe('nextConsecutiveSyncFailures', () => {
 });
 
 describe('isSyncFailing', () => {
+  it('surfaces a reference review immediately without waiting for repeated failures', () => {
+    expect(isSyncFailing({ lastError: 'TRANSACTION_REFERENCE_CHANGED' })).toBe(true);
+    expect(isSyncFailing({ lastError: 'TRANSIENT' })).toBe(false);
+  });
   it('is false below the threshold and when unset', () => {
     expect(isSyncFailing({ consecutiveSyncFailures: undefined })).toBe(false);
     expect(isSyncFailing({ consecutiveSyncFailures: SYNC_FAILURE_ALERT_THRESHOLD - 1 })).toBe(false);

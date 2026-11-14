@@ -3,6 +3,7 @@
 import { AlertBanner } from '@/components/ui/alert-banner';
 import type { ConnectionAttention } from '@/lib/actions/bank';
 import { MdAccountBalance } from 'react-icons/md';
+import { isReferenceReviewRequired, REFERENCE_REVIEW_MESSAGE } from '@/lib/bank-sync-display';
 
 export interface BankAttentionBannerProps {
   /** Connections needing attention (from `getBankConnectionsNeedingAttention`). */
@@ -23,10 +24,11 @@ export function BankAttentionBanner({ attention, onAction }: BankAttentionBanner
   const expired = attention.filter((c) => c.expired);
   const expiringSoon = attention.filter((c) => !c.expired && c.expiringSoon);
   const failing = attention.filter((c) => !c.expired && !c.expiringSoon && c.syncFailing);
+  const reviewRequired = attention.some((c) => isReferenceReviewRequired(c.lastError));
 
   return (
-    <AlertBanner severity="warn" icon={<MdAccountBalance size={20} />} action={{ label: 'Reconnect', onClick: onAction }}>
-      {expired.length > 0
+    <AlertBanner severity="warn" icon={<MdAccountBalance size={20} />} action={{ label: reviewRequired ? 'Review bank data' : 'Reconnect', onClick: onAction }}>
+      {reviewRequired ? REFERENCE_REVIEW_MESSAGE : expired.length > 0
         ? <>Your bank connection to <b>{expired.map((c) => c.aspspName).join(', ')}</b> has expired. Reconnect to keep your balances syncing.</>
         : expiringSoon.length > 0
           ? <>Your bank consent for <b>{expiringSoon.map((c) => c.aspspName).join(', ')}</b> expires soon{expiringSoon[0].daysUntilExpiry != null ? ` (in ${expiringSoon[0].daysUntilExpiry} days)` : ''}. Reconnect now to avoid a gap.</>
