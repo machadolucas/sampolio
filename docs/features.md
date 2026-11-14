@@ -222,9 +222,12 @@ server candidates separate from confirmed saves, per linked account and expense
 id. The bank page adds the server-returned expense before its modal closes, so
 the chip appears immediately in both ledger layouts. Delayed, failed or
 incomplete candidate reads cannot erase it. Only the latest request for that
-account can release a confirmed save, when it includes the same expense and
-bank-link transaction, account and owner; later server edits and deletions then
-apply normally. The ledger stays mounted, preserving search, expanded rows and
+account can release a confirmed save: an echo must match the group, expense and
+bank-link transaction, account and owner. When a successful nonempty-month read
+omits a saved expense, `getSplitExpenseExists` checks its group and id against
+uncached storage; only a definitive absence releases the pin. Failed checks and
+superseded reads retain protection. Later server edits and deletions then apply
+normally. The ledger stays mounted, preserving search, expanded rows and
 desktop column visibility.
 
 The bank ledger warns before creating a possible duplicate and shows the
@@ -338,16 +341,17 @@ is double-counted. Split balances are *not* injected into the cashflow projectio
   window is empty but older months exist the empty state says "Nothing this month"
   with a load-older action instead of "No expenses yet"), recurring rules
   (`recurrence-rule-dialog.tsx`), Settle-up (`settle-up-dialog.tsx`, prefilled from
-  `getSettleUpSuggestions`), Import. **Whole rows are `role="button"`**: an expense row
-  opens the edit dialog, a payment row opens its row menu, and trailing action buttons
-  `stopPropagation`. Each expense row's subtitle reads
-  `"{Payer} paid {amount} · added by {Adder}"` with **first names** ('You' for self); a
-  `paidBy`-less imported row omits the payer segment. The trailing net indicator is a
-**stacked** label-over-amount block ("you lent" / "you borrowed" at `text-xs` above the
-`tabular-nums` amount — zero net stays a single "—"); titles are single-line
-`truncate text-sm leading-snug` and the only trailing button is the row menu, so the
-title keeps most of the row's width on a phone. Rows show member `<UserAvatar>`s,
-  and the page applies optimistic UI on delete / rule pause-resume. A row with a
+  `getSettleUpSuggestions`), Import. The main row button opens the expense editor
+  (or the row menu for a payment); a separate trailing button opens row actions.
+  Expense subtitles show payer, total and adder with first names ("You" for self);
+  imported rows without `paidBy` omit the payer. Titles wrap, including unbroken
+  names; below `lg` the title sits above date, category and net, while desktop
+  aligns the date, category, title and net. The net indicator stacks "you lent" /
+  "you borrowed" over the amount, or shows "—" for zero. Delete from the editor
+  or row menu confirms the saved title and amount; linked expenses explain that
+  the original bank transaction remains. On success the page removes the row and
+  activity, then refreshes the authoritative summary and balances. Rule
+  pause/resume uses optimistic updates. A row with a
   `bankLink` shows an inline bank glyph in its subtitle + a "View bank transaction" row-menu
 item (see "Bank-transaction linking" above); `?expense=&month=`
   deep-links to a row (extends `visibleCount` to reach the month, then scroll +
@@ -385,7 +389,10 @@ item (see "Bank-transaction linking" above); `?expense=&month=`
   order and autofocuses amount only when creating. Accepts an optional `bankLink`
   (prefilled by the bank ledger's "Split this"); after a successful save the modal
   fire-and-forget calls `setDefaultSplitGroup` so the next quick-add preselects the
-  last-used group.
+  last-used group. Quick-add and group expense dialogs keep Cancel and save
+  controls in a persistent safe-area footer. The editor also offers Delete;
+  cancellation or failure preserves its draft, and dismissal is guarded while
+  saving or deleting.
 - **Shared `<SplitEditor>`** (`split-editor.tsx`; logic in `src/lib/split-draft.ts`,
   unit-tested): the single "how to split" UI used by quick-add, group add/edit
   (`split-expense-dialog.tsx`) and recurring dialogs. Presets `me-equal` / `me-full` /
@@ -401,8 +408,9 @@ item (see "Bank-transaction linking" above); `?expense=&month=`
 
 The detail page applies confirmed saves through `src/lib/split-ui-state.ts` before
 celebration: one row per id, summary/balance deltas, and a creation-ordered activity
-entry. Read generations reject responses predating a save. A saved backdated month is
-revealed and reconciled with an authoritative read, including confirmed deletions.
+entry. Read generations reject responses predating a save or deletion. A saved
+backdated month is revealed and reconciled with an authoritative read; deletion
+refreshes the summary and balances without applying a second local delta.
 Expense and settlement dialog drafts reset on opening, not on live data refreshes.
 `getSplitActivity` uses `getRecentExpenses` to query the newest creations across all
 storage months, capped at 100 per group before taking the cross-group limit.

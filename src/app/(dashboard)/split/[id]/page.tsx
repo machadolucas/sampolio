@@ -11,7 +11,7 @@ import { useAppContext } from "@/components/layout/app-layout";
 import { format, parseISO } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Menu } from "@/components/ui/menu";
-import { confirmDialog } from "@/components/ui/confirm-dialog";
+import { confirmDialog, requestConfirmation } from "@/components/ui/confirm-dialog";
 import {
   MdArrowBack,
   MdAdd,
@@ -124,6 +124,7 @@ export default function SplitGroupDetailPage() {
   const [editRule, setEditRule] = useState<SplitRecurrenceRule | undefined>();
 
   const rowMenu = useRef<Menu>(null);
+  const deletingRef = useRef(false);
   const [menuTarget, setMenuTarget] = useState<SplitExpense | null>(null);
 
   // Reverse "linked bank transaction" flag on an expense row created via
@@ -566,37 +567,51 @@ export default function SplitGroupDetailPage() {
     rowMenu.current?.toggle(e);
   };
 
-  const doDelete = (row: SplitExpense) => {
-    confirmDialog({
-      message: "Delete this entry?",
-      header: "Confirm",
-      icon: <TriangleAlert size={16} />,
-      accept: async () => {
-        // Optimistic: drop the row and back out its balance contribution
-        // immediately, then reconcile with the server in the background.
-        const prevExpenses = expenses;
-        const prevBalances = balances;
-        setExpenses((cur) => cur.filter((x) => x.id !== row.id));
-        setBalances((cur) =>
-          cur.map((b) => ({
-            ...b,
-            netCents: b.netCents - (row.netByUserId[b.userId] ?? 0),
-          })),
-        );
-        const res = await deleteSplitExpense(groupId, row.id);
-        if (!res.success) {
-          setExpenses(prevExpenses);
-          setBalances(prevBalances);
-          toast.error("Failed to delete", res.error);
-          return;
-        }
-        savedRevisionRef.current += 1;
-        savedRowsRef.current.delete(row.id);
-        savedActivityRef.current.delete(row.id);
-        toast.success("Deleted");
-        notifyDataChanged(); // reconciles this page too (summary counts, month index)
-      },
-    });
+  const doDelete = async (row: SplitExpense): Promise<boolean> => {
+    if (deletingRef.current) return false;
+    deletingRef.current = true;
+    try {
+      const title = row.kind === "expense" ? row.title : "this payment";
+      const amount = formatCents(row.amountCents, row.currency ?? group?.currency ?? "EUR");
+      const confirmed = await requestConfirmation({
+        header: "Delete entry?",
+        message: (
+          <>
+            <p className="[overflow-wrap:anywhere]">Delete {title} ({amount})?</p>
+            {row.kind === "expense" && row.bankLink && (
+              <p className="mt-2">The original bank transaction will remain.</p>
+            )}
+          </>
+        ),
+        acceptLabel: "Delete",
+        rejectLabel: "Cancel",
+        defaultFocus: "reject",
+        severity: "danger",
+      });
+      if (!confirmed) return false;
+      const res = await deleteSplitExpense(groupId, row.id);
+      if (!res.success) {
+        toast.error("Failed to delete", res.error);
+        return false;
+      }
+      // Invalidate every earlier read before changing the displayed state.
+      savedRevisionRef.current += 1;
+      savedRowsRef.current.delete(row.id);
+      savedActivityRef.current.delete(row.id);
+      setExpenses((current) => current.filter((item) => item.id !== row.id));
+      // A live refresh may already have applied the deletion while the action
+      // response was in flight. Refresh the authoritative balances and summary
+      // instead of subtracting a second time.
+      setActivity((current) => current?.filter((event) => event.id !== row.id) ?? null);
+      toast.success("Deleted");
+      notifyDataChanged();
+      return true;
+    } catch (error) {
+      toast.error("Failed to delete", error instanceof Error ? error.message : "Please try again.");
+      return false;
+    } finally {
+      deletingRef.current = false;
+    }
   };
 
   // Activity tab → edit dialog: the row is usually already in the loaded
@@ -692,7 +707,7 @@ export default function SplitGroupDetailPage() {
           },
           {
             label: "Delete",
-            command: () => menuTarget && doDelete(menuTarget),
+            command: () => { if (menuTarget) void doDelete(menuTarget); },
           },
         ]}
       />
@@ -985,31 +1000,33 @@ export default function SplitGroupDetailPage() {
                     <li
                       key={e.id}
                       data-expense-id={e.id}
-                      className="flex items-center gap-2 py-2 -mx-2 px-2 rounded-lg cursor-pointer transition-colors hover:bg-muted active:bg-muted"
+                      className="flex items-start lg:items-center gap-2 py-2 -mx-2 px-2 rounded-lg cursor-pointer transition-colors hover:bg-muted active:bg-muted"
                     >
                       <button
                         type="button"
                         onClick={activateRow}
-                        className="flex min-w-0 flex-1 items-center gap-2 text-left min-h-11"
+                        className="grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)_auto] gap-x-2 gap-y-1 text-left min-h-11 lg:grid-cols-[auto_minmax(0,1fr)_auto] lg:items-center"
                       >
-                        <div className="w-9 shrink-0 text-center">
-                          <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
-                            {format(parseISO(e.date), "MMM")}
+                        <div className="col-start-1 row-start-2 flex items-center gap-2 lg:row-start-1">
+                          <div className="w-9 shrink-0 text-center">
+                            <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                              {format(parseISO(e.date), "MMM")}
+                            </div>
+                            <div className="text-base font-medium text-muted-foreground leading-tight">
+                              {format(parseISO(e.date), "d")}
+                            </div>
                           </div>
-                          <div className="text-base font-medium text-muted-foreground leading-tight">
-                            {format(parseISO(e.date), "d")}
-                          </div>
+                          <CategoryIcon
+                            category={
+                              isPayment
+                                ? "Payment"
+                                : (e as SplitExpenseItem).category
+                            }
+                            size={36}
+                          />
                         </div>
-                        <CategoryIcon
-                          category={
-                            isPayment
-                              ? "Payment"
-                              : (e as SplitExpenseItem).category
-                          }
-                          size={36}
-                        />
-                        <div className="min-w-0 flex-1">
-                          <div className="truncate text-sm font-medium leading-snug text-foreground">
+                        <div className="col-span-2 col-start-1 row-start-1 min-w-0 lg:col-span-1 lg:col-start-2">
+                          <div className="break-words [overflow-wrap:anywhere] text-sm font-medium leading-snug text-foreground">
                             {newIds.has(e.id) && (
                               <span
                                 className="inline-block w-2 h-2 mr-1.5 rounded-full align-middle shrink-0 bg-[var(--primary-color)]"
@@ -1029,7 +1046,7 @@ export default function SplitGroupDetailPage() {
                               </span>
                             )}
                           </div>
-                          <div className="truncate text-xs leading-snug text-muted-foreground">
+                          <div className="break-words [overflow-wrap:anywhere] text-xs leading-snug text-muted-foreground">
                             {bankLink && (
                               <span title="Linked to a bank transaction">
                                 <MdAccountBalance
@@ -1042,7 +1059,7 @@ export default function SplitGroupDetailPage() {
                             {sub}
                           </div>
                         </div>
-                        <div className="text-right shrink-0">
+                        <div className="col-start-2 row-start-2 text-right shrink-0 lg:col-start-3 lg:row-start-1">
                           {viewerNet !== 0 ? (
                             <div
                               className={
@@ -1104,6 +1121,7 @@ export default function SplitGroupDetailPage() {
         currency={group.currency}
         myId={myId}
         expense={editExpense}
+        onDelete={editExpense ? () => doDelete(editExpense) : undefined}
         onSaved={(saved) => {
           const wasEdit = !!editExpense;
           commitSavedRow(saved);

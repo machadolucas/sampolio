@@ -99,7 +99,10 @@ export function Dialog({
                       variant="ghost"
                       aria-label="Close dialog"
                       icon={<X />}
-                    />
+                      className="min-h-12 min-w-12 [&>span>svg]:size-5"
+                    >
+                      <span className="lg:hidden">Close</span>
+                    </Button>
                   }
                 />
               )}

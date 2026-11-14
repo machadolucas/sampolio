@@ -48,6 +48,7 @@ vi.mock('@/lib/db/users', () => ({
 vi.mock('@/lib/db/split-groups', () => ({
   getSplitGroupById: vi.fn(async () => clone(state.group)),
   getSplitGroupSummary: vi.fn(async () => clone(state.summary)),
+  getExpenseById: vi.fn(async (_g: string, id: string) => state.rows.find((row) => row.id === id) ?? null),
   getRecentExpenses: vi.fn(async (groupId: string, limit: number) =>
     state.rows.filter((row) => row.groupId === groupId)
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, limit).map(clone)),
@@ -103,6 +104,7 @@ import {
   removeSplitGroupMember,
   updateSplitExpense,
   getSplitActivity,
+  getSplitExpenseExists,
 } from './split-groups';
 
 const signIn = (userId: string) => vi.mocked(auth).mockResolvedValue({ user: { id: userId } } as never);
@@ -267,6 +269,19 @@ describe('recurrence catch-up (BUG-14)', () => {
   });
 });
 
+describe('expense existence lookup', () => {
+  it('checks existing and missing expenses for members, and rejects unsafe ids and non-members', async () => {
+    state.rows = [expenseRow()];
+    signIn(SAM);
+    expect(await getSplitExpenseExists('g1', 'e1')).toEqual({ success: true, data: true });
+    expect(await getSplitExpenseExists('g1', 'missing')).toEqual({ success: true, data: false });
+    expect((await getSplitExpenseExists('g1', '../unsafe')).success).toBe(false);
+    expect((await getSplitExpenseExists('../unsafe', 'e1')).success).toBe(false);
+    signIn('outsider');
+    expect((await getSplitExpenseExists('g1', 'e1')).success).toBe(false);
+  });
+});
+
 describe('expense edit/delete (PERF-03/04)', () => {
   it('locates the row by id and invalidates both the old and new month', async () => {
     state.rows = [expenseRow()];
@@ -279,6 +294,21 @@ describe('expense edit/delete (PERF-03/04)', () => {
     expect(vi.mocked(locateExpense)).toHaveBeenCalledWith('g1', 'e1');
     expect(tags()).toEqual(expect.arrayContaining(['split-group:g1:expenses:2026-03', 'split-group:g1:expenses:2026-04']));
     expect(tags()).not.toContain('split-group:g1:expense-chunks');
+  });
+
+  it('allows a non-owner member to delete a bank-linked expense', async () => {
+    signIn(SAM);
+    state.rows = [expenseRow({
+      amountCents: 3456,
+      netByUserId: { [ALEX]: 1728, [SAM]: -1728 },
+      bankLink: { txId: 'tx1', linkedAccountId: 'account1', ownerUserId: ALEX,
+        bookingDate: '2026-03-10', amount: -34.56, currency: 'EUR' },
+    })];
+    expect((await deleteSplitExpense('g1', 'e1')).success).toBe(true);
+    expect(state.rows).toHaveLength(0);
+    expect(vi.mocked(notifySplitActivity)).toHaveBeenCalledWith(
+      expect.objectContaining({ event: 'expense.deleted', authorUserId: SAM }),
+    );
   });
 
   it('deletes with one locate and notifies from the removed row', async () => {

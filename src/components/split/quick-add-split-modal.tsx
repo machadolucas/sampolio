@@ -1,7 +1,5 @@
 'use client';
 
-import { ControlGroup } from '@/components/ui/page-header';
-
 import { ExternalLink, Link2 } from 'lucide-react';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -75,6 +73,7 @@ export function QuickAddSplitModal({ visible, onHide, onSaved, initial, onConfir
   const { celebrate } = useCelebration();
   const amountRef = useRef<HTMLInputElement>(null);
   const savingRef = useRef(false);
+  const confirmingLinkRef = useRef(false);
 
   const [groups, setGroups] = useState<SplitGroup[]>([]);
   const [groupId, setGroupId] = useState<string>('');
@@ -207,8 +206,6 @@ export function QuickAddSplitModal({ visible, onHide, onSaved, initial, onConfir
         ...(bankLink ? { bankLink } : {}),
         ...(acknowledgedIds.length > 0 ? { acknowledgedDuplicateExpenseIds: acknowledgedIds } : {}),
       });
-      savingRef.current = false;
-      setSaving(false);
       if (!res.success) {
         const duplicateList = (res as typeof res & { duplicate?: SplitDuplicateCandidate[] }).duplicate ?? [];
         if (duplicateList.length > 0) {
@@ -282,12 +279,21 @@ export function QuickAddSplitModal({ visible, onHide, onSaved, initial, onConfir
       <Dialog
         header={review ? (review.kind === 'linked' ? 'Linked split expenses' : 'Review split link') : 'Add expense'}
         visible={visible}
-        onHide={() => { if (!saving && !confirmingLink) onHide(); }}
+        onHide={() => { if (!savingRef.current && !confirmingLinkRef.current) onHide(); }}
         closable={!saving && !confirmingLink}
         modal
         dismissableMask
-        style={{ width: '32rem', maxWidth: 'calc(100vw - 1rem)', maxHeight: 'calc(100dvh - 1rem)' }}
-        contentClassName="pt-2 pb-[max(1.5rem,env(safe-area-inset-bottom))]"
+        style={{ width: '32rem' }}
+        contentClassName="pt-2"
+        footer={
+          <div className="flex w-full min-w-0 flex-wrap items-center justify-end gap-2">
+            <Button label="Cancel" text disabled={saving || confirmingLink} onClick={() => { if (!savingRef.current && !confirmingLinkRef.current) onHide(); }} />
+            {!review && !groupsLoading && !noGroups && <>
+              <Button label="Save & add another" outlined onClick={() => save(true)} disabled={saving || (!!bankLink && group?.currency !== bankLink.currency)} />
+              <Button label="Save" loading={saving} disabled={!!bankLink && group?.currency !== bankLink.currency} onClick={() => save(false)} severity="success" />
+            </>}
+          </div>
+        }
       >
         {review ? (
           <div className="flex flex-col gap-4">
@@ -311,7 +317,8 @@ export function QuickAddSplitModal({ visible, onHide, onSaved, initial, onConfir
                   <div className="mt-3 flex flex-wrap gap-2">
                     <Button label="Open expense" icon={<ExternalLink size={16} />} outlined onClick={() => router.push(`/split/${candidate.groupId}?expense=${candidate.expenseId}&month=${candidate.date.slice(0, 7)}`)} />
                     {candidate.kind !== 'linked' && <Button label="Confirm link" icon={<Link2 size={16} />} loading={confirmingLink} disabled={confirmingLink || !onConfirmLink || candidate.currency !== bankCurrency} onClick={async () => {
-                      if (!onConfirmLink) return;
+                      if (!onConfirmLink || confirmingLinkRef.current || savingRef.current) return;
+                      confirmingLinkRef.current = true;
                       setConfirmingLink(true);
                       setError('');
                       try {
@@ -325,6 +332,7 @@ export function QuickAddSplitModal({ visible, onHide, onSaved, initial, onConfir
                         setError(message);
                         toast.error('Could not confirm split link', message);
                       } finally {
+                        confirmingLinkRef.current = false;
                         setConfirmingLink(false);
                       }
                     }} />}
@@ -333,7 +341,6 @@ export function QuickAddSplitModal({ visible, onHide, onSaved, initial, onConfir
               ))}
             </div>
             {error && <Message severity="error" text={error} />}
-            <Button label="Cancel" text onClick={onHide} className="self-start min-h-[44px]" />
           </div>
         ) : groupsLoading ? (
           <DelayedSkeleton><div className="h-48 w-full animate-pulse rounded-lg bg-surface-100 dark:bg-surface-800" /></DelayedSkeleton>
@@ -439,11 +446,6 @@ export function QuickAddSplitModal({ visible, onHide, onSaved, initial, onConfir
             )}
 
             {error && <Message severity="error" text={error} />}
-
-            <ControlGroup aria-label="Quick expense actions" className="mt-1">
-              <Button label="Save" className="flex-1" loading={saving} disabled={!!bankLink && group?.currency !== bankLink.currency} onClick={() => save(false)} severity="success" />
-              <Button label="Save & add another" outlined onClick={() => save(true)} disabled={saving || (!!bankLink && group?.currency !== bankLink.currency)} />
-            </ControlGroup>
           </div>
         )}
       </Dialog>

@@ -228,6 +228,17 @@ export async function getSplitExpenses(groupId: string, months?: string[]): Prom
   return { success: true, data: rows };
 }
 
+/** Check an expense by id without relying on cached month windows. */
+export async function getSplitExpenseExists(groupId: string, expenseId: string): Promise<ApiResponse<boolean>> {
+  try {
+    const loaded = await loadGroupForMember(groupId);
+    if (!loaded.ok || !isSafeId(expenseId)) return { success: false, error: 'Could not check expense' };
+    return { success: true, data: (await dbGetExpenseById(groupId, expenseId)) !== null };
+  } catch {
+    return { success: false, error: 'Could not check expense' };
+  }
+}
+
 /** Recent activity for the Home feed (cross-group) or, with `groupId`, for one
  * group's Activity section. Uses a bounded query ordered by creation time, so
  * newly entered expenses in backdated or previously empty months are included. */

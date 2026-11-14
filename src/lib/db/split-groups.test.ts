@@ -15,6 +15,7 @@ import {
   upsertExpenseByOccurrence,
 } from './split-groups';
 import { getDoc, putDoc } from './sqlite/docs';
+import { getBankTransactions, writeBankTransactions } from './bank-transactions';
 import { splitGroupSummary } from './sqlite/schema';
 import type { SplitExpense, SplitExpenseItem, SplitGroupSummary } from '@/types';
 
@@ -119,6 +120,35 @@ describe('split-groups db layer', () => {
     expect(await deleteExpense(groupId, payment.id)).toBe(true);
     await expectSummaryMatchesRebuild();
     expect(await deleteExpense(groupId, 'missing')).toBe(false);
+  });
+
+  it('removes a linked expense from balances while keeping its bank transaction', async () => {
+    const group = await createSplitGroup(
+      { userId: ALEX, email: 'alex@example.com', name: 'Alex' },
+      { name: 'Linked test', currency: 'EUR' },
+      [{ userId: SAM, email: 'sam@example.com', name: 'Sam', role: 'member' }],
+    );
+    const transaction = {
+      id: 'tx-linked', linkedAccountId: 'account-linked', dedupKey: 'tx-linked',
+      bookingDate: '2026-03-10', amount: -34.56, currency: 'EUR' as const,
+      status: 'booked' as const, firstSeenAt: '2026-03-10', lastSeenAt: '2026-03-10',
+    };
+    await writeBankTransactions(ALEX, 'account-linked', [transaction]);
+    const expense = row('2026-03-10', 3456, {
+      groupId: group.id,
+      bankLink: { txId: transaction.id, linkedAccountId: transaction.linkedAccountId,
+        ownerUserId: ALEX, bookingDate: transaction.bookingDate, amount: transaction.amount, currency: 'EUR' },
+    });
+    await addExpense(group.id, expense);
+    const before = await getSplitGroupSummary(group.id);
+    expect(before.expenseCount).toBe(1);
+    expect(before.netByUserId).toMatchObject({ [ALEX]: 1728, [SAM]: -1728 });
+    expect(await deleteExpense(group.id, expense.id)).toBe(true);
+    const after = await getSplitGroupSummary(group.id);
+    expect(after.expenseCount).toBe(0);
+    expect(after.netByUserId[ALEX] ?? 0).toBe(0);
+    expect(after.netByUserId[SAM] ?? 0).toBe(0);
+    expect(await getBankTransactions(ALEX, 'account-linked')).toEqual([transaction]);
   });
 
   it('locates rows via the month hint or a newest-first scan', async () => {

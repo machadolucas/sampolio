@@ -1,12 +1,13 @@
 // @vitest-environment jsdom
 import { act, cleanup, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { getMySplitLinkCandidates } from '@/lib/actions/split-groups';
+import { getMySplitLinkCandidates, getSplitExpenseExists } from '@/lib/actions/split-groups';
 import type { ApiResponse, BankTransaction, SplitLinkCandidate } from '@/types';
 import { useBankSplitCandidates } from './use-bank-split-candidates';
 
-vi.mock('@/lib/actions/split-groups', () => ({ getMySplitLinkCandidates: vi.fn() }));
+vi.mock('@/lib/actions/split-groups', () => ({ getMySplitLinkCandidates: vi.fn(), getSplitExpenseExists: vi.fn() }));
 const getCandidates = vi.mocked(getMySplitLinkCandidates);
+const exists = vi.mocked(getSplitExpenseExists);
 
 function candidate(expenseId = 'expense-1', overrides: Partial<SplitLinkCandidate> = {}): SplitLinkCandidate {
   return {
@@ -51,7 +52,11 @@ function deferredRead() {
 const ledger = [transaction()];
 
 describe('useBankSplitCandidates', () => {
-  beforeEach(() => getCandidates.mockReset());
+  beforeEach(() => {
+    getCandidates.mockReset();
+    exists.mockReset();
+    exists.mockResolvedValue({ success: false, error: 'Unavailable' });
+  });
   afterEach(cleanup);
 
   it('keeps an acknowledged save through a delayed pre-save read and later omitted reads', async () => {
@@ -69,6 +74,56 @@ describe('useBankSplitCandidates', () => {
     // Even an echo from a pre-save read cannot release the new save's protection.
     getCandidates.mockResolvedValueOnce({ success: true, data: [] });
     await act(() => result.current.loadCandidatesFor('account-alex', ledger));
+    expect(result.current.candidatesByLink['account-alex']).toEqual([saved]);
+  });
+
+  it('clears an omitted saved candidate only after an authoritative absence', async () => {
+    const saved = candidate();
+    const { result } = renderHook(() => useBankSplitCandidates());
+    act(() => result.current.addConfirmedCandidate('account-alex', saved));
+    getCandidates.mockResolvedValueOnce({ success: true, data: [] });
+    exists.mockResolvedValueOnce({ success: true, data: true });
+    await act(() => result.current.loadCandidatesFor('account-alex', ledger));
+    expect(result.current.candidatesByLink['account-alex']).toEqual([saved]);
+    getCandidates.mockResolvedValueOnce({ success: true, data: [] });
+    exists.mockRejectedValueOnce(new Error('Offline'));
+    await act(() => result.current.loadCandidatesFor('account-alex', ledger));
+    expect(result.current.candidatesByLink['account-alex']).toEqual([saved]);
+    getCandidates.mockResolvedValueOnce({ success: true, data: [] });
+    exists.mockResolvedValueOnce({ success: true, data: false });
+    await act(() => result.current.loadCandidatesFor('account-alex', ledger));
+    expect(exists).toHaveBeenCalledWith(saved.groupId, saved.expenseId);
+    expect(result.current.candidatesByLink['account-alex']).toEqual([]);
+  });
+
+  it('does not let a delayed absence clear a newer save', async () => {
+    const saved = candidate();
+    const newer = { ...saved, title: 'Newer save' };
+    const { result } = renderHook(() => useBankSplitCandidates());
+    act(() => result.current.addConfirmedCandidate('account-alex', saved));
+    getCandidates.mockResolvedValueOnce({ success: true, data: [] });
+    let resolve!: (value: ApiResponse<boolean>) => void;
+    exists.mockReturnValueOnce(new Promise((done) => { resolve = done; }));
+    let loading!: Promise<void>;
+    await act(async () => { loading = result.current.loadCandidatesFor('account-alex', ledger); await Promise.resolve(); });
+    act(() => result.current.addConfirmedCandidate('account-alex', newer));
+    await act(async () => { resolve({ success: true, data: false }); await loading; });
+    expect(result.current.candidatesByLink['account-alex']).toEqual([newer]);
+  });
+
+  it('ignores a point check superseded by a newer refresh', async () => {
+    const saved = candidate();
+    const { result } = renderHook(() => useBankSplitCandidates());
+    act(() => result.current.addConfirmedCandidate('account-alex', saved));
+    getCandidates.mockResolvedValueOnce({ success: true, data: [] });
+    let resolve!: (value: ApiResponse<boolean>) => void;
+    exists.mockReturnValueOnce(new Promise((done) => { resolve = done; }));
+    let old!: Promise<void>;
+    await act(async () => { old = result.current.loadCandidatesFor('account-alex', ledger); await Promise.resolve(); });
+    getCandidates.mockResolvedValueOnce({ success: true, data: [] });
+    exists.mockResolvedValueOnce({ success: true, data: true });
+    await act(() => result.current.loadCandidatesFor('account-alex', ledger));
+    await act(async () => { resolve({ success: true, data: false }); await old; });
     expect(result.current.candidatesByLink['account-alex']).toEqual([saved]);
   });
 

@@ -57,6 +57,7 @@ export function Menu({
 }) {
   const [open, setOpen] = useState(false);
   const anchorRef = useRef<HTMLElement | null>(null);
+  const popupRef = useRef<HTMLDivElement | null>(null);
   useImperativeHandle(
     ref,
     () => ({
@@ -146,7 +147,16 @@ export function Menu({
         >
           <Primitive.Popup
             id={id}
-            finalFocus={anchorRef}
+            ref={popupRef}
+            finalFocus={() => {
+              const active = document.activeElement;
+              // A menu command can open a dialog before the menu finishes
+              // closing. Do not take focus back from that new overlay.
+              if (active instanceof Element && !popupRef.current?.contains(active) && active.closest('[role="dialog"], [role="alertdialog"]')) {
+                return false;
+              }
+              return anchorRef.current;
+            }}
             className={cn('ui-select-popup min-w-52', className)}
             style={style}
           >
@@ -161,9 +171,15 @@ export function Menu({
                   key={index}
                   disabled={item.disabled}
                   className={cn('ui-menu-item', item.className)}
-                  onClick={(event) =>
-                    item.command?.({ originalEvent: event, item })
-                  }
+                  onClick={(event) => {
+                    // Commands can synchronously capture focus for a new
+                    // confirmation. The menu item is about to unmount, so
+                    // give the connected trigger focus before invoking them.
+                    if (item.command && anchorRef.current?.isConnected) {
+                      anchorRef.current.focus({ preventScroll: true });
+                    }
+                    item.command?.({ originalEvent: event, item });
+                  }}
                 >
                   {content(item)}
                 </Primitive.Item>

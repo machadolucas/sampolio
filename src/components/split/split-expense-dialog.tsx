@@ -1,6 +1,5 @@
 "use client";
 
-import { ControlGroup } from '@/components/ui/page-header';
 /* eslint-disable react-hooks/set-state-in-effect -- the form intentionally resets its fields when the dialog opens */
 
 import { useEffect, useRef, useState } from "react";
@@ -12,6 +11,7 @@ import { Dropdown } from "@/components/ui/dropdown";
 import { Calendar } from "@/components/ui/calendar";
 import { Button } from "@/components/ui/button";
 import { Message } from "@/components/ui/message";
+import { useToast } from "@/components/providers/toast-provider";
 import { useIsMobile } from "@/lib/hooks/use-media-query";
 import {
   createSplitExpense,
@@ -47,6 +47,7 @@ export function SplitExpenseDialog({
   myId,
   expense,
   onSaved,
+  onDelete,
 }: {
   visible: boolean;
   onHide: () => void;
@@ -56,9 +57,14 @@ export function SplitExpenseDialog({
   myId: string;
   expense?: SplitExpenseItem;
   onSaved: (saved?: SplitExpense) => void;
+  onDelete?: () => Promise<boolean>;
 }) {
   const isMobile = useIsMobile();
   const editing = !!expense;
+  const toast = useToast();
+  const busyRef = useRef(false);
+  const deleteButtonRef = useRef<HTMLButtonElement>(null);
+  const restoreDeleteFocusRef = useRef(false);
 
   const [title, setTitle] = useState("");
   const [amount, setAmount] = useState<number | null>(null);
@@ -67,6 +73,7 @@ export function SplitExpenseDialog({
   const [date, setDate] = useState<Date>(new Date());
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState("");
   const wasVisibleRef = useRef(false);
   const expenseIdRef = useRef<string | undefined>(undefined);
@@ -96,7 +103,17 @@ export function SplitExpenseDialog({
     setError("");
   }, [visible, expense, myId, members]);
 
+  useEffect(() => {
+    if (!deleting && restoreDeleteFocusRef.current) {
+      restoreDeleteFocusRef.current = false;
+      if (visible && deleteButtonRef.current?.isConnected) {
+        deleteButtonRef.current.focus({ preventScroll: true });
+      }
+    }
+  }, [deleting, visible]);
+
   const save = async () => {
+    if (busyRef.current) return;
     if (!title.trim()) return setError("Add a description");
     if (!amount || amount <= 0) return setError("Add an amount");
     const { spec, error: splitError } = resolveDraftSpec(
@@ -106,6 +123,7 @@ export function SplitExpenseDialog({
       myId,
     );
     if (!spec) return setError(splitError ?? "Check the split");
+    busyRef.current = true;
     setSaving(true);
     setError("");
     const payload = {
@@ -116,25 +134,66 @@ export function SplitExpenseDialog({
       note: note.trim() || undefined,
       split: spec,
     };
-    const res = editing
-      ? await updateSplitExpense(groupId, expense!.id, payload)
-      : await createSplitExpense(groupId, payload);
-    setSaving(false);
-    if (!res.success) return setError(res.error ?? "Failed to save");
-    onSaved(res.data);
-    notifyDataChanged();
-    onHide();
+    try {
+      const res = editing
+        ? await updateSplitExpense(groupId, expense!.id, payload)
+        : await createSplitExpense(groupId, payload);
+      if (!res.success) {
+        const message = res.error ?? "Failed to save";
+        setError(message);
+        toast.error("Could not save expense", message);
+        return;
+      }
+      onSaved(res.data);
+      notifyDataChanged();
+      onHide();
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Please try again.";
+      setError(message);
+      toast.error("Could not save expense", message);
+    } finally {
+      busyRef.current = false;
+      setSaving(false);
+    }
+  };
+
+  const remove = async () => {
+    if (busyRef.current || !onDelete) return;
+    busyRef.current = true;
+    setDeleting(true);
+    setError("");
+    let deleted = false;
+    try {
+      deleted = await onDelete();
+      if (deleted) onHide();
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Please try again.";
+      setError(message);
+      toast.error("Could not delete expense", message);
+    } finally {
+      restoreDeleteFocusRef.current = !deleted;
+      busyRef.current = false;
+      setDeleting(false);
+    }
   };
 
   return (
     <Dialog
       header={editing ? "Edit expense" : "Add expense"}
       visible={visible}
-      onHide={onHide}
+      onHide={() => { if (!busyRef.current) onHide(); }}
+      closable={!saving && !deleting}
       maximized={isMobile}
       modal
       dismissableMask
       style={{ width: "32rem" }}
+      footer={
+        <div className="flex w-full min-w-0 flex-wrap items-center justify-end gap-2">
+          {editing && onDelete && <Button ref={deleteButtonRef} label="Delete expense" severity="danger" outlined loading={deleting} disabled={saving} onClick={remove} className="mr-auto" />}
+          <Button label="Cancel" text onClick={() => { if (!busyRef.current) onHide(); }} disabled={saving || deleting} />
+          <Button label={editing ? "Save" : "Add"} severity="success" loading={saving} disabled={deleting} onClick={save} />
+        </div>
+      }
     >
       <div className="flex flex-col gap-3 pt-1">
         <InputNumber
@@ -198,15 +257,6 @@ export function SplitExpenseDialog({
         />
 
         {error && <Message severity="error" text={error} />}
-        <ControlGroup aria-label="Expense actions" className="justify-end mt-1">
-          <Button label="Cancel" text onClick={onHide} disabled={saving} />
-          <Button
-            label={editing ? "Save" : "Add"}
-            severity="success"
-            loading={saving}
-            onClick={save}
-          />
-        </ControlGroup>
       </div>
     </Dialog>
   );

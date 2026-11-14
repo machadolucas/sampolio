@@ -30,7 +30,7 @@ vi.mock('@/lib/actions/split-groups', () => ({
 }));
 vi.mock('@/lib/actions/user-preferences', () => ({ getUserPreferences: mocks.getUserPreferences }));
 vi.mock('@/components/ui/confirm-dialog', () => ({ confirmDialog: mocks.confirmDialog }));
-vi.mock('@/components/ui/dialog', () => ({ Dialog: ({ visible, children }: any) => visible ? <div role="dialog">{children}</div> : null }));
+vi.mock('@/components/ui/dialog', () => ({ Dialog: ({ visible, children, footer, onHide }: any) => visible ? <div role="dialog"><button onClick={onHide}>Close dialog</button>{children}<footer>{footer}</footer></div> : null }));
 vi.mock('@/components/ui/button', () => ({ Button: ({ label, onClick, disabled, loading, children, ...rest }: any) => <button type="button" disabled={disabled || loading} onClick={onClick} {...rest}>{label ?? children}</button> }));
 vi.mock('@/components/ui/input-text', () => ({ InputText: (props: any) => <input {...props} /> }));
 vi.mock('@/components/ui/dropdown', () => ({ Dropdown: ({ value, options, onChange, ...props }: any) => <select value={value} onChange={(e) => onChange({ value: e.target.value })} {...props}>{options?.map((o: any) => <option key={o.value} value={o.value}>{o.label}</option>)}</select> }));
@@ -263,4 +263,53 @@ describe('QuickAddSplitModal save callbacks', () => {
     expect(onSaved).not.toHaveBeenCalled();
     expect(onHide).not.toHaveBeenCalled();
   });
+});
+
+it('cancels without creating an expense', async () => {
+  const onHide = vi.fn();
+  render(<QuickAddSplitModal visible onHide={onHide} initial={{ title: 'Lunch', amount: 10 }} />);
+  await screen.findByRole('button', { name: 'Save' });
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+  expect(onHide).toHaveBeenCalledTimes(1);
+  expect(mocks.createSplitExpense).not.toHaveBeenCalled();
+});
+
+it('closes without creating an expense', async () => {
+  const onHide = vi.fn();
+  render(<QuickAddSplitModal visible onHide={onHide} initial={{ title: 'Lunch', amount: 10 }} />);
+  await screen.findByRole('button', { name: 'Save' });
+  fireEvent.click(screen.getByRole('button', { name: 'Close dialog' }));
+  expect(onHide).toHaveBeenCalledTimes(1);
+  expect(mocks.createSplitExpense).not.toHaveBeenCalled();
+});
+
+it('prevents repeat link confirmation and dismissal while confirming', async () => {
+  const match: BankSplitMatch = { kind: 'heuristic', expenseId: 'e1', groupId: 'g1', groupName: 'Household', title: 'Dinner', date: '2026-05-08', amountCents: 2450, currency: 'EUR' };
+  let finish!: () => void;
+  const onConfirmLink = vi.fn(() => new Promise<void>(resolve => { finish = resolve; }));
+  const onHide = vi.fn();
+  render(<QuickAddSplitModal visible onHide={onHide} initial={{ bankLink, reviewMatch: match }} onConfirmLink={onConfirmLink} />);
+  const confirm = screen.getByRole('button', { name: 'Confirm link' });
+  fireEvent.click(confirm);
+  fireEvent.click(confirm);
+  fireEvent.click(screen.getByRole('button', { name: 'Close dialog' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+  expect(onConfirmLink).toHaveBeenCalledTimes(1);
+  expect(onHide).not.toHaveBeenCalled();
+  finish();
+  await waitFor(() => expect(onHide).toHaveBeenCalledTimes(1));
+});
+
+it('offers cancel while groups are loading or absent', async () => {
+  mocks.getMySplitGroups.mockReturnValueOnce(new Promise(() => {}));
+  const onHide = vi.fn();
+  const view = render(<QuickAddSplitModal visible onHide={onHide} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+  expect(onHide).toHaveBeenCalledTimes(1);
+  view.unmount();
+  mocks.getMySplitGroups.mockResolvedValueOnce({ success: true, data: [] });
+  render(<QuickAddSplitModal visible onHide={onHide} />);
+  await screen.findByText("You don't have a split group yet.");
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+  expect(onHide).toHaveBeenCalledTimes(2);
 });
